@@ -9,6 +9,7 @@
 ## Doc Map
 
 - [STATE](STATE.md) - Current work, next steps, blockers, and open questions.
+- [specs/00-roadmap.md](specs/00-roadmap.md) - Version slicing: v0.9 抢发 → v1.0 → v1.1 → v2.0.
 - [specs/](specs/) - Living product and engineering specifications.
 - [plans/](plans/) - Point-in-time implementation plans.
 - [decisions/](decisions/) - Architecture decision records.

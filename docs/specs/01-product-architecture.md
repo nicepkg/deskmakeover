@@ -17,7 +17,14 @@ The product must feel like a **beauty camera for the desktop**: light, instant,
 obviously reversible. It must not feel like a system utility, registry tweak wrapper,
 script launcher, or cleaner. The mental model the UI builds is "美颜相机", never
 "电脑管家". Visual personality and rendering rules live in
-[specs/02-visual-language.md](02-visual-language.md).
+[specs/02-visual-language.md](02-visual-language.md); delivery slicing lives in
+[specs/00-roadmap.md](00-roadmap.md).
+
+**Tone rule (ADR-0003):** the app never judges the user's desktop. "Your desktop
+is ugly, let me fix it" framing is banned from every string, empty state, and
+marketing surface. The voice is additive and playful — "给你的桌面上个妆". The
+public narrative is "补上 Windows 缺失的系统级兜底", never "modernizing
+Microsoft's bad taste".
 
 ## Target Users
 
@@ -36,8 +43,9 @@ The MVP completes one reliable loop:
 
 1. Launch and scan the desktop automatically.
 2. Show the before/after transformation immediately.
-3. On the single primary action: snapshot invisibly, apply styling, refresh safely.
-4. Restore the previous state completely from an ever-present entry point.
+3. Switch on: snapshot invisibly, apply styling, refresh safely, keep new
+   shortcuts styled.
+4. Switch off: restore the previous state completely, zero residue.
 
 The MVP includes:
 
@@ -45,16 +53,23 @@ The MVP includes:
   desktops detected via known-folder resolution).
 - Support for `.lnk` shortcuts, `.url` shortcuts, AppX/UWP shortcuts, Recycle Bin,
   folders, and regular files.
-- One default style only: continuous-corner (squircle) rendering with automatic
-  background handling. No presets, no per-item selection, no filters.
-- Shortcut arrow overlay removal inside the one-click flow (privileged; see Trust
-  Flow below).
+- Continuous-corner (squircle) rendering with automatic background handling,
+  driven by a `StylePreset` parameter pack (mask shape / tile strategy / badge
+  style / color treatment). v0.9 ships exactly one preset; v1.0 adds a three-pill
+  filter bar (see roadmap). No sliders or numeric controls, ever.
+- Badge three-state (ADR-0003): **Refined Mark** overlay (default, preserves
+  shortcut distinction), clean no-mark, or keep original — chosen from three real
+  thumbnails. Privileged; see Trust Flow below.
+- Keep-up without residency: a logon-triggered run-and-exit task plus app-launch
+  catch-up styles newly added shortcuts. No resident process before v1.1, where
+  real-time watching becomes an explicit opt-in.
 - Desktop icon layout snapshot and best-effort restore, running invisibly around
-  every mutating operation.
+  every mutating operation; never gates a release.
 - Versioned restore snapshots, created automatically — never by a user action.
-- A completion screen with a "save before/after image" share hook.
+- A completion state with a "save before/after image" share hook (v1.0 must-have).
 - English and Simplified Chinese localization; Chinese is the primary voice.
-- Local-only operation with no account, upload, telemetry, or cloud dependency.
+- Local-only operation with no account, upload, telemetry, or cloud dependency —
+  stated in the UI, not just true.
 
 The MVP excludes:
 
@@ -78,29 +93,45 @@ or live in settings as an advanced option. The primary flow never gains steps.
 2. **The mirror.** The main screen shows the transformation: a hero before/after
    region plus a grid of the user's real icons rendered in the default style.
    Long-press on any tile crossfades back to the original icon (press-to-peek).
-3. **One button.** A single primary action: **一键美化**. Next to it, one plain
-   promise: 「只美化图标外观，不动你的文件 · 随时一键还原」.
-4. **Consent card (first run / when arrow removal will run).** Before UAC, a card
-   explains in plain language: what will happen, what will not happen, and that one
-   administrator approval will be requested. One confirm, one system UAC prompt.
-5. **Apply.** A snapshot is created automatically first (no snapshot, no apply).
-   Progress is shown as the transformation itself: tiles bloom into their styled
+3. **The Makeover Switch (ADR-0003).** One primary control. On first run it
+   presents as an inviting action (「开启桌面美颜」); once on, it reads as a lit
+   switch with state (「美颜已开启 · 37 个图标已统一」). Next to it, the standing
+   promises: 「只美化图标外观，不动你的文件 · 全程本地不联网 · 关闭即完整还原」
+   and, once on: 「新图标会在你登录时自动跟上」.
+4. **Consent card (first switch-on).** Before UAC, a card explains in plain
+   language: what will happen, what will not happen, and that one administrator
+   approval will be requested. One confirm, one batched UAC prompt.
+5. **Switch on.** A snapshot is created automatically first (no snapshot, no
+   apply). Progress is the transformation itself: tiles bloom into their styled
    form in a staggered wave across the real grid. A single quiet status line
    replaces stage jargon; the words 备份/快照/计划/扫描/dry-run never appear.
-6. **Done.** 「✨ 好了，你的桌面焕然一新」 with three elements: a "去看看桌面"
-   nudge, a persistent 「不满意？一键还原」 link, and 「保存对比图」 (share hook).
-   The app expects the user to leave — completion is the goal, not retention.
-7. **Restore.** The restore entry is visible on the main screen at all times, in
-   every state. One click → one plain confirmation → full restore to the latest
-   snapshot with a calm settle-back animation. Restore is a safety belt, not a
-   center: no version list in the primary UI.
+6. **Done.** 「✨ 好了，你的桌面焕然一新」 with a "去看看桌面" nudge and
+   「保存对比图」 (share hook). The app expects the user to leave — completion is
+   the goal, not retention. Keep-up runs at next logon / next app launch,
+   run-and-exit, no resident process.
+7. **Switch off = restore.** Always available, in every state. One click → one
+   plain confirmation → full restore to baseline with a calm settle-back
+   animation, then honest feedback: 「已还原系统默认 · 无残留」. No version list
+   in the primary UI.
 
-### Trust flow for privileged work (arrow removal)
+### Badge three-state
 
+The shortcut badge choice is presented inside the mirror as three real
+thumbnails of the user's own icons — 「精致标记」 (default) / 「干净无标记」 /
+「保持原样」 — never as abstract radio buttons. It is one global choice for the
+whole desktop (the overlay mechanism is global); no per-icon mixing. Choosing
+「干净无标记」 shows one plain sentence noting that shortcuts will no longer be
+visually distinguishable. Badge visual language lives in spec 02.
+
+### Trust flow for privileged work (badge overlay)
+
+- The Refined Mark and clean no-mark states both write the global overlay value
+  (HKLM) and refresh the icon cache; "keep original" touches nothing. Refined
+  Mark is therefore not a cheaper path than removal — both go through the helper.
 - Explain before elevating; never elevate at launch.
 - Batch all privileged steps into one helper invocation → exactly one UAC prompt.
 - Denial (ERROR_CANCELLED) or policy block is not an error state: apply all
-  non-privileged styling anyway, tell the user the arrow step was skipped, and keep
+  non-privileged styling anyway, tell the user the badge step was skipped, and keep
   a "再试一次" entry. Never dead-end.
 - Explorer refresh is communicated before it happens ("桌面会闪一下，约 2 秒，
   打开的窗口和文件不会丢") with light refresh attempted before any disruptive one.
@@ -123,12 +154,15 @@ or live in settings as an advanced option. The primary flow never gains steps.
 
 One main screen. No navigation.
 
-- **Main screen**: hero before/after, primary action, status line, icon tile grid,
-  ever-present restore link, skipped-items details entry.
+- **Main screen**: hero before/after, the Makeover Switch, status line, icon tile
+  grid, badge three-state thumbnails, skipped-items details entry.
 - **Settings flyout** (gear, top corner): theme (dark default / light / follow
-  system), language, arrow-removal toggle, regular-file wrapping opt-in, backup
-  location, diagnostics export.
+  system), language, keep-up-at-logon toggle, regular-file wrapping opt-in, backup
+  location, diagnostics export. From v1.1: real-time watching opt-in with visible
+  exit/remove.
 - **Completion state**: rendered in place on the main screen, not a separate page.
+- **Filter bar (v1.0)**: three live-preview preset pills directly under the
+  mirror; not a settings page.
 
 ## System Architecture
 
@@ -176,7 +210,11 @@ Icon rendering owns:
 - source image extraction and normalization
 - continuous-corner (superellipse) mask generation
 - automatic background classification (white tile / preserved background / clipped)
+- `StylePreset` consumption: every render is parameterized by the four-axis
+  preset value object (mask shape / tile strategy / badge style / color
+  treatment); presets are data, never code paths
 - multi-size `.ico` output selected against real per-monitor DPI
+- baked badge composition per size (v1.0+; simplified below 32px)
 - preview PNG output (original + styled pairs)
 - render cache
 - future `IIconGenerator` extension for AI or style-pack generation
@@ -203,6 +241,16 @@ Operations are transaction-like:
 No mutating operation may run without a snapshot unless it is itself a restore
 operation. Snapshots are always created automatically by the engine, never as a
 user-facing action.
+
+**Keep-up model (ADR-0003):** while the switch is on, catch-up passes (logon task,
+app launch) style newly added shortcuts. Continuous styling must not spawn a new
+full snapshot per item: the design is one persistent baseline snapshot plus an
+append-only per-item undo ledger (original icon location + original `.lnk` bytes
+per newly styled item). Switch-off replays the ledger and the baseline. The
+run-and-exit keep-up task performs only non-privileged work (icon restyling; the
+global overlay already covers new shortcuts by itself). Watcher-based real-time
+styling (v1.1+) additionally requires per-path debounce and self-trigger
+suppression, and watches only the two desktop directories.
 
 ### Elevated.Helper
 

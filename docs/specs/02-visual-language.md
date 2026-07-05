@@ -131,6 +131,67 @@ Motion encodes meaning: **beautify inhales, restore exhales.**
 - Custom titlebar is out of MVP scope; system chrome + dark titlebar attribute is
   the baseline. Revisit post-MVP.
 
+## Badge System (ADR-0003)
+
+The shortcut badge is part of the visual language, not a utility toggle.
+
+### Refined Mark overlay (default, v0.9)
+
+Replaces the stock white-box arrow via the global overlay value. It is one
+multi-size, full-alpha, anti-aliased `.ico` (16/20/24/32/48/256):
+
+- Motif: a frosted squircle chip carrying a ribbon-fold mark — the semantic is
+  "this points elsewhere", never an arrow-in-a-box.
+- Chip: same superellipse family as the tiles; 1px transparent safety margin so
+  Explorer never clips a hard edge at 16px.
+- Material: frosted neutral — light variant white @ 90% + 1px inner stroke black
+  @ 8%; dark variant `#2A2A2E` @ 92% + 1px inner stroke white @ 10%; soft shadow
+  blur 3 / y 1 / 10%.
+- Because the overlay is global and composited by Explorer, it automatically
+  covers every shortcut including future ones, and deleting the registry value is
+  a complete restore.
+
+### Baked top-right badge (premium, v1.0+)
+
+Composited into the generated icon at render time (requires suppressing the
+global overlay to avoid double badges):
+
+- Position: top-right, chip center ≈ (canvas−58, 58) at 256, nested ~8px inside
+  the tile's superellipse curve — it sits *into* the corner, never floats.
+- Shape: a smaller squircle chip of the same curve family (a circle reads as a
+  notification dot; the squircle reads as the same design language).
+- Size: chip ≈ 30% of canvas (~76px @ 256).
+- Separation halo: 4–5px adaptive ring @ ~60% — light halo on dark artwork, dark
+  halo on light artwork. The halo is what makes the badge grow *into* the icon
+  instead of being stuck on.
+- Mark: ribbon-fold / round-capped 45° pointer, ~8px stroke @ 256, rounded joins,
+  ~50% of chip.
+- **Size-adaptive law:** below 32px the mark degenerates to a tiny accent notch
+  or disappears entirely — never scale the full badge down linearly.
+
+## Style Presets (ADR-0003)
+
+A style is a coordinate in a four-axis parameter space (`StylePreset`); one
+rendering engine, presets are data:
+
+| Axis | Values |
+|---|---|
+| Mask shape | superellipse (n≈5) / arc rounded / circle / uncut |
+| Tile strategy | none (clip, keep colors) / white tile / auto-color tile / keep original / dark tile |
+| Badge style | refined overlay / baked chip / none / accent notch · placement |
+| Color treatment | none / desaturate / unified hue / muted / duotone |
+
+Launch presets: **苹果圆角** (default: superellipse + auto-color tile + refined
+badge + no color treatment), **极简描边** (superellipse + no tile + 1.5px
+uniform hairline edge + ribbon badge), **单色滤镜** (superellipse + unified tile
++ desaturate-then-tint). Skeuomorphic presets are rejected (craft-heavy,
+anti-restraint).
+
+**Selector (v1.0):** three squircle pills under the mirror, each a live
+render of the user's own icons; tapping re-previews the whole grid instantly.
+No sliders, no numeric controls, no scrolling list. Advanced axis editing stays
+out of the product.
+
 ## Accessibility
 
 - Every interactive element has `AutomationProperties.Name` (localized).

@@ -37,6 +37,14 @@ branch: main
 
 ## Next
 
+0. **App-shell round (owner demand: 简洁不是简陋, product not demo):**
+   settings flyout per spec 01 IA (gear: theme dark/light/system, language,
+   keep-up toggle, wrap-files opt-in, backup folder, diagnostics export),
+   About section (author/版本/主页/开源声明), title area polish, visual
+   hierarchy pass, and the extension seams already specced (filter-bar slot
+   under the mirror for v1.0 presets; settings as the future-feature home per
+   ADR-0002 rule). Renderer double-tile + jaggies fixed this round
+   (full-plate detection + AA mask + bilinear).
 1. Fix: first tile row renders clipped at the top of the mirror grid (visual bug
    seen in smoke run).
 2. Task 8 motion: bloom wave on apply, skeleton shimmer while scanning, restore

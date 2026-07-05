@@ -8,6 +8,7 @@
     <Project Path="src/DeskMakeover.Shell/DeskMakeover.Shell.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/DeskMakeover.App.Tests/DeskMakeover.App.Tests.csproj" />
     <Project Path="tests/DeskMakeover.Core.Tests/DeskMakeover.Core.Tests.csproj" />
     <Project Path="tests/DeskMakeover.IconRendering.Tests/DeskMakeover.IconRendering.Tests.csproj" />
     <Project Path="tests/DeskMakeover.Operations.Tests/DeskMakeover.Operations.Tests.csproj" />

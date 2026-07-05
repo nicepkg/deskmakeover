@@ -9,7 +9,7 @@ branch: main
 ## Active Work
 
 - MVP foundation implementation is underway.
-- Current foundation includes solution skeleton, domain models, icon-rendering primitives, read-only desktop scanning, operation planning, snapshot scaffolding, WPF preview shell, and elevated-helper stub.
+- Current foundation includes solution skeleton, domain models, icon-rendering primitives, read-only desktop scanning, snapshot persistence, dry-run operation planning, WPF preview grid, and elevated-helper stub.
 
 ## Last Done
 
@@ -19,13 +19,15 @@ branch: main
 - Expert sub-agent review completed for product, UX, visual system, and Windows Shell architecture.
 - Local git repository initialized on `main`.
 - Local .NET 10 SDK installed under `.dotnet/` for development use.
-- Verification: `dotnet test DeskMakeover.slnx` passed 9 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors.
+- Added fallback icon rendering, WPF preview cards, snapshot save UI, dry-run apply-plan UI, restore metadata collection, and URL shortcut icon writer scaffolding.
+- Hardened safety gates so skipped items do not produce global operations, URL shortcuts require full original-content payloads, capture errors block apply plans, shortcuts require captured original icon locations, folder plans require complete folder restore metadata, and regular-file wrapping remains disabled until full wrapper restore mapping exists.
+- Verification: `dotnet test DeskMakeover.slnx` passed 29 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors.
 
 ## Next
 
-1. Implement real icon preview rendering into the WPF grid.
-2. Add snapshot persistence UI and apply gating.
-3. Implement non-privileged apply/restore for user desktop shortcuts.
+1. Implement real icon extraction for `.lnk` and `.url` previews with fallback on extraction failure.
+2. Execute non-privileged apply/restore for user desktop shortcuts behind explicit confirmation.
+3. Add self-contained Windows publish and installer packaging.
 
 ## Blockers
 

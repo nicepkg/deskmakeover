@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-05
+updated: 2026-07-06
 version: unreleased
 branch: main
 ---
@@ -8,13 +8,45 @@ branch: main
 
 ## Active Work
 
-- v0.9 desktop-icon module: feature-complete + heavily polished from owner
-  feedback. Platform vision in [ADR-0004](decisions/0004-platform-form.md)
-  (ads module deferred by owner).
-- Now a genuinely composable "make my icons beautiful" tool: pick a style
-  (原彩 full-colour / 极简 black&white / 单色 tinted) × a tint colour
-  (wallpaper-extracted + accent + curated palette + hex input) × a shortcut
-  badge (精致标记 with arrow/fold/dot glyphs, 干净无标记, or 保持原样).
+- v0.9 desktop-icon module: feature-complete; iterating hard on aesthetics from
+  live owner feedback. Accent is warm coral `#FF6F5E` (never blue/violet — reads
+  as AI slop). Platform vision: [ADR-0004](decisions/0004-platform-form.md).
+- A composable **shape × colour × distinction** tool per
+  [ADR-0005](decisions/0005-distinction-shape-color-system.md):
+  - **外形 (shape)**: 苹果 squircle / 纯圆 (already-round icons untouched) / 三星 —
+    one `ContinuousCornerMask(r,n)` superellipse family (`ShapeGeometry`).
+  - **配色 (colour)**: 原彩 / 极简 black&white / 单色 (wallpaper-extracted + accent +
+    curated swatches + hex).
+  - **快捷方式区分**: VOC-mandated 3-state 美化(default)/保留/去除. 美化 = a soft,
+    contrast-adaptive coral **enamel arc** grown into the icon's own bottom-left
+    Apple-curve edge (alpha-derived, silky radial+angular falloff) — never a
+    top-right notification dot. Candidates: 珐琅/缎带/票根.
+- Owner rules (durable): never blue/violet gradient; extreme DRY; aesthetic calls
+  go through VOC + expert panel + the 3-second-misread gate, not engineer fiat;
+  every substantive decision documented (this file + ADRs) so context survives a
+  new session.
+
+## Owner-requested, still open
+
+1. **Distinction mark colour** must be user-customisable — extract ONE reusable
+   colour-picker component, used by both the icon tint AND the mark colour (DRY).
+2. **App logo** (top-left, titlebar + about) — owner finds the current coral
+   sparkle ugly; rework via /gpt-image-2.
+3. Codex two-stage review is blocked by the codex Windows-sandbox bug; revisit.
+4. Supervised live switch-on→UAC→switch-off run on the owner's machine.
+
+## Last Done
+
+- Full product shell built and screenshot-verified aesthetically: title bar
+  (dogfooded squircle app icon + gear + overflow), hero (glowing Makeover Switch
+  + badge pills), decluttered squircle tile grid (state caption only for
+  exceptions), right slide-in settings drawer (segmented theme picker, iOS
+  toggle, backup/about rows), Apple-"About this Mac"-quality about panel, toast,
+  all custom squircle dialogs (no native MessageBox).
+- Motion: bloom wave on apply, skeleton shimmer while scanning, hover lift,
+  press-to-peek, panel slide/scale, toast slide-fade, load cross-fade, restore
+  settle — all reduced-motion aware.
+- Fixed: Mica washed out opaque content (base brush moved to inner canvas; Mica
 
 ## Last Done
 

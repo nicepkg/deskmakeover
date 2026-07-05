@@ -27,6 +27,11 @@ light theme polish, installer wizard.
 **Exit gate:** tests green; fresh-VM smoke (apply → reboot → restore, zero
 residue); signed exe passes SmartScreen without red interstitial.
 
+> Platform decisions (ADR-0004): one hero switch forever; modules are an
+> exclusion checklist, not a toolbox; risk tiers cold/warm/hot with the global
+> switch never touching hot; module constitution bans cleaners/accelerators and
+> global file-type association icons permanently.
+
 ## v1.0 — 站稳 (soul) · weeks
 
 - Filter bar: three live-preview preset pills — 苹果圆角 (default) / 极简描边 /
@@ -40,6 +45,10 @@ residue); signed exe passes SmartScreen without red interstitial.
 - Accessibility pass: AutomationProperties, live regions, high-contrast fallback.
 - Keep-up v1: logon-triggered run-and-exit task + app-launch catch-up
   (switch semantics without residency).
+- **System-ads module (ADR-0004): HKCU one-shot warm-tier toggles** (Start
+  recommendations, Spotlight tips, Explorer promotions, suggestions,
+  advertising ID, search highlights), disclosed in plain language, inside the
+  hero switch's default package; no elevation, no residency.
 
 ## v1.1 — 信任 (boundaries) · weeks
 
@@ -51,6 +60,14 @@ residue); signed exe passes SmartScreen without red interstitial.
 - Identification edge coverage: UWP/Store, special system icons, no misfires.
 - Multi-monitor / mixed-DPI / layout-restore hardening; installer packaging;
   emergency restore entry point.
+
+## v1.2 — 第二战场 (platform proof) · weeks
+
+- `Modules.Contracts` + module host refactor (spine landed in v1.1) carries its
+  first new battlefields: **folder styles (desktop.ini) and drive icons
+  (registry DriveIcons only, never autorun.inf)**.
+- Module-row checklist UI appears (exclusion grammar per ADR-0004).
+- Global file-type association icons: **permanently out** (constitution).
 
 ## v2.0 — 代差 (moat) · months
 

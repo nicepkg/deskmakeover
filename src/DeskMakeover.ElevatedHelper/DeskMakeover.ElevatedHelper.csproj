@@ -8,4 +8,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\DeskMakeover.IconRendering\DeskMakeover.IconRendering.csproj" />
+  </ItemGroup>
+
 </Project>

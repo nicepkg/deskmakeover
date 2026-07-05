@@ -24,7 +24,8 @@ branch: main
 - Added Windows Shell Link COM adapters for `.lnk` icon-location reads, shortcut icon writes, and byte-exact shortcut restore scaffolding.
 - Shortcut snapshots now capture original `.lnk` bytes plus original icon location/index before operation plans may mutate shortcuts.
 - Added journaled non-privileged apply operations for `.lnk` and `.url` icon updates with snapshot-bound rollback and pre-apply target drift detection.
-- Verification: `dotnet test DeskMakeover.slnx` passed 45 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors.
+- Added generated `.ico` file storage and a non-privileged operation factory that binds plan steps to snapshot-backed shortcut operations.
+- Verification: `dotnet test DeskMakeover.slnx` passed 57 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors.
 
 ## Next
 

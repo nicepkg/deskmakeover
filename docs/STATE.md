@@ -23,7 +23,8 @@ branch: main
 - Hardened safety gates so skipped items do not produce global operations, URL shortcuts require full original-content payloads, capture errors block apply plans, shortcuts require captured original icon locations, folder plans require complete folder restore metadata, and regular-file wrapping remains disabled until full wrapper restore mapping exists.
 - Added Windows Shell Link COM adapters for `.lnk` icon-location reads, shortcut icon writes, and byte-exact shortcut restore scaffolding.
 - Shortcut snapshots now capture original `.lnk` bytes plus original icon location/index before operation plans may mutate shortcuts.
-- Verification: `dotnet test DeskMakeover.slnx` passed 38 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors.
+- Added journaled non-privileged apply operations for `.lnk` and `.url` icon updates with snapshot-bound rollback and pre-apply target drift detection.
+- Verification: `dotnet test DeskMakeover.slnx` passed 45 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors.
 
 ## Next
 

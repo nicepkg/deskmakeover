@@ -54,6 +54,10 @@ residue); signed exe passes SmartScreen without red interstitial.
 
 - Real-time auto-styling watcher: explicit opt-in, default off, visible
   exit/uninstall, per-path debounce + self-trigger suppression, desktop-dirs-only.
+- **Tray presence (owner request) as the face of the opt-in resident mode**:
+  when 实时美化 is enabled, a tray icon appears with quick actions (状态 /
+  一键还原 / 暂停 / 退出并移除常驻). No tray, no background process while the
+  mode is off — the anti-bundleware guarantees stay spec-level copy.
 - Persistent baseline snapshot + append-only per-item undo ledger for continuous
   keep-up (no micro-snapshot explosion).
 - AV whitelist submissions (Microsoft / 360 / 火绒) + false-positive playbook.

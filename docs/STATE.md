@@ -8,32 +8,28 @@ branch: main
 
 ## Active Work
 
-- MVP foundation implementation is underway.
-- Current foundation includes solution skeleton, domain models, icon-rendering primitives, read-only desktop scanning, snapshot persistence, dry-run operation planning, WPF preview grid, and elevated-helper stub.
+- UI/UX v2 rebuild per [plans/2026-07-05-ui-ux-v2.md](plans/2026-07-05-ui-ux-v2.md):
+  one-click product form, dark-first squircle visual system, arrow-removal trust flow.
+- Executing plan tasks in order (Task 1: platform foundation → Task 9: verification sweep).
 
 ## Last Done
 
-- Owner approved the Phase 1 design.
-- Owner approved [specs/01-product-architecture.md](specs/01-product-architecture.md).
-- Existing PowerShell scripts under `D:\shells` were reviewed as behavior references.
-- Expert sub-agent review completed for product, UX, visual system, and Windows Shell architecture.
-- Local git repository initialized on `main`.
-- Local .NET 10 SDK installed under `.dotnet/` for development use.
-- Added fallback icon rendering, WPF preview cards, snapshot save UI, dry-run apply-plan UI, restore metadata collection, and URL shortcut icon writer scaffolding.
-- Hardened safety gates so skipped items do not produce global operations, URL shortcuts require full original-content payloads, capture errors block apply plans, shortcuts require captured original icon locations, folder plans require complete folder restore metadata, and regular-file wrapping remains disabled until full wrapper restore mapping exists.
-- Added Windows Shell Link COM adapters for `.lnk` icon-location reads, shortcut icon writes, and byte-exact shortcut restore scaffolding.
-- Shortcut snapshots now capture original `.lnk` bytes plus original icon location/index before operation plans may mutate shortcuts.
-- Added journaled non-privileged apply operations for `.lnk` and `.url` icon updates with snapshot-bound rollback and pre-apply target drift detection.
-- Added generated `.ico` file storage and a non-privileged operation factory that binds plan steps to snapshot-backed shortcut operations.
-- Added real shell icon extraction for WPF previews with fallback when icon handles cannot be read.
-- Added a local Windows x64 self-contained publish script that emits the app and helper under `artifacts/win-x64/DeskMakeover/`.
-- Verification: `dotnet test DeskMakeover.slnx` passed 60 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors; `node scripts/publish-win.mjs` completed successfully.
+- Four-expert design review (product / human-centered design / visual craft / Windows
+  platform) run against the foundation build; findings consolidated.
+- Owner resolved the four direction questions → [ADR-0002](decisions/0002-one-click-product-form.md):
+  minimal one-click IA, dark-first theme, arrow removal inside the one-click flow,
+  Chinese name 桌面美颜.
+- Rewrote [specs/01-product-architecture.md](specs/01-product-architecture.md) (UX, IA,
+  scope, trust flow, UI language rules); added
+  [specs/02-visual-language.md](specs/02-visual-language.md).
+- Foundation remains verified: `dotnet test DeskMakeover.slnx` 60 tests passed;
+  `dotnet build` 0 warnings/errors; `node scripts/publish-win.mjs` succeeded.
 
 ## Next
 
-1. Execute non-privileged apply/restore for user desktop shortcuts behind explicit confirmation.
-2. Add visible empty-plan and skipped-item reasons in the WPF shell.
-3. Add installer packaging on top of the self-contained publish folder.
+1. Execute UI/UX v2 plan Task 1 (app.manifest + Fluent dark theme + DWM interop).
+2. Tasks 2–8 per plan; commit per task; keep tests green throughout.
+3. Full verification sweep + adversarial review (plan Task 9), then update this file.
 
 ## Blockers
 
@@ -41,4 +37,6 @@ branch: main
 
 ## Open Questions
 
-- None for the MVP spec. Future commercial model, AI provider choice, and style-pack marketplace are intentionally out of MVP scope.
+- Code signing budget and signing entity (required before public distribution; see
+  spec 01 Distribution Trust).
+- Installer packaging approach (after v2 UI lands).

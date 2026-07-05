@@ -25,12 +25,13 @@ branch: main
 - Shortcut snapshots now capture original `.lnk` bytes plus original icon location/index before operation plans may mutate shortcuts.
 - Added journaled non-privileged apply operations for `.lnk` and `.url` icon updates with snapshot-bound rollback and pre-apply target drift detection.
 - Added generated `.ico` file storage and a non-privileged operation factory that binds plan steps to snapshot-backed shortcut operations.
-- Verification: `dotnet test DeskMakeover.slnx` passed 57 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors.
+- Added real shell icon extraction for WPF previews with fallback when icon handles cannot be read.
+- Verification: `dotnet test DeskMakeover.slnx` passed 60 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors.
 
 ## Next
 
-1. Implement real icon extraction for `.lnk` and `.url` previews with fallback on extraction failure.
-2. Execute non-privileged apply/restore for user desktop shortcuts behind explicit confirmation.
+1. Execute non-privileged apply/restore for user desktop shortcuts behind explicit confirmation.
+2. Add visible empty-plan and skipped-item reasons in the WPF shell.
 3. Add self-contained Windows publish and installer packaging.
 
 ## Blockers

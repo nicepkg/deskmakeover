@@ -19,10 +19,11 @@ coverage/
 # Logs and generated app data
 logs/
 *.log
-generated-icons/
-snapshots/
+/generated-icons/
+/snapshots/
+!src/**/Snapshots/**
+!tests/**/Snapshots/**
 
 # OS files
 Thumbs.db
 Desktop.ini
-

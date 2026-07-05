@@ -54,14 +54,31 @@ clear coral filter-chip selection; DRY cleanup.
 - Hero left-aligned + compact onto the single page axis; soft-coral control selection
   reserves solid coral for the one CTA.
 
-## Still open (minor polish + gates)
+## Landed (2026-07-06 round 2)
 
-1. IA micro-polish: 风格 preset mini-thumbnails; grid → 6 cols; progressive-disclosure
-   collapse for the glyph/mark-colour rows; "自定义" preset state when a dimension is
-   changed; sticky header; tile focus ring; 8pt spacing sweep.
-2. Codex two-stage review is blocked by the codex Windows-sandbox bug; revisit.
-3. Supervised live switch-on→UAC→switch-off run on the owner's machine.
-4. OV/individual code-signing cert (owner action, v0.9 gate).
+- **Badge v2** ([ADR-0006](decisions/0006-badge-v2-adaptive-arrow.md)): refined 45°
+  arrow, WCAG adaptive black/white + reverse ring, frosted seat anchored to the icon's
+  own alpha edge (hugs any shape). Arc/sash/notch scrapped; glyphs = 箭头/描边箭头/纯箭头.
+  Mark colour `int?` (default null = auto B/W).
+- **App logo = 实心星** (solid sparkle, reads at 30px). Wand scrapped.
+- **风格 combos show an active state** (→ 自定义 on any single-axis change).
+- 配色 极简 → **黑白**. Switches now **debounce + show a "更新中" cue + swap tile images
+  in place** (no Clear() flash), via one RunRestyleAsync funnel.
+
+## Still open
+
+1. **Real-desktop badge bake** (ADR-0006 fact 1): the adaptive arrow only renders in
+   the in-app PREVIEW; the real desktop uses one global overlay ico. Bake ApplyMark
+   into each per-icon .ico in `MakeoverService.ApplyAsync` (transparent overlay) +
+   multi-size ico in `GeneratedIconStore`. Preview ≠ real machine until this lands.
+2. **"自动" chip** in the mark-colour picker — default is auto (null) but the chip still
+   shows a colour; add an explicit 自动 option + reset.
+3. **Responsive layout** (UX panel plan ready): UniformGrid + computed columns + kill
+   centred whitespace; 外观 card collapses (Wide=left rail / Regular=Expander /
+   Compact=summary+popup); Hero compresses; optional fluid reflow / re-skin wave.
+4. **保留原样 preview** should render the (kept) Windows arrow, not nothing.
+5. Codex two-stage review blocked by the codex Windows-sandbox bug; revisit.
+6. Supervised live switch-on→UAC→switch-off run; OV/individual signing cert (owner).
 
 ## Last Done
 

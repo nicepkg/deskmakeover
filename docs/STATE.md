@@ -26,12 +26,30 @@ branch: main
   every substantive decision documented (this file + ADRs) so context survives a
   new session.
 
+## Future-facing IA (ADR-0005-adjacent, panel-designed 2026-07-06)
+
+The single-module screen is the **degenerate state of a multi-module platform**, not a
+throwaway. A constant **Frame + region taxonomy** was designed (panel):
+F1 title bar / F2 module rail (4+ modules) · O1 Hero verb / O2 module list (2+) /
+O3 flagship canvas / O4 discovery · D1 settings / D2 per-icon override / D3 preset
+gallery / D4 consent / D5 module detail. Today lights up F1+O1+O3; every future
+module/list/rail/preset already has a name → adding them is "lighting up", not
+refactoring. Two-speed customisation: main = high-freq (风格 combos + 外形 + 配色),
+settings = low-freq (区分三态 + 角标形状 + 角标配色), right-click = per-icon.
+
+**Landed this round:** ONE reusable ColorPicker (icon tint + mark colour, DRY);
+user-customisable mark colour (adaptive from any hue); named one-tap **风格 combos**
+(苹果极简/糖果彩/纯净黑白/壁纸同色 set shape×colour×distinction in one render);
+clear coral filter-chip selection; DRY cleanup.
+
 ## Owner-requested, still open
 
-1. **Distinction mark colour** must be user-customisable — extract ONE reusable
-   colour-picker component, used by both the icon tint AND the mark colour (DRY).
-2. **App logo** (top-left, titlebar + about) — owner finds the current coral
-   sparkle ugly; rework via /gpt-image-2.
+1. **App logo** (titlebar + about) — owner finds the coral sparkle weak; rework via
+   /gpt-image-2.
+2. Remaining IA polish from the 25-item panel punch-list: Hero once-on compression
+   to a status band, 8pt spacing pass, tile focus ring, skipped-count clickable,
+   settings drawer fixed-width + scrim + unified row grammar + badge dependency
+   disable states, label truncation for same-name items.
 3. Codex two-stage review is blocked by the codex Windows-sandbox bug; revisit.
 4. Supervised live switch-on→UAC→switch-off run on the owner's machine.
 

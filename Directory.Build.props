@@ -6,6 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsAsErrors />
     <NoWarn>$(NoWarn)</NoWarn>
+    <Version>0.9.0</Version>
   </PropertyGroup>
 </Project>
 

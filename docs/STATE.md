@@ -87,12 +87,21 @@ clear coral filter-chip selection; DRY cleanup.
   platform (multi-ai is the outer sandbox; opt-out `MULTI_AI_CODEX_NO_BYPASS=1`). Verified
   + 2 golden tests. A first adversarial codex review of the new algorithm code is running.
 
+## Landed (2026-07-06 round 5)
+
+- **Codex adversarial review applied** (10 findings): disposed-CTS crash on the next
+  switch [HIGH]; apply blocked mid-restyle [HIGH]; keep-up now persists + rehydrates the
+  full applied look, not just BadgeState [HIGH]; superseded restyles no longer commit
+  stale selection; custom-ring inversion + head-less ring fixed; glyph/mark clear the
+  combo; ApplyPreview raises counts; eyedropper rejects GetPixel failure. +1 ring test.
+- **外观 card collapses to a summary row in Compact** — a narrow window now shows the
+  whole desktop grid (all 20 icons, no scroll) instead of a giant control panel.
+
 ## Still open
 
-1. 外观 card collapse in Compact (summary bar + popover) + Wide left-rail — the grid is
-   responsive; the control card itself is not yet collapsible.
-2. Apply codex adversarial-review findings (review in flight).
-3. Supervised live switch-on→UAC→switch-off run; OV/individual signing cert (owner).
+1. Wide left-rail layout for the 外观 card (nice-to-have; Compact collapse + responsive
+   grid already cover the core complaint).
+2. Supervised live switch-on→UAC→switch-off run; OV/individual signing cert (owner).
 
 ## Last Done
 

@@ -42,16 +42,26 @@ user-customisable mark colour (adaptive from any hue); named one-tap **风格 co
 (苹果极简/糖果彩/纯净黑白/壁纸同色 set shape×colour×distinction in one render);
 clear coral filter-chip selection; DRY cleanup.
 
-## Owner-requested, still open
+## Landed (2026-07-06, panel-driven from owner VOC)
 
-1. **App logo** (titlebar + about) — owner finds the coral sparkle weak; rework via
-   /gpt-image-2.
-2. Remaining IA polish from the 25-item panel punch-list: Hero once-on compression
-   to a status band, 8pt spacing pass, tile focus ring, skipped-count clickable,
-   settings drawer fixed-width + scrim + unified row grammar + badge dependency
-   disable states, label truncation for same-name items.
-3. Codex two-stage review is blocked by the codex Windows-sandbox bug; revisit.
-4. Supervised live switch-on→UAC→switch-off run on the owner's machine.
+- **App logo** = 「Unified Quartet」 (2×2 cream chips on coral, block language reads at
+  30px; true superellipse squircle mask) — gpt-image-2, icon-designer recommended.
+  Wand concept scrapped (thin lines collapse when small).
+- **Distinction surfaced on the main screen** in a unified **外观 module** (风格 / 外形 /
+  配色 / 快捷方式 as rows, single left axis) — no longer buried in settings (owner: unfindable).
+- **Complete HSV colour picker** (SV field + hue slider + hex + screen eyedropper +
+  preset swatches) in a compact chip→popup; reused for icon tint + mark colour (DRY).
+- Hero left-aligned + compact onto the single page axis; soft-coral control selection
+  reserves solid coral for the one CTA.
+
+## Still open (minor polish + gates)
+
+1. IA micro-polish: 风格 preset mini-thumbnails; grid → 6 cols; progressive-disclosure
+   collapse for the glyph/mark-colour rows; "自定义" preset state when a dimension is
+   changed; sticky header; tile focus ring; 8pt spacing sweep.
+2. Codex two-stage review is blocked by the codex Windows-sandbox bug; revisit.
+3. Supervised live switch-on→UAC→switch-off run on the owner's machine.
+4. OV/individual code-signing cert (owner action, v0.9 gate).
 
 ## Last Done
 

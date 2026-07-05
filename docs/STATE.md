@@ -65,20 +65,25 @@ clear coral filter-chip selection; DRY cleanup.
 - 配色 极简 → **黑白**. Switches now **debounce + show a "更新中" cue + swap tile images
   in place** (no Clear() flash), via one RunRestyleAsync funnel.
 
+## Landed (2026-07-06 round 3)
+
+- **Real-desktop badge bake** (ADR-0006 fact 1): `ApplyAsync` + `CatchUpAsync` now bake
+  the adaptive arrow into each per-icon `.ico` for 美化 shortcuts; the registry overlay
+  is always transparent (no double arrow); keep-up reads the active badge. Preview now
+  matches the real desktop. Locked by 5 IconRendering tests (adaptive ink + no-spill).
+- **"自动" chip** for the mark colour (default auto B/W, explicit reset; coral demoted).
+- **Responsive grid**: UniformGrid + width-computed columns + tile scale by
+  Compact/Regular/Wide — fills the width (no centred gutters), more icons when narrow.
+- **保留原样 preview** renders the classic Windows arrow (light plate + dark arrow).
+
 ## Still open
 
-1. **Real-desktop badge bake** (ADR-0006 fact 1): the adaptive arrow only renders in
-   the in-app PREVIEW; the real desktop uses one global overlay ico. Bake ApplyMark
-   into each per-icon .ico in `MakeoverService.ApplyAsync` (transparent overlay) +
-   multi-size ico in `GeneratedIconStore`. Preview ≠ real machine until this lands.
-2. **"自动" chip** in the mark-colour picker — default is auto (null) but the chip still
-   shows a colour; add an explicit 自动 option + reset.
-3. **Responsive layout** (UX panel plan ready): UniformGrid + computed columns + kill
-   centred whitespace; 外观 card collapses (Wide=left rail / Regular=Expander /
-   Compact=summary+popup); Hero compresses; optional fluid reflow / re-skin wave.
-4. **保留原样 preview** should render the (kept) Windows arrow, not nothing.
-5. Codex two-stage review blocked by the codex Windows-sandbox bug; revisit.
-6. Supervised live switch-on→UAC→switch-off run; OV/individual signing cert (owner).
+1. Multi-size generated `.ico` (16/20/24/32/48/256) with per-size hinting — today a
+   single 256 is scaled by Windows (acceptable, not crisp at 32/48).
+2. 外观 card collapse in Compact (summary bar + popover) + Wide left-rail — the grid is
+   responsive; the control card itself is not yet collapsible.
+3. Codex two-stage review blocked by the codex Windows-sandbox bug; revisit.
+4. Supervised live switch-on→UAC→switch-off run; OV/individual signing cert (owner).
 
 ## Last Done
 

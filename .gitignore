@@ -1,0 +1,28 @@
+# Build outputs
+bin/
+obj/
+TestResults/
+coverage/
+
+# Local SDK/tooling
+.dotnet/
+.tools/
+
+# IDE/user files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs and generated app data
+logs/
+*.log
+generated-icons/
+snapshots/
+
+# OS files
+Thumbs.db
+Desktop.ini
+

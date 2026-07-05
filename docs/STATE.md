@@ -97,11 +97,26 @@ clear coral filter-chip selection; DRY cleanup.
 - **外观 card collapses to a summary row in Compact** — a narrow window now shows the
   whole desktop grid (all 20 icons, no scroll) instead of a giant control panel.
 
+## Landed (2026-07-06 round 6)
+
+- **Shortcut distinction v3 = STACKED CARDS** ([ADR-0007](decisions/0007-stacked-card-distinction.md)):
+  two independent design panels converged — the icon composited as two stacked cards
+  (sibling peeking bottom-right, adaptive neutral tone, seam + grounding shadow). No
+  badge; reads on any colour/shape. Arrow/arc/sash/notch all scrapped.
+- **Height-efficient three-band layout** (laptop-first): app bar + appearance toolbar +
+  grid header; control prefix ~566px→~130px; a 700px laptop shows all 20 icons.
+- **App icon white ring fixed** (connectivity flood-fill cutout).
+
+## In progress
+
+- **Control-area redesign** — the horizontal appearance toolbar reads as 4 identical
+  segment groups (high cognitive load; owner: "长得都差不多，心智负担大"). A top interaction
+  designer is reimagining it: primary 风格 presets (with previews) vs secondary dimensions
+  behind progressive disclosure — height-efficient + innovative.
+
 ## Still open
 
-1. Wide left-rail layout for the 外观 card (nice-to-have; Compact collapse + responsive
-   grid already cover the core complaint).
-2. Supervised live switch-on→UAC→switch-off run; OV/individual signing cert (owner).
+1. Supervised live switch-on→UAC→switch-off run; OV/individual signing cert (owner).
 
 ## Last Done
 

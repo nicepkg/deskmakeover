@@ -10,9 +10,17 @@ branch: main
 
 - v0.9 build per [plans/2026-07-05-ui-ux-v2.md](plans/2026-07-05-ui-ux-v2.md)
   (as revised by ADR-0003) and [specs/00-roadmap.md](specs/00-roadmap.md).
-- Done so far: Task 1 (app.manifest ×2, Fluent dark theme, ThemeManager, DWM
-  interop, token dictionaries) and squircle geometry + 8 tests. Next: Task 2
-  remainder (SquircleBorder control, button styles), then Tasks 3–9.
+- Tasks 1–7 substantially landed: platform foundation, squircle system,
+  StylePreset + presentation model, copy rewrite, Makeover Switch main screen
+  (MainViewModel state machine, consent card, restore confirm, press-to-peek),
+  MakeoverService orchestration (auto snapshot → journaled apply → overlay →
+  light refresh; zero-residue restore incl. cross-session via active-makeover.json),
+  elevated helper verbs (apply-overlay --style refined|transparent /
+  restore-overlay, self-persisted original state in ProgramData), refined-mark
+  multi-size ico factory.
+- Smoke-verified on the real desktop (read-only path): dark stage, switch,
+  badge pills, 20 styleable items rendered as squircle tiles with auto
+  backgrounds, humanized Chinese statuses. Screenshot evidence in session.
 
 ## Last Done
 
@@ -29,12 +37,17 @@ branch: main
 
 ## Next
 
-1. Task 2 remainder: `SquircleBorder` control + custom button styles (Controls.xaml).
-2. Task 3: `StylePreset` value object; presentation model (original+styled pairs,
-   humanized enum mapping).
-3. Tasks 4–9 per revised plan (copy, main screen with switch, orchestration,
-   helper overlay refined/transparent, motion, verification sweep).
-4. Owner: purchase OV/individual code-signing certificate (v0.9 gate).
+1. Fix: first tile row renders clipped at the top of the mirror grid (visual bug
+   seen in smoke run).
+2. Task 8 motion: bloom wave on apply, skeleton shimmer while scanning, restore
+   settle, reduced-motion fallbacks.
+3. Tests: MakeoverService apply/restore with fakes + temp-dir `.url` round trip;
+   badge outcome mapping. (Current orchestration landed ahead of its tests —
+   acknowledged debt against the plan's TDD intent.)
+4. Supervised live run of switch-on → UAC → switch-off on the owner's machine
+   (restore immediately), then Task 9: full sweep + adversarial review + publish.
+5. Badge pills → real three-state thumbnails (spec 01) — v1.0 polish if not in v0.9.
+6. Owner: purchase OV/individual code-signing certificate (v0.9 gate).
 
 ## Blockers
 

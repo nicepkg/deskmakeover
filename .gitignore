@@ -3,6 +3,7 @@ bin/
 obj/
 TestResults/
 coverage/
+artifacts/
 
 # Local SDK/tooling
 .dotnet/

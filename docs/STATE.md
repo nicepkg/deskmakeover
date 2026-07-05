@@ -26,13 +26,14 @@ branch: main
 - Added journaled non-privileged apply operations for `.lnk` and `.url` icon updates with snapshot-bound rollback and pre-apply target drift detection.
 - Added generated `.ico` file storage and a non-privileged operation factory that binds plan steps to snapshot-backed shortcut operations.
 - Added real shell icon extraction for WPF previews with fallback when icon handles cannot be read.
-- Verification: `dotnet test DeskMakeover.slnx` passed 60 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors.
+- Added a local Windows x64 self-contained publish script that emits the app and helper under `artifacts/win-x64/DeskMakeover/`.
+- Verification: `dotnet test DeskMakeover.slnx` passed 60 tests; `dotnet build DeskMakeover.slnx` passed with 0 warnings and 0 errors; `node scripts/publish-win.mjs` completed successfully.
 
 ## Next
 
 1. Execute non-privileged apply/restore for user desktop shortcuts behind explicit confirmation.
 2. Add visible empty-plan and skipped-item reasons in the WPF shell.
-3. Add self-contained Windows publish and installer packaging.
+3. Add installer packaging on top of the self-contained publish folder.
 
 ## Blockers
 

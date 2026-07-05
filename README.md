@@ -8,7 +8,7 @@ The MVP is a local Windows 10/11 desktop makeover app focused on reversible desk
 
 ## Current Status
 
-Design approved. Implementation is starting from the documented architecture in [docs/specs/01-product-architecture.md](docs/specs/01-product-architecture.md).
+MVP foundation is under active implementation. See [docs/STATE.md](docs/STATE.md) for the current engineering checkpoint.
 
 ## Principles
 
@@ -19,3 +19,21 @@ Design approved. Implementation is starting from the documented architecture in 
 - Privileged operations go through a small whitelisted helper.
 - MVP is local-only: no account, upload, telemetry, or cloud dependency.
 
+## Development
+
+Use the local SDK under `.dotnet/` when present:
+
+```powershell
+$env:DOTNET_ROOT=(Resolve-Path '.\.dotnet').Path
+$env:PATH="$env:DOTNET_ROOT;$env:PATH"
+dotnet test DeskMakeover.slnx
+dotnet build DeskMakeover.slnx
+```
+
+Create a self-contained Windows x64 publish folder:
+
+```powershell
+node scripts/publish-win.mjs
+```
+
+The output is written to `artifacts/win-x64/DeskMakeover/`.

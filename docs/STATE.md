@@ -87,8 +87,16 @@ branch: main
 - **P13 done**: foundation re-verified green via automated fixtures (evidence in
   `docs/plans/evidence/2026-07-parity/audit.md`). The live switch-on run stays the one
   owner-supervised gate (never auto-triggered) — unchanged from before the rebuild.
-- **P14 in progress**: parity audit sheet written (`.../evidence/2026-07-parity/`),
-  version bumped to 1.0.0, CHANGELOG.md added. Codex adversarial review = final step.
+- **P14 done**: parity audit sheet + evidence screenshots (`.../evidence/2026-07-parity/`),
+  version 1.0.0, CHANGELOG.md. **Codex adversarial review APPROVED after 6 rounds** — it
+  Rejected 5 times, surfacing 20+ real reversibility / preview==desktop bugs I'd missed
+  (dirty-reapply losing the true original, restore deleting the anchor without verifying,
+  per-icon overrides not baked, non-atomic state, double-arrow, MTA icon-size, off-thread
+  restyle, history-not-baking, rollback-failure anchor deletion, 3-way gate split, …). All
+  fixed + regression-tested. Round 6: no block/major/blocking-minor. Build 0/0, 216 tests.
+- **Canvas upgraded to an equal-scale desktop mirror** (Boss feedback): real wallpaper,
+  true screen aspect ratio (Viewbox over real px), proportional icons, white Win11 taskbar,
+  folders/files shown untouched, styleable count.
 
 ### Status: **all 14 rebuild phases complete.** 208 tests green, 0 warnings, grep gate
 empty. The v1.0 prototype-parity app is built + visually verified across every state

@@ -1,201 +1,191 @@
-# DeskMakeover Visual Language
+# DeskMakeover Visual Language (v1.0 · prototype-derived)
 
-The product sells continuous-corner beauty, so the app itself must wear it. Every
-corner, surface, and motion in the UI follows this spec. With no tuning UI in the
-product (ADR-0002), default visual quality carries the entire experience.
+**Source of truth:** `docs/references/prototype/桌面美颜 v2.dc.html` (ADR-0008).
+This spec transcribes the prototype into durable design law. On any conflict,
+the prototype wins — open it in a browser and compare.
 
 ## Personality
 
 **克制 · 温润 · 精密 · 有光 · 可信** — restrained, warm, precise, luminous,
-trustworthy. A polished pebble, not a neon sign. The interface should tell the user
-"someone cared", never "this is a utility".
+trustworthy. A polished pebble, not a neon sign.
 
-Three governing rules:
+Governing rules:
 
-1. **The app wears its own curvature.** Every rounded corner in the UI is a
-   superellipse (continuous corner), the same family it applies to icons. No plain
-   `CornerRadius` arcs on visible surfaces.
-2. **Saturation is an event, not decoration.** ≥95% of the interface is neutral.
-   The accent color appears only on the primary action and the "styled" state —
-   the moment of transformation owns the only color.
-3. **Light, not lines.** Separation comes from soft shadow and surface elevation,
-   not 1px hairline borders. Hairlines, where unavoidable, are 1px at ~6% opacity.
+1. **The app wears its own curvature.** The app logo and icon previews use the
+   true superellipse family. UI surfaces use the prototype's soft radii (below);
+   no default WPF control chrome anywhere.
+2. **Saturation is an event.** Warm coral `#FF6F5E` is the only accent; it marks
+   the primary action, selection, and the moment of transformation. Selected
+   chips use a *soft* coral wash (17% mix), reserving solid coral for the CTA.
+   **Blue/violet gradients are permanently banned** (owner rule — reads as AI slop).
+3. **Light, not lines.** Separation comes from surface elevation and soft shadow;
+   hairlines are `rgba(255,255,255,.07)` dark / `rgba(0,0,0,.10)` light.
+4. **Status is never colour-only** — always glyph/text + colour.
 
-## Theme Model
+## Colour Tokens (prototype CSS variables, verbatim)
 
-- **Dark is the default stage** (styled icons glow on dark). Light and follow-system
-  are selectable in settings; the preference persists.
-- Base: WPF Fluent theme (`ThemeMode` on .NET 10) supplies control primitives,
-  accent plumbing, and system integration; our token dictionaries skin it.
-- **Windows 10 degradation**: no Mica → solid backdrop, Segoe UI instead of
-  Segoe UI Variable, standard window corners. Never emulate Win11 chrome by hand.
-- **High contrast**: when `SystemParameters.HighContrast` is on, custom palettes and
-  shadows are dropped entirely in favor of system colors.
-
-## Color Tokens
-
-Neutrals are warm (never the blue-gray admin-dashboard family).
-
-| Token | Dark (default) | Light |
+| Token | Dark (default) | Light (`light-vars`) |
 |---|---|---|
-| `Surface.Base` | `#1A1A1C` warm charcoal | `#FBFBFA` ceramic |
-| `Surface.Raised` | `#242427` | `#FFFFFF` |
-| `Surface.RaisedHover` | `#2B2B2F` | `#F5F5F3` |
-| `Text.Primary` | `#F4F4F2` | `#1A1A19` warm ink |
-| `Text.Secondary` | `#A8A7A1` | `#57534E` warm gray |
-| `Text.Tertiary` | `#6E6D68` | `#8A877F` |
-| `Hairline` | `#FFFFFF` @ 6% | `#000000` @ 6% |
-| `Accent` | `#5E5CE6` deep indigo | `#4F4DD6` |
-| `Accent.Glow` (sweep gradient) | `#7C6AF2 → #4CC2FF` | same |
-| `Status.Styled` | `#3FB6A8` teal | `#2E9C8F` |
-| `Status.Attention` | `#E5A84B` amber | `#C98A2E` |
-| `Status.Skipped` | `Text.Tertiary` | `Text.Tertiary` |
+| `--bg` window base | `#1A1A1C` | `#FBFBFA` |
+| `--raised` raised card | `#242427` | `#FFFFFF` |
+| `--raisedHov` hover | `#2B2B2F` | `#F1F0ED` |
+| `--chip` chip/control base | `#242427` | `#F4F3EF` |
+| `--t1` primary text | `#F4F4F2` | `#1A1A19` |
+| `--t2` secondary text | `#A8A7A1` | `#57534E` |
+| `--t3` tertiary/status | `#6E6D68` | `#8A877F` |
+| `--hair` hairline | `rgba(255,255,255,.07)` | `rgba(0,0,0,.10)` |
+| `--accent` | `#FF6F5E` | `#FF6F5E` |
+| `--accentInk` accent-as-text | `var(--accent)` | `color-mix(accent 70%, #40140C)` — darkened for contrast on light |
+| Success/teal | `#3FB6A8`, bg `rgba(63,182,168,.14)` | same |
+| Attention/amber | `#E5A84B`, bg `rgba(229,168,75,.16)` | same |
+| CTA text on coral | `#FFF7F3` | same |
 
-Status is never color-only: always icon/text + color (styled ✓ / skipped ⊘ /
-needs-attention !).
+Derived accent usages (all via colour-mix, no new hexes):
+selected chip bg = accent 17% mix; selected preset card = accent 15% mix into
+chip; rail active = accent 16% mix; author avatar seat = accent 16% mix.
 
-## Geometry: the Squircle System
-
-- One reusable `SquircleBorder` control (superellipse, n≈5, Apple family) generates
-  clip and background geometry. All visible rounded surfaces use it.
-- **Concentric rule**: outer radius = inner radius + gap between them.
-- Radii scale: window-level blocks **20** · icon tiles **18** · buttons **12** ·
-  chips/pills **8**.
-- **Icon tiles are naked**: the preview grid is squircle tiles + labels directly on
-  `Surface.Base` — no per-item card boxes, no borders around tiles. The tile *is*
-  the item. Tile background reflects the rendering pipeline's real decision (white
-  tile / preserved background / clipped), never a hardcoded white.
-- Focus visuals and selection rings are squircle outlines in `Accent`.
+Outside the window: page/backdrop `#0D0D0F` with a top radial wash — irrelevant
+to the shipped app (the OS is our backdrop).
 
 ## Typography
 
-Font chain: `Segoe UI Variable Display` (titles) / `Segoe UI Variable Text` (body),
-falling back through `Microsoft YaHei UI` for CJK, then `Segoe UI` on Win10.
-`UseLayoutRounding` on; ClearType default. No letter-spacing manipulation (WPF has
-no native tracking; don't fake it).
+Font chain: `Segoe UI Variable Text` → `Segoe UI` → `Microsoft YaHei UI` →
+`PingFang SC` → system-ui. `UseLayoutRounding` on; counts use tabular numerals.
 
-| Level | Size / Weight | Color |
+| Role | Size / weight | Colour |
 |---|---|---|
-| Hero title | 22 Display SemiBold | `Text.Primary` |
-| Section | 15 Medium | `Text.Primary` |
-| Body | 13 Regular | `Text.Secondary` |
-| Caption / status | 12 Regular | `Text.Tertiary` |
+| Hero title (你的桌面，即将焕然一新) | 19 / 600, line-height 1.35 | t1 |
+| Section label (风格 / 自定义) | 12 / 600, letter-spacing .5 | t2 |
+| Row label / body | 12.5 / 400 | t2 (label) · t1 (value) |
+| Chip text | 12 / 400 (selected 600) | t2 → accentInk when selected |
+| Status / caption | 11.5 / 400 | t3 |
+| Fine print / hints | 10.5–11 / 400 | t3 |
+| CTA | 14 / 600 | #FFF7F3 |
+| Title-bar app name | 13 / 600 | t1 |
+| Tile label | 11 / 400, `text-shadow 0 1px 3px rgba(0,0,0,.85)` | `#F2F2F0` on wallpaper |
 
-Counts use tabular numerals (`Typography.NumeralAlignment="Tabular"`). Buttons:
-13 Medium. Layout spacing uses a 4px base grid; grid gutter is 16.
+## Geometry & Metrics (prototype-exact)
 
-## Elevation
-
-- Raised surfaces: `DropShadowEffect` BlurRadius 24, ShadowDepth 2, Direction 270,
-  Opacity 0.10, shadow color tinted toward the surface hue (not pure black).
-- Dark mode elevates by lightening the surface (+ optional faint top inner
-  highlight), not by heavier shadow.
-- Default WPF button/control chrome is forbidden on the main screen; primary,
-  secondary, and text button styles are custom templates over squircle geometry.
-  Pressed = scale 0.98 with 120ms ease-out return; hover = surface lift;
-  disabled = reduced opacity, never gray fill swap.
-
-## Motion
-
-Motion encodes meaning: **beautify inhales, restore exhales.**
-
-| Moment | Behavior |
+| Element | Metric |
 |---|---|
-| **Bloom wave** (apply) | Tiles transform in a staggered ripple, top-left → bottom-right, 40–60ms stagger per tile. Each tile: crossfade old→styled + scale 0.92→1.0 with slight `BackEase` overshoot; a narrow highlight band (animated `LinearGradientBrush` offset −0.3→1.3) sweeps the freshly styled tile. Progress **is** the grid transforming; one quiet caption line elsewhere. |
-| **Press-to-peek** | Press on a tile: 120ms crossfade to the original icon; release: spring back to styled with slight overshoot. Requires both images in the view model. |
-| **Restore settle** | Pure ease-out, slower than bloom, zero overshoot — icons calmly settle back. Deliberately the emotional opposite of apply. |
-| **Hover** | Tile lifts 2px, shadow grows, 150ms cubic ease-out. |
-| **Skeleton** | While scanning: shimmering squircle placeholder tiles with staggered shimmer — never a spinner, never a frozen empty grid. |
-| **Reduced motion** | If the system requests reduced motion, all of the above degrade to plain crossfades; no scale, no sweep, no stagger. |
+| Window | regular ≈1340×840 design size · **compact breakpoint** at ~1100px width (below → overlay panel mode); min ~1024×700 |
+| Title bar | height 46; logo 24 (apple-squircle clip, coral, ✦ glyph); version chip 10.5px text, radius 7; caption buttons 36×30 |
+| Control panel | width 300, padding 6/16/18, section gap 18 |
+| CTA button | height 44, radius 12 (compact toolbar variant: height 34, radius 10) |
+| Link chips (还原/上一版/历史/对比图) | padding 6×11, radius 9, font 12 |
+| Preset cards | 2-column grid, gap 6, radius 11, padding 7×9; two 18px mini icon previews + name 12/600 |
+| Accordion rows (外形/配色/快捷方式标识/图标大小) | height 42, chevron ▼ rotates 180°, summary value right-aligned t1; hairline `border-top` between rows |
+| Choice chips | padding 6×10, radius 9; shape chips carry a 14px live clip swatch; colour chips a 9px dot |
+| Mark-style chips | 22px live mark preview + label, padding 5×10, radius 9 |
+| Swatches | mono 20px ⌀, mark 18px ⌀; selection = 2px bg-ring + 3.5px colour ring |
+| 调色盘 popup | width 244, radius 14, SV field height 122 radius 10, hue bar height 14, hex input mono 11.5, eyedropper ⌖ 28×26 |
+| Toggle switch | 32×19, knob 15, radius 10; on = accent, off = `rgba(128,128,128,.35)` |
+| Canvas | radius 14, inset ring `rgba(255,255,255,.06)`, real wallpaper fill |
+| Icon tiles | icon S = 小52 / 中64 / 大76; box = 1.08S × 1.10S; cell width box+18; grid = **column-major flow** (Windows order), gap 2×4, hover cell wash `rgba(255,255,255,.08)` radius 10 |
+| Compare pill | bottom-center 62 above edge, pill radius 999, blur backdrop; held state = coral 30% mix bg + coral 55% border |
+| Taskbar (decorative mirror chrome) | height 49, `rgba(30,30,34,.72)` + blur, start/search glyphs, ~5 generic app chips 24px, live clock right |
+| Settings drawer | width 320, right slide-in, scrim `rgba(0,0,0,.35)` |
+| Overflow menu | width 172, radius 12, item padding 7×10 |
+| Icon context menu | width 188, radius 12; 6 swatches 18px |
+| About dialog | width 380, radius 18, centered, scrim `rgba(0,0,0,.45)`; logo 56 |
+| Toast | bottom-center, radius 11, `rgba(22,22,26,.88)` + blur, 12.5px, auto-dismiss ≈2.6s |
+| History card | raised, radius 14; rows: time 11 t3 tabular · label 12 t1 ellipsis · 当前 teal pill · 回到此版 accent link |
 
-## Screen States
+## Shape System (icon geometry)
 
-- **Empty/loading state** (launch, pre-scan-complete): ghost squircle grid + one
-  line 「你的桌面，即将焕然一新」 + primary action disabled until preview is ready.
-- **The mirror** (default): hero before/after region above the tile grid; the hero
-  states the count in human words 「可以美化 N 个图标」.
-- **Applying**: bloom wave on the real grid.
-- **Done**: quiet celebration, restore link, 「保存对比图」 hook. No confetti.
-- Every state keeps the restore entry visible when a snapshot exists.
+One `clipFor(shape, size)` service, cached; identical math in preview (WPF
+geometry) and renderer (raster mask):
 
-## Window Chrome & Platform Foundation
+- **苹果**: quintic Lamé superellipse `|x|⁵+|y|⁵=1` — continuous curvature,
+  apparent corner ≈22.37% of width, visually flat sides. 96-point polygon is
+  sufficient fidelity.
+- **纯圆**: exact circle. Already-round source icons are left untouched
+  (`IsRoundish`, ADR-0005).
+- **三星**: the official One UI adaptive-icon mask path, scaled:
+  `M50,0 C10,0 0,10 0,50 C0,90 10,100 50,100 C90,100 100,90 100,50 C100,10 90,0 50,0`.
 
-- `app.manifest` (App): `dpiAwareness` PerMonitorV2 (fallback PerMonitor),
-  `supportedOS` Win10/Win11 GUIDs, `longPathAware`, `activeCodePage` UTF-8,
-  `requestedExecutionLevel` asInvoker. Helper manifest: `requireAdministrator`.
-- Re-render icon previews on `Window.DpiChanged` (multi-monitor mixed DPI).
-- Win11: Mica backdrop via `DwmSetWindowAttribute(DWMWA_SYSTEMBACKDROP_TYPE)` +
-  dark titlebar via `DWMWA_USE_IMMERSIVE_DARK_MODE`, matching the active theme. A
-  desktop-beautifier being tinted by the user's own wallpaper closes the loop.
-- Win10: solid `Surface.Base` backdrop, system titlebar, standard corners.
-- Custom titlebar is out of MVP scope; system chrome + dark titlebar attribute is
-  the baseline. Revisit post-MVP.
+The app logo always wears the 苹果 clip (title bar 24px, drawer 26px, about 56px).
 
-## Badge System (ADR-0003)
+## Colour Treatments (配色 · `styledFor` math, prototype-exact)
 
-The shortcut badge is part of the visual language, not a utility toggle.
+Luminance `l = (0.299R+0.587G+0.114B)/255` of the icon's dominant colour.
 
-### Refined Mark overlay (default, v0.9)
+- **原彩**: keep the icon's own colour. Ink = dark `rgba(22,22,24,.85)` when
+  `l > 0.66`, else light `rgba(255,255,255,.94)`.
+- **黑白**: grey `v = 255·clamp(0.5+(l−0.5)·1.4, 0.08, 0.94)` (contrast-stretched,
+  never pure 0/255 walls); ink dark `#2A2A2E` when `v > 168`, else `rgba(255,255,255,.92)`.
+- **单色 (tint)**: take tint's H,S; per-icon lightness `L = 26+46·l` (%);
+  fill `hsl(H, S·0.85, L)`; ink `#26262A` when `L > 56` else light.
+- **Document-kind items** (word/excel/pdf/png…) render as a light plate +
+  coloured glyph: 原彩 `#F7F7F4`/own colour · 黑白 `#EFEFED`/`#3B3B3F` ·
+  单色 plate `hsl(H, S·0.5, 90%)` / glyph `hsl(H, S·0.9, 30%)`.
+- Edge cases 纯黑/纯白 icons must stay legible in all three treatments (the
+  prototype ships both as test tiles — keep them in the render test set).
 
-Replaces the stock white-box arrow via the global overlay value. It is one
-multi-size, full-alpha, anti-aliased `.ico` (16/20/24/32/48/256):
+单色 swatch row: 纯白 `#FFFFFF` · 纯黑 `#141414` · 壁纸主色 · 壁纸辅色 (both
+auto-extracted) · 品牌珊瑚 accent · 湖水 `#3FB6A8` · 琥珀 `#D9A94E` · 调色盘 button.
 
-- Motif: a frosted squircle chip carrying a ribbon-fold mark — the semantic is
-  "this points elsewhere", never an arrow-in-a-box.
-- Chip: same superellipse family as the tiles; 1px transparent safety margin so
-  Explorer never clips a hard edge at 16px.
-- Material: frosted neutral — light variant white @ 90% + 1px inner stroke black
-  @ 8%; dark variant `#2A2A2E` @ 92% + 1px inner stroke white @ 10%; soft shadow
-  blur 3 / y 1 / 10%.
-- Because the overlay is global and composited by Explorer, it automatically
-  covers every shortcut including future ones, and deleting the registry value is
-  a complete restore.
+## Shortcut Marks (快捷方式标识 · seven styles + two states)
 
-### Baked top-right badge (premium, v1.0+)
+States: **美化** (mark, default) / **经典箭头** (classic: light plate `#F4F4F1`,
+dark ↗ `#2E3238`, bottom-left, size `max(14, 0.28S)`, radius 4) / **无标识**.
 
-Composited into the generated icon at render time (requires suppressing the
-global overlay to avoid double badges):
+Mark colour: **自动** default (adaptive B/W per ADR-0006 ink law); user colour
+via swatches (白/黑/珊瑚/壁纸主色/湖水) or picker — user colour is mixed per
+style, never applied raw. All marks anchor **bottom-left** (except 双层卡片 /
+卷角 whose geometry is corner-specific per below), ride the icon's own alpha,
+and bake into each per-icon `.ico` (ADR-0006 facts).
 
-- Position: top-right, chip center ≈ (canvas−58, 58) at 256, nested ~8px inside
-  the tile's superellipse curve — it sits *into* the corner, never floats.
-- Shape: a smaller squircle chip of the same curve family (a circle reads as a
-  notification dot; the squircle reads as the same design language).
-- Size: chip ≈ 30% of canvas (~76px @ 256).
-- Separation halo: 4–5px adaptive ring @ ~60% — light halo on dark artwork, dark
-  halo on light artwork. The halo is what makes the badge grow *into* the icon
-  instead of being stuck on.
-- Mark: ribbon-fold / round-capped 45° pointer, ~8px stroke @ 256, rounded joins,
-  ~50% of chip.
-- **Size-adaptive law:** below 32px the mark degenerates to a tiny accent notch
-  or disappears entirely — never scale the full badge down linearly.
+Style algorithms (S = icon size; `l` = tile luminance; `mc` = mark colour;
+prototype lines 1405–1487 are the executable reference):
 
-## Style Presets (ADR-0003)
-
-A style is a coordinate in a four-axis parameter space (`StylePreset`); one
-rendering engine, presets are data:
-
-| Axis | Values |
+| Style | Algorithm |
 |---|---|
-| Mask shape | superellipse (n≈5) / arc rounded / circle / uncut |
-| Tile strategy | none (clip, keep colors) / white tile / auto-color tile / keep original / dark tile |
-| Badge style | refined overlay / baked chip / none / accent notch · placement |
-| Color treatment | none / desaturate / unified hue / muted / duotone |
+| **玻璃箭头** (default) | Frosted circular seat ⌀ `max(16, 0.34S)` at bottom-left inset `0.055S`; seat = light `rgba(255,255,255,.58)` on dark tiles (`l ≤ 0.58`) / dark `rgba(24,24,28,.45)` on light, blurred backdrop, 1px ring + soft shadow. Arrow = rounded stem (rotated 45°) + chevron head, stroke `max(1.6, 0.085·seat)`; ink `#232328` on light seat / `#F4F4F1` on dark; user colour mixes 70–72% toward black/white. |
+| **双层卡片** | Same-shape sibling card behind, 0.88S, offset (+0.17S, +0.18S) → peeks bottom-right; tone adaptive neutral: dark `rgba(42,40,38,.92)` behind light tiles / light `rgba(238,234,228,.94)` behind dark (user colour → `hsl(H, S·0.7, 30%)` / `hsl(H, S·0.75, 86%)`); seam + grounding drop-shadows. |
+| **幽灵叠影** | Translucent same-shape echo behind, 0.92S, offset (+0.14S, +0.155S); `rgba(24,22,20,.45)` behind light / `rgba(255,255,255,.42)` behind dark (user colour 60% alpha); background blur. |
+| **缎光角** | In-shape satin sheen: linear-gradient 45° from bottom-left corner, tone 62%→30%→transparent by 46%; tone = dark `#2A241E` on light tiles / white on dark. |
+| **珐琅光弧** | In-shape radial glow at (15%, 88%): `mc` mixed 78% toward `#141414` on light tiles / 82% toward white on dark, fading out by 46%. |
+| **卷角** | Dog-ear at bottom-right: corner cut `c = S·{apple .26, samsung .28, circle .30}` via 315° mask; mirrored fold triangle with warm paper gradient (highlight→tone→tip-shade), rounded fold, dual drop-shadow toward the body. |
+| **细描边** | 2.5px same-shape ring behind the icon (S+5 total), colour `mc`. |
 
-Launch presets: **苹果圆角** (default: superellipse + auto-color tile + refined
-badge + no color treatment), **极简描边** (superellipse + no tile + 1.5px
-uniform hairline edge + ribbon badge), **单色滤镜** (superellipse + unified tile
-+ desaturate-then-tint). Skeuomorphic presets are rejected (craft-heavy,
-anti-restraint).
+Acceptance stays ADR-0005's **3-second misread gate**; parity rule: the mark
+preview chips, the canvas tiles, and the baked desktop `.ico` must render the
+same math.
 
-**Selector (v1.0):** three squircle pills under the mirror, each a live
-render of the user's own icons; tapping re-previews the whole grid instantly.
-No sliders, no numeric controls, no scrolling list. Advanced axis editing stays
-out of the product.
+## Motion (prototype keyframes, verbatim)
+
+| Name | Spec | Use |
+|---|---|---|
+| `bloom` | scale .88→1.05→1 + brightness/saturate flash, .6s `cubic-bezier(.34,1.4,.4,1)`, 42ms/tile stagger | apply wave |
+| `settle` | scale 1.06→1, opacity .35→1, .8s ease, 24ms stagger | restore exhale |
+| `shimmer` | gradient sweep, 1.3s linear ∞, clipped to the icon shape | scanning skeleton |
+| `rise` | translateY 10→0 + fade, .25–.4s | cards entering (history/checklist) |
+| `drawer` | translateX 36→0 + fade, .22s | settings drawer |
+| `pop` | scale .95→1 + fade, .12–.18s | menus, picker, about, toast |
+| CTA press | scale .98 | active state |
+| Chip/hover transitions | all .15s; toggles .2s; chevrons .2s; panel slide .22s | |
+| Updating cue | tiles dim to 45% opacity + 「正在更新预览…」 pill top-right, ~420ms debounce, images swap **in place** | axis changes |
+
+Reduced motion (system setting): degrade everything to plain crossfades — no
+scale, no stagger, no sweep.
+
+## Window Chrome & Platform
+
+- Custom-drawn title bar per prototype (logo + name + version chip + ⚙ + ⋯ +
+  caption buttons); dark titlebar attribute; **Mica stays disabled** (previous
+  wash-out bug) — solid `--bg`.
+- `app.manifest`: PerMonitorV2 DPI, supportedOS Win10/11, longPathAware, UTF-8,
+  asInvoker (helper: requireAdministrator). Re-render previews on `DpiChanged`.
+- Win10 degradation: Segoe UI fallback, standard corners, no blur-behind
+  (frosted surfaces fall back to translucent fills).
+- High contrast: drop the custom skin for system colours entirely.
 
 ## Accessibility
 
-- Every interactive element has `AutomationProperties.Name` (localized).
-- Status changes announced via UIA live regions ("美化完成，处理了 12 个图标").
-- Full keyboard reachability; visible squircle focus ring; Enter/Space activate.
-- Status semantics carried by text + glyph, not color alone.
-- High contrast drops the custom skin (see Theme Model).
+- Every interactive element: localized `AutomationProperties.Name`.
+- Status changes announced via UIA live regions (e.g. 「美化完成 · 已保存还原快照」).
+- Full keyboard reachability; visible focus ring in accent; Esc closes
+  menu/drawer/panel/about/picker (prototype behaviour).
+- Hold-interactions (对比/peek) have non-hold equivalents where feasible
+  (compare pill is also toggleable via keyboard press state).

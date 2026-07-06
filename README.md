@@ -1,14 +1,15 @@
 # DeskMakeover
 
-DeskMakeover is the English product name for **桌面整容大师**.
+DeskMakeover is the English product name for **桌面美颜** (renamed by ADR-0002).
 
+> 一键美颜你的 Windows 桌面，随时完整还原。
 > Give your Windows desktop a one-click makeover. Restore everything anytime.
 
-The MVP is a local Windows 10/11 desktop makeover app focused on reversible desktop icon styling. It is designed for non-technical users who want a cleaner desktop without PowerShell, registry editing, or manual icon replacement.
+A local Windows 10/11 desktop makeover app focused on reversible desktop-icon styling, designed for non-technical users who want a cleaner desktop without PowerShell, registry editing, or manual icon replacement.
 
 ## Current Status
 
-MVP foundation is under active implementation. See [docs/STATE.md](docs/STATE.md) for the current engineering checkpoint.
+Foundation built and tested; the UI is being rebuilt to match the owner's interactive prototype (`docs/references/prototype/`), the binding v1.0 contract (ADR-0008). See [docs/STATE.md](docs/STATE.md) for the current checkpoint and [docs/plans/2026-07-06-v1-prototype-parity.md](docs/plans/2026-07-06-v1-prototype-parity.md) for the rebuild plan.
 
 ## Principles
 

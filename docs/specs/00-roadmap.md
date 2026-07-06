@@ -1,107 +1,72 @@
 # DeskMakeover Roadmap
 
 Living document: edit in place as versions ship; history lives in CHANGELOG + git
-tags. Scopes set by ADR-0002/0003/0004/0005 and the 2026-07 expert panels.
-Standing rule (ADR-0002): every new capability folds into the default result or
-lives in settings — the primary flow (one Makeover Switch) never gains steps.
+tags. Scopes set by ADR-0002/0003/0004/0005/0008. Standing rule (ADR-0002): every
+new capability folds into the default result or lives in settings — the primary
+flow (one CTA) never gains steps. **ADR-0008 renumbered the release train: the
+first public release is v1.0 (was "v0.9 抢发").**
 
-## v0.9 — 抢发 (catch the traffic) · in progress
+## v1.0 — 原型复刻 (prototype parity, icons only) · in progress
 
-**Goal:** the smallest trustworthy release a novice can double-click, so the
-comment-section demand lands on us instead of the open-source script.
+**Goal:** the first public release replicates
+`docs/references/prototype/桌面美颜 v2.dc.html` (today form) completely — a
+one-screen, fully reversible desktop-icon beautifier a novice can double-click.
+No new functional territory beyond icon beautification.
 
-**Built (verified by tests + screenshots):**
-- Warm-coral (`#FF6F5E`), dark-default product shell: title bar (real app logo +
-  gear + overflow), hero (glowing Makeover Switch + promise + done-state share),
-  grid region with left-aligned header + toolbars, right slide-in settings drawer,
-  Apple-"About"-quality about panel, toast, all-custom squircle dialogs.
-- **Composable 外形 × 配色 × 区分** (ADR-0005):
-  - Shape: 苹果 squircle / 纯圆 (round icons untouched) / 三星, one superellipse engine.
-  - Colour: 原彩 / 极简 B&W / 单色 (wallpaper-extracted colour + system accent +
-    curated swatches + hex entry).
-  - Distinction: 3-state 美化(default)/保留/去除 — 美化 = contrast-adaptive coral
-    **enamel arc** grown into the icon's own bottom-left edge (珐琅/缎带/票根).
-- Crisp hi-res icon extraction (256px); folder/file previews match Explorer exactly.
-- Auto snapshot → journaled apply → **zero-residue one-click restore**; multi-snapshot
-  keep-up; single batched UAC via the whitelisted elevated helper.
-- Motion (bloom wave / skeleton / hover / peek / panel / toast / cross-fade / settle),
-  reduced-motion aware. Light theme + follow-system. "保存对比图" share export.
-- Self-contained win-x64 publish + app.ico/manifest.
+**Scope (spec 01):** left-panel + desktop-mirror layout with compact overlay
+mode; 4 风格 presets; 自定义 accordion (外形 3 · 配色 3+tint · 快捷方式标识
+3-state/7-mark-style/mark-colour · 图标大小 3); version history (10) + 上一版 +
+回到最初; per-icon right-click overrides; hold-to-compare + press-to-peek;
+dirty-state 更新桌面 with in-place refresh; one shared 调色盘 (SV+hue+hex+
+eyedropper+wallpaper palette); settings drawer / overflow / About(开源) /
+changelog; keep-up run-and-exit; journaled apply + zero-residue restore; per-icon
+mark bake with transparent global overlay; multi-size ico ladder; motion suite +
+reduced-motion.
 
-**Remaining v0.9 gates:**
-- Distinction-mark colour picker (reuse the one colour-picker component — DRY).
-- App logo rework (owner: current one is weak) via /gpt-image-2.
-- OV/individual code-signing cert (owner action); fresh-VM smoke; supervised live
-  switch-on → UAC → switch-off run.
+**Execution:** `plans/2026-07-06-v1-prototype-parity.md` (handed to an executing
+AI; prototype = binding contract).
 
-**Exit gate:** tests green; fresh-VM smoke (apply → reboot → restore, zero residue);
-signed exe passes SmartScreen without a red interstitial.
+**Exit gate:** tests green (0 warnings) · prototype parity audit (side-by-side,
+every region/state) · fresh-VM smoke (apply → reboot → restore, zero residue) ·
+supervised live switch-on → UAC → switch-off on the owner's machine · signed exe
+passes SmartScreen without a red interstitial (OV/individual cert — owner).
 
-> Platform guardrails (ADR-0004): one hero switch forever; modules are an
+> Platform guardrails (ADR-0004) stand: one hero action forever; modules are an
 > exclusion checklist, not a toolbox; risk tiers cold/warm/hot with the global
-> switch never touching hot; the module constitution permanently bans
-> cleaners/accelerators and global file-type-association icons.
+> action never touching hot; cleaners/accelerators and global file-type
+> association icons permanently banned.
 
-## v1.0 — 站稳 (soul) · weeks
+## v1.1 — 信任 + 第二模块 · weeks
 
-- Named one-tap **preset combos** (shape+colour+distinction) so novices skip the
-  three axes; per-icon override (right-click: keep as-is / change).
-- Baked premium mark evolution; accessibility pass (AutomationProperties, live
-  regions, high-contrast).
-- Keep-up hardening: persistent baseline + append-only per-item undo ledger.
-- **系统广告/推荐关闭 (module 1, HKCU one-shot, warm tier)** — see Future §A.
+- **系统净化 module** (HKCU one-shot, warm tier, no elevation): start-menu
+  recommendations, lock-screen Spotlight tips, Explorer promotions, settings
+  suggestions, advertising ID, search highlights. UI = the prototype's future-form
+  净化 view (toggle list + 并入一键美化 + honest footer 「不是清理软件…」).
+  Module list / 「已帮你做的事」 checklist grammar appears with module #2
+  (ADR-0004; the icon rail waits for 4+ modules).
+- `Modules.Contracts` + module host refactor lands **before** module #2 ships.
+- Trust hardening: AV whitelist submissions (Microsoft/360/火绒); opt-in real-time
+  watcher with visible exit + tray presence; multi-monitor/mixed-DPI edge
+  coverage; installer + emergency restore entry.
+- English localization if demand shows.
 
-## v1.1 — 信任 (boundaries) · weeks
+## v1.2 — 第二战场 (Explorer) · weeks
 
-- Opt-in real-time watcher (default off, visible exit) + **tray presence** as the
-  face of resident mode (状态 / 一键还原 / 暂停 / 退出并移除常驻). No tray, no
-  background process while off.
-- AV whitelist submissions (Microsoft / 360 / 火绒); identification edge coverage
-  (UWP/Store, special icons, no misfires); multi-monitor / mixed-DPI hardening;
-  installer + emergency restore.
-
-## v1.2 — 第二战场 (platform proof) · weeks
-
-- `Modules.Contracts` + module host carries its first new battlefields:
-  **File-Explorer visual optimisation** — folder styles (desktop.ini) and drive
-  icons (registry DriveIcons only, never autorun.inf). See Future §C.
-- Module-row exclusion checklist UI (ADR-0004 grammar).
+- **资源管理器 module** per the prototype future-form view: folder icons
+  (desktop.ini) + drive icons (registry DriveIcons only — autorun.inf never),
+  same shape×colour engine, per-surface toggles, full restore.
 - Global file-type-association icons: **permanently out** (constitution).
 
 ## v2.0+ — 代差 (moat) · months
 
-- AI icon generation (`IIconGenerator` extension point reserved).
-- **Wallpaper beautification** (Future §B). Whole-desktop unified colour-filter
-  style packs. Baked-mark evolution; EV cert when volume justifies.
-
-## Future battlefields (owner-directed, discussed — not yet scheduled to a firm date)
-
-The product is not just a desktop-icon beautifier — it's a **Windows visual-experience
-beautifier**. Each battlefield below stays inside the ADR-0004 identity ("clean up
-Windows' visual mess") and constitution (no bundleware, no cleaners/accelerators).
-
-### A. 关闭 Windows 广告 / 咨询推送 (v1.0 first slice, then extend)
-Turn off the ad/recommendation/news surfaces Windows injects — all **HKCU one-shot,
-warm tier, no elevation, no residency**, disclosed in plain language:
-- Start-menu recommendations, Settings/Spotlight tips, Explorer promotions,
-  "suggested content", advertising ID, search highlights.
-- Taskbar/lock-screen **news & interests / 资讯与兴趣 (咨询) widget**, weather feed,
-  and Widgets board promotions.
-- Grouped as an opt-in module inside (or beside) the hero switch's default package;
-  fully reversible.
-
-### B. 壁纸美化 (wallpaper beautification, v2.0 direction)
-Beautify/curate the desktop wallpaper as part of the unified look — e.g. tasteful
-wallpaper sets, colour-matched-to-icons backgrounds, or subtle treatment — so icons
-and wallpaper form one coherent aesthetic. Read-only/reversible; never hijacks the
-user's own wallpaper without consent.
-
-### C. 文件管理器视觉优化 (File Explorer, v1.2 direction)
-Extend the unified-mask idea beyond the desktop into File Explorer: beautify folder
-and drive icons (desktop.ini / DriveIcons), and unify the icon look inside Explorer
-windows — the same "system-level unified mask" value proposition, second surface.
+- **壁纸 module** (prototype future-form view): curated wallpaper sets matched to
+  the icon look, auto-backup + one-click revert, never替换 without consent.
+- AI icon generation (`IIconGenerator` extension point reserved); whole-desktop
+  unified colour-filter style packs; EV cert when volume justifies.
 
 ## Standing open questions
 
-- Signing entity/name for the OV certificate (owner).
-- Distribution channel for v0.9 (direct download + pinned comment reply).
+- Signing entity/name for the OV certificate (owner; v1.0 gate).
+- Create the public GitHub repo `nicepkg/deskmakeover` the About panel links to
+  (owner; needed before release since the About card and 免费开源 chip promise it).
+- v1.0 distribution channel (direct download + pinned comment reply).

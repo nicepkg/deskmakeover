@@ -1,0 +1,1723 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+html,body{margin:0;padding:0;background:#0D0D0F;}
+body{--bg:#1A1A1C;--raised:#242427;--raisedHov:#2B2B2F;--chip:#242427;--t1:#F4F4F2;--t2:#A8A7A1;--t3:#6E6D68;--hair:rgba(255,255,255,.07);--accent:#FF6F5E;--accentInk:var(--accent);--chipEdge:none;font-family:'Segoe UI Variable Text','Segoe UI','Microsoft YaHei UI','PingFang SC','Noto Sans SC',system-ui,sans-serif;}
+.light-vars{--bg:#FBFBFA;--raised:#FFFFFF;--raisedHov:#F1F0ED;--chip:#F4F3EF;--t1:#1A1A19;--t2:#57534E;--t3:#8A877F;--hair:rgba(0,0,0,.10);--accentInk:color-mix(in srgb,var(--accent) 70%,#40140C);--chipEdge:none;}
+@keyframes dm-bloom{0%{transform:scale(.88);filter:brightness(1.6) saturate(1.25);}55%{transform:scale(1.05);}100%{transform:scale(1);filter:none;}}
+@keyframes dm-settle{0%{transform:scale(1.06);opacity:.35;}100%{transform:scale(1);opacity:1;}}
+@keyframes dm-shimmer{0%{background-position:-140% 0;}100%{background-position:240% 0;}}
+@keyframes dm-rise{0%{transform:translateY(10px);opacity:0;}100%{transform:translateY(0);opacity:1;}}
+@keyframes dm-drawer{0%{transform:translateX(36px);opacity:0;}100%{transform:translateX(0);opacity:1;}}
+@keyframes dm-pop{0%{transform:scale(.95);opacity:0;}100%{transform:scale(1);opacity:1;}}
+@keyframes dm-glow{0%,100%{box-shadow:0 4px 18px color-mix(in srgb,var(--accent) 32%,transparent);}50%{box-shadow:0 8px 34px color-mix(in srgb,var(--accent) 58%,transparent);}}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:rgba(128,128,128,.25);border-radius:8px;}
+::-webkit-scrollbar-track{background:transparent;}
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:16px;padding:20px 16px 44px;background:radial-gradient(80% 60% at 50% 0%,#17171A 0%,#0D0D0F 70%);box-sizing:border-box;">
+
+  <div data-screen-label="演示控制" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;">
+    <sc-for list="{{ demoSegs }}" as="g" hint-placeholder-count="2">
+      <div style="display:flex;gap:2px;background:#151518;border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:3px;">
+        <sc-for list="{{ g.opts }}" as="o" hint-placeholder-count="2">
+          <div role="button" onClick="{{ o.pick }}" style="cursor:pointer;padding:6px 13px;border-radius:8px;font-size:12px;user-select:none;transition:all .15s; {{ o.dyn }}">{{ o.label }}</div>
+        </sc-for>
+      </div>
+    </sc-for>
+    <div role="button" onClick="{{ resetDemo }}" style="cursor:pointer;padding:6px 12px;border-radius:9px;font-size:12px;color:#6E6D68;border:1px solid rgba(255,255,255,.08);user-select:none;" style-hover="color:#A8A7A1;">重置演示</div>
+  </div>
+
+  <div style="position:relative; {{ wrapDyn }}">
+    <div class="{{ themeClass }}" ref="{{ winRef }}" onClick="{{ onWinClick }}" data-screen-label="主界面" style="position:relative;display:flex;flex-direction:column;overflow:hidden;border-radius:12px;background:var(--bg);border:1px solid rgba(255,255,255,.08);box-shadow:0 40px 90px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.4);transform-origin:top left;color:var(--t1); {{ winDyn }}">
+
+      <div data-screen-label="标题栏" style="height:46px;display:flex;align-items:center;gap:10px;padding:0 6px 0 14px;flex:none;">
+        <div style="width:24px;height:24px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#FFF7F3;font-size:12px;flex:none; {{ logoDyn }}">✦</div>
+        <div style="font-size:13px;font-weight:600;color:var(--t1);">桌面美颜</div>
+        <div style="font-size:10.5px;color:var(--t3);padding:2px 7px;background:var(--chip);border-radius:7px;">v0.9 预览</div>
+        <div style="flex:1;"></div>
+        <div role="button" onClick="{{ openDrawer }}" title="设置" style="width:36px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;color:var(--t2);font-size:14px;" style-hover="background:var(--raisedHov);">⚙</div>
+        <div role="button" onClick="{{ openOverflow }}" title="更多" style="width:36px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;color:var(--t2);font-size:15px;" style-hover="background:var(--raisedHov);">⋯</div>
+        <div style="display:flex;color:var(--t3);font-size:11px;">
+          <div style="width:36px;height:30px;display:flex;align-items:center;justify-content:center;">─</div>
+          <div style="width:36px;height:30px;display:flex;align-items:center;justify-content:center;">▢</div>
+          <div style="width:36px;height:30px;display:flex;align-items:center;justify-content:center;">✕</div>
+        </div>
+      </div>
+
+      <div style="flex:1;display:flex;min-height:0;">
+
+        <sc-if value="{{ showRail }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="模块导航" style="width:66px;flex:none;display:flex;flex-direction:column;align-items:center;gap:10px;padding:4px 0 14px;">
+            <sc-for list="{{ railItems }}" as="m" hint-placeholder-count="4">
+              <div role="button" onClick="{{ m.pick }}" title="{{ m.name }}" style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;user-select:none;padding:2px 0;">
+                <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:15px;border-radius:13px;transition:all .15s; {{ m.dyn }}">{{ m.char }}</div>
+                <div style="font-size:9.5px;letter-spacing:.4px; {{ m.lDyn }}">{{ m.label }}</div>
+              </div>
+            </sc-for>
+            <div style="flex:1;"></div>
+            <div title="更多模块会在这里点亮" style="width:42px;height:42px;display:flex;align-items:center;justify-content:center;color:var(--t3);border:1px dashed rgba(128,128,128,.35);border-radius:14px;font-size:15px;">+</div>
+          </div>
+        </sc-if>
+
+        <div data-screen-label="控制面板" style="display:flex;flex-direction:column;min-height:0;z-index:30;transition:transform .22s ease; {{ panelDyn }}">
+          <div style="flex:1;overflow-y:auto;padding:6px 16px 18px;display:flex;flex-direction:column;gap:18px;min-height:0;">
+
+            <sc-if value="{{ viewDesktop }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <div style="font-size:11.5px;color:var(--t3);">{{ statusText }}</div>
+                <div style="font-size:19px;font-weight:600;line-height:1.35;color:var(--t1);text-wrap:pretty;">{{ heroTitle }}</div>
+                <div role="button" onClick="{{ onCta }}" style="height:44px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;font-size:14px;font-weight:600;user-select:none;transition:transform .12s; {{ ctaDyn }}" style-active="transform:scale(.98);">{{ ctaText }}</div>
+                <sc-if value="{{ showLinks }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:6px;padding-top:4px;flex-wrap:wrap;">
+                    <sc-if value="{{ linkRestore }}" hint-placeholder-val="{{ true }}">
+                      <div role="button" onClick="{{ onRestore }}" title="还原到 Windows 原生桌面" style="padding:6px 11px;border-radius:9px;font-size:12px;color:var(--t2);background:var(--chip);box-shadow:var(--chipEdge);cursor:pointer;user-select:none;transition:all .15s;" style-hover="background:var(--raisedHov);color:var(--t1);">还原</div>
+                    </sc-if>
+                    <sc-if value="{{ linkPrev }}" hint-placeholder-val="{{ false }}">
+                      <div role="button" onClick="{{ onPrev }}" title="回到上一版" style="padding:6px 11px;border-radius:9px;font-size:12px;color:var(--t2);background:var(--chip);box-shadow:var(--chipEdge);cursor:pointer;user-select:none;transition:all .15s;" style-hover="background:var(--raisedHov);color:var(--t1);">上一版</div>
+                    </sc-if>
+                    <sc-if value="{{ linkHist }}" hint-placeholder-val="{{ false }}">
+                      <div role="button" onClick="{{ toggleHist }}" title="版本历史" style="padding:6px 11px;border-radius:9px;font-size:12px;color:var(--t2);background:var(--chip);box-shadow:var(--chipEdge);cursor:pointer;user-select:none;transition:all .15s;display:flex;align-items:center;gap:5px;" style-hover="background:var(--raisedHov);color:var(--t1);">历史<span style="font-size:10.5px;color:var(--t3);font-variant-numeric:tabular-nums;">{{ histCount }}</span></div>
+                    </sc-if>
+                    <sc-if value="{{ linkRestore }}" hint-placeholder-val="{{ true }}">
+                      <div role="button" onClick="{{ onExport }}" title="保存前后对比图" style="padding:6px 11px;border-radius:9px;font-size:12px;color:var(--t2);background:var(--chip);box-shadow:var(--chipEdge);cursor:pointer;user-select:none;transition:all .15s;" style-hover="background:var(--raisedHov);color:var(--t1);">对比图</div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ histOpenShow }}" hint-placeholder-val="{{ false }}">
+                  <div data-screen-label="版本历史" style="background:var(--raised);border-radius:14px;padding:10px 13px 4px;display:flex;flex-direction:column;animation:dm-rise .25s ease both;">
+                    <div style="font-size:11.5px;color:var(--t3);padding-bottom:6px;">版本历史 · 保留最近 10 版</div>
+                    <sc-for list="{{ histRows }}" as="h" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-top:1px solid var(--hair);">
+                        <div style="font-size:11px;color:var(--t3);width:34px;flex:none;font-variant-numeric:tabular-nums;">{{ h.t }}</div>
+                        <div style="flex:1;min-width:0;font-size:12px;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ h.label }}</div>
+                        <sc-if value="{{ h.cur }}" hint-placeholder-val="{{ false }}">
+                          <div style="font-size:10.5px;color:#3FB6A8;background:rgba(63,182,168,.14);padding:2px 8px;border-radius:6px;flex:none;">当前</div>
+                        </sc-if>
+                        <sc-if value="{{ h.canGo }}" hint-placeholder-val="{{ true }}">
+                          <div role="button" onClick="{{ h.pick }}" style="font-size:11.5px;color:var(--accent);cursor:pointer;flex:none;">回到此版</div>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                    <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-top:1px solid var(--hair);">
+                      <div style="font-size:11px;color:var(--t3);width:34px;flex:none;">最初</div>
+                      <div style="flex:1;font-size:12px;color:var(--t1);">Windows 原生桌面</div>
+                      <div role="button" onClick="{{ onRestore }}" style="font-size:11.5px;color:var(--accent);cursor:pointer;flex:none;">回到最初</div>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+
+              <sc-if value="{{ showChecklist }}" hint-placeholder-val="{{ false }}">
+                <div data-screen-label="已帮你做的事" style="background:var(--raised);border-radius:14px;padding:12px 14px 8px;display:flex;flex-direction:column;animation:dm-rise .35s ease both;">
+                  <div style="font-size:11.5px;color:var(--t3);margin-bottom:4px;">已帮你做的事 · 每项可单独还原</div>
+                  <sc-for list="{{ checkRows }}" as="r" hint-placeholder-count="2">
+                    <div style="display:flex;align-items:center;gap:9px;padding:8px 0;">
+                      <div style="width:17px;height:17px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;flex:none; {{ r.badgeDyn }}">{{ r.badge }}</div>
+                      <div style="flex:1;min-width:0;font-size:12.5px; {{ r.tDyn }}">{{ r.title }}</div>
+                      <div role="button" onClick="{{ r.toggle }}" style="width:32px;height:19px;border-radius:10px;position:relative;cursor:pointer;transition:background .2s;flex:none; {{ r.swDyn }}">
+                        <div style="position:absolute;top:2px;width:15px;height:15px;border-radius:8px;background:#FFFFFF;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3); {{ r.knobDyn }}"></div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showDiscover }}" hint-placeholder-val="{{ false }}">
+                <div style="background:var(--chip);border-radius:14px;padding:11px 13px;display:flex;align-items:center;gap:10px;animation:dm-rise .4s .12s ease both;">
+                  <div style="width:34px;height:34px;border-radius:11px;background:var(--raised);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--t2);flex:none;">夹</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-size:12.5px;color:var(--t1);">资源管理器也想变好看</div>
+                    <div style="font-size:11px;color:var(--t3);margin-top:1px;">文件夹与磁盘图标 · v1.2</div>
+                  </div>
+                  <div role="button" onClick="{{ goExplorer }}" style="font-size:12px;color:var(--accent);cursor:pointer;flex:none;">去看看</div>
+                </div>
+              </sc-if>
+
+              <div style="display:flex;flex-direction:column;gap:9px;">
+                <div style="display:flex;align-items:baseline;gap:8px;">
+                  <div style="font-size:12px;font-weight:600;color:var(--t2);letter-spacing:.5px;">风格</div>
+                  <sc-if value="{{ isCustom }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size:11px;color:var(--accent);">自定义中</div>
+                  </sc-if>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                  <sc-for list="{{ presets }}" as="p" hint-placeholder-count="4">
+                    <div role="button" onClick="{{ p.pick }}" title="{{ p.desc }}" style="border-radius:11px;padding:7px 9px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .15s;background:var(--chip);box-shadow:var(--chipEdge);user-select:none; {{ p.dyn }}" style-hover="background:var(--raisedHov);">
+                      <div style="display:flex;gap:4px;flex:none;">
+                        <sc-for list="{{ p.minis }}" as="mi" hint-placeholder-count="2">
+                          <div style="width:18px;height:18px;position:relative;flex:none;">
+                            <div style="position:absolute;display:flex;align-items:center;justify-content:center; {{ mi.dyn }}"><span style="font-size:7.5px;font-weight:700; {{ mi.gDyn }}">{{ mi.g }}</span></div>
+                          </div>
+                        </sc-for>
+                      </div>
+                      <div style="font-size:12px;font-weight:600;color:var(--t1);white-space:nowrap;">{{ p.name }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+                  <div style="font-size:12px;font-weight:600;color:var(--t2);letter-spacing:.5px;flex:1;">自定义</div>
+                  <div role="button" onClick="{{ toggleAll }}" title="{{ allTitle }}" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:7px;cursor:pointer;color:var(--t3);user-select:none;transition:all .15s;" style-hover="background:var(--raisedHov);color:var(--t1);"><span style="display:block;font-size:13px;line-height:1;font-family:system-ui;">{{ allGlyph }}</span></div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;">
+                  <div role="button" onClick="{{ toggShape }}" style="display:flex;align-items:center;gap:8px;height:42px;cursor:pointer;user-select:none;">
+                    <div style="font-size:12.5px;color:var(--t2);">外形</div>
+                    <div style="flex:1;"></div>
+                    <div style="font-size:12.5px;color:var(--t1);">{{ shapeSummary }}</div>
+                    <div style="width:22px;display:flex;justify-content:center;font-size:9px;color:var(--t3);transition:transform .2s; {{ shapeChev }}">▼</div>
+                  </div>
+                  <sc-if value="{{ shapeOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;padding:0 0 14px;">
+                      <sc-for list="{{ shapeChips }}" as="c" hint-placeholder-count="3">
+                        <div role="button" onClick="{{ c.pick }}" style="display:flex;align-items:center;gap:6px;padding:6px 10px 6px 7px;border-radius:9px;font-size:12px;cursor:pointer;user-select:none;transition:all .15s; {{ c.dyn }}">
+                          <div style="width:14px;height:14px;background:currentColor;opacity:.9; {{ c.swDyn }}"></div>{{ c.label }}
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+
+                <div style="display:flex;flex-direction:column;border-top:1px solid var(--hair);">
+                  <div role="button" onClick="{{ toggColor }}" style="display:flex;align-items:center;gap:8px;height:42px;cursor:pointer;user-select:none;">
+                    <div style="font-size:12.5px;color:var(--t2);">配色</div>
+                    <div style="flex:1;"></div>
+                    <div style="font-size:12.5px;color:var(--t1);">{{ colorSummary }}</div>
+                    <div style="width:22px;display:flex;justify-content:center;font-size:9px;color:var(--t3);transition:transform .2s; {{ colorChev }}">▼</div>
+                  </div>
+                  <sc-if value="{{ colorOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:0 0 14px;">
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <sc-for list="{{ colorChips }}" as="c" hint-placeholder-count="3">
+                      <div role="button" onClick="{{ c.pick }}" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:9px;font-size:12px;cursor:pointer;user-select:none;transition:all .15s; {{ c.dyn }}">
+                        <div style="width:9px;height:9px;border-radius:5px; {{ c.swDyn }}"></div>{{ c.label }}
+                      </div>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{ showMono }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-top:2px;">
+                      <sc-for list="{{ monoSwatches }}" as="s" hint-placeholder-count="6">
+                        <div role="button" onClick="{{ s.pick }}" title="{{ s.tip }}" style="width:20px;height:20px;border-radius:10px;cursor:pointer;transition:all .15s; {{ s.dyn }}"></div>
+                      </sc-for>
+                      <div role="button" onClick="{{ openTintPicker }}" title="调色盘：取色器 / Hex / 壁纸提取" style="display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:9px;font-size:11.5px;color:var(--t2);background:var(--chip);cursor:pointer;" style-hover="background:var(--raisedHov);"><div style="width:11px;height:11px;border-radius:6px;background:conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);"></div>调色盘</div>
+                    </div>
+                  </sc-if>
+                  </div>
+                  </sc-if>
+                </div>
+
+                <div style="display:flex;flex-direction:column;border-top:1px solid var(--hair);">
+                  <div role="button" onClick="{{ toggDist }}" style="display:flex;align-items:center;gap:8px;height:42px;cursor:pointer;user-select:none;">
+                    <div style="font-size:12.5px;color:var(--t2);">快捷方式标识</div>
+                    <div style="flex:1;"></div>
+                    <div style="font-size:12.5px;color:var(--t1);">{{ distSummary }}</div>
+                    <div style="width:22px;display:flex;justify-content:center;font-size:9px;color:var(--t3);transition:transform .2s; {{ distChev }}">▼</div>
+                  </div>
+                  <sc-if value="{{ distOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:0 0 14px;">
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <sc-for list="{{ distChips }}" as="c" hint-placeholder-count="3">
+                      <div role="button" onClick="{{ c.pick }}" style="padding:6px 10px;border-radius:9px;font-size:12px;cursor:pointer;user-select:none;transition:all .15s; {{ c.dyn }}">{{ c.label }}</div>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{ showMarkOpts }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:2px;">
+                      <sc-for list="{{ markChips }}" as="c" hint-placeholder-count="5">
+                        <div role="button" onClick="{{ c.pick }}" style="display:flex;align-items:center;gap:7px;padding:5px 10px 5px 6px;border-radius:9px;font-size:12px;cursor:pointer;user-select:none;transition:all .15s; {{ c.dyn }}">
+                          <div style="width:22px;height:22px;position:relative;flex:none;">
+                            <div style="position:absolute; {{ c.pvUnder }}"></div>
+                            <div style="position:absolute;display:flex;align-items:center;justify-content:center; {{ c.pvCard }}"><span style="font-size:9px;font-weight:700; {{ c.pvG }}">M</span></div>
+                            <div style="position:absolute;display:flex;align-items:center;justify-content:center; {{ c.pvOver }}"><span style="font-weight:700; {{ c.pvOverG }}">{{ c.pvOverChar }}</span></div>
+                          </div>{{ c.label }}
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-top:4px;">
+                      <div style="font-size:11px;color:var(--t3);margin-right:2px;">标识配色</div>
+                      <div role="button" onClick="{{ onMarkAuto }}" style="padding:4px 10px;border-radius:9px;font-size:11.5px;cursor:pointer;user-select:none;transition:all .15s; {{ markAutoDyn }}">自动</div>
+                      <sc-for list="{{ markSwatches }}" as="s" hint-placeholder-count="4">
+                        <div role="button" onClick="{{ s.pick }}" style="width:18px;height:18px;border-radius:9px;cursor:pointer;transition:all .15s; {{ s.dyn }}"></div>
+                      </sc-for>
+                      <div role="button" onClick="{{ openMarkPicker }}" title="调色盘：取色器 / Hex / 壁纸提取" style="display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:9px;font-size:11.5px;color:var(--t2);background:var(--chip);cursor:pointer;" style-hover="background:var(--raisedHov);"><div style="width:11px;height:11px;border-radius:6px;background:conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);"></div>调色盘</div>
+                    </div>
+                  </sc-if>
+                  </div>
+                  </sc-if>
+                </div>
+
+                <div style="display:flex;flex-direction:column;border-top:1px solid var(--hair);">
+                  <div role="button" onClick="{{ toggSize }}" style="display:flex;align-items:center;gap:8px;height:42px;cursor:pointer;user-select:none;">
+                    <div style="font-size:12.5px;color:var(--t2);">图标大小</div>
+                    <div style="flex:1;"></div>
+                    <div style="font-size:12.5px;color:var(--t1);">{{ sizeSummary }}</div>
+                    <div style="width:22px;display:flex;justify-content:center;font-size:9px;color:var(--t3);transition:transform .2s; {{ sizeChev }}">▼</div>
+                  </div>
+                  <sc-if value="{{ sizeOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:6px;padding:0 0 14px;">
+                      <sc-for list="{{ sizeChips }}" as="c" hint-placeholder-count="3">
+                        <div role="button" onClick="{{ c.pick }}" style="padding:6px 12px;border-radius:9px;font-size:12px;cursor:pointer;user-select:none;transition:all .15s; {{ c.dyn }}">{{ c.label }}</div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ viewAds }}" hint-placeholder-val="{{ false }}">
+              <div data-screen-label="系统净化模块" style="display:flex;flex-direction:column;gap:14px;">
+                <div role="button" onClick="{{ goDesktop }}" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t3);cursor:pointer;" style-hover="color:var(--t1);">← 桌面图标</div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <div style="font-size:11.5px;color:var(--t3);">系统净化 · 仅当前用户 · 无需管理员</div>
+                  <div style="font-size:19px;font-weight:600;line-height:1.35;color:var(--t1);text-wrap:pretty;">关掉 Windows 塞给你的推荐</div>
+                  <div style="font-size:12px;color:var(--t2);line-height:1.6;">{{ adsCount }}</div>
+                </div>
+                <div style="background:var(--raised);border-radius:14px;padding:4px 14px;display:flex;flex-direction:column;">
+                  <sc-for list="{{ adsRows }}" as="r" hint-placeholder-count="6">
+                    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;">
+                      <div style="flex:1;min-width:0;">
+                        <div style="font-size:12.5px;color:var(--t1);">{{ r.name }}</div>
+                        <div style="font-size:11px;color:var(--t3);margin-top:1px;">{{ r.sub }}</div>
+                      </div>
+                      <div role="button" onClick="{{ r.toggle }}" style="width:32px;height:19px;border-radius:10px;position:relative;cursor:pointer;transition:background .2s;flex:none; {{ r.swDyn }}">
+                        <div style="position:absolute;top:2px;width:15px;height:15px;border-radius:8px;background:#FFFFFF;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3); {{ r.knobDyn }}"></div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:2px 2px;">
+                  <div style="flex:1;">
+                    <div style="font-size:12.5px;color:var(--t1);">并入一键美化</div>
+                    <div style="font-size:11px;color:var(--t3);margin-top:1px;">主开关打开时一起处理</div>
+                  </div>
+                  <div role="button" onClick="{{ toggleInclude }}" style="width:32px;height:19px;border-radius:10px;position:relative;cursor:pointer;transition:background .2s;flex:none; {{ incSwDyn }}">
+                    <div style="position:absolute;top:2px;width:15px;height:15px;border-radius:8px;background:#FFFFFF;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3); {{ incKnobDyn }}"></div>
+                  </div>
+                </div>
+                <div style="font-size:11px;color:var(--t3);line-height:1.7;border-top:1px solid var(--hair);padding-top:10px;">不是清理软件——只使用微软自己提供的开关，全部可一键还原，不常驻后台。</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ viewExplorer }}" hint-placeholder-val="{{ false }}">
+              <div data-screen-label="资源管理器模块" style="display:flex;flex-direction:column;gap:14px;">
+                <div role="button" onClick="{{ goDesktop }}" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t3);cursor:pointer;" style-hover="color:var(--t1);">← 桌面图标</div>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="font-size:11.5px;color:var(--t3);">{{ expStatus }}</div>
+                  <div style="font-size:19px;font-weight:600;line-height:1.35;color:var(--t1);text-wrap:pretty;">把统一带进资源管理器</div>
+                  <div role="button" onClick="{{ onExpCta }}" style="height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;font-size:14px;font-weight:600;user-select:none;transition:transform .12s; {{ expCtaDyn }}" style-active="transform:scale(.98);">{{ expCtaText }}</div>
+                  <sc-if value="{{ expLinks }}" hint-placeholder-val="{{ false }}">
+                    <div role="button" onClick="{{ onExpRestore }}" style="font-size:12px;color:var(--t2);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" style-hover="color:var(--t1);">还原资源管理器</div>
+                  </sc-if>
+                </div>
+                <div style="background:var(--raised);border-radius:14px;padding:4px 14px;display:flex;flex-direction:column;">
+                  <div style="display:flex;align-items:center;gap:10px;padding:9px 0;">
+                    <div style="flex:1;min-width:0;">
+                      <div style="font-size:12.5px;color:var(--t1);">文件夹图标</div>
+                      <div style="font-size:11px;color:var(--t3);margin-top:1px;">与桌面同款外形与配色</div>
+                    </div>
+                    <div role="button" onClick="{{ toggleExpFolder }}" style="width:32px;height:19px;border-radius:10px;position:relative;cursor:pointer;transition:background .2s;flex:none; {{ expFolderSw }}">
+                      <div style="position:absolute;top:2px;width:15px;height:15px;border-radius:8px;background:#FFFFFF;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3); {{ expFolderKnob }}"></div>
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;padding:9px 0;">
+                    <div style="flex:1;min-width:0;">
+                      <div style="font-size:12.5px;color:var(--t1);">磁盘图标</div>
+                      <div style="font-size:11px;color:var(--t3);margin-top:1px;">仅注册表 DriveIcons，可完整还原</div>
+                    </div>
+                    <div role="button" onClick="{{ toggleExpDrive }}" style="width:32px;height:19px;border-radius:10px;position:relative;cursor:pointer;transition:background .2s;flex:none; {{ expDriveSw }}">
+                      <div style="position:absolute;top:2px;width:15px;height:15px;border-radius:8px;background:#FFFFFF;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3); {{ expDriveKnob }}"></div>
+                    </div>
+                  </div>
+                </div>
+                <div style="font-size:11px;color:var(--t3);line-height:1.7;border-top:1px solid var(--hair);padding-top:10px;">v1.2 · 只动 desktop.ini 与 DriveIcons；文件类型关联图标是永久禁区。</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ viewPaper }}" hint-placeholder-val="{{ false }}">
+              <div data-screen-label="壁纸模块" style="display:flex;flex-direction:column;gap:14px;">
+                <div role="button" onClick="{{ goDesktop }}" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t3);cursor:pointer;" style-hover="color:var(--t1);">← 桌面图标</div>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="font-size:11.5px;color:var(--t3);">{{ paperStatus }}</div>
+                  <div style="font-size:19px;font-weight:600;line-height:1.35;color:var(--t1);text-wrap:pretty;">换一张更配图标的壁纸</div>
+                  <div role="button" onClick="{{ onPaperCta }}" style="height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;font-size:14px;font-weight:600;user-select:none;transition:transform .12s; {{ paperCtaDyn }}" style-active="transform:scale(.98);">{{ paperCtaText }}</div>
+                  <sc-if value="{{ paperLinks }}" hint-placeholder-val="{{ false }}">
+                    <div role="button" onClick="{{ onPaperRestore }}" style="font-size:12px;color:var(--t2);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" style-hover="color:var(--t1);">换回我的壁纸</div>
+                  </sc-if>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <sc-for list="{{ wallCards }}" as="w" hint-placeholder-count="3">
+                    <div role="button" onClick="{{ w.pick }}" style="border-radius:13px;padding:9px;cursor:pointer;display:flex;align-items:center;gap:11px;transition:all .15s;background:var(--chip);box-shadow:var(--chipEdge);user-select:none; {{ w.dyn }}" style-hover="background:var(--raisedHov);">
+                      <div style="width:64px;height:40px;border-radius:9px;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08); {{ w.swDyn }}"></div>
+                      <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:7px;">
+                          <div style="font-size:12.5px;font-weight:600;color:var(--t1);">{{ w.name }}</div>
+                          <sc-if value="{{ w.hasBadge }}" hint-placeholder-val="{{ false }}">
+                            <div style="font-size:10px;color:#3FB6A8;background:rgba(63,182,168,.14);padding:2px 7px;border-radius:6px;">使用中</div>
+                          </sc-if>
+                        </div>
+                        <div style="font-size:10.5px;color:var(--t3);margin-top:2px;">{{ w.desc }}</div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-size:11px;color:var(--t3);line-height:1.7;border-top:1px solid var(--hair);padding-top:10px;">v2.0 方向 · 原壁纸自动备份，一键换回；未经同意绝不更换。</div>
+              </div>
+            </sc-if>
+
+          </div>
+        </div>
+
+        <div data-screen-label="桌面画布" style="flex:1;min-width:0;display:flex;flex-direction:column; {{ canvasColDyn }}">
+
+          <sc-if value="{{ isCompact }}" hint-placeholder-val="{{ false }}">
+            <div data-screen-label="紧凑工具条" style="display:flex;align-items:center;gap:6px;padding:2px 0 10px;overflow-x:auto;">
+              <sc-for list="{{ summaryChips }}" as="c" hint-placeholder-count="4">
+                <div role="button" onClick="{{ c.pick }}" style="padding:6px 11px;border-radius:9px;font-size:12px;cursor:pointer;white-space:nowrap;user-select:none;transition:all .15s; {{ c.dyn }}">{{ c.name }}</div>
+              </sc-for>
+              <div role="button" onClick="{{ openPanel }}" style="padding:6px 11px;border-radius:9px;font-size:12px;cursor:pointer;white-space:nowrap;color:var(--t2);background:var(--chip);user-select:none;" style-hover="background:var(--raisedHov);">自定义 ▸</div>
+              <div style="flex:1;"></div>
+              <div role="button" onClick="{{ onCta }}" style="height:34px;display:flex;align-items:center;justify-content:center;padding:0 16px;border-radius:10px;font-size:12.5px;font-weight:600;white-space:nowrap;user-select:none; {{ ctaDyn }}">{{ ctaText }}</div>
+            </div>
+          </sc-if>
+
+          <div style="position:relative;flex:1;border-radius:14px;overflow:hidden;isolation:isolate;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); {{ wallDyn }}">
+            <div style="position:absolute;inset:0;pointer-events:none; {{ wallGlowDyn }}"></div>
+
+            <sc-if value="{{ canvasDesktop }}" hint-placeholder-val="{{ true }}">
+            <div style="position:absolute;top:12px;left:10px;right:10px;bottom:60px;display:flex;flex-direction:column;flex-wrap:wrap;align-content:flex-start;gap:2px 4px;overflow:hidden;">
+              <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="20">
+                <div onContextMenu="{{ t.ctx }}" onPointerDown="{{ t.down }}" onPointerUp="{{ t.up }}" onPointerLeave="{{ t.up }}" title="{{ t.label }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:default;user-select:none;position:relative;padding:7px 4px 5px;border-radius:10px;transition:background .15s; {{ t.cellDyn }}" style-hover="background:rgba(255,255,255,.08);">
+                  <div style="position:relative;transition:opacity .18s; {{ t.boxDyn }}">
+                    <sc-if value="{{ t.shimmer }}" hint-placeholder-val="{{ true }}">
+                      <div style="position:absolute;background:linear-gradient(100deg,rgba(255,255,255,.07) 30%,rgba(255,255,255,.18) 50%,rgba(255,255,255,.07) 70%);background-size:240% 100%;animation:dm-shimmer 1.3s linear infinite; {{ t.shimDyn }}"></div>
+                    </sc-if>
+                    <sc-if value="{{ t.solid }}" hint-placeholder-val="{{ false }}">
+                      <sc-if value="{{ t.sibShow }}" hint-placeholder-val="{{ false }}">
+                        <div style="position:absolute;z-index:1; {{ t.sibWrapDyn }}"><div style="width:100%;height:100%; {{ t.sibDyn }}"></div></div>
+                      </sc-if>
+                      <div style="position:absolute;z-index:2; {{ t.cardWrapDyn }}">
+                        <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center; {{ t.cardDyn }}"><span style="font-weight:700;letter-spacing:.5px; {{ t.gDyn }}">{{ t.g }}</span></div>
+                      </div>
+                      <sc-if value="{{ t.overShow }}" hint-placeholder-val="{{ false }}">
+                        <div style="position:absolute;z-index:3; {{ t.overDyn }}">
+                          <div style="position:absolute; {{ t.ob1 }}"></div>
+                          <div style="position:absolute; {{ t.ob2 }}"></div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ t.arrowShow }}" hint-placeholder-val="{{ false }}">
+                        <div style="position:absolute;z-index:3;display:flex;align-items:center;justify-content:center;background:#F4F4F1;color:#2E3238;border-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.4); {{ t.arrowDyn }}">↗</div>
+                      </sc-if>
+                    </sc-if>
+                  </div>
+                  <div style="font-size:11px;color:#F2F2F0;text-shadow:0 1px 3px rgba(0,0,0,.85);max-width:88px;text-align:center;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ t.label }}</div>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+
+            <sc-if value="{{ canvasAds }}" hint-placeholder-val="{{ false }}">
+              <div data-screen-label="系统表面预览" style="position:absolute;top:16px;left:16px;right:16px;bottom:56px;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:14px;">
+                <sc-for list="{{ adsCards }}" as="a" hint-placeholder-count="4">
+                  <div role="button" onClick="{{ a.toggle }}" style="background:rgba(16,16,20,.62);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;cursor:pointer;user-select:none;transition:all .15s;" style-hover="border-color:rgba(255,255,255,.18);">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <div style="font-size:12.5px;font-weight:600;color:#EDEBE6;flex:1;">{{ a.title }}</div>
+                      <div style="font-size:10.5px;padding:3px 8px;border-radius:7px; {{ a.pillDyn }}">{{ a.pill }}</div>
+                    </div>
+                    <div style="height:9px;border-radius:5px;background:rgba(255,255,255,.10);width:72%;"></div>
+                    <div style="height:9px;border-radius:5px;background:rgba(255,255,255,.07);width:54%;"></div>
+                    <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:10px;transition:all .2s;margin-top:auto; {{ a.adDyn }}">
+                      <div style="width:7px;height:7px;border-radius:4px;background:currentColor;opacity:.6; {{ a.adTextDyn }}"></div>
+                      <div style="flex:1;font-size:11.5px; {{ a.adTextDyn }}">{{ a.adLabel }}</div>
+                    </div>
+                    <div style="font-size:10.5px;color:rgba(240,238,232,.4);">点击卡片切换开关</div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ canvasExplorer }}" hint-placeholder-val="{{ false }}">
+              <div data-screen-label="资源管理器镜像" style="position:absolute;top:14px;left:14px;right:14px;bottom:56px;display:flex;align-items:stretch;justify-content:center;">
+                <div style="width:100%;max-width:820px;background:var(--bg);border:1px solid rgba(255,255,255,.09);border-radius:12px;box-shadow:0 30px 70px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;">
+                  <div style="height:40px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--hair);flex:none;">
+                    <div style="display:flex;gap:10px;color:var(--t3);font-size:13px;"><span>‹</span><span>›</span></div>
+                    <div style="flex:1;height:26px;display:flex;align-items:center;padding:0 11px;background:var(--raised);border-radius:8px;font-size:11.5px;color:var(--t2);">此电脑</div>
+                    <div style="width:150px;height:26px;display:flex;align-items:center;padding:0 11px;background:var(--raised);border-radius:8px;font-size:11.5px;color:var(--t3);">搜索</div>
+                  </div>
+                  <div style="flex:1;display:flex;min-height:0;">
+                    <div style="width:148px;flex:none;border-right:1px solid var(--hair);padding:12px 8px;display:flex;flex-direction:column;gap:2px;overflow:hidden;">
+                      <div style="font-size:10.5px;color:var(--t3);padding:2px 8px 6px;">快速访问</div>
+                      <div style="font-size:12px;color:var(--t2);padding:5px 8px;border-radius:7px;background:var(--raisedHov);">桌面</div>
+                      <div style="font-size:12px;color:var(--t2);padding:5px 8px;border-radius:7px;">下载</div>
+                      <div style="font-size:12px;color:var(--t2);padding:5px 8px;border-radius:7px;">文档</div>
+                      <div style="font-size:12px;color:var(--t2);padding:5px 8px;border-radius:7px;">图片</div>
+                      <div style="font-size:10.5px;color:var(--t3);padding:12px 8px 6px;">此电脑</div>
+                      <div style="font-size:12px;color:var(--t2);padding:5px 8px;border-radius:7px;">Windows (C:)</div>
+                      <div style="font-size:12px;color:var(--t2);padding:5px 8px;border-radius:7px;">数据 (D:)</div>
+                    </div>
+                    <div style="flex:1;min-width:0;padding:14px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;">
+                      <sc-if value="{{ showFoldersSec }}" hint-placeholder-val="{{ true }}">
+                        <div style="display:flex;flex-direction:column;gap:10px;">
+                          <div style="font-size:11px;color:var(--t3);">文件夹</div>
+                          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;">
+                            <sc-for list="{{ expItems }}" as="e" hint-placeholder-count="6">
+                              <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;border-radius:9px;transition:background .15s;" style-hover="background:var(--raisedHov);">
+                                <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3)); {{ e.iconDyn }}">
+                                  <span style="font-weight:700;font-size:16px; {{ e.gDyn }}">{{ e.g }}</span>
+                                </div>
+                                <div style="font-size:11px;color:var(--t2);">{{ e.name }}</div>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ showDrives }}" hint-placeholder-val="{{ true }}">
+                        <div style="display:flex;flex-direction:column;gap:8px;">
+                          <div style="font-size:11px;color:var(--t3);">设备和驱动器</div>
+                          <sc-for list="{{ expDriveRows }}" as="d" hint-placeholder-count="2">
+                            <div style="display:flex;align-items:center;gap:12px;padding:7px 8px;border-radius:9px;transition:background .15s;" style-hover="background:var(--raisedHov);">
+                              <div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.3)); {{ d.iconDyn }}">
+                                <span style="font-weight:700;font-size:12px; {{ d.gDyn }}">⛃</span>
+                              </div>
+                              <div style="flex:1;min-width:0;">
+                                <div style="font-size:12px;color:var(--t1);">{{ d.name }}</div>
+                                <div style="width:170px;height:5px;border-radius:3px;background:var(--raisedHov);margin-top:5px;overflow:hidden;">
+                                  <div style="height:100%;border-radius:3px;background:#7A8B96; {{ d.barDyn }}"></div>
+                                </div>
+                              </div>
+                              <div style="font-size:10.5px;color:var(--t3);flex:none;">{{ d.pctText }}</div>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ updatingShow }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;top:12px;right:14px;padding:5px 11px;border-radius:9px;background:rgba(14,14,16,.6);backdrop-filter:blur(10px);font-size:11px;color:#D8D7D2;animation:dm-pop .15s ease;">正在更新预览…</div>
+            </sc-if>
+
+            <sc-if value="{{ compareShow }}" hint-placeholder-val="{{ true }}">
+              <div role="button" onPointerDown="{{ compareDown }}" onPointerUp="{{ compareUp }}" onPointerLeave="{{ compareUp }}" style="position:absolute;left:50%;transform:translateX(-50%);bottom:62px;padding:7px 15px;border-radius:999px;backdrop-filter:blur(12px);font-size:12px;cursor:pointer;user-select:none;transition:all .15s;white-space:nowrap; {{ compareDyn }}">{{ compareText }}</div>
+            </sc-if>
+
+            <div data-screen-label="任务栏" style="position:absolute;left:-1px;right:-1px;bottom:-1px;height:49px;border-radius:0 0 15px 15px;overflow:hidden;background:rgba(30,30,34,.72);backdrop-filter:blur(30px) saturate(1.4);border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;padding:0 11px 1px;">
+              <div style="flex:1;"></div>
+              <div style="display:flex;align-items:center;gap:2px;">
+                <div role="button" title="开始" style="width:40px;height:40px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s;" style-hover="background:rgba(255,255,255,.09);">
+                  <div style="display:grid;grid-template-columns:8px 8px;grid-auto-rows:8px;gap:1.5px;">
+                    <div style="background:#5AA7E8;border-radius:1px;"></div>
+                    <div style="background:#5AA7E8;border-radius:1px;"></div>
+                    <div style="background:#5AA7E8;border-radius:1px;"></div>
+                    <div style="background:#5AA7E8;border-radius:1px;"></div>
+                  </div>
+                </div>
+                <div role="button" title="搜索" style="width:40px;height:40px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s;" style-hover="background:rgba(255,255,255,.09);">
+                  <div style="position:relative;width:15px;height:15px;">
+                    <div style="position:absolute;left:0;top:0;width:10px;height:10px;border-radius:6px;border:1.6px solid rgba(240,240,238,.85);box-sizing:border-box;"></div>
+                    <div style="position:absolute;left:9.5px;top:9.5px;width:1.6px;height:5px;border-radius:1px;background:rgba(240,240,238,.85);transform:rotate(-45deg);transform-origin:top center;"></div>
+                  </div>
+                </div>
+                <sc-for list="{{ taskApps }}" as="a" hint-placeholder-count="5">
+                  <div role="button" style="width:40px;height:40px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s;" style-hover="background:rgba(255,255,255,.09);">
+                    <div style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.3); {{ a.dyn }}">{{ a.g }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;">
+                <div style="font-size:9px;color:rgba(240,240,238,.7);padding:0 4px;">∧</div>
+                <div style="display:flex;gap:4px;align-items:center;padding:0 4px;">
+                  <div style="width:4px;height:4px;border-radius:2px;background:rgba(240,240,238,.6);"></div>
+                  <div style="width:4px;height:4px;border-radius:2px;background:rgba(240,240,238,.6);"></div>
+                  <div style="width:4px;height:4px;border-radius:2px;background:rgba(240,240,238,.6);"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;font-size:10.5px;line-height:1.35;color:rgba(240,240,238,.85);padding-right:4px;">
+                  <div>{{ clockTime }}</div>
+                  <div>{{ clockDate }}</div>
+                </div>
+                <div style="width:3px;height:40px;border-left:1px solid rgba(255,255,255,.14);margin-left:4px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <sc-if value="{{ panelScrim }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closePanel }}" style="position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:28;"></div>
+      </sc-if>
+
+      <sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeDrawer }}" style="position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:44;"></div>
+        <div data-screen-label="设置抽屉" style="position:absolute;top:0;right:0;bottom:0;width:320px;background:var(--bg);border-left:1px solid var(--hair);box-shadow:-30px 0 60px rgba(0,0,0,.4);z-index:45;animation:dm-drawer .22s ease;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;padding:14px 16px 10px;">
+            <div style="font-size:14px;font-weight:600;color:var(--t1);flex:1;">设置</div>
+            <div role="button" onClick="{{ closeDrawer }}" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;color:var(--t2);" style-hover="background:var(--raisedHov);">✕</div>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:4px 16px 20px;display:flex;flex-direction:column;gap:18px;">
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="font-size:11px;color:var(--t3);">外观主题</div>
+              <div style="display:flex;gap:2px;background:var(--chip);box-shadow:var(--chipEdge);border-radius:11px;padding:3px;">
+                <sc-for list="{{ themeChips }}" as="c" hint-placeholder-count="3">
+                  <div role="button" onClick="{{ c.pick }}" style="flex:1;text-align:center;padding:7px 0;border-radius:8px;font-size:12px;cursor:pointer;user-select:none;transition:all .15s; {{ c.dyn }}">{{ c.label }}</div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="flex:1;">
+                <div style="font-size:12.5px;color:var(--t1);">新图标自动美化</div>
+                <div style="font-size:11px;color:var(--t3);margin-top:1px;">桌面出现新图标时按当前风格处理</div>
+              </div>
+              <div role="button" onClick="{{ toggleKeep }}" style="width:32px;height:19px;border-radius:10px;position:relative;cursor:pointer;transition:background .2s;flex:none; {{ keepSwDyn }}">
+                <div style="position:absolute;top:2px;width:15px;height:15px;border-radius:8px;background:#FFFFFF;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3); {{ keepKnobDyn }}"></div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--hair);padding-top:14px;">
+              <div style="display:flex;align-items:center;gap:10px;padding:7px 0;">
+                <div style="flex:1;">
+                  <div style="font-size:12.5px;color:var(--t1);">还原快照</div>
+                  <div style="font-size:11px;color:var(--t3);margin-top:1px;">{{ snapText }}</div>
+                </div>
+                <div role="button" onClick="{{ onExportSnap }}" style="font-size:12px;color:var(--t2);cursor:pointer;padding:5px 11px;background:var(--chip);border-radius:8px;" style-hover="background:var(--raisedHov);">导出</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:7px 0;">
+                <div style="flex:1;">
+                  <div style="font-size:12.5px;color:var(--t1);">前后对比图</div>
+                  <div style="font-size:11px;color:var(--t3);margin-top:1px;">生成一张可分享的对比图片</div>
+                </div>
+                <div role="button" onClick="{{ onExport }}" style="font-size:12px;color:var(--t2);cursor:pointer;padding:5px 11px;background:var(--chip);border-radius:8px;" style-hover="background:var(--raisedHov);">保存</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--hair);padding-top:8px;">
+              <div role="button" onClick="{{ openAboutFromDrawer }}" style="display:flex;align-items:center;gap:10px;padding:9px 6px;cursor:pointer;border-radius:9px;" style-hover="background:var(--raisedHov);">
+                <div style="width:26px;height:26px;border-radius:9px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#FFF7F3;font-size:12px;flex:none;">✦</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12.5px;color:var(--t1);">关于桌面美颜</div>
+                  <div style="font-size:11px;color:var(--t3);margin-top:1px;">v0.9 · 让 Windows 回到它本该的样子</div>
+                </div>
+                <div style="color:var(--t3);font-size:12px;">›</div>
+              </div>
+              <div role="button" onClick="{{ openLogFromDrawer }}" style="display:flex;align-items:center;gap:10px;padding:9px 6px;cursor:pointer;border-radius:9px;" style-hover="background:var(--raisedHov);">
+                <div style="width:26px;height:26px;border-radius:9px;background:var(--raised);background:var(--chip);display:flex;align-items:center;justify-content:center;color:var(--t2);font-size:12px;flex:none;">↺</div>
+                <div style="flex:1;font-size:12.5px;color:var(--t1);">更新日志</div>
+                <div style="color:var(--t3);font-size:12px;">›</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ pickerOpen }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="调色盘" style="position:absolute;z-index:78;width:244px;background:var(--raised);background:var(--chip);border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.5);padding:12px;animation:dm-pop .14s ease;display:flex;flex-direction:column;gap:10px; {{ pickerPosDyn }}">
+          <div style="display:flex;align-items:center;">
+            <div style="font-size:12px;font-weight:600;color:var(--t1);flex:1;">{{ pickerTitle }}</div>
+            <div role="button" onClick="{{ closePicker }}" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:7px;cursor:pointer;color:var(--t3);font-size:11px;" style-hover="background:var(--raisedHov);">✕</div>
+          </div>
+          <div onPointerDown="{{ svDown }}" onPointerMove="{{ svMove }}" style="position:relative;height:122px;border-radius:10px;cursor:crosshair;touch-action:none; {{ svDyn }}">
+            <div style="position:absolute;width:14px;height:14px;border-radius:8px;border:2.5px solid #FFFFFF;box-shadow:0 1px 4px rgba(0,0,0,.5);transform:translate(-7px,-7px);pointer-events:none; {{ svCursorDyn }}"></div>
+          </div>
+          <div onPointerDown="{{ hueDown }}" onPointerMove="{{ hueMove }}" style="position:relative;height:14px;border-radius:8px;cursor:pointer;touch-action:none;background:linear-gradient(90deg,#FF0000,#FFFF00,#00FF00,#00FFFF,#0000FF,#FF00FF,#FF0000);">
+            <div style="position:absolute;top:-2px;width:18px;height:18px;border-radius:10px;border:2.5px solid #FFFFFF;box-shadow:0 1px 4px rgba(0,0,0,.5);transform:translateX(-9px);pointer-events:none; {{ hueCursorDyn }}"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:26px;height:26px;border-radius:8px;flex:none;box-shadow:inset 0 0 0 1px rgba(128,128,128,.25); {{ pickerPrevDyn }}"></div>
+            <input value="{{ pickerHexVal }}" onChange="{{ onPickerHex }}" placeholder="#FF6F5E" style="flex:1;min-width:0;width:70px;background:var(--bg);border-radius:8px;color:var(--t1);font-size:11.5px;padding:5px 8px;outline:none;font-family:ui-monospace,monospace;"></input>
+            <div role="button" onClick="{{ onEyedrop }}" title="屏幕取色" style="width:28px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--chip);cursor:pointer;color:var(--t2);font-size:13px;flex:none;" style-hover="background:var(--raisedHov);">⌖</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="font-size:10.5px;color:var(--t3);">从壁纸自动提取</div>
+            <div style="display:flex;gap:6px;">
+              <sc-for list="{{ wallPalChips }}" as="s" hint-placeholder-count="4">
+                <div role="button" onClick="{{ s.pick }}" style="width:22px;height:22px;border-radius:11px;cursor:pointer;transition:transform .12s;box-shadow:inset 0 0 0 1px rgba(128,128,128,.2); {{ s.dyn }}" style-hover="transform:scale(1.12);"></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="font-size:10.5px;color:var(--t3);">快捷选择</div>
+            <div style="display:flex;gap:6px;">
+              <sc-for list="{{ quickPalChips }}" as="s" hint-placeholder-count="6">
+                <div role="button" onClick="{{ s.pick }}" style="width:22px;height:22px;border-radius:11px;cursor:pointer;transition:transform .12s;box-shadow:inset 0 0 0 1px rgba(128,128,128,.2); {{ s.dyn }}" style-hover="transform:scale(1.12);"></div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ overflowOpen }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="更多菜单" style="position:absolute;top:44px;right:82px;z-index:75;width:172px;background:var(--raised);background:var(--chip);border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.5);padding:6px;animation:dm-pop .12s ease;">
+          <sc-for list="{{ overflowItems }}" as="o" hint-placeholder-count="4">
+            <div role="button" onClick="{{ o.pick }}" style="padding:7px 10px;border-radius:8px;font-size:12.5px;color:var(--t1);cursor:pointer;" style-hover="background:var(--raisedHov);">{{ o.label }}</div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ aboutOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeAbout }}" style="position:absolute;inset:0;background:rgba(0,0,0,.45);z-index:84;"></div>
+        <div data-screen-label="关于面板" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:85;width:380px;background:var(--bg);border-radius:18px;box-shadow:0 40px 90px rgba(0,0,0,.6);padding:26px 24px 20px;animation:dm-pop .18s ease;">
+          <sc-if value="{{ aboutMain }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:14px;">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
+                <div style="width:56px;height:56px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#FFF7F3;font-size:24px; {{ logoAboutDyn }}">✦</div>
+                <div>
+                  <div style="font-size:17px;font-weight:600;color:var(--t1);">桌面美颜</div>
+                  <div style="font-size:11.5px;color:var(--t3);margin-top:3px;">DeskMakeover · v0.9.0（2026.07）</div>
+                </div>
+                <div style="font-size:12.5px;color:var(--t2);">让 Windows 回到它本该的样子</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;">
+                  <div style="font-size:10.5px;color:var(--t3);padding:4px 10px;border-radius:8px;background:var(--chip);">本地运行</div>
+                  <div style="font-size:10.5px;color:var(--t3);padding:4px 10px;border-radius:8px;background:var(--chip);">无账号</div>
+                  <div style="font-size:10.5px;color:var(--t3);padding:4px 10px;border-radius:8px;background:var(--chip);">无遥测</div>
+                  <div style="font-size:10.5px;color:var(--t3);padding:4px 10px;border-radius:8px;background:var(--chip);">全程可还原</div>
+                  <div style="font-size:10.5px;color:var(--t3);padding:4px 10px;border-radius:8px;background:var(--chip);">免费开源</div>
+                </div>
+              </div>
+
+              <a href="https://github.com/nicepkg/deskmakeover" target="_blank" style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:13px;background:var(--chip);text-decoration:none;cursor:pointer;transition:background .15s;" style-hover="background:var(--raisedHov);">
+                <div style="width:30px;height:30px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--t1);font-family:ui-monospace,monospace;flex:none;">&lt;/&gt;</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12.5px;color:var(--t1);font-weight:600;">开源地址 · 欢迎 Star</div>
+                  <div style="font-size:11px;color:var(--t3);margin-top:1px;">github.com/nicepkg/deskmakeover</div>
+                </div>
+                <div style="color:var(--t3);font-size:12px;flex:none;">↗</div>
+              </a>
+
+              <div data-screen-label="作者卡" style="display:flex;flex-direction:column;gap:10px;padding:12px 13px;border-radius:13px;background:var(--chip);">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <div style="width:34px;height:34px;border-radius:12px;background:color-mix(in srgb,var(--accent) 16%,transparent);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--accentInk);flex:none;">明</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-size:12.5px;font-weight:600;color:var(--t1);">小明 · XiaomingLab</div>
+                    <div style="font-size:11px;color:var(--t3);margin-top:1px;">同一件事做两次，就写个工具</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                  <a href="https://xiaominglab.com" target="_blank" style="font-size:11.5px;color:var(--t2);padding:5px 10px;border-radius:8px;background:var(--bg);text-decoration:none;transition:color .15s;" style-hover="color:var(--accentInk);">个人主页</a>
+                  <a href="https://github.com/2214962083" target="_blank" style="font-size:11.5px;color:var(--t2);padding:5px 10px;border-radius:8px;background:var(--bg);text-decoration:none;transition:color .15s;" style-hover="color:var(--accentInk);">GitHub</a>
+                  <a href="https://x.com/jinmingyang666" target="_blank" style="font-size:11.5px;color:var(--t2);padding:5px 10px;border-radius:8px;background:var(--bg);text-decoration:none;transition:color .15s;" style-hover="color:var(--accentInk);">X</a>
+                  <a href="https://space.bilibili.com/83540912" target="_blank" style="font-size:11.5px;color:var(--t2);padding:5px 10px;border-radius:8px;background:var(--bg);text-decoration:none;transition:color .15s;" style-hover="color:var(--accentInk);">哔哩哔哩</a>
+                  <a href="https://www.douyin.com/user/MS4wLjABAAAAAHGEUOQlkdfgHzzs88wWgKWwl2wyEcRYvodqmwfvK_k" target="_blank" style="font-size:11.5px;color:var(--t2);padding:5px 10px;border-radius:8px;background:var(--bg);text-decoration:none;transition:color .15s;" style-hover="color:var(--accentInk);">抖音</a>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:8px;justify-content:center;">
+                <div role="button" onClick="{{ onUpdate }}" style="padding:8px 15px;border-radius:10px;background:var(--chip);font-size:12px;color:var(--t1);cursor:pointer;user-select:none;transition:background .15s;" style-hover="background:var(--raisedHov);">检查更新</div>
+                <div role="button" onClick="{{ showLog }}" style="padding:8px 15px;border-radius:10px;background:var(--chip);font-size:12px;color:var(--t1);cursor:pointer;user-select:none;transition:background .15s;" style-hover="background:var(--raisedHov);">更新日志</div>
+                <div role="button" onClick="{{ closeAbout }}" style="padding:8px 20px;border-radius:10px;background:var(--accent);color:#FFF7F3;font-size:12px;font-weight:600;cursor:pointer;user-select:none;" style-active="transform:scale(.97);">好</div>
+              </div>
+              <div style="font-size:10.5px;color:var(--t3);text-align:center;">© 2026 XiaomingLab · Windows 10 / 11</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ aboutLog }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <div style="display:flex;align-items:center;">
+                <div role="button" onClick="{{ showAboutMain }}" style="font-size:12px;color:var(--t3);cursor:pointer;" style-hover="color:var(--t1);">← 关于</div>
+                <div style="flex:1;text-align:center;font-size:13.5px;font-weight:600;color:var(--t1);">更新日志</div>
+                <div role="button" onClick="{{ closeAbout }}" style="font-size:12px;color:var(--t3);cursor:pointer;" style-hover="color:var(--t1);">✕</div>
+              </div>
+              <div style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding-right:4px;">
+                <sc-for list="{{ changelog }}" as="cl" hint-placeholder-count="2">
+                  <div style="display:flex;flex-direction:column;gap:6px;">
+                    <div style="font-size:12px;font-weight:600;color:var(--accent);">{{ cl.v }}</div>
+                    <sc-for list="{{ cl.items }}" as="li" hint-placeholder-count="3">
+                      <div style="font-size:12px;color:var(--t2);line-height:1.55;display:flex;gap:7px;"><span style="color:var(--t3);">·</span><span>{{ li.t }}</span></div>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ menuShow }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="图标右键菜单" style="position:absolute;z-index:70;width:188px;background:var(--raised);background:var(--chip);border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.5);padding:6px;animation:dm-pop .12s ease; {{ menuDyn }}">
+          <div style="font-size:11px;color:var(--t3);padding:5px 9px 6px;">{{ menuTitle }}</div>
+          <div role="button" onClick="{{ menuKeep }}" style="display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:8px;font-size:12.5px;color:var(--t1);cursor:pointer;" style-hover="background:var(--raisedHov);"><span style="width:13px;color:var(--accent);">{{ menuKeepMark }}</span>保留原样</div>
+          <div role="button" onClick="{{ menuReset }}" style="display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:8px;font-size:12.5px;color:var(--t1);cursor:pointer;" style-hover="background:var(--raisedHov);"><span style="width:13px;"></span>跟随全局样式</div>
+          <div style="font-size:11px;color:var(--t3);padding:8px 9px 5px;border-top:1px solid var(--hair);margin-top:5px;">单独配色</div>
+          <div style="display:flex;gap:6px;padding:2px 9px 7px;">
+            <sc-for list="{{ menuSwatches }}" as="s" hint-placeholder-count="6">
+              <div role="button" onClick="{{ s.pick }}" style="width:18px;height:18px;border-radius:9px;cursor:pointer;transition:transform .12s; {{ s.dyn }}" style-hover="transform:scale(1.15);"></div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ toastShow }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:50%;transform:translateX(-50%);bottom:20px;z-index:80;padding:9px 18px;border-radius:11px;background:rgba(22,22,26,.88);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.09);color:#F2F2F0;font-size:12.5px;box-shadow:0 12px 34px rgba(0,0,0,.45);animation:dm-pop .18s ease;white-space:nowrap;">{{ toastText }}</div>
+      </sc-if>
+
+    </div>
+  </div>
+
+  <div style="font-size:12px;color:#575652;text-align:center;line-height:1.9;max-width:680px;text-wrap:pretty;">可以直接玩：点风格卡片 / 外形 / 配色实时换预览 · 右键任意图标单独设置 · 按住「对比原样」·「未来形态」里每个模块都能点进去（净化 / 文管 / 壁纸）· ⋯ 菜单里有关于与更新日志</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 1440, &quot;height&quot;: 980}, &quot;accentColor&quot;: {&quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#FF6F5E&quot;, &quot;options&quot;: [&quot;#FF6F5E&quot;, &quot;#F0564A&quot;, &quot;#FF8E63&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;品牌&quot;}, &quot;wallpaper&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;暮色&quot;, &quot;options&quot;: [&quot;暮色&quot;, &quot;炭岩&quot;, &quot;墨海&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;演示画布&quot;}, &quot;reduceMotion&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;动效&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this._win = React.createRef();
+    this._timers = [];
+    this.state = this.initState();
+  }
+
+  initState() {
+    return {
+      mode: 'regular', era: 'today',
+      shape: 'apple', colorMode: 'orig', tint: '#FF6F5E', dist: 'mark', markStyle: 'glass', markColor: null, sizeMode: 'mid',
+      picker: null, ph: 8, ps: 0.63, pv: 1, pickerHex: '',
+      openAxes: { shape: false, color: false, dist: false, size: false },
+      history: [], histOpen: false,
+      ready: false, phase: 'idle', applied: false, snap: null,
+      comparing: false, peekId: null, overrides: {},
+      drawerOpen: false, panelOpen: false, theme: 'dark',
+      moduleView: 'desktop', overflowOpen: false, aboutOpen: false, aboutTab: 'about',
+      expApplied: false, expFolders: true, expDrives: true, wallChoice: null, wallApplied: null,
+      adsOn: { start: true, lock: true, exp: true, cfg: true, adid: true, hl: true }, adsInclude: true,
+      excl: { icons: false, ads: false, exp: false, wall: false }, keepUp: true,
+      menu: null, toast: null, updating: false, scale: 1, hexDraft: ''
+    };
+  }
+
+  componentDidMount() {
+    this._tm(() => this.setState({ ready: true }), 950);
+    this._onResize = () => this._fit();
+    window.addEventListener('resize', this._onResize);
+    this._onKey = (e) => { if (e.key === 'Escape') this.setState({ menu: null, drawerOpen: false, panelOpen: false, overflowOpen: false, aboutOpen: false, picker: null }); };
+    window.addEventListener('keydown', this._onKey);
+    this._fit();
+    this._accent();
+  }
+  componentDidUpdate() { this._accent(); if (this.state.markStyle === 'halo') this.setState({ markStyle: 'glass' }); }
+  componentWillUnmount() {
+    window.removeEventListener('resize', this._onResize);
+    window.removeEventListener('keydown', this._onKey);
+    this._timers.forEach(clearTimeout);
+  }
+  _tm(fn, ms) { this._timers.push(setTimeout(fn, ms)); }
+  _accent() { const el = this._win.current; if (el) el.style.setProperty('--accent', this.props.accentColor ?? '#FF6F5E'); }
+  _dims(mode) { return (mode || this.state.mode) === 'regular' ? { w: 1340, h: 840 } : { w: 1024, h: 700 }; }
+  _fit(mode) {
+    const d = this._dims(mode);
+    const s = Math.min(1, (window.innerWidth - 36) / d.w, (window.innerHeight - 170) / d.h);
+    this.setState({ scale: Math.max(0.4, s) });
+  }
+
+  // ---------- helpers ----------
+  toastMsg(m) { clearTimeout(this._toastT); this.setState({ toast: m }); this._toastT = setTimeout(() => this.setState({ toast: null }), 2600); }
+  bump() { clearTimeout(this._updT); this.setState({ updating: true }); this._updT = setTimeout(() => this.setState({ updating: false }), 420); }
+  setAxis(p) { this.setState(p); this.bump(); }
+
+  sePath(S, r, n) {
+    const key = S.toFixed(1) + '-' + r + '-' + n;
+    const c = this._pc || (this._pc = {});
+    if (c[key]) return c[key];
+    const R = S * r, k = 2 / n, N = 8, arr = [];
+    const push = (x, y) => arr.push(x.toFixed(2) + ' ' + y.toFixed(2));
+    const corner = (cx, cy, a0, a1) => {
+      for (let i = 0; i <= N; i++) {
+        const t = (a0 + (a1 - a0) * i / N) * Math.PI / 180;
+        const co = Math.cos(t), si = Math.sin(t);
+        push(cx + R * Math.sign(co) * Math.pow(Math.abs(co), k), cy + R * Math.sign(si) * Math.pow(Math.abs(si), k));
+      }
+    };
+    push(R, 0); push(S - R, 0);
+    corner(S - R, R, -90, 0); push(S, S - R);
+    corner(S - R, S - R, 0, 90); push(R, S);
+    corner(R, S - R, 90, 180); push(0, R);
+    corner(R, R, 180, 270);
+    return c[key] = 'path("M' + arr[0] + 'L' + arr.slice(1).join(' ') + 'Z")';
+  }
+
+  hexRgb(h) { h = h.replace('#', ''); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
+  lum(hex) { const [r, g, b] = this.hexRgb(hex); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; }
+  hsl(hex) {
+    const [r0, g0, b0] = this.hexRgb(hex).map(v => v / 255);
+    const mx = Math.max(r0, g0, b0), mn = Math.min(r0, g0, b0), d = mx - mn;
+    let h = 0;
+    if (d) {
+      if (mx === r0) h = ((g0 - b0) / d) % 6; else if (mx === g0) h = (b0 - r0) / d + 2; else h = (r0 - g0) / d + 4;
+      h = Math.round(h * 60); if (h < 0) h += 360;
+    }
+    const l = (mx + mn) / 2;
+    const s = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+    return [h, Math.round(s * 100)];
+  }
+  grayOf(l) {
+    const v = Math.round(255 * Math.min(0.94, Math.max(0.08, 0.5 + (l - 0.5) * 1.4)));
+    const x = v.toString(16).padStart(2, '0');
+    return { hex: '#' + x + x + x, v };
+  }
+
+  hsvToHex(h, s, v) {
+    const f = (n0) => {
+      const k = (n0 + h / 60) % 6;
+      const c0 = v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+      return Math.round(c0 * 255).toString(16).padStart(2, '0');
+    };
+    return ('#' + f(5) + f(3) + f(1)).toUpperCase();
+  }
+  hexToHsv(hex) {
+    const [r0, g0, b0] = this.hexRgb(hex).map(x => x / 255);
+    const mx = Math.max(r0, g0, b0), mn = Math.min(r0, g0, b0), d = mx - mn;
+    let h = 0;
+    if (d) {
+      if (mx === r0) h = ((g0 - b0) / d) % 6; else if (mx === g0) h = (b0 - r0) / d + 2; else h = (r0 - g0) / d + 4;
+      h *= 60; if (h < 0) h += 360;
+    }
+    return [h, mx ? d / mx : 0, mx];
+  }
+
+  openPicker(target, e) {
+    const el = this._win.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const sc = this.state.scale, dims = this._dims();
+    const x = Math.min(Math.max((e.clientX - r.left) / sc, 10), dims.w - 264);
+    const y = Math.min(Math.max((e.clientY - r.top) / sc - 60, 54), dims.h - 430);
+    const accent = this.props.accentColor ?? '#FF6F5E';
+    const cur = target === 'tint' ? this.state.tint : (this.state.markColor || accent);
+    const [h, s, v] = this.hexToHsv(cur);
+    this.setState({ picker: { target, x, y }, ph: h, ps: s, pv: v, pickerHex: cur.toUpperCase() });
+  }
+  applyPicked(hex) {
+    const p = this.state.picker; if (!p) return;
+    if (p.target === 'tint') this.setState({ tint: hex, colorMode: 'mono', pickerHex: hex });
+    else this.setState({ markColor: hex, pickerHex: hex });
+  }
+  setHsv(h, s, v) {
+    const hex = this.hsvToHex(h, s, v);
+    this.setState({ ph: h, ps: s, pv: v });
+    this.applyPicked(hex);
+  }
+  seedHex(hex) {
+    const [h, s, v] = this.hexToHsv(hex);
+    this.setState({ ph: h, ps: s, pv: v, pickerHex: hex.toUpperCase() });
+    this.applyPicked(hex.toUpperCase());
+  }
+  _svPick(e) {
+    const r = e.currentTarget.getBoundingClientRect();
+    const s = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const v = 1 - Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    this.setHsv(this.state.ph, s, v);
+  }
+  _huePick(e) {
+    const r = e.currentTarget.getBoundingClientRect();
+    const h = Math.min(359.9, Math.max(0, (e.clientX - r.left) / r.width * 360));
+    this.setHsv(h, this.state.ps, this.state.pv);
+  }
+  async eyedrop() {
+    if (!window.EyeDropper) { this.toastMsg('此浏览器暂不支持屏幕取色'); return; }
+    try {
+      const r = await new window.EyeDropper().open();
+      this.seedHex(r.sRGBHex);
+    } catch (e) { }
+  }
+
+  markPreview(style, shape) {
+    const sz = 22, clip = this.clipFor(shape, sz);
+    const accent = this.props.accentColor ?? '#FF6F5E';
+    const mc = this.state.markColor || accent;
+    const base = {
+      pvUnder: 'display:none;',
+      pvCard: 'left:0;top:0;width:' + sz + 'px;height:' + sz + 'px;background:#E4574D;clip-path:' + clip + ';',
+      pvG: 'color:rgba(255,255,255,.94);',
+      pvOver: 'display:none;', pvOverG: '', pvOverChar: ''
+    };
+    if (style === 'card') {
+      base.pvUnder = 'left:3.4px;top:3.6px;width:19.4px;height:19.4px;background:rgba(238,234,228,.94);clip-path:' + this.clipFor(shape, 19.4) + ';';
+    } else if (style === 'glass') {
+      base.pvOver = 'left:1.2px;top:' + (sz - 9.7) + 'px;width:8.5px;height:8.5px;border-radius:50%;background:rgba(255,255,255,.82);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.35);';
+      base.pvOverG = 'display:block;width:3px;height:3px;border-top:1.2px solid #26262A;border-right:1.2px solid #26262A;transform:translate(-0.4px,0.4px);';
+    } else if (style === 'echo') {
+      base.pvUnder = 'left:3.1px;top:3.4px;width:20.2px;height:20.2px;background:rgba(255,255,255,.45);clip-path:' + this.clipFor(shape, 20.2) + ';';
+    } else if (style === 'satin') {
+      base.pvOver = 'left:0;top:0;width:' + sz + 'px;height:' + sz + 'px;clip-path:' + clip + ';background:linear-gradient(45deg,rgba(255,255,255,.65) 0%,rgba(255,255,255,.3) 20%,transparent 46%);';
+    } else if (style === 'arc') {
+      base.pvOver = 'left:0;top:0;width:' + sz + 'px;height:' + sz + 'px;clip-path:' + clip + ';background:radial-gradient(circle at 15% 88%,color-mix(in srgb,' + mc + ' 82%,white) 0%,transparent 46%);';
+    } else if (style === 'fold') {
+      const cD = { apple: 0.26, samsung: 0.28, circle: 0.30 }[shape] || 0.28;
+      const c0 = sz * cD;
+      const cut = 'linear-gradient(315deg,transparent ' + (c0 * 0.707).toFixed(1) + 'px,#000 ' + (c0 * 0.707 + 0.5).toFixed(1) + 'px)';
+      base.pvCard += 'mask:' + cut + ';-webkit-mask:' + cut + ';';
+      base.pvOver = 'left:0;top:0;width:' + sz + 'px;height:' + sz + 'px;clip-path:' + clip + ';';
+      base.pvOverG = 'position:absolute;display:block;left:' + (sz - c0).toFixed(1) + 'px;top:' + (sz - c0).toFixed(1) + 'px;width:' + c0.toFixed(1) + 'px;height:' + c0.toFixed(1) + 'px;border-top-left-radius:60%;background:linear-gradient(315deg,transparent 49%,#A8A296 49.8%,#FFFDF8 58%,#E8E2D8 78%,#C4BDAF 100%);filter:drop-shadow(-1px -1px 1.5px rgba(0,0,0,.3));';
+    } else if (style === 'ring') {
+      base.pvUnder = 'left:-1.5px;top:-1.5px;width:25px;height:25px;background:' + mc + ';clip-path:' + this.clipFor(shape, 25) + ';';
+    }
+    return base;
+  }
+
+  icons() {
+    return [
+      { id: 'recycle', label: '回收站', c: '#7A8B84', g: '回', kind: 'app', szf: 0.94, rad: 10 },
+      { id: 'pc', label: '此电脑', c: '#5E6A78', g: '电', kind: 'app', szf: 1, rad: 8 },
+      { id: 'music', label: '星潮音乐', c: '#E4574D', g: 'M', kind: 'app', sc: 1, szf: 0.9, rad: 14 },
+      { id: 'photo', label: '拾光相册', c: '#3FA57C', g: 'P', kind: 'app', sc: 1, szf: 0.97, rad: 8 },
+      { id: 'docs', label: '文档', c: '#D9A94E', g: '文', kind: 'folder', szf: 0.95, rad: 9 },
+      { id: 'dl', label: '下载', c: '#D9A94E', g: '下', kind: 'folder', szf: 0.95, rad: 9 },
+      { id: 'design', label: '设计稿', c: '#D9A94E', g: '设', kind: 'folder', szf: 0.95, rad: 9 },
+      { id: 'browser', label: '峰览浏览器', c: '#4C8DFF', g: 'F', kind: 'round', sc: 1, szf: 0.93 },
+      { id: 'note', label: '云笺笔记', c: '#2FA98C', g: 'N', kind: 'app', sc: 1, szf: 0.88, rad: 12 },
+      { id: 'word', label: '季度报告', c: '#3D6FD6', g: 'W', kind: 'doc', szf: 0.92 },
+      { id: 'excel', label: '预算表', c: '#2E9C5C', g: 'X', kind: 'doc', szf: 0.92 },
+      { id: 'ppt', label: '路演提案', c: '#D6572E', g: 'P', kind: 'doc', szf: 0.92 },
+      { id: 'lake', label: '蓝湖设计', c: '#4257C9', g: '蓝', kind: 'app', sc: 1, szf: 1, rad: 16 },
+      { id: 'video', label: '影巢播放器', c: '#8C3B4A', g: '影', kind: 'round', sc: 1, szf: 0.96 },
+      { id: 'term', label: '终端', c: '#23262B', g: '>', kind: 'app', sc: 1, szf: 0.9, rad: 8 },
+      { id: 'game', label: '星野游戏', c: '#7B4FD0', g: '星', kind: 'app', sc: 1, szf: 0.98, rad: 13 },
+      { id: 'meet', label: '会议助手', c: '#2E9C8F', g: '会', kind: 'app', sc: 1, szf: 0.9, rad: 10 },
+      { id: 'ime', label: '输入法', c: '#8A877F', g: '拼', kind: 'app', szf: 0.86, rad: 8 },
+      { id: 'png', label: '海报.png', c: '#3FB6A8', g: '图', kind: 'doc', szf: 0.92 },
+      { id: 'memo', label: '便签', c: '#E8C34A', g: '便', kind: 'app', szf: 0.9, rad: 11 },
+      { id: 'pureblack', label: '纯黑', c: '#000000', g: '黑', kind: 'app', sc: 1, szf: 0.94, rad: 10 },
+      { id: 'purewhite', label: '纯白', c: '#FFFFFF', g: '白', kind: 'app', sc: 1, szf: 0.94, rad: 10 }
+    ];
+  }
+
+  // Shape masks per official specs:
+  // - apple: quintic superellipse (Lamé |x|^5+|y|^5=1) — Apple's continuous-curvature
+  //   icon curve; apparent corner radius ≈ 22.37% of width, sides visually flat.
+  // - samsung: One UI's official adaptive-icon squircle mask path
+  //   (M50,0 C10,0 0,10 0,50 C0,90 10,100 50,100 C90,100 100,90 100,50 C100,10 90,0 50,0), scaled.
+  // - circle: exact circle.
+  clipFor(shape, S) {
+    const key = shape + '|' + S.toFixed(1);
+    const c = this._cc || (this._cc = {});
+    if (c[key]) return c[key];
+    let out;
+    if (shape === 'circle') {
+      out = 'circle(50% at 50% 50%)';
+    } else if (shape === 'samsung') {
+      const u = (v) => (v * S / 100).toFixed(2);
+      out = 'path("M' + u(50) + ' 0C' + u(10) + ' 0 0 ' + u(10) + ' 0 ' + u(50) +
+        'C0 ' + u(90) + ' ' + u(10) + ' ' + u(100) + ' ' + u(50) + ' ' + u(100) +
+        'C' + u(90) + ' ' + u(100) + ' ' + u(100) + ' ' + u(90) + ' ' + u(100) + ' ' + u(50) +
+        'C' + u(100) + ' ' + u(10) + ' ' + u(90) + ' 0 ' + u(50) + ' 0Z")';
+    } else {
+      const k = 2 / 5, h = S / 2, pts = [];
+      for (let i = 0; i < 96; i++) {
+        const t = i / 96 * Math.PI * 2;
+        const co = Math.cos(t), si = Math.sin(t);
+        pts.push((h + h * Math.sign(co) * Math.pow(Math.abs(co), k)).toFixed(2) + ' ' + (h + h * Math.sign(si) * Math.pow(Math.abs(si), k)).toFixed(2));
+      }
+      out = 'path("M' + pts[0] + 'L' + pts.slice(1).join(' ') + 'Z")';
+    }
+    return c[key] = out;
+  }
+
+  wallDefs() {
+    return [
+      { id: '暮色', desc: '暖夜与一点炉火' },
+      { id: '炭岩', desc: '安静的中性灰' },
+      { id: '墨海', desc: '深海般的墨绿' }
+    ];
+  }
+
+  wallInfo(id) {
+    const w = id || this.state.wallChoice || (this.props.wallpaper ?? '暮色');
+    const map = {
+      '暮色': { bg: 'background:linear-gradient(168deg,#1B1A21 0%,#251E20 42%,#382520 76%,#48301F 100%);', glow: 'background:radial-gradient(70% 55% at 78% 108%,rgba(255,140,100,.22) 0%,rgba(255,140,100,0) 62%);', tint: '#C97B54', pal: ['#C97B54', '#E3A075', '#6B4433', '#2A211E'] },
+      '炭岩': { bg: 'background:linear-gradient(165deg,#18191C 0%,#212226 55%,#2A2B30 100%);', glow: 'background:radial-gradient(60% 50% at 20% -8%,rgba(255,255,255,.07),transparent 65%);', tint: '#8F949B', pal: ['#9BA1A8', '#6F757C', '#41454B', '#232529'] },
+      '墨海': { bg: 'background:linear-gradient(165deg,#121E1C 0%,#1A2A26 52%,#22352C 100%);', glow: 'background:radial-gradient(65% 55% at 80% 110%,rgba(95,190,150,.16),transparent 62%);', tint: '#4E8F7B', pal: ['#5FA98B', '#3E7A64', '#27473C', '#16241F'] }
+    };
+    return map[w] || map['暮色'];
+  }
+
+  styledFor(it, mode, tint) {
+    if (it.kind === 'doc') {
+      if (mode === 'orig') return { bg: '#F7F7F4', fg: it.c, l: 0.94 };
+      if (mode === 'bw') return { bg: '#EFEFED', fg: '#3B3B3F', l: 0.92 };
+      const [h, s] = this.hsl(tint);
+      return { bg: 'hsl(' + h + ' ' + Math.round(s * 0.5) + '% 90%)', fg: 'hsl(' + h + ' ' + Math.round(s * 0.9) + '% 30%)', l: 0.9 };
+    }
+    const l = this.lum(it.c);
+    if (mode === 'orig') return { bg: it.c, fg: l > 0.66 ? 'rgba(22,22,24,.85)' : 'rgba(255,255,255,.94)', l };
+    if (mode === 'bw') { const g = this.grayOf(l); return { bg: g.hex, fg: g.v > 168 ? '#2A2A2E' : 'rgba(255,255,255,.92)', l: g.v / 255 }; }
+    const [h, s] = this.hsl(tint);
+    const L = Math.round(26 + 46 * l);
+    return { bg: 'hsl(' + h + ' ' + Math.round(s * 0.85) + '% ' + L + '%)', fg: L > 56 ? '#26262A' : 'rgba(255,255,255,.94)', l: L / 100 };
+  }
+
+  presetsDef() {
+    const wallTint = this.wallInfo().tint;
+    return [
+      { id: 'apple', name: '苹果极简', desc: '统一圆角 · 原彩', set: { shape: 'apple', colorMode: 'orig', dist: 'mark' } },
+      { id: 'candy', name: '糖果彩', desc: '饱满曲线 · 缤纷', set: { shape: 'samsung', colorMode: 'orig', dist: 'mark' } },
+      { id: 'bw', name: '纯净黑白', desc: '安静的灰阶秩序', set: { shape: 'apple', colorMode: 'bw', dist: 'mark' } },
+      { id: 'wall', name: '壁纸同色', desc: '取壁纸主色统一', set: { shape: 'apple', colorMode: 'mono', dist: 'mark', tint: wallTint } }
+    ];
+  }
+  activePreset() {
+    const st = this.state;
+    return this.presetsDef().find(p => {
+      const s = p.set;
+      if (s.shape !== st.shape || s.colorMode !== st.colorMode || s.dist !== st.dist) return false;
+      if (s.tint && s.tint !== st.tint) return false;
+      return true;
+    }) || null;
+  }
+
+  isDirty() {
+    const { applied, snap, shape, colorMode, tint, dist, sizeMode, markStyle, markColor } = this.state;
+    if (!applied || !snap) return false;
+    return snap.shape !== shape || snap.colorMode !== colorMode || snap.tint !== tint || snap.dist !== dist || snap.sizeMode !== sizeMode || snap.markStyle !== markStyle || snap.markColor !== markColor;
+  }
+
+  // ---------- actions ----------
+  labelFor(set) {
+    const sh = { apple: '苹果', circle: '纯圆', samsung: '三星' }[set.shape];
+    const co = set.colorMode === 'mono' ? '单色' : (set.colorMode === 'bw' ? '黑白' : '原彩');
+    const di = set.dist === 'keep' ? '经典箭头' : (set.dist === 'none' ? '无标识'
+      : ({ glass: '玻璃箭头', card: '双层卡片', echo: '幽灵叠影', satin: '缎光角', arc: '珐琅光弧', fold: '卷角', ring: '细描边' }[set.markStyle] || '标识'));
+    return sh + ' · ' + co + ' · ' + di;
+  }
+  _nowT() {
+    const n = new Date();
+    return n.getHours().toString().padStart(2, '0') + ':' + n.getMinutes().toString().padStart(2, '0');
+  }
+  applyVersion(v) {
+    const s2 = Object.assign({}, v.set);
+    const entry = { t: this._nowT(), label: this.labelFor(s2), set: Object.assign({}, s2) };
+    this.setState(Object.assign({}, s2, {
+      applied: true, snap: Object.assign({}, s2), phase: 'bloom',
+      history: [entry].concat(this.state.history || []).slice(0, 10)
+    }));
+    this.toastMsg('已回到：' + entry.label);
+    this._tm(() => this.setState(s => s.phase === 'bloom' ? { phase: 'idle' } : null), 1200);
+  }
+
+  doApply() {
+    const st = this.state;
+    if (!st.ready || st.phase === 'working') return;
+    if (st.applied && !this.isDirty()) return;
+    this.setState({ phase: 'working' });
+    this._tm(() => {
+      const { shape, colorMode, tint, dist, sizeMode, markStyle, markColor } = this.state;
+      const snapSet = { shape, colorMode, tint, dist, sizeMode, markStyle, markColor };
+      this.setState({
+        applied: true, snap: snapSet, phase: 'bloom',
+        history: [{ t: this._nowT(), label: this.labelFor(snapSet), set: snapSet }].concat(this.state.history || []).slice(0, 10)
+      });
+      this.toastMsg(this.isDirtyMsgApplied ? '' : '美化完成 · 已保存还原快照');
+      this._tm(() => this.setState(s => s.phase === 'bloom' ? { phase: 'idle' } : null), 1500);
+    }, 620);
+  }
+  doRestore() {
+    this.setState({ phase: 'settle', applied: false, snap: null });
+    this.toastMsg('已还原 · 桌面回到原来的样子');
+    this._tm(() => this.setState(s => s.phase === 'settle' ? { phase: 'idle' } : null), 1200);
+  }
+
+  chip(sel) {
+    return sel
+      ? 'background:color-mix(in srgb,var(--accent) 17%,transparent);color:var(--accentInk);font-weight:600;'
+      : 'background:var(--chip);color:var(--t2);box-shadow:var(--chipEdge);';
+  }
+  mkToggle(on, fn) {
+    return {
+      swDyn: 'background:' + (on ? 'var(--accent)' : 'rgba(128,128,128,.35)') + ';',
+      knobDyn: 'left:' + (on ? 15 : 2) + 'px;',
+      toggle: fn
+    };
+  }
+
+  // ---------- render ----------
+  renderVals() {
+    const st = this.state;
+    const rm = !!this.props.reduceMotion;
+    const anim = (s) => rm ? '' : s;
+    const dims = this._dims();
+    const isCompact = st.mode === 'compact';
+    const eraFuture = st.era === 'future';
+    const S = { small: 52, mid: 64, big: 76 }[st.sizeMode];
+    const boxW = S * 1.08, boxH = S * 1.10;
+    const clip = this.clipFor(st.shape, S);
+    const wall = this.wallInfo();
+    const dirty = this.isDirty();
+    const ap = this.activePreset();
+    const oa = st.openAxes || { shape: false, color: false, dist: false, size: false };
+    const accent = this.props.accentColor ?? '#FF6F5E';
+
+    // demo strip
+    const seg = (label, sel, pick) => ({ label, pick, dyn: sel ? 'background:#26262B;color:#F4F4F2;' : 'color:#6E6D68;' });
+    const demoSegs = [
+      { opts: [seg('常规窗口', !isCompact, () => { this.setState({ mode: 'regular', panelOpen: false }); this._fit('regular'); }), seg('紧凑窗口', isCompact, () => { this.setState({ mode: 'compact', panelOpen: false }); this._fit('compact'); })] },
+      { opts: [seg('今日形态', !eraFuture, () => this.setState({ era: 'today', moduleView: 'desktop' })), seg('未来形态 · 4 模块', eraFuture, () => this.setState({ era: 'future' }))] }
+    ];
+
+    // window frame
+    const wrapDyn = 'width:' + (dims.w * st.scale) + 'px;height:' + (dims.h * st.scale) + 'px;';
+    const winDyn = 'width:' + dims.w + 'px;height:' + dims.h + 'px;transform:scale(' + st.scale + ');';
+    const logoDyn = 'clip-path:' + this.clipFor('apple', 24) + ';';
+    const logoBigDyn = 'clip-path:' + this.clipFor('apple', 34) + ';';
+
+    let themeClass = '';
+    if (st.theme === 'light') themeClass = 'light-vars';
+    else if (st.theme === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) themeClass = 'light-vars';
+
+    // rail
+    const railDefs = [
+      { id: 'icons', char: '桌', short: '桌面', name: '桌面图标', view: 'desktop' },
+      { id: 'ads', char: '净', short: '净化', name: '系统净化', view: 'ads' },
+      { id: 'explorer', char: '夹', short: '文管', name: '资源管理器', view: 'explorer' },
+      { id: 'paper', char: '纸', short: '壁纸', name: '壁纸', view: 'paper' }
+    ];
+    const railItems = railDefs.map(m => {
+      const active = st.moduleView === m.view;
+      return {
+        name: m.name, char: m.char, label: m.short,
+        lDyn: active ? 'color:var(--accent);' : 'color:var(--t3);',
+        dyn: active ? 'background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);' : 'color:var(--t3);',
+        pick: () => this.setState({ moduleView: m.view, panelOpen: isCompact ? true : st.panelOpen })
+      };
+    });
+
+    // panel geometry
+    let panelDyn;
+    if (!isCompact) panelDyn = 'position:relative;width:300px;flex:none;';
+    else panelDyn = 'position:absolute;left:0;top:46px;bottom:0;width:300px;background:var(--bg);border-right:1px solid var(--hair);box-shadow:24px 0 54px rgba(0,0,0,.38);transform:translateX(' + (st.panelOpen ? '0' : '-108%') + ');';
+
+    const canvasColDyn = isCompact ? 'padding:0 12px 12px 12px;' : 'padding:0 14px 14px 2px;';
+
+    // hero
+    const n = this.icons().length;
+    let statusText, heroTitle, ctaText, ctaDyn, ctaOn = true;
+    if (!st.ready) {
+      statusText = '正在扫描桌面…';
+      heroTitle = '你的桌面，即将焕然一新';
+      ctaText = '正在扫描…';
+      ctaDyn = 'background:var(--raised);color:var(--t3);cursor:default;'; ctaOn = false;
+    } else if (st.phase === 'working') {
+      statusText = '可以美化 ' + n + ' 个图标 · 全程可还原';
+      heroTitle = '你的桌面，即将焕然一新';
+      ctaText = '正在应用…';
+      ctaDyn = 'background:var(--accent);color:#FFF7F3;opacity:.75;cursor:default;'; ctaOn = false;
+    } else if (!st.applied) {
+      statusText = '可以美化 ' + n + ' 个图标 · 全程可还原';
+      heroTitle = '你的桌面，即将焕然一新';
+      ctaText = '一键美化';
+      ctaDyn = 'background:var(--accent);color:#FFF7F3;cursor:pointer;';
+    } else if (dirty) {
+      statusText = '已美化 ' + n + ' 个图标 · 有新样式待应用';
+      heroTitle = '有新的样式待应用';
+      ctaText = '更新桌面';
+      ctaDyn = 'background:var(--accent);color:#FFF7F3;cursor:pointer;';
+    } else {
+      statusText = '已美化 ' + n + ' 个图标 · 快照已保存';
+      heroTitle = '已经焕然一新';
+      ctaText = '✓ 已与桌面同步';
+      ctaDyn = 'background:var(--raised);color:#3FB6A8;cursor:default;'; ctaOn = false;
+    }
+
+    // presets + minis
+    const sample = [this.icons()[2], this.icons()[7]];
+    const presets = this.presetsDef().map(p => {
+      const mc = this.clipFor(p.set.shape, 18);
+      const minis = sample.map(it => {
+        const col = this.styledFor(it, p.set.colorMode, p.set.tint || st.tint);
+        return {
+          g: '',
+          dyn: 'left:0;top:0;width:18px;height:18px;background:' + col.bg + ';clip-path:' + mc + ';',
+          gDyn: ''
+        };
+      });
+      const sel = ap && ap.id === p.id;
+      return {
+        name: p.name, desc: p.desc, minis,
+        dyn: sel ? 'background:color-mix(in srgb,var(--accent) 15%,var(--chip));' : '',
+        pick: () => { this.setAxis(Object.assign({ tint: p.set.tint || st.tint }, p.set)); }
+      };
+    });
+
+    // axis chips
+    const shapeDefs = [{ id: 'apple', label: '苹果' }, { id: 'circle', label: '纯圆' }, { id: 'samsung', label: '三星' }];
+    const shapeChips = shapeDefs.map(d => ({
+      label: d.label, dyn: this.chip(st.shape === d.id),
+      swDyn: 'clip-path:' + this.clipFor(d.id, 14) + ';',
+      pick: () => this.setAxis({ shape: d.id })
+    }));
+    const colorDefs = [
+      { id: 'orig', label: '原彩', sw: 'background:conic-gradient(#E4574D,#D9A94E,#3FA57C,#4C8DFF,#E4574D);' },
+      { id: 'bw', label: '黑白', sw: 'background:linear-gradient(90deg,#1C1C1E 50%,#EDEDEA 50%);' },
+      { id: 'mono', label: '单色', sw: 'background:' + st.tint + ';' }
+    ];
+    const colorChips = colorDefs.map(d => ({
+      label: d.label, swDyn: d.sw, dyn: this.chip(st.colorMode === d.id),
+      pick: () => this.setAxis({ colorMode: d.id })
+    }));
+    const monoList = [
+      { c: '#FFFFFF', tip: '纯白' }, { c: '#141414', tip: '纯黑' },
+      { c: wall.pal[0], tip: '壁纸主色（自动提取）' }, { c: wall.pal[1], tip: '壁纸辅色（自动提取）' }, { c: accent, tip: '品牌珊瑚' },
+      { c: '#3FB6A8', tip: '湖水' }, { c: '#D9A94E', tip: '琥珀' }
+    ];
+    const monoSwatches = monoList.map(s => ({
+      tip: s.tip,
+      dyn: 'background:' + s.c + ';box-shadow:inset 0 0 0 1px rgba(128,128,128,.3)' + (st.tint.toLowerCase() === s.c.toLowerCase() ? ',0 0 0 2px var(--bg),0 0 0 3.5px ' + s.c : '') + ';',
+      pick: () => this.setAxis({ tint: s.c, colorMode: 'mono' })
+    }));
+    const distDefs = [{ id: 'mark', label: '美化标识' }, { id: 'keep', label: '经典箭头' }, { id: 'none', label: '无标识' }];
+    const distChips = distDefs.map(d => ({ label: d.label, dyn: this.chip(st.dist === d.id), pick: () => this.setAxis({ dist: d.id }) }));
+    const markDefs = [
+      { id: 'glass', label: '玻璃箭头' }, { id: 'card', label: '双层卡片' }, { id: 'echo', label: '幽灵叠影' },
+      { id: 'satin', label: '缎光角' }, { id: 'arc', label: '珐琅光弧' },
+      { id: 'fold', label: '卷角' }, { id: 'ring', label: '细描边' }
+    ];
+    const markChips = markDefs.map(d => Object.assign(
+      { label: d.label, dyn: this.chip(st.markStyle === d.id), pick: () => this.setAxis({ markStyle: d.id }) },
+      this.markPreview(d.id, st.shape)
+    ));
+    const markSwatchList = ['#FFFFFF', '#141414', accent, wall.pal[0], '#3FB6A8'];
+    const markSwatches = markSwatchList.map(c0 => ({
+      dyn: 'background:' + c0 + ';box-shadow:inset 0 0 0 1px rgba(128,128,128,.3)' + ((st.markColor || '').toLowerCase() === c0.toLowerCase() ? ',0 0 0 2px var(--bg),0 0 0 3.5px ' + c0 : '') + ';',
+      pick: () => this.setAxis({ markColor: c0 })
+    }));
+    const sizeDefs = [{ id: 'small', label: '小' }, { id: 'mid', label: '中' }, { id: 'big', label: '大' }];
+    const sizeChips = sizeDefs.map(d => ({ label: d.label, dyn: this.chip(st.sizeMode === d.id), pick: () => this.setAxis({ sizeMode: d.id }) }));
+
+    // checklist (future era)
+    const checkRows = [];
+    if (eraFuture && (st.applied || st.expApplied || st.wallApplied)) {
+      const mk = (key, title) => {
+        const on = !st.excl[key];
+        const t = this.mkToggle(on, () => {
+          const nx = Object.assign({}, st.excl); nx[key] = on;
+          this.setState({ excl: nx });
+          this.toastMsg(on ? '已排除并还原该项' : '已重新包含该项');
+        });
+        return Object.assign({
+          badge: on ? '✓' : '⊘',
+          badgeDyn: on ? 'background:rgba(63,182,168,.16);color:#3FB6A8;' : 'background:var(--raisedHov);color:var(--t3);',
+          tDyn: on ? 'color:var(--t1);' : 'color:var(--t3);', title
+        }, t);
+      };
+      if (st.applied) checkRows.push(mk('icons', '统一了 ' + n + ' 个桌面图标'));
+      if (st.applied && st.adsInclude) checkRows.push(mk('ads', '关闭了 6 处系统推荐'));
+      if (st.expApplied) checkRows.push(mk('exp', '统一了资源管理器图标'));
+      if (st.wallApplied) checkRows.push(mk('wall', '换上了「' + st.wallApplied + '」壁纸'));
+    }
+
+    // ads module
+    const adsDefs = [
+      { k: 'start', name: '开始菜单推荐', sub: '不再推荐应用与内容' },
+      { k: 'lock', name: '锁屏聚焦与提示', sub: '关闭 Windows 聚焦小贴士' },
+      { k: 'exp', name: '资源管理器推广', sub: '同步与订阅横幅' },
+      { k: 'cfg', name: '设置页建议', sub: '设置里的推荐内容' },
+      { k: 'adid', name: '广告标识符', sub: '停止个性化广告 ID' },
+      { k: 'hl', name: '搜索高亮', sub: '任务栏搜索的热点内容' }
+    ];
+    const adsRows = adsDefs.map(d => {
+      const on = st.adsOn[d.k];
+      return Object.assign({ name: d.name, sub: d.sub }, this.mkToggle(on, () => {
+        const nx = Object.assign({}, st.adsOn); nx[d.k] = !on;
+        this.setState({ adsOn: nx });
+      }));
+    });
+    const adsOnCount = adsDefs.filter(d => st.adsOn[d.k]).length;
+    const inc = this.mkToggle(st.adsInclude, () => this.setState({ adsInclude: !st.adsInclude }));
+
+    // explorer module
+    const eClip = this.clipFor(st.shape, 44);
+    const showOrigExp = st.comparing;
+    const folderCol = this.styledFor({ kind: 'folder', c: '#D9A94E' }, st.colorMode, st.tint);
+    const driveCol = this.styledFor({ kind: 'app', c: '#5E6A78' }, st.colorMode, st.tint);
+    const expItems = ['文档', '下载', '图片', '音乐', '视频', '项目'].map(nm => ({
+      name: nm, g: nm[0],
+      iconDyn: showOrigExp ? 'background:#D9A94E;border-radius:7px;' : 'background:' + folderCol.bg + ';clip-path:' + eClip + ';',
+      gDyn: 'color:' + (showOrigExp ? 'rgba(255,255,255,.94)' : folderCol.fg) + ';'
+    }));
+    const expDriveRows = [{ n: 'Windows (C:)', pct: 62 }, { n: '数据 (D:)', pct: 31 }].map(d => ({
+      name: d.n, pctText: d.pct + '% 已用', barDyn: 'width:' + d.pct + '%;',
+      iconDyn: showOrigExp ? 'background:#6E7681;border-radius:6px;' : 'background:' + driveCol.bg + ';clip-path:' + this.clipFor(st.shape, 32) + ';',
+      gDyn: 'color:' + (showOrigExp ? 'rgba(255,255,255,.9)' : driveCol.fg) + ';'
+    }));
+    const expFolderT = this.mkToggle(st.expFolders, () => this.setState({ expFolders: !st.expFolders }));
+    const expDriveT = this.mkToggle(st.expDrives, () => this.setState({ expDrives: !st.expDrives }));
+    let expStatus, expCtaText, expCtaDyn;
+    if (st.expApplied) { expStatus = '已统一 · 快照已保存'; expCtaText = '✓ 已与资源管理器同步'; expCtaDyn = 'background:var(--raised);color:#3FB6A8;cursor:default;pointer-events:none;'; }
+    else { expStatus = '发现 6 个文件夹 · 2 个磁盘 · 全程可还原'; expCtaText = '统一资源管理器'; expCtaDyn = 'background:var(--accent);color:#FFF7F3;cursor:pointer;'; }
+
+    // wallpaper module
+    const curWall = st.wallChoice ?? (this.props.wallpaper ?? '暮色');
+    const wallCards = this.wallDefs().map(d => ({
+      name: d.id, desc: d.desc,
+      swDyn: this.wallInfo(d.id).bg,
+      dyn: curWall === d.id ? 'background:color-mix(in srgb,var(--accent) 15%,var(--chip));' : '',
+      hasBadge: st.wallApplied === d.id,
+      pick: () => { this.setState({ wallChoice: d.id }); this.bump(); }
+    }));
+    let paperStatus, paperCtaText, paperCtaDyn;
+    if (st.wallApplied && st.wallApplied === curWall) { paperStatus = '已换上「' + st.wallApplied + '」· 原壁纸已备份'; paperCtaText = '✓ 已应用'; paperCtaDyn = 'background:var(--raised);color:#3FB6A8;cursor:default;pointer-events:none;'; }
+    else { paperStatus = st.wallApplied ? '已换上「' + st.wallApplied + '」· 正在预览其他' : '预览即所见 · 未经同意不动你的壁纸'; paperCtaText = '应用这张壁纸'; paperCtaDyn = 'background:var(--accent);color:#FFF7F3;cursor:pointer;'; }
+
+    // ads canvas cards
+    const adsCardDefs = [
+      { k: 'start', title: '开始菜单', ad: '推荐：为你挑选的应用' },
+      { k: 'lock', title: '锁屏', ad: '小贴士：试试浏览器的新功能' },
+      { k: 'exp', title: '资源管理器', ad: '横幅：开始使用云备份' },
+      { k: 'hl', title: '任务栏搜索', ad: '热点：今日热搜与资讯' }
+    ];
+    const adsCards = adsCardDefs.map(d => {
+      const off = st.adsOn[d.k];
+      return {
+        title: d.title, adLabel: d.ad,
+        pill: off ? '已关闭' : '仍在显示',
+        pillDyn: off ? 'background:rgba(63,182,168,.14);color:#3FB6A8;' : 'background:rgba(229,168,75,.16);color:#E5A84B;',
+        adDyn: off ? 'background:rgba(63,182,168,.08);opacity:.4;' : 'background:rgba(229,168,75,.12);',
+        adTextDyn: off ? 'color:#9C9A94;text-decoration:line-through;' : 'color:#EDEBE6;',
+        toggle: () => { const nx = Object.assign({}, st.adsOn); nx[d.k] = !off; this.setState({ adsOn: nx }); }
+      };
+    });
+
+    // tiles
+    const showOrigAll = st.comparing || st.phase === 'settle';
+    const tiles = this.icons().map((it, i) => {
+      const ov = st.overrides[it.id] || {};
+      const showOrig = showOrigAll || st.peekId === it.id || !!ov.keep;
+      const shimmer = !st.ready;
+      let cardWrapDyn = '', cardDyn = '', gDyn = '', sibWrapDyn = '', sibDyn = '', arrowDyn = '', sibShow = false, arrowShow = false, overShow = false, overDyn = '', ob1 = 'display:none;', ob2 = 'display:none;';
+
+      if (!shimmer) {
+        if (showOrig) {
+          const sz = S * it.szf;
+          const off = (S - sz) / 2;
+          let bg, fg, rad;
+          if (it.kind === 'doc') { bg = '#F7F7F4'; fg = it.c; rad = '5px'; }
+          else if (it.kind === 'round') { bg = it.c; fg = 'rgba(255,255,255,.94)'; rad = '50%'; }
+          else { bg = it.c; fg = this.lum(it.c) > 0.66 ? 'rgba(22,22,24,.85)' : 'rgba(255,255,255,.92)'; rad = (it.rad || 8) + 'px'; }
+          cardWrapDyn = 'left:' + off.toFixed(1) + 'px;top:' + off.toFixed(1) + 'px;width:' + sz.toFixed(1) + 'px;height:' + sz.toFixed(1) + 'px;';
+          cardDyn = 'background:' + bg + ';border-radius:' + rad + ';box-shadow:0 2px 6px rgba(0,0,0,.35)' + (it.kind === 'doc' ? ',inset 0 0 0 1px rgba(0,0,0,.08)' : '') + ';';
+          gDyn = 'color:' + fg + ';font-size:' + (sz * 0.4).toFixed(0) + 'px;';
+          arrowShow = !!it.sc;
+        } else {
+          const eff = ov.tint ? { mode: 'mono', tint: ov.tint } : { mode: st.colorMode, tint: st.tint };
+          const col = this.styledFor(it, eff.mode, eff.tint);
+          const isMark = st.dist === 'mark' && !!it.sc;
+          const ms = st.markStyle;
+          const mcol = st.markColor || accent;
+          arrowShow = st.dist === 'keep' && !!it.sc;
+          sibShow = isMark && (ms === 'card' || ms === 'ring' || ms === 'echo');
+          overShow = isMark && (ms === 'glass' || ms === 'arc' || ms === 'fold' || ms === 'satin');
+          let wrapFilter = 'filter:drop-shadow(0 2px 4px rgba(0,0,0,.3));';
+          if (isMark && ms === 'card') wrapFilter = 'filter:drop-shadow(1.5px 2.5px 2.5px rgba(0,0,0,.38));';
+          cardWrapDyn = 'left:0;top:0;width:' + S + 'px;height:' + S + 'px;' + wrapFilter;
+          cardDyn = 'background:' + col.bg + ';clip-path:' + clip + ';';
+          gDyn = 'color:' + col.fg + ';font-size:' + (S * 0.42).toFixed(0) + 'px;';
+          if (isMark && ms === 'card') {
+            const ss = S * 0.88;
+            let tone;
+            if (st.markColor) {
+              const [mh, msat] = this.hsl(mcol);
+              tone = col.l > 0.58 ? 'hsl(' + mh + ' ' + Math.round(msat * 0.7) + '% 30%)' : 'hsl(' + mh + ' ' + Math.round(msat * 0.75) + '% 86%)';
+            } else tone = col.l > 0.58 ? 'rgba(42,40,38,.92)' : 'rgba(238,234,228,.94)';
+            sibWrapDyn = 'left:' + (S * 0.17).toFixed(1) + 'px;top:' + (S * 0.18).toFixed(1) + 'px;width:' + ss.toFixed(1) + 'px;height:' + ss.toFixed(1) + 'px;filter:drop-shadow(2px 4px 5px rgba(0,0,0,.32));';
+            sibDyn = 'background:' + tone + ';clip-path:' + this.clipFor(st.shape, ss) + ';';
+          }
+          if (isMark && ms === 'echo') {
+            const es = S * 0.92;
+            const tone = st.markColor
+              ? 'color-mix(in srgb,' + mcol + ' 60%,transparent)'
+              : (col.l > 0.58 ? 'rgba(24,22,20,.45)' : 'rgba(255,255,255,.42)');
+            sibWrapDyn = 'left:' + (S * 0.14).toFixed(1) + 'px;top:' + (S * 0.155).toFixed(1) + 'px;width:' + es.toFixed(1) + 'px;height:' + es.toFixed(1) + 'px;filter:drop-shadow(1px 2px 3px rgba(0,0,0,.28));';
+            sibDyn = 'background:' + tone + ';backdrop-filter:blur(4px);clip-path:' + this.clipFor(st.shape, es) + ';';
+          }
+          if (isMark && ms === 'ring') {
+            const rw = 2.5, rs = S + rw * 2;
+            sibWrapDyn = 'left:-' + rw + 'px;top:-' + rw + 'px;width:' + rs + 'px;height:' + rs + 'px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3));';
+            sibDyn = 'background:' + mcol + ';clip-path:' + this.clipFor(st.shape, rs) + ';';
+          }
+          if (overShow) {
+            if (ms === 'glass') {
+              const cs = Math.max(16, S * 0.34);
+              const lightSeat = col.l <= 0.58;
+              const ink = st.markColor
+                ? (lightSeat ? 'color-mix(in srgb,' + mcol + ' 72%,#101014)' : 'color-mix(in srgb,' + mcol + ' 70%,white)')
+                : (lightSeat ? '#232328' : '#F4F4F1');
+              const seatBg = lightSeat ? 'rgba(255,255,255,.58)' : 'rgba(24,24,28,.45)';
+              const ringLine = lightSeat ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.22)';
+              overDyn = 'left:' + (S * 0.055).toFixed(1) + 'px;top:' + (S - cs - S * 0.055).toFixed(1) + 'px;width:' + cs.toFixed(1) + 'px;height:' + cs.toFixed(1) + 'px;border-radius:50%;background:' + seatBg + ';backdrop-filter:blur(6px) saturate(1.2);box-shadow:0 0 0 1px ' + ringLine + ', 0 2px 5px rgba(0,0,0,.28);';
+              const bwN = Math.max(1.6, cs * 0.085);
+              const bw = bwN.toFixed(1);
+              ob1 = 'left:' + ((cs - bwN) / 2 - cs * 0.02).toFixed(1) + 'px;top:' + ((cs - cs * 0.42) / 2 + cs * 0.02).toFixed(1) + 'px;width:' + bw + 'px;height:' + (cs * 0.42).toFixed(1) + 'px;border-radius:' + bw + 'px;background:' + ink + ';transform:rotate(45deg);';
+              ob2 = 'left:' + (cs * 0.41).toFixed(1) + 'px;top:' + (cs * 0.29).toFixed(1) + 'px;width:' + (cs * 0.30).toFixed(1) + 'px;height:' + (cs * 0.30).toFixed(1) + 'px;border-top:' + bw + 'px solid ' + ink + ';border-right:' + bw + 'px solid ' + ink + ';border-top-right-radius:2.5px;box-sizing:border-box;';
+            } else if (ms === 'satin') {
+              let tone;
+              if (st.markColor) tone = col.l > 0.58 ? 'color-mix(in srgb,' + mcol + ' 62%,#101010)' : 'color-mix(in srgb,' + mcol + ' 72%,white)';
+              else tone = col.l > 0.58 ? '#2A241E' : '#FFFFFF';
+              overDyn = 'left:0;top:0;width:' + S + 'px;height:' + S + 'px;clip-path:' + clip + ';background:linear-gradient(45deg,color-mix(in srgb,' + tone + ' 62%,transparent) 0%,color-mix(in srgb,' + tone + ' 30%,transparent) 20%,transparent 46%);pointer-events:none;';
+            } else if (ms === 'arc') {
+              const arcC = col.l > 0.58 ? 'color-mix(in srgb,' + mcol + ' 78%,#141414)' : 'color-mix(in srgb,' + mcol + ' 82%,white)';
+              overDyn = 'left:0;top:0;width:' + S + 'px;height:' + S + 'px;clip-path:' + clip + ';background:radial-gradient(circle at 15% 88%,' + arcC + ' 0%,color-mix(in srgb,' + arcC + ' 55%,transparent) 20%,transparent 46%);pointer-events:none;';
+            } else {
+              // Dog-ear algorithm: (1) mask cuts the SE corner out of the card,
+              // (2) fold triangle mirrored across the cut line (hypotenuse flush),
+              // (3) drop-shadow toward the icon body.
+              const cD = { apple: 0.26, samsung: 0.28, circle: 0.30 }[st.shape] || 0.28;
+              const c0 = S * cD;
+              const cut = 'linear-gradient(315deg,transparent ' + (c0 * 0.707).toFixed(1) + 'px,#000 ' + (c0 * 0.707 + 0.5).toFixed(1) + 'px)';
+              cardDyn += 'mask:' + cut + ';-webkit-mask:' + cut + ';';
+              let tone;
+              if (st.markColor) tone = col.l > 0.58 ? 'color-mix(in srgb,' + mcol + ' 70%,#101010)' : 'color-mix(in srgb,' + mcol + ' 78%,white)';
+              else tone = col.l > 0.58 ? '#3A342E' : '#F2EEE6';
+              const hi = 'color-mix(in srgb,' + tone + ' 45%,white)';
+              const lo = 'color-mix(in srgb,' + tone + ' 55%,black)';
+              const tip = 'color-mix(in srgb,' + tone + ' 76%,black)';
+              overDyn = 'left:0;top:0;width:' + S + 'px;height:' + S + 'px;clip-path:' + clip + ';pointer-events:none;';
+              ob1 = 'left:' + (S - c0).toFixed(1) + 'px;top:' + (S - c0).toFixed(1) + 'px;width:' + c0.toFixed(1) + 'px;height:' + c0.toFixed(1) + 'px;border-top-left-radius:60%;background:linear-gradient(315deg,transparent 49.3%,' + lo + ' 49.8%,' + hi + ' 57%,' + tone + ' 76%,' + tip + ' 100%);filter:drop-shadow(-1px -1px 1px rgba(0,0,0,.28)) drop-shadow(-3px -3px 5px rgba(0,0,0,.2));';
+            }
+          }
+          if (st.phase === 'bloom') cardWrapDyn += anim('animation:dm-bloom .6s cubic-bezier(.34,1.4,.4,1) ' + (i * 42) + 'ms backwards;');
+        }
+        if (arrowShow) {
+          const asz = Math.max(14, S * 0.28);
+          arrowDyn = 'left:1px;bottom:1px;width:' + asz.toFixed(0) + 'px;height:' + asz.toFixed(0) + 'px;font-size:' + (asz * 0.7).toFixed(0) + 'px;';
+        }
+      }
+      let boxDyn = 'width:' + boxW.toFixed(1) + 'px;height:' + boxH.toFixed(1) + 'px;' + (st.updating ? 'opacity:.45;' : '');
+      if (st.phase === 'settle') boxDyn += anim('animation:dm-settle .8s cubic-bezier(.2,0,.2,1) ' + (i * 24) + 'ms backwards;');
+      return {
+        label: it.label, g: it.g, shimmer, solid: !shimmer,
+        shimDyn: 'left:0;top:0;width:' + S + 'px;height:' + S + 'px;clip-path:' + clip + ';',
+        cellDyn: 'width:' + (boxW + 18).toFixed(0) + 'px;',
+        boxDyn, cardWrapDyn, cardDyn, gDyn, sibShow, sibWrapDyn, sibDyn, arrowShow, arrowDyn, overShow, overDyn, ob1, ob2,
+        ctx: (e) => {
+          e.preventDefault();
+          const el = this._win.current; if (!el) return;
+          const r = el.getBoundingClientRect();
+          const x = Math.min((e.clientX - r.left) / st.scale, dims.w - 200);
+          const y = Math.min((e.clientY - r.top) / st.scale, dims.h - 220);
+          this.setState({ menu: { id: it.id, x, y } });
+        },
+        down: () => this.setState({ peekId: it.id }),
+        up: () => this.setState(s => s.peekId === it.id ? { peekId: null } : null)
+      };
+    });
+
+    // compare pill
+    const compareDyn = st.comparing
+      ? 'background:color-mix(in srgb,var(--accent) 30%,rgba(16,16,18,.7));color:#FFF3EF;border:1px solid color-mix(in srgb,var(--accent) 55%,transparent);'
+      : 'background:rgba(14,14,17,.62);color:#E8E7E2;border:1px solid rgba(255,255,255,.12);';
+
+    // menu
+    const menuIcon = st.menu ? this.icons().find(x => x.id === st.menu.id) : null;
+    const menuOv = st.menu ? (st.overrides[st.menu.id] || {}) : {};
+    const setOverride = (id, patch) => {
+      const nx = Object.assign({}, st.overrides);
+      if (patch === null) delete nx[id]; else nx[id] = patch;
+      this.setState({ overrides: nx, menu: null });
+      this.bump();
+    };
+    const menuSwatches = ['#FFFFFF', '#141414', '#FF6F5E', '#3FB6A8', '#D9A94E', '#4C8DFF'].map(c => ({
+      dyn: 'background:' + c + ';box-shadow:inset 0 0 0 1px rgba(128,128,128,.3)' + (menuOv.tint === c ? ',0 0 0 2px var(--raised),0 0 0 3.5px ' + c : '') + ';',
+      pick: () => { setOverride(st.menu.id, { tint: c }); this.toastMsg('已为「' + menuIcon.label + '」单独配色'); }
+    }));
+
+    // drawer
+    const themeDefs = [{ id: 'dark', label: '深色' }, { id: 'light', label: '浅色' }, { id: 'system', label: '跟随系统' }];
+    const themeChips = themeDefs.map(d => ({
+      label: d.label,
+      dyn: st.theme === d.id ? 'background:var(--bg);color:var(--t1);box-shadow:var(--chipEdge);' : 'color:var(--t3);',
+      pick: () => this.setState({ theme: d.id })
+    }));
+    const keep = this.mkToggle(st.keepUp, () => this.setState({ keepUp: !st.keepUp }));
+
+    const now = new Date();
+    const clockTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    const clockDate = now.getFullYear() + '/' + (now.getMonth() + 1) + '/' + now.getDate();
+    const taskApps = [
+      { g: '夹', dyn: 'background:linear-gradient(160deg,#E8BE5E,#D9A038);color:rgba(255,255,255,.95);' },
+      { g: 'F', dyn: 'background:#4C8DFF;color:rgba(255,255,255,.95);' },
+      { g: 'M', dyn: 'background:#E4574D;color:rgba(255,255,255,.95);' },
+      { g: 'P', dyn: 'background:#3FA57C;color:rgba(255,255,255,.95);' },
+      { g: '>', dyn: 'background:#23262B;color:rgba(255,255,255,.9);box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);' }
+    ];
+
+    return {
+      demoSegs,
+      resetDemo: () => { const s = this.initState(); s.ready = true; s.scale = st.scale; this.setState(s); },
+      wrapDyn, winDyn, logoDyn, logoBigDyn, themeClass,
+      winRef: this._win,
+      onWinClick: () => { if (st.menu || st.overflowOpen) this.setState({ menu: null, overflowOpen: false }); },
+      openDrawer: () => this.setState({ drawerOpen: true }),
+      closeDrawer: () => this.setState({ drawerOpen: false }),
+      drawerOpen: st.drawerOpen,
+      showRail: eraFuture, railItems,
+      panelDyn, canvasColDyn,
+      viewDesktop: st.moduleView === 'desktop',
+      viewAds: st.moduleView === 'ads',
+      viewExplorer: st.moduleView === 'explorer',
+      viewPaper: st.moduleView === 'paper',
+      canvasDesktop: st.moduleView === 'desktop' || st.moduleView === 'paper',
+      canvasAds: st.moduleView === 'ads',
+      canvasExplorer: st.moduleView === 'explorer',
+      compareShow: st.moduleView !== 'ads',
+      expItems, expDriveRows,
+      showFoldersSec: st.expFolders, showDrives: st.expDrives,
+      expStatus, expCtaText, expCtaDyn,
+      onExpCta: () => { if (!st.expApplied) { this.setState({ expApplied: true }); this.toastMsg('资源管理器已统一 · 已保存快照'); } },
+      expLinks: st.expApplied,
+      onExpRestore: () => { this.setState({ expApplied: false }); this.toastMsg('资源管理器已还原'); },
+      toggleExpFolder: expFolderT.toggle, expFolderSw: expFolderT.swDyn, expFolderKnob: expFolderT.knobDyn,
+      toggleExpDrive: expDriveT.toggle, expDriveSw: expDriveT.swDyn, expDriveKnob: expDriveT.knobDyn,
+      wallCards, paperStatus, paperCtaText, paperCtaDyn,
+      onPaperCta: () => { this.setState({ wallApplied: curWall }); this.toastMsg('壁纸已应用 · 原壁纸已备份'); },
+      paperLinks: !!st.wallApplied,
+      onPaperRestore: () => { this.setState({ wallApplied: null, wallChoice: null }); this.toastMsg('已换回你原来的壁纸'); },
+      adsCards,
+      goDesktop: () => this.setState({ moduleView: 'desktop' }),
+      goExplorer: () => this.setState({ moduleView: 'explorer', panelOpen: isCompact ? true : st.panelOpen }),
+      statusText, heroTitle, ctaText,
+      ctaDyn: ctaDyn + (ctaOn ? '' : 'pointer-events:none;'),
+      onCta: () => this.doApply(),
+      showLinks: st.applied || (st.history || []).length > 0,
+      linkRestore: st.applied,
+      linkPrev: st.applied ? (st.history || []).length >= 2 : (st.history || []).length >= 1,
+      onPrev: () => { const h = st.history || []; const v = st.applied ? h[1] : h[0]; if (v) this.applyVersion(v); },
+      linkHist: (st.history || []).length > 0,
+      histCount: (st.history || []).length,
+      toggleHist: () => this.setState({ histOpen: !st.histOpen }),
+      histOpenShow: st.histOpen && (st.history || []).length > 0,
+      histRows: (st.history || []).map((v, i) => ({
+        t: v.t, label: v.label,
+        cur: st.applied && i === 0, canGo: !(st.applied && i === 0),
+        pick: () => this.applyVersion(v)
+      })),
+      onRestore: () => this.doRestore(),
+      onExport: () => this.toastMsg('对比图已保存到桌面（演示）'),
+      showChecklist: checkRows.length > 0, checkRows,
+      showDiscover: eraFuture && st.applied && st.moduleView === 'desktop',
+      isCustom: !ap, presets,
+      shapeChips, colorChips, distChips, sizeChips,
+      shapeOpen: oa.shape, colorOpen: oa.color, distOpen: oa.dist, sizeOpen: oa.size,
+      toggShape: () => this.setState({ openAxes: Object.assign({}, oa, { shape: !oa.shape }) }),
+      toggColor: () => this.setState({ openAxes: Object.assign({}, oa, { color: !oa.color }) }),
+      toggDist: () => this.setState({ openAxes: Object.assign({}, oa, { dist: !oa.dist }) }),
+      toggSize: () => this.setState({ openAxes: Object.assign({}, oa, { size: !oa.size }) }),
+      toggleAll: () => {
+        const all = oa.shape && oa.color && oa.dist && oa.size;
+        this.setState({ openAxes: { shape: !all, color: !all, dist: !all, size: !all } });
+      },
+      allTitle: (oa.shape && oa.color && oa.dist && oa.size) ? '全部收起' : '全部展开',
+      allGlyph: (oa.shape && oa.color && oa.dist && oa.size) ? '−' : '＋',
+      shapeChev: oa.shape ? 'transform:rotate(180deg);' : '',
+      colorChev: oa.color ? 'transform:rotate(180deg);' : '',
+      distChev: oa.dist ? 'transform:rotate(180deg);' : '',
+      sizeChev: oa.size ? 'transform:rotate(180deg);' : '',
+      shapeSummary: ({ apple: '苹果', circle: '纯圆', samsung: '三星' })[st.shape],
+      colorSummary: ({ orig: '原彩', bw: '黑白', mono: '单色' })[st.colorMode],
+      distSummary: st.dist === 'keep' ? '经典箭头' : (st.dist === 'none' ? '无标识' : ((markDefs.find(d => d.id === st.markStyle) || {}).label || '美化')),
+      sizeSummary: ({ small: '小', mid: '中', big: '大' })[st.sizeMode],
+      showMarkOpts: st.dist === 'mark', markChips, markSwatches,
+      markAutoDyn: this.chip(!st.markColor),
+      onMarkAuto: () => this.setAxis({ markColor: null }),
+      openTintPicker: (e) => this.openPicker('tint', e),
+      openMarkPicker: (e) => this.openPicker('mark', e),
+      showMono: st.colorMode === 'mono', monoSwatches,
+      hexVal: st.hexDraft,
+      onHex: (e) => {
+        const v = e.target.value;
+        this.setState({ hexDraft: v });
+        const m = v.trim().match(/^#?([0-9a-fA-F]{6})$/);
+        if (m) this.setAxis({ tint: '#' + m[1].toUpperCase(), colorMode: 'mono' });
+      },
+      adsCount: '共 ' + adsDefs.length + ' 处，已选 ' + adsOnCount + ' 处 — 只动微软自己提供的开关。',
+      adsRows, toggleInclude: inc.toggle, incSwDyn: inc.swDyn, incKnobDyn: inc.knobDyn,
+      isCompact,
+      summaryChips: this.presetsDef().map(p => ({
+        name: p.name,
+        dyn: ap && ap.id === p.id ? this.chip(true) : this.chip(false),
+        pick: () => this.setAxis(Object.assign({ tint: p.set.tint || st.tint }, p.set))
+      })),
+      openPanel: () => this.setState({ panelOpen: true }),
+      closePanel: () => this.setState({ panelOpen: false }),
+      panelScrim: isCompact && st.panelOpen,
+      tiles, updatingShow: st.updating,
+      compareDown: () => this.setState({ comparing: true }),
+      compareUp: () => this.setState({ comparing: false }),
+      compareText: st.comparing ? '原来的样子' : '⇄ 按住对比原样',
+      compareDyn,
+      wallDyn: wall.bg, wallGlowDyn: wall.glow,
+      clockTime, clockDate, taskApps,
+      menuShow: !!st.menu,
+      menuDyn: st.menu ? 'left:' + st.menu.x.toFixed(0) + 'px;top:' + st.menu.y.toFixed(0) + 'px;' : '',
+      menuTitle: menuIcon ? menuIcon.label : '',
+      menuKeepMark: menuOv.keep ? '✓' : '',
+      menuKeep: () => {
+        const kept = !menuOv.keep;
+        setOverride(st.menu.id, kept ? { keep: true } : null);
+        this.toastMsg(kept ? '「' + menuIcon.label + '」将保留原样' : '「' + menuIcon.label + '」恢复跟随全局');
+      },
+      menuReset: () => { setOverride(st.menu.id, null); this.toastMsg('「' + menuIcon.label + '」已跟随全局样式'); },
+      menuSwatches,
+      themeChips,
+      toggleKeep: keep.toggle, keepSwDyn: keep.swDyn, keepKnobDyn: keep.knobDyn,
+      snapText: st.applied ? '1 份 · 刚刚自动保存' : '暂无 · 应用时自动创建',
+      onExportSnap: () => this.toastMsg('快照已导出（演示）'),
+      onUpdate: () => this.toastMsg('已是最新版本 v0.9'),
+      pickerOpen: !!st.picker,
+      pickerPosDyn: st.picker ? 'left:' + st.picker.x.toFixed(0) + 'px;top:' + st.picker.y.toFixed(0) + 'px;' : '',
+      pickerTitle: st.picker && st.picker.target === 'mark' ? '标识配色' : '图标单色',
+      closePicker: () => this.setState({ picker: null }),
+      svDyn: 'background:linear-gradient(to top,#000,rgba(0,0,0,0)),linear-gradient(to right,#fff,hsl(' + Math.round(st.ph) + ' 100% 50%));',
+      svCursorDyn: 'left:' + (st.ps * 100).toFixed(1) + '%;top:' + ((1 - st.pv) * 100).toFixed(1) + '%;',
+      hueCursorDyn: 'left:' + (st.ph / 360 * 100).toFixed(1) + '%;',
+      svDown: (e) => { e.currentTarget.setPointerCapture(e.pointerId); this._svPick(e); },
+      svMove: (e) => { if (e.buttons === 1) this._svPick(e); },
+      hueDown: (e) => { e.currentTarget.setPointerCapture(e.pointerId); this._huePick(e); },
+      hueMove: (e) => { if (e.buttons === 1) this._huePick(e); },
+      pickerPrevDyn: 'background:' + this.hsvToHex(st.ph, st.ps, st.pv) + ';',
+      pickerHexVal: st.pickerHex,
+      onPickerHex: (e) => {
+        const v0 = e.target.value;
+        this.setState({ pickerHex: v0 });
+        const m = v0.trim().match(/^#?([0-9a-fA-F]{6})$/);
+        if (m) {
+          const hx = '#' + m[1].toUpperCase();
+          const [h2, s2, v2] = this.hexToHsv(hx);
+          this.setState({ ph: h2, ps: s2, pv: v2 });
+          this.applyPicked(hx);
+        }
+      },
+      onEyedrop: () => this.eyedrop(),
+      wallPalChips: wall.pal.map(c0 => ({ dyn: 'background:' + c0 + ';', pick: () => this.seedHex(c0) })),
+      quickPalChips: ['#FFFFFF', '#141414', accent, '#3FB6A8', '#D9A94E', '#E4574D'].map(c0 => ({ dyn: 'background:' + c0 + ';', pick: () => this.seedHex(c0) })),
+      overflowOpen: st.overflowOpen,
+      openOverflow: (e) => { e.stopPropagation(); this.setState({ overflowOpen: !st.overflowOpen, menu: null }); },
+      overflowItems: [
+        { label: '检查更新', pick: () => { this.setState({ overflowOpen: false }); this.toastMsg('已是最新版本 v0.9'); } },
+        { label: '帮助与反馈', pick: () => { this.setState({ overflowOpen: false }); this.toastMsg('帮助中心即将上线（演示）'); } },
+        { label: '更新日志', pick: () => this.setState({ overflowOpen: false, aboutOpen: true, aboutTab: 'log' }) },
+        { label: '关于桌面美颜', pick: () => this.setState({ overflowOpen: false, aboutOpen: true, aboutTab: 'about' }) }
+      ],
+      aboutOpen: st.aboutOpen,
+      aboutMain: st.aboutTab === 'about', aboutLog: st.aboutTab === 'log',
+      closeAbout: () => this.setState({ aboutOpen: false }),
+      showLog: () => this.setState({ aboutTab: 'log' }),
+      showAboutMain: () => this.setState({ aboutTab: 'about' }),
+      openAboutFromDrawer: () => this.setState({ drawerOpen: false, aboutOpen: true, aboutTab: 'about' }),
+      openLogFromDrawer: () => this.setState({ drawerOpen: false, aboutOpen: true, aboutTab: 'log' }),
+      logoAboutDyn: 'clip-path:' + this.clipFor('apple', 56) + ';',
+      changelog: [
+        { v: 'v0.9 · 2026-07', items: [{ t: '全新三段式主界面与一键风格预设' }, { t: '双卡快捷方式标识，任何配色都清晰' }, { t: '真·超椭圆图标引擎，多尺寸高清 .ico' }, { t: '一键还原快照 · 新图标保持美化' }] },
+        { v: 'v0.8 · 2026-06', items: [{ t: '首个内部预览版：扫描、快照与还原骨架' }] }
+      ],
+      toastShow: !!st.toast, toastText: st.toast || ''
+    };
+  }
+}
+</script>
+</body>
+</html>

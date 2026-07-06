@@ -1,6 +1,10 @@
 # ADR-0006 · Shortcut badge v2 — the refined adaptive arrow
 
-Status: Accepted · 2026-07-06
+Status: Mark design superseded by [ADR-0007](0007-stacked-card-distinction.md) then
+[ADR-0008](0008-prototype-v2-ui-contract.md); the **engineering facts remain binding**
+(per-icon `.ico` bake, transparent global overlay, 16–256 size ladder, alpha-edge
+adaptive ink — the latter lives on inside the 玻璃箭头 style and the 自动 mark colour).
+· 2026-07-06
 Supersedes the distinction-mark design of [ADR-0005](0005-distinction-shape-color-system.md)
 (the enamel-arc / sash / notch marks). Driven by owner rejection ("太丑了太丑了太丑了")
 + a top icon-designer panel.

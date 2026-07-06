@@ -6,7 +6,7 @@ DeskMakeover follows the owner standards from `ai-command-center` with project-l
 - Domain types live away from Win32 and Shell interop. Shell code belongs behind explicit adapters.
 - User-facing strings must come from localization resources. English and Simplified Chinese are required for MVP.
 - User-facing copy must avoid system-cleaner language, fear tactics, and unexplained technical jargon.
-- Domain enums never bind directly to XAML; presentation mappers translate them to localized plain language. Banned words in UI strings: 快照, 应用计划, 扫描, dry-run, 注册表, 缓存, journal, and any enum identifier (spec 01 UI Language Rules).
+- Domain enums never bind directly to XAML; presentation mappers translate them to localized plain language. Banned words in UI strings: 应用计划, dry-run, 注册表, 缓存, HKLM, journal, and any enum identifier. Prototype-approved copy is exempt (「正在扫描桌面…」, 「还原快照」); the ban still covers engineer jargon around them (spec 01 UI Language Rules).
 - All visible rounded corners use the shared squircle controls; raw `CornerRadius` on visible surfaces is a review defect (spec 02).
 - Core logic, rendering decisions, transaction journals, and restore behavior require tests.
 - Dangerous operations must be explicit, reversible, and represented in the operation plan before execution.

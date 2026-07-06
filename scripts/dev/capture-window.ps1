@@ -12,7 +12,8 @@ param(
   [switch]$Attach,         # attach to an already-running instance, don't launch
   [string]$Exe = "",
   [int]$Width = 0,         # optional: resize the window to WxH before capturing
-  [int]$Height = 0
+  [int]$Height = 0,
+  [string]$Click = ""      # optional: comma-separated UIA button Names to invoke before capture
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,6 +57,23 @@ if ($Width -gt 0 -and $Height -gt 0) {
 
 [void][Win]::SetForegroundWindow($h)
 Start-Sleep -Milliseconds 350
+
+if ($Click) {
+  Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+  $win = [System.Windows.Automation.AutomationElement]::FromHandle($h)
+  foreach ($name in ($Click -split ',')) {
+    $cond = New-Object System.Windows.Automation.PropertyCondition(
+      [System.Windows.Automation.AutomationElement]::NameProperty, $name.Trim())
+    $btn = $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+    if ($btn) {
+      $inv = $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+      $inv.Invoke()
+      Start-Sleep -Milliseconds 600
+    } else {
+      Write-Output "warn: UIA button '$name' not found"
+    }
+  }
+}
 $r = New-Object Win+RECT
 [void][Win]::GetWindowRect($h, [ref]$r)
 $w = $r.Right - $r.Left

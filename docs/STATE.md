@@ -63,8 +63,22 @@ branch: main
 - **P9(data) done**: LookVersion + LookHistoryStore (capped ledger, corruption-tolerant).
 - Build 0/0; **203 tests** green (Core 26 · Ops 20 · Shell 51 · App 49 · IconRendering 57).
 - Two subagents (marks-p4, iconsize-p10) built P4+P10 in parallel; both reviewed + green.
-- **Next: the core makeover UI — P6 control panel · P7 picker · P8 canvas · P9
-  orchestration** (all consume TileRenderer + StyleConfig + the scan pipeline).
+- **P6 done**: control panel — hero/CTA 5-state machine, 4 preset cards with live
+  minis, 4-row accordion (shape swatches + 7 live mark chips + swatch rows), ~420ms
+  restyle funnel. Verified default + expanded, dark.
+- **P8 done**: desktop-mirror canvas — real wallpaper, real desktop icons (23) in
+  column-major order, apple-squircle + glass marks, decorative taskbar (start/search/
+  apps/live clock), compare pill, press-to-peek, right-click override menu. FIX:
+  shortcuts without icon-location now extract their TARGET's clean icon (real app
+  icons, not the generic monitor). Apply/dirty/restore/history state machine works
+  (preview flow). 单色 recolours all tiles live via the restyle funnel.
+- **P7 done**: shared 调色盘 picker wired to both consumers (图标单色 / 标识配色),
+  routes through the restyle funnel; reuses the existing HSV ColorPickerControl.
+- **The prototype-parity PREVIEW is complete + visually verified across all states**
+  (the prototype is itself a preview simulation; this replicates it fully).
+- **Remaining: P12 motion (bloom/settle/reduced-motion) · compact summary toolbar
+  (P6.6) · P9 real desktop bake (connect the tested foundation; live run = P13
+  owner-supervised) · P13 regression · P14 parity audit + codex review.**
 
 ## Owner rules (durable)
 

@@ -56,8 +56,10 @@ branch: main
 - **P5 done**: custom-titlebar window shell + 300px panel + radius-14 canvas +
   compact overlay (<1100px) + Esc order + neutral DWM border (no system blue).
   New lean MainViewModel; TitleBar/ControlPanel(stub)/Canvas(stub) views.
-- **P10 done (subagent-built, reviewed; live COM pending P13)**: IFolderView2 icon
-  size adapter, graceful-degrade, vtable slots tallied vs MSDN, mapping tests.
+- **P10 done (subagent-built, reviewed; LIVE-VERIFIED)**: IFolderView2 icon size
+  adapter, graceful-degrade, vtable slots tallied vs MSDN, mapping tests. The subagent
+  ran it on the real desktop: 48→96→48 round-trip, restored — behavioural proof the
+  vtable slot count is exact.
 - **P11 done**: settings drawer + overflow + About + changelog — verified in dark
   AND light with live theme switch. (导出/保存 open data folder; P9 wires exact export.)
 - **P9(data) done**: LookVersion + LookHistoryStore (capped ledger, corruption-tolerant).

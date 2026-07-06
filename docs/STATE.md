@@ -17,6 +17,17 @@ branch: main
   **`docs/plans/2026-07-06-v1-prototype-parity.md`** — phased, task-level,
   with prototype line references and per-phase acceptance gates. Start there.
 
+### Rebuild progress (execution log)
+
+- **P0 done (2026-07-06)**: baseline `dotnet build` = 0 warn / 0 err; full suite
+  green (118 tests: Core 7 · Shell 26 · Operations 15 · IconRendering 28 · App 42).
+  Whole prototype (1724 lines HTML + support.js runtime) read end-to-end — every
+  metric/colour/algorithm/copy string extracted. Prototype runtime pulls
+  React/Babel from unpkg CDN, so parity is **code-driven** (deterministic from
+  source) + verified against WPF screenshots via the new
+  `scripts/dev/capture-window.ps1` win-only capture helper. Before-shot of the
+  rejected UI captured. Next: P1 design tokens.
+
 ## Owner rules (durable)
 
 - Accent is warm coral `#FF6F5E`; **never blue/violet** (reads as AI slop).

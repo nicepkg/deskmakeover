@@ -4,6 +4,7 @@ obj/
 TestResults/
 coverage/
 artifacts/
+publish/
 
 # Local SDK/tooling
 .dotnet/

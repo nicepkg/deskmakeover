@@ -14,7 +14,7 @@ try
     return command switch
     {
         "version" => WriteVersion(),
-        "apply-overlay" => OverlayCommands.Apply(GetOption(args, "--style") ?? "refined"),
+        "apply-overlay" => OverlayCommands.Apply(GetOption(args, "--style") ?? "refined", GetOption(args, "--file")),
         "restore-overlay" => OverlayCommands.Restore(),
         _ => WriteUnknown(command)
     };

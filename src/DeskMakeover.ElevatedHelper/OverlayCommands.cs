@@ -26,9 +26,11 @@ public static class OverlayCommands
 
     private static string StatePath => Path.Combine(DataDirectory, "overlay-state.json");
 
-    public static int Apply(string style)
+    private const long MaxCustomIcoBytes = 5 * 1024 * 1024;
+
+    public static int Apply(string style, string? sourceFile = null)
     {
-        if (style is not ("refined" or "transparent"))
+        if (style is not ("refined" or "transparent" or "custom"))
         {
             Console.Error.WriteLine($"Unsupported overlay style: {style}");
             return 2;
@@ -36,12 +38,31 @@ public static class OverlayCommands
 
         Directory.CreateDirectory(DataDirectory);
 
-        var factory = new OverlayBadgeIconFactory();
-        var fileName = style == "refined" ? "refined-mark.ico" : "clear.ico";
-        var icoPath = Path.Combine(DataDirectory, fileName);
-        File.WriteAllBytes(icoPath, style == "refined"
-            ? factory.CreateRefinedMarkIco()
-            : factory.CreateTransparentIco());
+        string icoPath;
+        if (style == "custom")
+        {
+            // The caller supplies a pre-rendered overlay .ico (e.g. the half-size classic
+            // arrow). Validate it IS an .ico and copy it into ProgramData — the registry must
+            // never point at a caller-controlled location.
+            if (sourceFile is null || !File.Exists(sourceFile) || new FileInfo(sourceFile).Length > MaxCustomIcoBytes
+                || !IsIco(sourceFile))
+            {
+                Console.Error.WriteLine("Invalid or missing --file for the custom overlay style.");
+                return 2;
+            }
+
+            icoPath = Path.Combine(DataDirectory, "custom-overlay.ico");
+            File.Copy(sourceFile, icoPath, overwrite: true);
+        }
+        else
+        {
+            var factory = new OverlayBadgeIconFactory();
+            var fileName = style == "refined" ? "refined-mark.ico" : "clear.ico";
+            icoPath = Path.Combine(DataDirectory, fileName);
+            File.WriteAllBytes(icoPath, style == "refined"
+                ? factory.CreateRefinedMarkIco()
+                : factory.CreateTransparentIco());
+        }
 
         using var key = Registry.LocalMachine.CreateSubKey(ShellIconsKeyPath)
             ?? throw new InvalidOperationException("Could not open the Shell Icons registry key.");
@@ -87,6 +108,24 @@ public static class OverlayCommands
         SHChangeNotify(ShcneAssocChanged, 0, 0, 0);
         Console.WriteLine("overlay restored");
         return 0;
+    }
+
+    // ICONDIR magic: reserved=0, type=1 (icon), count ≥ 1.
+    private static bool IsIco(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            Span<byte> header = stackalloc byte[6];
+            return stream.Read(header) == 6
+                && header[0] == 0 && header[1] == 0
+                && header[2] == 1 && header[3] == 0
+                && (header[4] > 0 || header[5] > 0);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     private sealed record OverlayState(string Original);

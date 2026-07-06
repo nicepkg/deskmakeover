@@ -10,7 +10,9 @@ param(
   [int]$Wait = 2600,
   [switch]$Keep,           # leave the app running after capture
   [switch]$Attach,         # attach to an already-running instance, don't launch
-  [string]$Exe = ""
+  [string]$Exe = "",
+  [int]$Width = 0,         # optional: resize the window to WxH before capturing
+  [int]$Height = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +29,7 @@ public class Win {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int ht, bool repaint);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 }
 "@
@@ -45,6 +48,11 @@ $target = Get-Process -Name "DeskMakeover.App" -ErrorAction SilentlyContinue |
   Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
 if (-not $target) { throw "no DeskMakeover.App window found" }
 $h = $target.MainWindowHandle
+
+if ($Width -gt 0 -and $Height -gt 0) {
+  [void][Win]::MoveWindow($h, 60, 40, $Width, $Height, $true)
+  Start-Sleep -Milliseconds 500
+}
 
 [void][Win]::SetForegroundWindow($h)
 Start-Sleep -Milliseconds 350

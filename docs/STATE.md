@@ -33,7 +33,20 @@ branch: main
   seat 16%). accentInk light = mix(accent 70%,#40140C)=#C65445 precomputed. Dropped
   unused blue-ish AccentGlow gradient. ThemeManager already live-swaps (3 modes).
   New `DesignTokensTests` harness loads both compiled dicts via pack URI on STA and
-  asserts every value. Build 0/0; App tests 42→46; grep gate empty. Next: P2 shape.
+  asserts every value. Build 0/0; App tests 42→46; grep gate empty.
+- **P2 done (2026-07-06)**: canonical v1.0 axis model in Core — `StyleConfig`
+  (7 axes, serializable) + enums (IconShape/ColorMode/Distinction/MarkStyle/
+  IconSizeMode) + `NamedStyles` (4 presets, activePreset/dirty parity) + size maps
+  (52/64/76 preview · 32/48/96 desktop). Exact `clipFor` shape engine
+  `IconShapeGeometry` (Apple analytic quintic superellipse · Circle exact · Samsung
+  official One UI cubic-bézier path) — single source shared by raster mask and the
+  new `SquircleGeometry.CreateIconShapePath` (WPF preview). Retired
+  ContinuousCornerMask + the Samsung superellipse(.40,4) approximation; IconStyler
+  rewired. Golden tests: superellipse eq, corner≈22.1%, One UI bézier ±1px, circle
+  exact, mirror symmetry, raster↔XAML 8-angle agreement. 118→152 tests, 0 warn.
+  NOTE: old MaskShape/ColorTreatment/StyleCombo model still used by the not-yet-
+  rebuilt App/pipeline; both coexist until the App rebuild (P5–P9) deletes the old.
+  Next: P3 colour.
 
 ## Owner rules (durable)
 

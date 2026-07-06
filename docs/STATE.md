@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-06
+updated: 2026-07-07
 version: v1.0.0 (parity rebuild complete; live-desktop run = owner-supervised gate)
 branch: main
 ---
@@ -7,6 +7,39 @@ branch: main
 # State
 
 ## Active Work
+
+### 2026-07-07 wave (owner-feedback driven; all live-verified)
+
+Current truth for reviewers — supersedes any older notes below that disagree:
+
+- **Shapes** (`IconShapeGeometry`): Apple = TRUE iOS continuous-corner squircle
+  (r=0.225·S, three cubic béziers per corner — NOT the earlier Lamé superellipse
+  mentioned in the P2 note) · Circle = exact · Samsung = official One UI path.
+- **Composition** (`TileRenderer.ComposeTile` + `IconSilhouetteClassifier`):
+  1. silhouette already IS the target shape (IoU ≥ .985) → pass-through (no
+     plate, no clip, normalized + marks only);
+  2. uniform plate detected (`IconBackgroundAnalyzer`) → rebuild: target shape
+     filled with the icon's own bg + its logo (`ForegroundBounds`) centred at
+     original proportion;
+  3. bare logo on transparency → white tile + 42/256 padded content
+     (reference `StyleBitmap` parity);
+  4. gradient/photo art → full-bleed clip on squircles, but 纯圆 inscribes on a
+     white plate at `MaxScaleInside` (never crops content).
+- **AA**: `RasterOps.ShapeMask` = corner-grid classification + 16×16 coverage on
+  boundary pixels (257 alpha levels), cached per (shape,size,offset); carving
+  marks clone before mutating. `TileRenderer.DrawScaled` = 2×2 supersampled
+  bilinear. Per-artwork analysis memoized in `IconAnalysisCache` (weak table).
+- **Restyle pipeline**: PLINQ parallel; 「正在更新预览…」 cue clears only when the
+  winner restyle lands (no timer).
+- **Styling coverage == bake coverage** (`DesktopBakeService.CanStyle`):
+  shortcuts (.lnk IconLocation) · .url · folders (desktop.ini) · loose files
+  (wrapper .lnk + hidden original, reference `-WrapFilesAsShortcuts` parity) ·
+  Recycle Bin (per-user CLSID DefaultIcon, empty+full state icons). AppX only
+  stays untouched. All journaled, zero-residue restore.
+- **Canvas**: fit-height = 100% default, hidden scrollbars, drag-pan,
+  Ctrl+wheel zoom at pointer, Ctrl+=/−/0, ⤢ whole-desktop, ↻ re-scan; Space =
+  hold-to-compare; radius-18 flat card (no outer shadow); CTA carries the
+  prototype dm-glow. Maximize respects the work area (WM_GETMINMAXINFO).
 
 - **v1.0 prototype-parity rebuild** (ADR-0008): the owner rejected the iterated
   UI and produced a complete Claude Design prototype —

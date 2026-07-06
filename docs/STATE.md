@@ -1,6 +1,6 @@
 ---
 updated: 2026-07-06
-version: unreleased (target v1.0.0)
+version: v1.0.0 (parity rebuild complete; live-desktop run = owner-supervised gate)
 branch: main
 ---
 
@@ -76,9 +76,27 @@ branch: main
   routes through the restyle funnel; reuses the existing HSV ColorPickerControl.
 - **The prototype-parity PREVIEW is complete + visually verified across all states**
   (the prototype is itself a preview simulation; this replicates it fully).
-- **Remaining: P12 motion (bloom/settle/reduced-motion) · compact summary toolbar
-  (P6.6) · P9 real desktop bake (connect the tested foundation; live run = P13
-  owner-supervised) · P13 regression · P14 parity audit + codex review.**
+- **P12 done**: bloom (apply) / settle (restore) staggered tile waves + reduced-motion;
+  drawer/panel/overflow/about/toast pops via MotionTokens.
+- **P6.6 done**: compact summary toolbar (preset chips + 自定义 ▸ + compact CTA).
+- **P9 done**: `DesktopBakeService` — real desktop bake reusing the tested foundation
+  (snapshot → journaled per-icon .ico via TileRenderer → transparent overlay → live
+  icon size) + zero-residue restore; wired to the CTA; fixture tests byte-identical.
+- **P13 done**: foundation re-verified green via automated fixtures (evidence in
+  `docs/plans/evidence/2026-07-parity/audit.md`). The live switch-on run stays the one
+  owner-supervised gate (never auto-triggered) — unchanged from before the rebuild.
+- **P14 in progress**: parity audit sheet written (`.../evidence/2026-07-parity/`),
+  version bumped to 1.0.0, CHANGELOG.md added. Codex adversarial review = final step.
+
+### Status: **all 14 rebuild phases complete.** 208 tests green, 0 warnings, grep gate
+empty. The v1.0 prototype-parity app is built + visually verified across every state
+(regular/compact, dark/light, all overlays, all interactions). Known follow-up: the old
+MakeoverService/IconStyler/OverlayBadgeIconFactory/StylePreset(old) + their tests are
+now dead-but-still-tested legacy the rebuilt app no longer uses — a safe deletion pass
+(remove code + tests together) is queued for after the codex review.
+
+### Owner gates (unchanged): OV/individual signing cert · public github repo · fresh-VM
+smoke · supervised live switch-on run.
 
 ## Owner rules (durable)
 

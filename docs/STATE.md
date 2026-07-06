@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-07
+updated: 2026-07-07 (overnight)
 version: v1.0.0 (parity rebuild complete; live-desktop run = owner-supervised gate)
 branch: main
 ---
@@ -7,6 +7,32 @@ branch: main
 # State
 
 ## Active Work
+
+### 2026-07-07 overnight wave (owner directive; autonomous)
+
+Supersedes older notes where they disagree:
+
+- **Compare/peek = LITERAL desktop pixels**: `DesktopLookSource` rips the BASE icon
+  from the shell image list (`SHGetImageList` SHIL matched to the desktop icon size +
+  `IImageList::GetIcon`, Recycle Bin via PIDL); the shortcut arrow is composited on
+  top by `ShortcutMarkRenderer.DrawClassicArrow` at the ONE owner-approved ratio
+  `StyledArrowScale = 0.65` (same constant for styled tiles, originals, and the
+  Keep-mode custom overlay the bake installs via the elevated helper's `custom` style).
+- **WYSIWYG pipeline**: every tile (styled AND original) is COMPOSED at 256 (the bake
+  size) and downscaled to the exact display device-pixel size with the same
+  linear-light area resampler that builds the .ico ladder (`IconResampler`); the WPF
+  compositor never resamples our bitmaps (its transform-path scaling bypasses Fant).
+  sRGB↔linear conversion lives in `SrgbLinear`.
+- **Windows-faithful grid**: `IFolderView::GetSpacing` (FolderViewInterop slot 10)
+  supplies the real cell; mirror cell = icon + constant padding; labels use the real
+  icon-title font (`ScreenMetrics.IconTitleFontPx`, SPI) with a 2-line ellipsis clamp;
+  positions map to grid indices at the desktop's current cell and re-lay-out at the
+  selected size, overflow reflowing column-major (`AssignPositions`).
+- **MacBook shell**: the mirror sits inside a parametric MacBook Pro 16 vector shell
+  (`DesktopCanvasView.Shell.cs`); the screen region's aspect is solved from the real
+  monitor. The old flat card chrome is gone.
+- Mirror opens at the desktop's REAL icon size + grid; canvas toolbar is one frosted
+  bar; Space = hold-to-compare unconditionally (text inputs excepted).
 
 ### 2026-07-07 wave (owner-feedback driven; all live-verified)
 

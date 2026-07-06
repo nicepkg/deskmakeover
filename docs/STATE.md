@@ -46,7 +46,25 @@ branch: main
   exact, mirror symmetry, raster↔XAML 8-angle agreement. 118→152 tests, 0 warn.
   NOTE: old MaskShape/ColorTreatment/StyleCombo model still used by the not-yet-
   rebuilt App/pipeline; both coexist until the App rebuild (P5–P9) deletes the old.
-  Next: P3 colour.
+- **P3 done**: `IconColorTreatment` pure module — exact prototype lum/hsl/grayOf/
+  styledFor + per-pixel TransformPixel + tests (WCAG ≥3:1 adaptive modes incl
+  纯黑/纯白, bw bounds, mono hue==tint).
+- **P4 done (subagent-built, reviewed)**: unified `TileRenderer.Render(artwork,
+  StyleConfig, TileKind, isShortcut, showOriginal, size)` — the ONE fn preview+bake
+  share. `Marks/`: RasterOps + MarkContext + IMark + 7 styles + classic arrow.
+  Harness PNG verified: all 7 marks distinct/adaptive/clipped, 16px legible.
+- **P5 done**: custom-titlebar window shell + 300px panel + radius-14 canvas +
+  compact overlay (<1100px) + Esc order + neutral DWM border (no system blue).
+  New lean MainViewModel; TitleBar/ControlPanel(stub)/Canvas(stub) views.
+- **P10 done (subagent-built, reviewed; live COM pending P13)**: IFolderView2 icon
+  size adapter, graceful-degrade, vtable slots tallied vs MSDN, mapping tests.
+- **P11 done**: settings drawer + overflow + About + changelog — verified in dark
+  AND light with live theme switch. (导出/保存 open data folder; P9 wires exact export.)
+- **P9(data) done**: LookVersion + LookHistoryStore (capped ledger, corruption-tolerant).
+- Build 0/0; **203 tests** green (Core 26 · Ops 20 · Shell 51 · App 49 · IconRendering 57).
+- Two subagents (marks-p4, iconsize-p10) built P4+P10 in parallel; both reviewed + green.
+- **Next: the core makeover UI — P6 control panel · P7 picker · P8 canvas · P9
+  orchestration** (all consume TileRenderer + StyleConfig + the scan pipeline).
 
 ## Owner rules (durable)
 

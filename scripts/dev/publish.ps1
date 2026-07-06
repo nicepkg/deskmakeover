@@ -18,6 +18,9 @@ Write-Host "Publishing DeskMakeover v$version (self-contained, single file) -> $
 & $dotnet publish (Join-Path $repo "src\DeskMakeover.App\DeskMakeover.App.csproj") `
     -p:PublishProfile=win-x64 -o $OutDir
 
+# Ship exactly one file — strip the debug symbols the referenced projects leave behind.
+Get-ChildItem -Path $OutDir -Filter *.pdb -ErrorAction SilentlyContinue | Remove-Item -Force
+
 $exe = Join-Path $OutDir "DeskMakeover.App.exe"
 if (Test-Path $exe) {
     $sizeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)

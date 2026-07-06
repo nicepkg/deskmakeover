@@ -31,9 +31,12 @@ public class Win {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int ht, bool repaint);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int ht, uint flags);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 }
 "@
+$HWND_TOPMOST = [IntPtr](-1); $HWND_NOTOPMOST = [IntPtr](-2); $SWP_NOSIZE = 0x1; $SWP_NOMOVE = 0x2
 
 $proc = $null
 if (-not $Attach) {
@@ -55,8 +58,10 @@ if ($Width -gt 0 -and $Height -gt 0) {
   Start-Sleep -Milliseconds 500
 }
 
+[void][Win]::ShowWindow($h, 9)   # SW_RESTORE
 [void][Win]::SetForegroundWindow($h)
-Start-Sleep -Milliseconds 350
+[void][Win]::SetWindowPos($h, $HWND_TOPMOST, 0, 0, 0, 0, ($SWP_NOSIZE -bor $SWP_NOMOVE))
+Start-Sleep -Milliseconds 400
 
 if ($Click) {
   Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -85,6 +90,7 @@ $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.CopyFromScreen($r.Left, $r.Top, 0, 0, (New-Object System.Drawing.Size $w, $ht))
 $outPath = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { Join-Path (Get-Location) $Out }
 $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
+[void][Win]::SetWindowPos($h, $HWND_NOTOPMOST, 0, 0, 0, 0, ($SWP_NOSIZE -bor $SWP_NOMOVE))
 $g.Dispose(); $bmp.Dispose()
 Write-Output "captured ${w}x${ht} -> $outPath"
 

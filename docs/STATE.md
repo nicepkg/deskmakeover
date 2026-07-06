@@ -26,7 +26,14 @@ branch: main
   React/Babel from unpkg CDN, so parity is **code-driven** (deterministic from
   source) + verified against WPF screenshots via the new
   `scripts/dev/capture-window.ps1` win-only capture helper. Before-shot of the
-  rejected UI captured. Next: P1 design tokens.
+  rejected UI captured.
+- **P1 done (2026-07-06)**: `Tokens.Dark/Light.xaml` rewritten to prototype-exact
+  CSS variables (spec-02) + new tokens (Chip base, AccentInk, Cta.OnAccent, teal/
+  amber bg, precomputed washes: chip-selected accent@.17, preset-selected 15% mix,
+  seat 16%). accentInk light = mix(accent 70%,#40140C)=#C65445 precomputed. Dropped
+  unused blue-ish AccentGlow gradient. ThemeManager already live-swaps (3 modes).
+  New `DesignTokensTests` harness loads both compiled dicts via pack URI on STA and
+  asserts every value. Build 0/0; App tests 42→46; grep gate empty. Next: P2 shape.
 
 ## Owner rules (durable)
 

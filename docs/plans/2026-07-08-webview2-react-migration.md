@@ -166,3 +166,23 @@ Execution log lives at the bottom; STATE.md points here.
   real settings round-tripped; REAL-mouse drag on the app-region titlebar
   moved the window (610,276 → 730,356) and REAL-mouse corner drag resized it
   (1340×840 → 1404×888). Frame channel is exercised by P5's preview.
+- **P2 done (2026-07-08).** Tokens: `index.css` rewritten — spec-02 palette
+  verbatim (dark default `:root`/`.dark`, `.light` overrides, coral-ink
+  contrast mix, chip/preset/rail washes via color-mix), shadcn semantic vars
+  mapped onto the product palette (primary=coral), Segoe font chain (geist
+  dropped, CSS 71→50KB), app-shell base (no page scroll, no text select,
+  quiet overlay scrollbars, drag-region classes, dm-slider/dm-hue skins).
+  Primitives in `components/common/`: Chip/ChipRow, AccordionAxis +
+  ExpandAllToggle (42px rows, chevron 180°, height collapse), CtaButton
+  (5 HeroPhases + dm-glow), Segmented, ToggleSwitch (32×19), DmSlider (native
+  range, coral fill), LinkChip, AngleDial (SVG rotary, shift 15° snap,
+  keyboard), ColorPickerPanel (SV field/hue/hex/EyeDropper/swatch rows) +
+  `lib/color.ts`, ToastHost + zustand store, `lib/motion.ts` (named spec-02
+  variants incl. bloom/settle staggers), `lib/geometry.ts` (apple squircle
+  path). Guard: `tests/banned-colors.test.ts` walks shipped sources and
+  rejects blue/violet hexes (HSV band 195-290°) + Tailwind blue-family
+  classes; 35 pass. Verified live in the hosted window via the
+  `?debug=components` gallery (dev-server env path): dark + light screenshots;
+  a REAL mouse click flipped the theme (CDP probe shows trusted pointerdown on
+  the button — clicks reach web content; earlier "dead click" was injection
+  timing, fixed by foreground+settle).

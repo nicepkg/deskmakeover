@@ -69,11 +69,14 @@ Top→bottom:
   lines mark the snapped cell edges; on snap the zone pulses scale 1.02→1.0 in
   80ms (reduced-motion: no pulse). Del deletes; arrows nudge by one cell.
 - **Rename**: double-click the title → inline TextBox (no dialog), Enter/Esc.
+- **Zone coordinates move in HALF-CELL steps** (owner call: finer snapping); icons
+  still land on the global integer grid — a half-offset zone wears asymmetric
+  padding. Drag guides show full-cell lines strong, half-cell lines faint.
 - **Zone visual (preview == bake, one renderer; owner-tuned 2026-07-07)**:
-  - **Title band**: the zone's FIRST CELL ROW is a header band — denser wash +
-    hairline divider under it; icons start on row 2, so a full icon row can never
-    cover the title (owner call). Title centered in the band, bundled handwritten
-    font, size = cell height × 0.34 (22–46px), colour per style below.
+  - **Title band**: the zone's FIRST CELL ROW is a header band — a denser wash,
+    NO divider (owner: the line read ugly); icons start on row 2, so a full icon
+    row can never cover the title. Title centered in the band, bundled handwritten
+    font, size = cell height × 0.30 (20–38px), soft ink (α .92), colour per style.
   - Four styles (all borrow the wallpaper's own palette — 深度融合):
     - 磨砂白 (default): baked gaussian blur (σ ≈ cell/6) + white overlay α .55 +
       hairline inset; title = deep wallpaper ink (OKLab L .35).
@@ -81,10 +84,14 @@ Top→bottom:
     - 壁纸色: dominant colour lifted to L≈85%, α .45, no stroke; ink title.
     - 同色边框: near-transparent body (white α .13) + border in the wallpaper's
       deep tone (L .45, width ≈ cell×0.032 ≥3px) — the wallpaper stays the hero.
-  - Corner radius `min(cellHeight×0.18, 16px)` (owner: less round).
-  - **Ghost placeholder tiles (editor only, never baked)**: zone icon rows fill
-    with soft icon-shaped ghosts so the layout reads "furnished" before the user
-    drags real icons in; real icons draw over them (owner call).
+  - Corner radius: a USER slider 0–24px, default 12 (owner: 方形 is a valid
+    taste); the selected-zone outline mirrors it.
+  - **Simulated icons (editor only, never baked)**: a PARTIAL spread (~1.5 rows,
+    3–12) of the owner's blueprint mark (apple-squircle, 82% icon size for air on
+    all sides), aligned to the GLOBAL grid so they sit exactly where real icons
+    would land. Real desktop icons are hidden in this module (owner call).
+  - Edit chrome shows ONLY on the selected zone (owner: idle outlines polluted
+    the preview); recommended/default layouts keep half-cell margins from edges.
 - Hold-to-compare (Space) shows the un-styled desktop, consistent with icons.
 
 ## 4. Bake pipeline (one renderer, WYSIWYG)

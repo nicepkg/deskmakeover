@@ -8,6 +8,20 @@ branch: main
 
 ## Active Work
 
+### 2026-07-08 UI replatform: WebView2 + React (owner directive; IN PROGRESS)
+
+Owner verdict on the WPF UI: 勉强能用，谈不上好用. Full UI replatform ordered —
+WebView2 host + React 19 + Tailwind 4 + shadcn/ui + Motion, **Bun-only
+toolchain (no Node)**, latest package versions from the live registry, layout
+restored from the evidence baselines
+(`docs/plans/evidence/2026-07-settings-i18n-shapes-icon/*.png`) + spec 02.
+Engine stays C#; WYSIWYG law preserved by transport (shared-buffer preview
+frames, exact-pixel tile PNGs). Old WPF UI layer gets deleted after parity
+(nothing released → no compat). Bake/apply remain owner-supervised gates.
+Governing docs: **ADR-0011**, **spec 05**, plan
+**`docs/plans/2026-07-08-webview2-react-migration.md`** (P0-P7 + execution log).
+Baseline before this work: **311 tests green**, commit b35f9e8.
+
 ### 2026-07-07 v1.1: rail + wallpaper module (owner directive; IN PROGRESS)
 
 Owner ordered: unlock the module rail (图标/壁纸 + bottom 设置; title bar sheds

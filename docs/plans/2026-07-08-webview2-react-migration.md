@@ -1,0 +1,136 @@
+# Plan — WebView2 + React UI migration (ADR-0011, spec 05)
+
+Owner directive 2026-07-08: replatform the UI to WebView2 + React 19 +
+Tailwind 4 + shadcn/ui + Motion. Bun-only (no Node). Latest package versions
+from the live registry, never from memory. Restore the current layout
+(baseline: `docs/plans/evidence/2026-07-settings-i18n-shapes-icon/*.png`,
+visual law: spec 02, prototype). Prefer shadcn primitives over hand-designed
+interactions. Old WPF UI is deleted after parity — nothing is released, no
+compat. The icon bake and wallpaper apply stay owner-supervised gates.
+
+Execution log lives at the bottom; STATE.md points here.
+
+## P0 — Scaffold (verify versions live)
+
+1. `bun create vite` → `src/DeskMakeover.Web` (react-ts template); record the
+   actual installed versions of react / react-dom / vite / typescript /
+   tailwindcss / @tailwindcss/vite / motion / zustand in the execution log
+   (`bun pm ls`). Install shadcn via `bunx shadcn@latest init` (Tailwind 4
+   flow) + the primitives we need (button, slider, switch, dropdown-menu,
+   dialog, tooltip, scroll-area, popover…).
+2. Add `Microsoft.Web.WebView2` (latest stable from nuget.org) to
+   `DeskMakeover.App.csproj`.
+3. Verify: `bun run build` produces `dist/`; `dotnet build` 0 warnings.
+
+## P1 — Host window + bridge + preview transport
+
+1. `Host/WebShellWindow` (frameless WPF window + WebView2, WindowChrome resize
+   borders, WM_GETMINMAXINFO port, non-client region support, virtual hosts
+   `app.deskmakeover` → `<exe>/web` and `assets.deskmakeover` →
+   `%LocalAppData%/DeskMakeover/webassets`, dev-server env override, WebView2
+   hardening per spec 05 §1).
+2. `Host/Bridge/` — envelope types, dispatcher (method registry, off-thread
+   handlers, error mapping), `Contracts.cs` DTOs + `BRIDGE_SCHEMA_VERSION`,
+   frame pusher (`PostSharedBufferToScript`).
+3. Web: `src/bridge/` typed client (promise correlation, event bus, schema
+   check, mock transport for browser-only dev).
+4. `Host/Controllers/ShellController` (window ops, openExternal, data folder,
+   app info) as the first real controller.
+5. Verify: app launches showing the React splash; `shell.*` round-trips work;
+   .NET bridge tests with fake transport green.
+
+## P2 — Design system
+
+1. Tailwind `@theme` tokens = spec 02 tables (dark default, `.light`
+   overrides); font chain; tabular numerals. Banned-colour `bun test`.
+2. `components/common/`: Chip/ChipGroup, Slider (coral), AccordionAxis
+   (42px row, chevron 180°, hairline separators) + ExpandAllToggle (＋/−),
+   CtaButton (HeroPhase states, 44px, dm-glow), Toast, SquircleMask (clipFor
+   SVG paths ported from `IconShapeGeometry` — same math), LinkChip,
+   SegmentedControl, Toggle (32×19), AngleDial (SVG rotary, drag + Shift 15°),
+   ColorPicker (SV field 122 + hue bar + hex + eyedropper via
+   `EyeDropper` API/host fallback + wallpaper/quick swatches, width 244).
+3. `lib/motion.ts` presets: bloom/settle/shimmer/rise/slide/pop + reduced-motion.
+4. Verify: Storybook-less demo route (`?debug=components`) screenshot; bun tests
+   for zone math scaffolding + i18n harness land here.
+
+## P3 — App shell
+
+1. TitleBar (46px, logo squircle, name + version chip, drag region, caption
+   buttons), ModuleRail (66px, 3 modules, Ctrl+1/2/3), routing store.
+2. SettingsPage (two-column: identity card | 外观(语言/主题 segmented) ·
+   自动化 toggle · 本地数据 · 关于与帮助 + inline changelog) — parity with
+   `settings.png`, taste-upgraded spacing/typography.
+3. i18n dictionaries ported from `Strings.resx` + `Strings.zh-Hans.resx`;
+   settings.set round-trip; effective-theme sync (`os-theme-changed`).
+4. Verify: all three rail routes render; language/theme switch live; screenshots.
+
+## P4 — Icons module
+
+1. `Host/Controllers/IconsController`: scan, restyle (tile PNG pipeline into
+   assets host, versioned names), original tiles, overrides, apply/restore/
+   history/exports — thin adapters over MakeoverService/DesktopBakeService/
+   LookHistoryStore (logic stays in services).
+2. IconsPanel: status line + hero + CTA state machine (5 states, spec 01) +
+   link chips (还原/上一版/历史 N/对比图) + history card + 风格 presets (2×2,
+   live minis) + 自定义 accordion (外形 13 shapes / 配色 3+tint+swatches /
+   快捷方式标识 3-state + 6 marks + mark colour / 图标大小) — 420ms debounce,
+   「正在更新预览…」 cue.
+3. MirrorViewport: real wallpaper underlay, column-major tile grid at true
+   metrics (from `system.getEnvironment`), labels (2-line ellipsis, real font
+   size), decorative taskbar + live clock, pan/zoom (Ctrl+wheel at pointer,
+   Ctrl+=/−/0, fit-height default, ⤢, ↻), compare pill (Space hold), per-tile
+   press-to-peek, right-click override menu, shimmer/bloom/settle waves.
+4. Compact mode (<1100px): panel becomes overlay + summary toolbar.
+5. Verify: visual parity vs `icons.png`; E2E: scan → preset switch → axis
+   change → history (fake-apply flag for the bake).
+
+## P5 — Wallpaper module
+
+1. `Host/Controllers/WallpaperController`: getState/recompose (debounce
+   host-side guard + revision echo)/apply/restore/saveLook/fonts.list/palette.
+2. WallpaperPanel: eyebrow/hero/CTA (应用到壁纸 states) + 分区 section
+   (用推荐布局 / + 添加分区 / zone rows with size + delete) + 自定义 accordion
+   (清晰度: 3-seg + strength 0-100 + direction chips + AngleDial + scrim colour
+   chips + picker, pale badge · 分区样式: 4 styles + fill colour + opacity
+   3-100 + corner radius · 标题文字: font dropdown (bundled first + system
+   families, virtualized list) + size/align/ink/shadow) + footnote — parity
+   with `wallpaper.png`.
+3. ZoneLayer on the mirror: `lib/zone-math.ts` (half-cell snap, exclusive-edge
+   resize, min 2×2, clamp; ported 1:1 from `DesktopCanvasView.Zones.cs`),
+   rubber-band create, 8 handles, move, arrow nudges (0.5), Del, inline rename,
+   dual-density grid guide while interacting, selected-only chrome, ghost mock
+   icons (blueprint SVG, partial spread, global-grid aligned), fit-all default
+   in this module, real icons hidden.
+4. Preview: shared-buffer frames → canvas; fingerprint banner + 重新合成;
+   140ms debounce; stale-revision drop.
+5. Verify: visual parity vs `wallpaper.png`; bun tests for zone math == C#
+   fixtures; E2E zone create/move/resize; compose round-trip timing logged.
+
+## P6 — Delete the WPF UI layer
+
+1. Remove `Views/ ViewModels/ Controls/ Presentation/` + Theming XAML
+   (Components/Controls/Tokens) + `MainWindow.xaml` + `LocExtension` + resx
+   UI tables; keep Orchestration/Preview/Resources(engine)/Sharing/AppSettings/
+   WallpaperColorService; refactor anything ImageSource-coupled in the kept set
+   to byte[]/file outputs.
+2. App.Tests: drop VM/design-token tests whose subject is deleted; keep/port
+   service + composer + snapshot tests. Bridge controller tests replace VM tests.
+3. Verify: `dotnet build` 0 warnings; full `dotnet test` green; grep: no
+   `System.Windows.Controls` outside Host/window plumbing; file count drop
+   recorded.
+
+## P7 — Package + E2E + review + wrap
+
+1. `scripts/publish-win.mjs` runs under bun: web build → dotnet publish →
+   copy dist → `<out>/web`; smoke the published exe.
+2. Playwright .NET E2E project (`tests/DeskMakeover.E2E`): launch, rail
+   navigation, icons flow, wallpaper flow, settings flow (fake-apply).
+3. Adversarial review (dev-cycle Phase 6): codex spec-compliance pass, then
+   code-quality pass; fix + re-review until clean.
+4. Fresh screenshots of all three modules vs baselines; STATE.md + this log
+   updated; commit series complete.
+
+## Execution log
+
+(appended as phases complete)

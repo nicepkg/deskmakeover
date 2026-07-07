@@ -37,7 +37,7 @@ passes SmartScreen without a red interstitial (OV/individual cert — owner).
 > action never touching hot; cleaners/accelerators and global file-type
 > association icons permanently banned.
 
-## v1.1 — 侧栏 + 壁纸模块 · in progress (ADR-0009)
+## v1.1 — 侧栏 + 壁纸模块 + Web UI 重平台 · in progress (ADR-0009/0011)
 
 - **Module rail unlocked now** (owner order 2026-07-07, overrides the "rail waits
   for 4+ modules" note): 66px rail with 图标 / 壁纸 + a bottom 设置 utility; the
@@ -49,6 +49,12 @@ passes SmartScreen without a red interstitial (OV/individual cert — owner).
   `IDesktopWallpaper` snapshot/restore, primary monitor only, **no icon
   auto-placement** (v1.2 candidate), no watermark, bundled handwritten title font.
 - Execution: `plans/2026-07-07-rail-and-wallpaper.md`.
+- **UI replatform (ADR-0011, owner order 2026-07-08)**: the entire visible UI
+  moves to WebView2 + React 19 + Tailwind 4 + shadcn/ui + Motion (Bun-only
+  toolchain, no Node) before the first public release; the C# engine and the
+  WYSIWYG law are untouched. Architecture + bridge contract: spec 05.
+  Execution: `plans/2026-07-08-webview2-react-migration.md`. The old WPF UI
+  layer is deleted after parity (nothing is released yet — no compat).
 
 ## v1.2 — 信任 + 净化模块 · weeks
 

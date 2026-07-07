@@ -28,9 +28,9 @@ Supersedes older notes where they disagree:
   icon-title font (`ScreenMetrics.IconTitleFontPx`, SPI) with a 2-line ellipsis clamp;
   positions map to grid indices at the desktop's current cell and re-lay-out at the
   selected size, overflow reflowing column-major (`AssignPositions`).
-- **MacBook shell**: the mirror sits inside a parametric MacBook Pro 16 vector shell
-  (`DesktopCanvasView.Shell.cs`); the screen region's aspect is solved from the real
-  monitor. The old flat card chrome is gone.
+- ~~MacBook shell~~ — built, shipped, then REMOVED on owner order (2026-07-07 morning):
+  the preview is back to the flat radius-18 dark card. Keep it that way unless the
+  owner asks again (the parametric shell lives in git history, commit a5a0e21^).
 - Mirror opens at the desktop's REAL icon size + grid; canvas toolbar is one frosted
   bar; Space = hold-to-compare unconditionally (text inputs excepted).
 

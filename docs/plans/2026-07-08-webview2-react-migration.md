@@ -146,3 +146,23 @@ Execution log lives at the bottom; STATE.md points here.
   boilerplate replaced with a placeholder App. Host side:
   `Microsoft.Web.WebView2` **1.0.4078.44** added to DeskMakeover.App.
   Verify: `bun run build` green (435ms) · `dotnet build` 0 warn / 0 err.
+- **P1 done (2026-07-08).** Host: `Host/FramelessWindowFrame` (WM_NCCALCSIZE
+  keeps the REAL system resize frame, removes the caption, 1px HTTOP strip —
+  the Windows Terminal recipe; WebView2's IsNonClientRegionSupportEnabled
+  documented as caption-only, so resize must stay native),
+  `Host/Bridge/BridgeDispatcher` (JSON-RPC over WebMessageReceived, off-thread
+  handlers, trusted-origin check, shared-buffer frame channel with buffer
+  reuse), `Host/Bridge/Contracts` (schema v1), `Host/Controllers/ShellController`
+  (window ops / openExternal whitelist / data folder / app.getInfo with
+  bilingual changelog / settings get+set with settings-changed event),
+  `Host/WebShellWindow` (virtual hosts app.deskmakeover + assets.deskmakeover,
+  hardened WebView2 settings, navigation lockdown, NewWindowRequested →
+  default browser, ProcessFailed → reload, dev-server env override). Web:
+  typed bridge client (`src/bridge/`) with promise correlation, event bus,
+  sharedbufferreceived → copy + releaseBuffer, schema assert, and a mock
+  transport for plain-browser design work. App.xaml drops StartupUri; the web
+  shell is the only window. csproj copies `dist/**` → `<out>/web`.
+  **Verified live**: screenshot shows the React page hosted frameless with
+  real settings round-tripped; REAL-mouse drag on the app-region titlebar
+  moved the window (610,276 → 730,356) and REAL-mouse corner drag resized it
+  (1340×840 → 1404×888). Frame channel is exercised by P5's preview.

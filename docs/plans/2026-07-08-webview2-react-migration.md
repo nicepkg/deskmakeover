@@ -201,3 +201,30 @@ Execution log lives at the bottom; STATE.md points here.
   "English" re-rendered the ENTIRE UI in English through the full loop
   (click → settings.set → persisted → settings-changed event → i18n), then
   restored to 跟随系统.
+- **P4 core done (2026-07-08).** Host: `Host/WebAssets` (IconImage→PNG encoder,
+  wallpaper snapshot w/ magic-byte sniffing, revisioned cleanup),
+  `Host/IconsSession` (+.Render/.Apply partials) — the headless
+  MakeoverViewModel: scan (grid metrics + layout + palette + applied-state
+  rehydration), verbatim AssignPositions port, PLINQ tile pipeline writing
+  styled+original PNGs into `tiles/r<rev>/`, preset minis, apply/restore/
+  applyVersion/exportCompare (bake stays user-click-only;
+  DESKMAKEOVER_FAKE_APPLY=1 for E2E), ops serialized by one gate;
+  `IconsController` (10 RPCs); DesktopPreviewService gains IconImage-returning
+  twins (RenderTileImage/RenderOriginalImage — same WYSIWYG two-step);
+  BridgeJson enums-as-strings. Web: icons DTOs, `stores/icons.ts` (420ms
+  debounced mutate w/ optimistic config, revision-guarded adoption, zoom→
+  displaySize re-render, bloom/settle wave triggers, toast keys → i18n),
+  IconsPanel (hero/CTA/link chips/history card/preset cards with live minis/
+  5-axis accordion incl. 13 shapes, mono swatches + 调色盘 popover, 6 marks +
+  mark colour, filter, size), IconsMirror (equal-scale desktop space: real
+  wallpaper, tiles at Windows-faithful positions, 2-line clamped labels at the
+  real icon-title font, decorative taskbar + live clock, drag-pan, Ctrl+wheel
+  zoom at pointer, fit-height/fit-all, compare pill + Space hold, per-tile
+  press-to-peek, custom right-click override menu, shimmer + updating cue,
+  bloom/settle staggered waves). Fixed a hooks-order crash (useRef after an
+  early return — CDP console caught it). Banned-colour test gains a tiny
+  documented OS-mirror allowlist (Win11 taskbar replica colours).
+  **Verified live**: scan of the real desktop (23 icons, real positions, real
+  wallpaper); a REAL mouse click on 纯净黑白 restyled every mirror tile to
+  engine-rendered grayscale through the full loop. Deferred to P7 punch list:
+  compact (<1100px) overlay mode; settings-page 导出/保存 wiring.

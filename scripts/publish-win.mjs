@@ -17,12 +17,28 @@ const dotnet = existsSync(localDotnet) ? localDotnet : "dotnet";
 rmSync(artifactsRoot, { force: true, recursive: true });
 await mkdir(helperOutput, { recursive: true });
 
+// The visible UI is the web bundle (ADR-0011): build it first so the App publish
+// carries dist/** into <out>/web. Run this script with bun (bun-only toolchain).
+buildWeb();
+
 publish("src/DeskMakeover.App/DeskMakeover.App.csproj", appOutput);
 publish("src/DeskMakeover.ElevatedHelper/DeskMakeover.ElevatedHelper.csproj", helperOutput, {
   publishSingleFile: true,
 });
 
 console.log(`DeskMakeover publish complete: ${appOutput}`);
+
+function buildWeb() {
+  const webRoot = join(repositoryRoot, "src", "DeskMakeover.Web");
+  const result = spawnSync("bun", ["run", "build"], {
+    cwd: webRoot,
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
 
 function publish(projectPath, outputPath, options = {}) {
   const args = [

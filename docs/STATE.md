@@ -8,6 +8,30 @@ branch: main
 
 ## Active Work
 
+### 2026-07-08 UI replatform: DONE through P7 (review fixes in)
+
+All phases P0-P7 executed the same day (see the plan's execution log for
+per-phase evidence). Final state: the ONLY window is `Host/WebShellWindow`
+(frameless via WM_NCCALCSIZE, real resize frame, app-region drag — both
+REAL-mouse verified); UI = React 19.2.7 / Tailwind 4.3.2 / shadcn radix-nova /
+motion 12.42.2, Bun-only; the WPF UI layer is DELETED; engine + orchestration
+untouched. Icons + wallpaper + settings modules are live end-to-end (real
+scans, engine-rendered tile PNGs, shared-buffer compose frames, zone editor
+with half-cell snap) — all interaction claims verified with simulated REAL
+mouse input, per module screenshots in the session log. Tests: **276 dotnet
+(Core 27 · Ops 21 · Shell 64 · IconRendering 104 · App 60) + 61 bun** green.
+`bun scripts/publish-win.mjs` builds web → publishes self-contained →
+`<out>/web`; published exe smoke-verified. Codex adversarial review (10
+findings): 7 fixed same-day (prod ignores dev-server env; double-buffered
+shared frames; recompose revision drop; apply flushes pending look; debounce
+cancel on preset; schema assert at boot; stale revision folders purged);
+#2 click-token declined (same trust domain — web is the only trusted origin),
+#3 dispatcher lifetime = process (documented), #6 covered by host-monotonic
+revisions + client guard. **Remaining (punch list)**: compact (<1100px)
+overlay mode; settings 导出/保存 wiring (exporters exist host-side);
+Playwright(.NET) E2E harness; the owner-supervised LIVE icon-bake and
+wallpaper-apply runs (NEVER auto-triggered) — unchanged gates.
+
 ### 2026-07-08 UI replatform: WebView2 + React (owner directive; IN PROGRESS)
 
 Owner verdict on the WPF UI: 勉强能用，谈不上好用. Full UI replatform ordered —

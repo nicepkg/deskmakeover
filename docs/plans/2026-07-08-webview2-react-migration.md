@@ -253,3 +253,22 @@ Execution log lives at the bottom; STATE.md points here.
   composed first frame; a REAL mouse drag moved the zone with half-cell snap,
   selected-only chrome appeared, and the compose re-rendered at the new spot;
   style summary tracked the selected zone (半透明黑 · 9px).
+- **P6 done (2026-07-08).** WPF UI layer deleted (Views/ViewModels/Controls/
+  token+component XAML/converters/LocExtension/MainWindow); kept: Orchestration,
+  Preview, Resources (UiText+resx feed the i18n generator), Sharing,
+  StyleLabels/ItemPresentationMapper, PreviewItemViewModel (exporter input),
+  AppSettings/WallpaperColorService/WindowChromeInterop; ThemeManager slimmed to
+  ThemeMode + IsDarkActive + events (+ live OS-theme follow, settings.set now
+  re-applies); IconOverride moved to Core. VM/design-token/XAML-geometry tests
+  removed; the legacy-Glass normalization regression re-anchored to
+  Config.Normalize + StyleLabels. Suite: **276 dotnet + 61 bun** green; the
+  production virtual-host path smoke-verified.
+- **P7 done (2026-07-08).** `publish-win.mjs` builds the web bundle first (bun)
+  and the publish carries `<out>/web`; the published self-contained exe runs the
+  full icons module (screenshot). Codex adversarial review: 10 findings, 7 fixed
+  (DEBUG-only dev-server trust, double-buffered shared frames, wallpaper
+  recompose revision drop, apply flushes the pending look, icons debounce
+  cancel, boot-time schema assert, cross-run revision-folder purge), 3
+  dispositioned (click-token: same trust domain; dispatcher lifetime = process;
+  icons revisions already host-monotonic + client-guarded). Remaining punch
+  list moved to STATE.md.

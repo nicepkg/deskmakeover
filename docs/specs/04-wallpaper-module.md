@@ -57,6 +57,9 @@ Top→bottom:
 
 - Active only in 壁纸 view; the mirror keeps real wallpaper + real icons visible
   (icons render above zones, exactly like the final desktop).
+- Default canvas view in this module = the WHOLE desktop (fit-all) — the module
+  judges overall layout, not icon detail (owner call 2026-07-07); 图标 keeps
+  fit-height. Manual zoom still works after the switch.
 - **Create**: drag on empty canvas → rubber-band rect that live-snaps to the real
   icon grid (origin + `IFolderView::GetSpacing` cell); release creates the zone
   (min 2×2 cells). Empty state (no zones yet): centered dashed frame + 「拖一个框,
@@ -66,15 +69,22 @@ Top→bottom:
   lines mark the snapped cell edges; on snap the zone pulses scale 1.02→1.0 in
   80ms (reduced-motion: no pulse). Del deletes; arrows nudge by one cell.
 - **Rename**: double-click the title → inline TextBox (no dialog), Enter/Esc.
-- **Zone visual (preview == bake, one renderer)**:
-  - 磨砂白: baked gaussian blur (σ ≈ cell/6) of the covered wallpaper region +
-    white overlay α .55 + 1px inset stroke rgba(255,255,255,.5).
-  - 壁纸色: dominant palette colour (existing `WallpaperColorService`) lifted to
-    L≈85%, α .45, no stroke.
-  - Corner radius `min(cellHeight×0.6, 28px)`; title centered at the zone top,
-    bundled handwritten font, size = icon label px × 1.3, letter-spacing 2px,
-    colour: deepened wallpaper primary (磨砂白) / white (壁纸色); top padding ≈
-    0.8 cell so row 1 icons clear the title; side padding ≈ half cell.
+- **Zone visual (preview == bake, one renderer; owner-tuned 2026-07-07)**:
+  - **Title band**: the zone's FIRST CELL ROW is a header band — denser wash +
+    hairline divider under it; icons start on row 2, so a full icon row can never
+    cover the title (owner call). Title centered in the band, bundled handwritten
+    font, size = cell height × 0.34 (22–46px), colour per style below.
+  - Four styles (all borrow the wallpaper's own palette — 深度融合):
+    - 磨砂白 (default): baked gaussian blur (σ ≈ cell/6) + white overlay α .55 +
+      hairline inset; title = deep wallpaper ink (OKLab L .35).
+    - 半透明黑: baked blur + dark overlay rgba(16,18,23, .46); light title.
+    - 壁纸色: dominant colour lifted to L≈85%, α .45, no stroke; ink title.
+    - 同色边框: near-transparent body (white α .13) + border in the wallpaper's
+      deep tone (L .45, width ≈ cell×0.032 ≥3px) — the wallpaper stays the hero.
+  - Corner radius `min(cellHeight×0.18, 16px)` (owner: less round).
+  - **Ghost placeholder tiles (editor only, never baked)**: zone icon rows fill
+    with soft icon-shaped ghosts so the layout reads "furnished" before the user
+    drags real icons in; real icons draw over them (owner call).
 - Hold-to-compare (Space) shows the un-styled desktop, consistent with icons.
 
 ## 4. Bake pipeline (one renderer, WYSIWYG)

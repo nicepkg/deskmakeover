@@ -15,9 +15,26 @@ Owner ordered: unlock the module rail (图标/壁纸 + bottom 设置; title bar 
 enhancement + partition zones baked into wallpaper, visual editor on the mirror
 canvas). A 4-expert panel (Norman/PM/designer/codex) reviewed; owner's calls:
 2-char rail labels · NO icon auto-placement in v1.1 · NO watermark · bundled
-handwritten title font. Governing docs: **ADR-0009**, **spec 03**, **spec 04**,
-plan **`docs/plans/2026-07-07-rail-and-wallpaper.md`** (phases R, W1-W5).
+handwritten title font (ZCOOL KuaiLe, OFL, in Assets/fonts). Governing docs:
+**ADR-0009**, **spec 03**, **spec 04**, plan
+**`docs/plans/2026-07-07-rail-and-wallpaper.md`** (phases R, W1-W5).
 Roadmap renumbered: 净化 → v1.2, Explorer → v1.3.
+
+**Progress (all live-verified via UIA captures):** R done (rail + drawer
+consolidation, Ctrl+1/2, 284→ tests green). W1 done (`DesktopWallpaperInterop`
+16-slot vtable + detached-monitor tolerance; `WallpaperSnapshotService` full-state
+backup/apply/restore, unreadable-anchor never overwritten). W2 done (pure
+`WallpaperBakeRenderer`: clarity gradient/vignette/label-halos + zone panels;
+`WallpaperClarityAdvisor` pale detection on label rows). W3+W4 done (zone editor
+on the mirror: rubber-band create / snap move / 8-handle resize / inline rename /
+Del+arrows / grid guide / snap pulse; panel with 清晰度三档+高级 fold, zone list,
+CTA state machine, fingerprint-mismatch banner, coach mark; compose preview ==
+bake buffer via `WallpaperComposer`). Owner visual round (2026-07-07): title band
+= own cell row + divider (icons never cover the title), ghost placeholder tiles
+(editor-only), radius ≤16, FOUR styles (磨砂白/半透明黑/壁纸色/同色边框, all from
+the wallpaper's palette), 壁纸 module defaults to fit-all view. Remaining: W5
+(adversarial review + owner-supervised live apply/restore — the wallpaper apply
+is NEVER auto-triggered).
 
 ### 2026-07-07 overnight wave (owner directive; autonomous)
 

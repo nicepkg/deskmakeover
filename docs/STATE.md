@@ -29,12 +29,23 @@ backup/apply/restore, unreadable-anchor never overwritten). W2 done (pure
 on the mirror: rubber-band create / snap move / 8-handle resize / inline rename /
 Del+arrows / grid guide / snap pulse; panel with 清晰度三档+高级 fold, zone list,
 CTA state machine, fingerprint-mismatch banner, coach mark; compose preview ==
-bake buffer via `WallpaperComposer`). Owner visual round (2026-07-07): title band
-= own cell row + divider (icons never cover the title), ghost placeholder tiles
-(editor-only), radius ≤16, FOUR styles (磨砂白/半透明黑/壁纸色/同色边框, all from
-the wallpaper's palette), 壁纸 module defaults to fit-all view. Remaining: W5
-(adversarial review + owner-supervised live apply/restore — the wallpaper apply
-is NEVER auto-triggered).
+bake buffer via `WallpaperComposer`). Owner visual rounds (2026-07-07, ~6 iterations): title band
+= own cell row, NO divider/wash bar; simulated blueprint icons (owner SVG, apple
+squircle, partial spread, global-grid aligned; real icons hidden in this module);
+half-cell zone snapping; FOUR styles + per-zone fill colour (shared 调色盘) +
+opacity 3-100%; user corner radius (fixed rounded-rect SDF bug: interior distance
+term was missing — small radii washed the whole panel; regression-tested); title
+fully user-styled (any system font via ToggleButton+Popup+virtualized-ListBox
+dropdown — NOT ComboBox, whose capture/focus internals broke real-mouse opens;
+size/align/ink incl. picker/shadow); clarity scrim: colour (深/浅/壁纸色/调色盘),
+strength 0-100%, direction presets + AngleDial rotary picker; accordion
+encapsulated as AccordionAxis + ExpandAllButton (both panels share it); wallpaper
+panel rebuilt in the icons panel's grammar; App.CtaButton reused via HeroPhase
+mapping; themed Slider (no system blue); zone snap-pulse crash fixed (never
+animate template-frozen transforms) + crash.log last-chance logger; label-halo
+feature removed (baked ghost smudges at stale icon positions). 288 tests green.
+Remaining: W5 (adversarial review + owner-supervised live apply/restore — the
+wallpaper apply is NEVER auto-triggered).
 
 ### 2026-07-07 overnight wave (owner directive; autonomous)
 

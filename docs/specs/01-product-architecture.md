@@ -56,6 +56,11 @@ One reliable loop, all on one screen:
 form, v1.1+ per roadmap); AI icon generation; real-time watcher (v1.1 opt-in);
 installer beyond self-contained zip/exe; English UI as a gate; Win7.
 
+> **v1.1 (ADR-0009)**: the module rail + 壁纸 module shipped early — spec 03
+> (shell navigation: rail, title bar sheds ⚙/⋯, overflow merges into the drawer)
+> and spec 04 (wallpaper module) supersede this section's window IA where they
+> disagree. The ASCII frame below is the v1.0 historical shape.
+
 ## The Window (IA)
 
 Three regions plus overlays — no navigation, no second page:
@@ -158,6 +163,8 @@ Title switches 图标单色 / 标识配色.
   (default on; subtitle 「桌面出现新图标时按当前风格处理」) · 还原快照 row
   (count + 「导出」) · 前后对比图 row (「保存」) · 关于桌面美颜 row · 更新日志 row.
 - **⋯ overflow**: 检查更新 · 帮助与反馈 · 更新日志 · 关于桌面美颜.
+  *(v1.1, spec 03: the overflow menu is retired — these four rows moved into the
+  drawer's 关于 group, and the drawer opens from the rail's bottom 设置 entry.)*
 - **About**: ✦ logo 56 · 桌面美颜 / DeskMakeover · v1.0.0 · slogan · 5 positioning
   chips · GitHub card (`github.com/nicepkg/deskmakeover` — 开源地址 · 欢迎 Star) ·
   author card (小明 · XiaomingLab, 「同一件事做两次，就写个工具」; links: 个人主页

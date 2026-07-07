@@ -8,6 +8,17 @@ branch: main
 
 ## Active Work
 
+### 2026-07-07 v1.1: rail + wallpaper module (owner directive; IN PROGRESS)
+
+Owner ordered: unlock the module rail (图标/壁纸 + bottom 设置; title bar sheds
+⚙/⋯, overflow merges into the drawer) and build 美化桌面壁纸 1.0 (clarity
+enhancement + partition zones baked into wallpaper, visual editor on the mirror
+canvas). A 4-expert panel (Norman/PM/designer/codex) reviewed; owner's calls:
+2-char rail labels · NO icon auto-placement in v1.1 · NO watermark · bundled
+handwritten title font. Governing docs: **ADR-0009**, **spec 03**, **spec 04**,
+plan **`docs/plans/2026-07-07-rail-and-wallpaper.md`** (phases R, W1-W5).
+Roadmap renumbered: 净化 → v1.2, Explorer → v1.3.
+
 ### 2026-07-07 overnight wave (owner directive; autonomous)
 
 Supersedes older notes where they disagree:

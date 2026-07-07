@@ -36,21 +36,37 @@ passes SmartScreen without a red interstitial (OV/individual cert — owner).
 > action never touching hot; cleaners/accelerators and global file-type
 > association icons permanently banned.
 
-## v1.1 — 信任 + 第二模块 · weeks
+## v1.1 — 侧栏 + 壁纸模块 · in progress (ADR-0009)
+
+- **Module rail unlocked now** (owner order 2026-07-07, overrides the "rail waits
+  for 4+ modules" note): 66px rail with 图标 / 壁纸 + a bottom 设置 utility; the
+  title bar sheds ⚙/⋯ and the overflow menu merges into the settings drawer
+  (spec 03).
+- **美化桌面壁纸 1.0** (spec 04): pale-wallpaper 清晰度 enhancement (auto-detect
+  + 关/柔和/强) + partition zones baked into the wallpaper — semantic cell-grid
+  zones + environment fingerprint (regenerate on mismatch), full
+  `IDesktopWallpaper` snapshot/restore, primary monitor only, **no icon
+  auto-placement** (v1.2 candidate), no watermark, bundled handwritten title font.
+- Execution: `plans/2026-07-07-rail-and-wallpaper.md`.
+
+## v1.2 — 信任 + 净化模块 · weeks
 
 - **系统净化 module** (HKCU one-shot, warm tier, no elevation): start-menu
   recommendations, lock-screen Spotlight tips, Explorer promotions, settings
   suggestions, advertising ID, search highlights. UI = the prototype's future-form
   净化 view (toggle list + 并入一键美化 + honest footer 「不是清理软件…」).
-  Module list / 「已帮你做的事」 checklist grammar appears with module #2
-  (ADR-0004; the icon rail waits for 4+ modules).
-- `Modules.Contracts` + module host refactor lands **before** module #2 ships.
+  Module list / 「已帮你做的事」 checklist grammar arrived with the rail
+  (ADR-0004 as amended by ADR-0009).
+- 「整理到分区」 icon auto-placement experiment (explicit, previewable,
+  journaled `SelectAndPositionItems`) — candidate, per ADR-0009 §6.
+- `Modules.Contracts` + module host refactor lands **before** 净化 ships —
+  v1.1's rail deliberately used a lightweight two-view switch (ADR-0009).
 - Trust hardening: AV whitelist submissions (Microsoft/360/火绒); opt-in real-time
   watcher with visible exit + tray presence; multi-monitor/mixed-DPI edge
   coverage; installer + emergency restore entry.
 - English localization if demand shows.
 
-## v1.2 — 第二战场 (Explorer) · weeks
+## v1.3 — 第二战场 (Explorer) · weeks
 
 - **资源管理器 module** per the prototype future-form view: folder icons
   (desktop.ini) + drive icons (registry DriveIcons only — autorun.inf never),
@@ -59,8 +75,9 @@ passes SmartScreen without a red interstitial (OV/individual cert — owner).
 
 ## v2.0+ — 代差 (moat) · months
 
-- **壁纸 module** (prototype future-form view): curated wallpaper sets matched to
-  the icon look, auto-backup + one-click revert, never替换 without consent.
+- **壁纸 curated sets** (prototype future-form view): the local 壁纸 module
+  shipped in v1.1 (spec 04); this expands it with curated wallpaper sets matched
+  to the icon look — auto-backup + one-click revert, never替换 without consent.
 - AI icon generation (`IIconGenerator` extension point reserved); whole-desktop
   unified colour-filter style packs; EV cert when volume justifies.
 

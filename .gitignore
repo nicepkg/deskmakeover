@@ -29,3 +29,7 @@ logs/
 # OS files
 Thumbs.db
 Desktop.ini
+
+# Web (Bun + Vite)
+node_modules/
+src/DeskMakeover.Web/dist/

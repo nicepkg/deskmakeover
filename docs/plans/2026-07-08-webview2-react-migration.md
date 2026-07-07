@@ -133,4 +133,16 @@ Execution log lives at the bottom; STATE.md points here.
 
 ## Execution log
 
-(appended as phases complete)
+- **P0 done (2026-07-08).** `src/DeskMakeover.Web` scaffolded with
+  `bun create vite` (react-ts). Versions installed from the live registry:
+  react/react-dom **19.2.7**, vite **8.1.3**, typescript **6.0.3** (template
+  pins ~6.0.2), tailwindcss + @tailwindcss/vite **4.3.2**, motion **12.42.2**,
+  zustand **5.0.14**, @vitejs/plugin-react 6.0.3, lucide-react 1.23.0,
+  radix-ui 1.6.2 (shadcn CLI 4.13.0, style `radix-nova`, css-variables,
+  neutral). Primitives added: button, slider, switch, dropdown-menu, dialog,
+  tooltip, scroll-area, popover, separator, toggle-group, toggle, input,
+  label. Notes: vite 8 template ships oxlint (kept); TS 6 deprecates `baseUrl`
+  (paths declared without it); shadcn CLI moved to devDependencies; template
+  boilerplate replaced with a placeholder App. Host side:
+  `Microsoft.Web.WebView2` **1.0.4078.44** added to DeskMakeover.App.
+  Verify: `bun run build` green (435ms) · `dotnet build` 0 warn / 0 err.

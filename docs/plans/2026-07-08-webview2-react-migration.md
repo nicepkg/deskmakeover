@@ -186,3 +186,18 @@ Execution log lives at the bottom; STATE.md points here.
   a REAL mouse click flipped the theme (CDP probe shows trusted pointerdown on
   the button — clicks reach web content; earlier "dead click" was injection
   timing, fixed by foreground+settle).
+- **P3 done (2026-07-08).** i18n: `scripts/resx-to-i18n.ts` compiles BOTH resx
+  tables to typed TS dictionaries (356 keys, parity-checked, `t()` strictly
+  keyed); `lib/i18n` resolves System like UiText (zh* → 简体中文). Stores:
+  `stores/app.ts` (module routing, window state, settings, boot wiring:
+  settings-changed / os-theme-changed / window-state events; theme class on
+  documentElement). Shell: TitleBar (46px drag band, logo+name+version chip,
+  caption buttons w/ Win11 restore glyph), ModuleRail (66px, 3 modules,
+  wash-rail selection, 设置 pinned bottom, Ctrl+1/2/3), SettingsPage (identity
+  column + 外观/自动化/本地数据/关于与帮助 cards + inline localized changelog;
+  导出/保存 disabled until P4 wires the exporters), module crossfade, ToastHost
+  mounted. index.html retitled 桌面美颜. **Verified live** (screenshots): shell
+  + settings parity vs the `settings.png` baseline; ONE real mouse click on
+  "English" re-rendered the ENTIRE UI in English through the full loop
+  (click → settings.set → persisted → settings-changed event → i18n), then
+  restored to 跟随系统.

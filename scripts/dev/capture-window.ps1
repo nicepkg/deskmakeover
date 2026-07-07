@@ -21,6 +21,10 @@ $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 if (-not $Exe) {
   $Exe = Join-Path $root "src\DeskMakeover.App\bin\Debug\net10.0-windows\DeskMakeover.App.exe"
 }
+$localDotnet = Join-Path $root ".dotnet"
+if (-not $env:DOTNET_ROOT -and (Test-Path $localDotnet)) {
+  $env:DOTNET_ROOT = $localDotnet
+}
 
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
@@ -33,6 +37,7 @@ public class Win {
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int ht, bool repaint);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int ht, uint flags);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 }
 "@
@@ -87,7 +92,17 @@ if ($w -le 0 -or $ht -le 0) { throw "bad window rect ${w}x${ht}" }
 
 $bmp = New-Object System.Drawing.Bitmap $w, $ht
 $g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen($r.Left, $r.Top, 0, 0, (New-Object System.Drawing.Size $w, $ht))
+$printed = $false
+$hdc = [IntPtr]::Zero
+try {
+  $hdc = $g.GetHdc()
+  $printed = [Win]::PrintWindow($h, $hdc, 2) # PW_RENDERFULLCONTENT
+} finally {
+  if ($hdc -ne [IntPtr]::Zero) { $g.ReleaseHdc($hdc) }
+}
+if (-not $printed) {
+  $g.CopyFromScreen($r.Left, $r.Top, 0, 0, (New-Object System.Drawing.Size $w, $ht))
+}
 $outPath = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { Join-Path (Get-Location) $Out }
 $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
 [void][Win]::SetWindowPos($h, $HWND_NOTOPMOST, 0, 0, 0, 0, ($SWP_NOSIZE -bor $SWP_NOMOVE))

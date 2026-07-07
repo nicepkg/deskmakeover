@@ -103,6 +103,20 @@ geometry) and renderer (raster mask):
   (`IsRoundish`, ADR-0005).
 - **三星**: the official One UI adaptive-icon mask path, scaled:
   `M50,0 C10,0 0,10 0,50 C0,90 10,100 50,100 C90,100 100,90 100,50 C100,10 90,0 50,0`.
+- **扩展形状** (ADR-0010): Google, Brave, Bookmark, Lemon, Squircle, Tile,
+  Teardrop, Blob, Rectellipse. These are maskable-icon preview shapes inspired by
+  Progressier's public editor. They are secondary choices behind the three
+  platform defaults, but they must use the same `clipFor` service and therefore
+  preserve preview==bake. Algorithms are deterministic local geometry:
+  - Google = rounded square at 20% radius.
+  - Brave = octagonal/shield-like adaptive mask with clipped diagonal shoulders.
+  - Bookmark = rounded top with a centered bottom notch.
+  - Lemon = two opposing round lobes with pointed diagonal ends.
+  - Squircle = Lamé superellipse (`n≈4.5`) distinct from the true Apple curve.
+  - Tile = small-radius rounded square.
+  - Teardrop = one round lobe tapering to a bottom-right point.
+  - Blob = soft asymmetric organic polygon.
+  - Rectellipse = rectangle/ellipse hybrid with long straight mid-sides.
 
 The app logo always wears the 苹果 clip (title bar 24px, drawer 26px, about 56px).
 
@@ -125,10 +139,12 @@ Luminance `l = (0.299R+0.587G+0.114B)/255` of the icon's dominant colour.
 单色 swatch row: 纯白 `#FFFFFF` · 纯黑 `#141414` · 壁纸主色 · 壁纸辅色 (both
 auto-extracted) · 品牌珊瑚 accent · 湖水 `#3FB6A8` · 琥珀 `#D9A94E` · 调色盘 button.
 
-## Shortcut Marks (快捷方式标识 · seven styles + two states)
+## Shortcut Marks (快捷方式标识 · six styles + classic arrow)
 
-States: **美化** (mark, default) / **经典箭头** (classic: light plate `#F4F4F1`,
-dark ↗ `#2E3238`, bottom-left, size `max(14, 0.28S)`, radius 4) / **无标识**.
+States: **美化** / **经典箭头** (classic: light plate `#F4F4F1`, dark ↗
+`#2E3238`, bottom-left, size `max(14, 0.28S)`, radius 4) / **无标识**. The
+launch default is **无标识**; if the user wants arrow semantics, **经典箭头** is
+the recommended choice.
 
 Mark colour: **自动** default (adaptive B/W per ADR-0006 ink law); user colour
 via swatches (白/黑/珊瑚/壁纸主色/湖水) or picker — user colour is mixed per
@@ -136,18 +152,20 @@ style, never applied raw. All marks anchor **bottom-left** (except 双层卡片 
 卷角 whose geometry is corner-specific per below), ride the icon's own alpha,
 and bake into each per-icon `.ico` (ADR-0006 facts).
 
-Style algorithms (S = icon size; `l` = tile luminance; `mc` = mark colour;
-prototype lines 1405–1487 are the executable reference):
+Style algorithms (S = icon size; `l` = tile luminance; `mc` = mark colour):
 
 | Style | Algorithm |
 |---|---|
-| **玻璃箭头** (default) | Frosted circular seat ⌀ `max(16, 0.34S)` at bottom-left inset `0.055S`; seat = light `rgba(255,255,255,.58)` on dark tiles (`l ≤ 0.58`) / dark `rgba(24,24,28,.45)` on light, blurred backdrop, 1px ring + soft shadow. Arrow = rounded stem (rotated 45°) + chevron head, stroke `max(1.6, 0.085·seat)`; ink `#232328` on light seat / `#F4F4F1` on dark; user colour mixes 70–72% toward black/white. |
 | **双层卡片** | Same-shape sibling card behind, 0.88S, offset (+0.17S, +0.18S) → peeks bottom-right; tone adaptive neutral: dark `rgba(42,40,38,.92)` behind light tiles / light `rgba(238,234,228,.94)` behind dark (user colour → `hsl(H, S·0.7, 30%)` / `hsl(H, S·0.75, 86%)`); seam + grounding drop-shadows. |
 | **幽灵叠影** | Translucent same-shape echo behind, 0.92S, offset (+0.14S, +0.155S); `rgba(24,22,20,.45)` behind light / `rgba(255,255,255,.42)` behind dark (user colour 60% alpha); background blur. |
 | **缎光角** | In-shape satin sheen: linear-gradient 45° from bottom-left corner, tone 62%→30%→transparent by 46%; tone = dark `#2A241E` on light tiles / white on dark. |
 | **珐琅光弧** | In-shape radial glow at (15%, 88%): `mc` mixed 78% toward `#141414` on light tiles / 82% toward white on dark, fading out by 46%. |
 | **卷角** | Dog-ear at bottom-right: corner cut `c = S·{apple .26, samsung .28, circle .30}` via 315° mask; mirrored fold triangle with warm paper gradient (highlight→tone→tip-shade), rounded fold, dual drop-shadow toward the body. |
 | **细描边** | 2.5px same-shape ring behind the icon (S+5 total), colour `mc`. |
+
+`玻璃箭头` is removed from the selectable gallery by ADR-0010. Its renderer may
+remain only as legacy test scaffolding until the deletion pass; it must not be a
+new user's choice.
 
 Acceptance stays ADR-0005's **3-second misread gate**; parity rule: the mark
 preview chips, the canvas tiles, and the baked desktop `.ico` must render the
@@ -161,7 +179,7 @@ same math.
 | `settle` | scale 1.06→1, opacity .35→1, .8s ease, 24ms stagger | restore exhale |
 | `shimmer` | gradient sweep, 1.3s linear ∞, clipped to the icon shape | scanning skeleton |
 | `rise` | translateY 10→0 + fade, .25–.4s | cards entering (history/checklist) |
-| `drawer` | translateX 36→0 + fade, .22s | settings drawer |
+| `slide` | translateX 36→0 + fade, .22s | compact panel/page transitions |
 | `pop` | scale .95→1 + fade, .12–.18s | menus, picker, about, toast |
 | CTA press | scale .98 | active state |
 | Chip/hover transitions | all .15s; toggles .2s; chevrons .2s; panel slide .22s | |

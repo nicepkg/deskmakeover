@@ -14,14 +14,15 @@ one-screen, fully reversible desktop-icon beautifier a novice can double-click.
 No new functional territory beyond icon beautification.
 
 **Scope (spec 01):** left-panel + desktop-mirror layout with compact overlay
-mode; 4 风格 presets; 自定义 accordion (外形 3 · 配色 3+tint · 快捷方式标识
-3-state/7-mark-style/mark-colour · 图标大小 3); version history (10) + 上一版 +
+mode; 4 风格 presets; 自定义 accordion (expanded 外形 · 配色 3+tint · 快捷方式标识
+3-state/6-mark-style/mark-colour + classic arrow · 图标大小 3); version history (10) + 上一版 +
 回到最初; per-icon right-click overrides; hold-to-compare + press-to-peek;
 dirty-state 更新桌面 with in-place refresh; one shared 调色盘 (SV+hue+hex+
-eyedropper+wallpaper palette); settings drawer / overflow / About(开源) /
+eyedropper+wallpaper palette); settings page / About(开源) /
 changelog; keep-up run-and-exit; journaled apply + zero-residue restore; per-icon
 mark bake with transparent global overlay; multi-size ico ladder; motion suite +
-reduced-motion.
+reduced-motion; zh-Hans/en localization with theme/language following the OS by
+default.
 
 **Execution:** `plans/2026-07-06-v1-prototype-parity.md` (handed to an executing
 AI; prototype = binding contract).
@@ -40,8 +41,8 @@ passes SmartScreen without a red interstitial (OV/individual cert — owner).
 
 - **Module rail unlocked now** (owner order 2026-07-07, overrides the "rail waits
   for 4+ modules" note): 66px rail with 图标 / 壁纸 + a bottom 设置 utility; the
-  title bar sheds ⚙/⋯ and the overflow menu merges into the settings drawer
-  (spec 03).
+  title bar sheds ⚙/⋯ and settings is a normal rail page, not a drawer
+  (spec 03, ADR-0010).
 - **美化桌面壁纸 1.0** (spec 04): pale-wallpaper 清晰度 enhancement (auto-detect
   + 关/柔和/强) + partition zones baked into the wallpaper — semantic cell-grid
   zones + environment fingerprint (regenerate on mismatch), full

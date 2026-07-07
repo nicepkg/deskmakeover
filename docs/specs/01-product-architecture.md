@@ -19,8 +19,9 @@ no anxiety language, ever.
 
 Non-technical Chinese Windows users first; design-sensitive users satisfied
 through restraint, not options. Windows 10 + 11; Win7 excluded. Win10 degrades
-gracefully (spec 02). v1.0 ships Simplified Chinese as the primary, release-gating
-language; the string table stays resource-backed so English can follow post-1.0.
+gracefully (spec 02). The app ships Simplified Chinese and English from the
+first public release; language defaults to the Windows UI culture and falls back
+to English for unsupported cultures.
 
 ## v1.0 Scope (icons only — ADR-0008)
 
@@ -37,8 +38,9 @@ One reliable loop, all on one screen:
 - Discovery: user Desktop + Public Desktop (+ OneDrive-redirected detection);
   `.lnk`, `.url`, AppX/UWP, Recycle Bin, folders, regular files (wrapping stays
   opt-in and off by default).
-- Composable style axes: **风格 presets** (4) · **外形** (3) · **配色** (3 + tint) ·
-  **快捷方式标识** (3 states, 7 mark styles, mark colour) · **图标大小** (3).
+- Composable style axes: **风格 presets** (4) · **外形** (platform defaults +
+  expanded maskable shapes) · **配色** (3 + tint) · **快捷方式标识** (3 states,
+  6 user-facing mark styles, mark colour) · **图标大小** (3).
 - Version history (last 10 looks) + 上一版 + 回到最初.
 - Per-icon right-click overrides: 保留原样 / 跟随全局样式 / 单独配色.
 - Hold-to-compare + per-tile press-to-peek.
@@ -49,7 +51,7 @@ One reliable loop, all on one screen:
   (ADR-0006 facts).
 - Desktop icon layout snapshot/restore, silent best-effort (never gates release).
 - 保存对比图 share export; 还原快照导出.
-- Settings drawer, overflow menu, About + changelog.
+- Settings page, About + changelog.
 - Local-only: no account, no telemetry, no cloud — stated in the UI.
 
 **Excluded from v1.0**: module rail + 系统净化 / 资源管理器 / 壁纸 modules (future
@@ -106,7 +108,7 @@ Link chips (visible once applied or history exists): 还原 (applied only) ·
 ### 版本历史 card
 
 Header 「版本历史 · 保留最近 10 版」. Rows: HH:mm · label (e.g.
-「苹果 · 原彩 · 玻璃箭头」) · 「当前」 teal pill on the live top entry ·
+「苹果 · 原彩 · 珐琅光弧」) · 「当前」 teal pill on the live top entry ·
 「回到此版」 accent action. Footer row: 「最初 · Windows 原生桌面 · 回到最初」
 (= full restore; history itself is preserved). Re-applying a version pushes a
 new entry (stack semantics, cap 10). Label grammar = 外形 · 配色 · 标识
@@ -130,9 +132,10 @@ shows 「自定义中」 beside the 风格 label. Default on launch = 苹果极�
 - **外形**: 苹果 / 纯圆 / 三星 chips with live 14px clip swatches.
 - **配色**: 原彩 / 黑白 / 单色 chips; when 单色 → swatch row (纯白/纯黑/壁纸主色/
   壁纸辅色/品牌珊瑚/湖水/琥珀) + 调色盘 button.
-- **快捷方式标识**: 美化标识 / 经典箭头 / 无标识; when 美化 → 7 mark-style chips
-  with 22px live previews (玻璃箭头 默认 / 双层卡片 / 幽灵叠影 / 缎光角 / 珐琅光弧 /
-  卷角 / 细描边) + 标识配色 row (自动 default · 5 swatches · 调色盘).
+- **快捷方式标识**: 美化标识 / 经典箭头 / 无标识; when 美化 → 6 mark-style chips
+  with 22px live previews (双层卡片 / 幽灵叠影 / 缎光角 / 珐琅光弧 / 卷角 /
+  细描边) + 标识配色 row (自动 default · 5 swatches · 调色盘). 玻璃箭头 is not
+  selectable after ADR-0010.
 - **图标大小**: 小 / 中 / 大 (preview 52/64/76; desktop mapping in plan).
 
 Every change: ~420ms debounce → in-place tile refresh + 「正在更新预览…」 cue.
@@ -157,20 +160,19 @@ Title switches 图标单色 / 标识配色.
 - Kept-original shortcuts always render the classic Windows arrow in preview,
   matching the real desktop.
 
-## Settings Drawer · Overflow · About (exact contents)
+## Settings Page · About
 
-- **Drawer**: 外观主题 segmented (深色/浅色/跟随系统) · 新图标自动美化 toggle
-  (default on; subtitle 「桌面出现新图标时按当前风格处理」) · 还原快照 row
-  (count + 「导出」) · 前后对比图 row (「保存」) · 关于桌面美颜 row · 更新日志 row.
-- **⋯ overflow**: 检查更新 · 帮助与反馈 · 更新日志 · 关于桌面美颜.
-  *(v1.1, spec 03: the overflow menu is retired — these four rows moved into the
-  drawer's 关于 group, and the drawer opens from the rail's bottom 设置 entry.)*
-- **About**: ✦ logo 56 · 桌面美颜 / DeskMakeover · v1.0.0 · slogan · 5 positioning
+- **Settings page**: opened by the 设置 rail module, not a drawer. Groups:
+  外观 (language + theme, both default 跟随系统) · 自动化 (新图标自动美化) · 本地数据
+  (还原快照 / 前后对比图 / data folder) · 关于 (product identity, repo, author,
+  检查更新, 联系反馈, 更新日志). Normal settings/about navigation does not use
+  modals or scrims.
+- **About**: hand-authored SVG-derived logo · 桌面美颜 / DeskMakeover · v1.0.0 · slogan · 5 positioning
   chips · GitHub card (`github.com/nicepkg/deskmakeover` — 开源地址 · 欢迎 Star) ·
   author card (小明 · XiaomingLab, 「同一件事做两次，就写个工具」; links: 个人主页
   xiaominglab.com / GitHub 2214962083 / X jinmingyang666 / 哔哩哔哩 space 83540912 /
-  抖音) · buttons 检查更新 / 更新日志 / 好 · footer 「© 2026 XiaomingLab ·
-  Windows 10 / 11」. 更新日志 is an in-dialog tab.
+  抖音) · buttons 检查更新 / 更新日志 · footer 「© 2026 XiaomingLab · Windows 10 / 11」.
+  更新日志 is inline on the settings page.
 - 检查更新 (v1.0): open the GitHub releases page; no auto-update framework.
   帮助与反馈: open GitHub issues.
 
@@ -203,9 +205,10 @@ Projects (existing, retained):
 | `DeskMakeover.Operations` | Journaled runner, planner, snapshot factory/store, **history ledger** |
 | `DeskMakeover.ElevatedHelper` | Whitelisted privileged verbs, one-UAC batching |
 
-**StylePreset axes (v1.0)**: shape {apple, circle, samsung} × colour {orig, bw,
-mono(+tint)} × distinction {mark, keep, none} × markStyle {glass, card, echo,
-satin, arc, fold, ring} × markColor {auto, RGB} × iconSize {small, mid, big}.
+**StylePreset axes (v1.0+)**: shape {apple, circle, samsung, none, google, brave,
+bookmark, lemon, squircle, tile, teardrop, blob, rectellipse} × colour {orig, bw,
+mono(+tint)} × distinction {mark, keep, none} × markStyle {card, echo, satin,
+arc, fold, ring} × markColor {auto, RGB} × iconSize {small, mid, big}.
 Presets are data; one rendering engine consumes plans (no per-style code paths
 in callers). Per-icon overrides {keep | tint} ride alongside as an item-id map.
 

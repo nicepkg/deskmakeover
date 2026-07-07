@@ -1,80 +1,87 @@
-# Spec 03 — Shell Navigation: Module Rail + Consolidated Settings
+# Spec 03 — Shell Navigation: Module Rail + Settings Page
 
-Living spec (ADR-0009). Prototype `docs/references/prototype/桌面美颜 v2.dc.html`
-L58-71 (未来形态 rail) is the binding visual contract; this spec maps it onto the
-shipped WPF shell and defines the settings consolidation.
+Living spec (ADR-0009, amended by ADR-0010). Prototype
+`docs/references/prototype/桌面美颜 v2.dc.html` L58-71 remains the visual ancestor
+for the rail, but ADR-0010 makes 设置 a real page and removes the inert future slot.
 
-## 1. Window anatomy (after this spec)
+## 1. Window anatomy
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │ 标题栏: ✦logo 桌面美颜 [v1.1] ····················· ─ ▢ ✕      │  46px
 ├──────┬──────────────┬──────────────────────────────────────────┤
-│ rail │ 控制面板 300px │ 桌面镜像画布                              │
-│ 66px │ (per module)  │ (shared scene; module decides overlays)  │
+│ rail │ 控制面板/页面 │ 桌面镜像画布或设置内容                      │
+│ 66px │ (per module) │ (module decides the main surface)         │
 └──────┴──────────────┴──────────────────────────────────────────┘
 ```
 
-- The title bar **loses ⚙ and ⋯** (buttons, handlers, overflow popup). It keeps
-  logo · 产品名 · version chip · caption buttons only.
-- `OverflowMenuView` is **retired** (delete view + code-behind; git remembers).
+- The title bar has no ⚙/⋯. It keeps logo · 产品名 · version chip · caption
+  buttons only.
+- `OverflowMenuView` and the right-side settings drawer are retired. Normal
+  navigation always goes through the rail.
 
-## 2. Rail (prototype L61-69, faithful)
+## 2. Rail
 
 - Width **66px**, flex column, `align-items:center`, gap 10, padding `4 0 14`.
-- Item = 40×40 glyph tile (radius 13, 15px glyph) + 9.5px label, letter-spacing
-  .4px, 3px gap. Selected: tile bg `accent 16% wash` + accent glyph/label;
-  idle: tertiary text, hover raises.
-- Items (top→bottom):
+- Item = 40×40 icon-only tile (radius 13, 15px glyph/icon) + 9.5px label, 3px
+  gap. The tile never contains text like 图/纸/设; the label below carries the
+  localized word. Selected: tile bg `accent 16% wash` + accent glyph/label; idle:
+  tertiary text, hover raises.
+- Items:
 
-| id | glyph | label | panel title (full name) | view |
-|----|-------|-------|-------------------------|------|
-| icons | 图 | 图标 | 美化图标 | existing ControlPanelView + mirror |
-| paper | 纸 | 壁纸 | 美化桌面壁纸 | spec 04 panel + mirror w/ zone overlay |
+| id | glyph | label | full name | view |
+|----|-------|-------|-----------|------|
+| icons | custom app/icon glyph | 图标 | 美化图标 | existing ControlPanelView + mirror |
+| paper | wallpaper/panel glyph | 壁纸 | 美化桌面壁纸 | spec 04 panel + mirror w/ zone overlay |
+| settings | gear/sliders glyph | 设置 | 设置 | settings page |
 
-- After the modules: `flex:1` spacer, then the **dashed future slot** (42×42,
-  1px dashed 35% gray, radius 14, "+", tooltip 「更多模块会在这里点亮」), then:
-- **设置** entry pinned at the bottom, below the future slot, visually a utility:
-  same 40×40 tile + 9.5px「设置」label, glyph ⚙ (Segoe Fluent `E713`), separated
-  from the future slot by 10px gap. Clicking toggles the settings drawer (right
-  slide-in, unchanged mechanics). It never shows a selected/active wash — the
-  drawer is transient, not a module view.
-- Module switch keeps the app's single window; the 300px panel swaps content by
-  module; the canvas is shared (spec 04 defines what the 壁纸 module overlays).
-  Switching modules never discards unsaved zone edits (they live in the VM).
-- Compact mode (<1100px): rail stays (it is only 66px); the panel keeps its
-  existing slide-over behaviour. The compact summary toolbar remains an
-  icons-module-only element (hidden in 壁纸 view).
+- The dashed future "+" slot is removed.
+- 设置 is pinned near the bottom with a spacer above it, but it is selected like a
+  normal module. Clicking it shows the settings page in the main body; it never
+  opens a drawer or modal.
+- Module switch keeps the app's single window. 图标/壁纸 keep the 300px panel +
+  canvas model; 设置 replaces the work area with the settings page. Switching
+  modules never discards unsaved zone edits.
+- Compact mode (<1100px): rail stays. 图标/壁纸 keep the existing slide-over panel
+  behaviour; 设置 hides the compact summary toolbar and shows a scrollable page.
 - Keyboard/UIA: rail buttons are real Buttons with AutomationProperties.Name =
-  full module name; Ctrl+1/Ctrl+2 switch modules.
+  full module name; Ctrl+1/Ctrl+2/Ctrl+3 switch modules.
 
-## 3. Settings drawer consolidation
+## 3. Settings page
 
-Existing drawer (spec 01 §settings) gains the four former overflow items in an
-**关于 group** appended after the current 关于/更新日志 rows — final order:
+The settings page replaces the drawer. It is a calm full page with grouped cards.
+On wide windows it may use a narrow identity/summary column plus a wider settings
+column; below compact width it stacks into one scroll surface.
 
-1. 外观主题 (unchanged) · 新图标自动美化 (unchanged)
-2. 还原快照 / 前后对比图 (unchanged)
-3. 关于 group: 关于桌面美颜 › · 更新日志 › · **检查更新** › · **联系反馈** ›
-   (检查更新/联系反馈 reuse the exact handlers the overflow menu had).
+Final groups:
 
-No separate full-page settings view — the drawer stays the one settings surface
-(engineer + PM recommendation; smallest change that repays the IA debt).
+1. **外观**: language segmented (跟随系统 / 简体中文 / English) and theme segmented
+   (跟随系统 / 深色 / 浅色), both defaulting to 跟随系统.
+2. **自动化**: 新图标自动美化 toggle.
+3. **本地数据**: 还原快照 export, 前后对比图 save, app data folder access.
+4. **关于**: product identity, trust chips, author/repo cards, 检查更新, 联系反馈,
+   更新日志.
+
+Settings actions that open external links still open the default browser. About
+and changelog content is inline in the settings page; no modal/scrim is used for
+normal settings navigation.
 
 ## 4. Strings
 
-- New: `Rail_Icons=图标/Icons`, `Rail_Paper=壁纸/Wallpaper`,
-  `Rail_Settings=设置/Settings`, `Rail_FutureSlot=更多模块会在这里点亮/More
-  modules will light up here`, `Panel_IconsTitle=美化图标/Beautify icons`,
-  `Panel_PaperTitle=美化桌面壁纸/Beautify wallpaper`.
-- Moved: `Overflow_CheckUpdate`/`Overflow_Feedback` become drawer rows (keys may
-  be reused; the overflow view itself is deleted).
+- New/updated: `Rail_Icons=图标/Icons`, `Rail_Paper=壁纸/Wallpaper`,
+  `Rail_Settings=设置/Settings`, `Panel_IconsTitle=美化图标/Beautify icons`,
+  `Panel_PaperTitle=美化桌面壁纸/Beautify wallpaper`,
+  `Panel_SettingsTitle=设置/Settings`.
+- `Rail_FutureSlot` is removed from product UI.
+- About/update/feedback strings live in both zh-Hans and neutral English resx.
 
 ## 5. Acceptance
 
-- Title bar shows no ⚙/⋯; drawer opens from the rail 设置 entry; all four former
-  overflow actions work from the drawer (dark + light, live theme switch).
-- Rail visual parity with prototype L61-69 at both themes (screenshot evidence).
-- Ctrl+1/2 switch modules; Esc order unchanged (popup → drawer → panel overlay).
+- Title bar shows no ⚙/⋯; no settings drawer exists; 设置 selects the settings
+  rail item and shows the settings page.
+- The left rail has no inert "+", no text inside the glyph tile, and labels below
+  each item.
+- Ctrl+1/2/3 switch modules; Esc order has no settings drawer branch.
+- Theme and language default to system on a clean settings file.
 - Zone edits survive module round-trip 壁纸 → 图标 → 壁纸.
 - 208+ existing tests stay green; new VM tests cover module switching state.

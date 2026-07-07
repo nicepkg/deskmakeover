@@ -44,8 +44,26 @@ panel rebuilt in the icons panel's grammar; App.CtaButton reused via HeroPhase
 mapping; themed Slider (no system blue); zone snap-pulse crash fixed (never
 animate template-frozen transforms) + crash.log last-chance logger; label-halo
 feature removed (baked ghost smudges at stale icon positions). 288 tests green.
-Remaining: W5 (adversarial review + owner-supervised live apply/restore — the
-wallpaper apply is NEVER auto-triggered).
+Remaining: W5 (wallpaper owner-supervised live apply/restore — the wallpaper
+apply is NEVER auto-triggered).
+
+### 2026-07-07 ADR-0010: settings page + i18n + shapes + app icon (DONE)
+
+Owner follow-up executed docs-first via **ADR-0010** and
+`docs/plans/2026-07-07-settings-i18n-shapes-icon.md`. Final state:
+settings is a real rail page (Ctrl+3) instead of a drawer; inert future `+` slot
+is gone; rail tiles use glyphs with labels below; clean defaults are
+theme=System and language=System; runtime i18n covers zh-Hans/en and refreshes
+Icons + Paper + changelog text; settings/about/changelog are rebuilt into a full
+page; app icon is a local hand-authored vector spec emitted as SVG/PNG/ICO (no AI
+image generation); selectable Glass mark is retired and legacy Glass configs
+normalize to Arc; shape axis now includes Google/Brave/Bookmark/Lemon/Squircle/
+Tile/Teardrop/Blob/Rectellipse with shared raster+XAML geometry. Evidence:
+`docs/plans/evidence/2026-07-settings-i18n-shapes-icon/` (`icons.png`,
+`wallpaper.png`, `settings.png`, `audit.md`). Adversarial review found three
+genuine issues (Paper runtime i18n, legacy Glass history reapply, English
+changelog); all fixed + regression-tested. Build 0/0; full suite **311 tests
+green**; banned blue/violet grep empty.
 
 ### 2026-07-07 overnight wave (owner directive; autonomous)
 

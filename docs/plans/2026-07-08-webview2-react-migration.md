@@ -228,3 +228,28 @@ Execution log lives at the bottom; STATE.md points here.
   wallpaper); a REAL mouse click on 纯净黑白 restyled every mirror tile to
   engine-rendered grayscale through the full loop. Deferred to P7 punch list:
   compact (<1100px) overlay mode; settings-page 导出/保存 wiring.
+- **P5 done (2026-07-08).** Host: `WallpaperSession` (headless WallpaperViewModel:
+  backup-aware source resolution, ONE-composer recompose persisting the look and
+  pushing raw RGBA frames over the shared buffer, pale + fingerprint checks,
+  apply/restore as user-click-only gates w/ FAKE_APPLY for E2E),
+  `WallpaperController` + `fonts.list` (bundled-first, zh-cn display names);
+  IconsSession exposes EnsureScannedAsync/BuildWallpaperGrid/ScreenInfo/
+  WallpaperTint so both modules project against the SAME grid. Web:
+  `lib/zone-math.ts` (1:1 port: half-cell snap, exclusive-edge resize, min 2×2,
+  ghost cells — 13 bun tests), wallpaper store (web owns the working look,
+  140ms debounce, revision-guarded frames), WallpaperPanel (hero/CTA/分区
+  section w/ inline rename + delete/清晰度 axis: 3-seg + strength + direction
+  chips + AngleDial + scrim tone incl. 调色盘/分区样式 axis: 4 styles + fill
+  colour + opacity + corner/标题文字 axis: font dropdown + size/align/ink/
+  shadow/mismatch banner/pale badge/footnote), WallpaperMirror (shared-buffer
+  frames → canvas at native px, zone layer: rubber-band create, snap move,
+  8-handle resize, arrow nudge + Del, ghost blueprint icons, dual-density grid
+  guide while interacting, selected-only coral chrome, compare pill).
+  Bugs found live: hooks-after-early-return ResizeObserver never attached
+  (BOTH mirrors — masked by HMR in P4; fixed with callback refs) and frames
+  arriving before canvas mount were dropped (module-scope latest-frame cache).
+  **Verified live on a fresh launch**: the persisted WPF-era look (新分区
+  7×12.5, dark glass, handwritten title) reproduced pixel-faithfully in the
+  composed first frame; a REAL mouse drag moved the zone with half-cell snap,
+  selected-only chrome appeared, and the compose re-rendered at the new spot;
+  style summary tracked the selected zone (半透明黑 · 9px).

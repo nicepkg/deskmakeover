@@ -9,7 +9,7 @@ gallery-led empty state — `docs/reviews/2026-07-09-style-sets-import-export.md
 is the binding detail record for §2.1/§2.3/§4.1/§4.2.**
 
 Goal: make a messy desktop read as DESIGNED — zones (分区) painted into the
-wallpaper as visual containers for grouping icons, plus 图标清晰度 (visibility
+wallpaper as visual containers for grouping icons, plus 壁纸压暗 (visibility
 enhancement), edited live at display refresh, fully reversible.
 
 Positioning (PM direction A): a beautiful backdrop, not a file manager. Never
@@ -36,12 +36,14 @@ your wallpaper", one-click reversal.
   One anchored coach line (once, dismissable): 「分区是画在壁纸上的底板,图标要
   你自己拖进去,原壁纸已自动备份。」
 - WYSIWYG grammar: nothing touches the desktop until 应用到壁纸.
-- "Scrim overlay" is banned vocabulary — the control is 图标清晰度 / Icon clarity.
+- "Scrim overlay" is banned vocabulary — the control is 壁纸压暗 / Dim wallpaper
+  (owner 2026-07-09: name the ACTION, not the goal; "图标清晰度" implied it edits
+  icons when it dims the wallpaper).
 
 ## 2. Panel (280px inspector, view `paper`)
 
 1. Status line + hero title (unchanged 5-state CTA machine from 1.0).
-2. **图标清晰度**: segmented 关/柔和/强 + 高级 fold (强度 slider, 渐变方向 dial,
+2. **壁纸压暗**: segmented 关/柔和/强 + 高级 fold (强度 slider, 渐变方向 dial,
    标签暗晕) — semantics unchanged from 1.0, now composed client-side.
 3. **分区 list**: rows = leading material swatch (renders that zone's own adaptive
    look + accent) · editable title · ✕ on hover. Header verbs: [预设] [＋添加].
@@ -91,7 +93,7 @@ history — all carried over from 1.0 §3/§3.5 with these binding changes:
   follows the panel; handles = 10×10 white-core rounded squares (r3) with coral
   ring + soft shadow, 20×20 hit boxes, corner-only under 5-cell zones; alignment
   lines coral dashed + 1px white companion (visible on any wallpaper).
-- 图标清晰度 changes and hold-to-compare behave as in 1.0.
+- 壁纸压暗 changes and hold-to-compare behave as in 1.0.
 
 ## 4. Compositor (ADR-0014 D1 — the ONE renderer)
 

@@ -1,22 +1,24 @@
 # Spec 03 — Shell Navigation: Module Rail + Settings Page
 
-Living spec (ADR-0009, amended by ADR-0010). Prototype
-`docs/references/prototype/桌面美颜 v2.dc.html` L58-71 remains the visual ancestor
-for the rail, but ADR-0010 makes 设置 a real page and removes the inert future slot.
+Living spec (ADR-0009, amended by ADR-0010, **amended by ADR-0012** — settings is
+rebuilt to the macOS-System-Settings visual language; the version chip + changelog
+UI are removed pre-release). The prototype is now a historical reference only
+(ADR-0012); spec 02 v2 governs the look.
 
 ## 1. Window anatomy
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ 标题栏: ✦logo 桌面美颜 [v1.1] ····················· ─ ▢ ✕      │  46px
+│ 标题栏: ✦logo 桌面美颜 ················· [?] ······· ─ ▢ ✕      │  46px
 ├──────┬──────────────┬──────────────────────────────────────────┤
 │ rail │ 控制面板/页面 │ 桌面镜像画布或设置内容                      │
 │ 66px │ (per module) │ (module decides the main surface)         │
 └──────┴──────────────┴──────────────────────────────────────────┘
 ```
 
-- The title bar has no ⚙/⋯. It keeps logo · 产品名 · version chip · caption
-  buttons only.
+- The title bar has no ⚙/⋯ and **no version chip** (pre-release — ADR-0012). It
+  keeps logo · 产品名 · an optional `?` keymap affordance · caption buttons. The `?`
+  opens a small legend popover (Space 对比 · Ctrl+1/2/3 模块 · 画布拖拽建区 · Del 删除).
 - `OverflowMenuView` and the right-side settings drawer are retired. Normal
   navigation always goes through the rail.
 
@@ -47,24 +49,51 @@ for the rail, but ADR-0010 makes 设置 a real page and removes the inert future
 - Keyboard/UIA: rail buttons are real Buttons with AutomationProperties.Name =
   full module name; Ctrl+1/Ctrl+2/Ctrl+3 switch modules.
 
-## 3. Settings page
+## 3. Settings page (macOS System Settings language — ADR-0012)
 
-The settings page replaces the drawer. It is a calm full page with grouped cards.
-On wide windows it may use a narrow identity/summary column plus a wider settings
-column; below compact width it stacks into one scroll surface.
+The settings page is the **showcase of the v2 visual language** (spec 02): a calm
+full page of **grouped inset cards**. On wide windows a narrow identity column sits
+beside the settings column; below compact width it stacks into one scroll surface.
+
+Composition law (fixes the "very ugly" verdict):
+
+- **One card system.** Every group is a `--raised` card with `--elev-1`, one radius
+  (16), and a consistent **leading icon badge** (coral 16% seat) on its header — no
+  card wears a badge while its siblings don't; no two radii sit side by side.
+- **Equal-weight, full-width cards.** A lone control (e.g. 新图标自动美化) never
+  shares a cramped 2-column grid with a dense card. Each group is its own full-width
+  card; a card may hold multiple hairline-separated rows (macOS inset-list idiom).
+- Type per spec 02 ladder: page title `display/26`, card title `card/15`, row label
+  `body/13` t2, value `body/13` t1, helper `caption/11` t3.
 
 Final groups:
 
 1. **外观**: language segmented (跟随系统 / 简体中文 / English) and theme segmented
    (跟随系统 / 深色 / 浅色), both defaulting to 跟随系统.
-2. **自动化**: 新图标自动美化 toggle.
-3. **本地数据**: 还原快照 export, 前后对比图 save, app data folder access.
-4. **关于**: product identity, trust chips, author/repo cards, 检查更新, 联系反馈,
-   更新日志.
+2. **自动化**: 新图标自动美化 toggle (its own full-width card).
+3. **本地数据**: **three distinct actions** — 导出还原快照 (actually exports the
+   restore snapshot), 保存前后对比图 (the comparison exporter), 打开数据文件夹. No two
+   buttons may bind to the same effect (the old 导出/打开-both-open-folder duplication
+   and the retired `Drawer_Save` string are removed).
+4. **关于**: product identity, **trust chips rendered as real pill chips** (not bare
+   text), author/repo cards, 检查更新, 联系反馈, homepage. **No 更新日志 / changelog
+   section and no version string** are shown pre-release (ADR-0012) — a version story
+   returns only at the first real release.
 
-Settings actions that open external links still open the default browser. About
-and changelog content is inline in the settings page; no modal/scrim is used for
-normal settings navigation.
+Settings actions that open external links open the default browser. About content is
+inline; no modal/scrim is used for normal settings navigation.
+
+## 3.1 Customization visibility (ADR-0012 — applies to the 图标 & 壁纸 panels)
+
+The audience is customization-heavy, so depth is **visible, not hunted**:
+
+- Presets stay the one-tap fast path at the top of each panel.
+- The 自定义 axes are **open by default / persist their last open-state** across
+  sessions (localStorage), instead of all-collapsed on every launch.
+- A compact **current-values summary strip** shows every axis's active value at a
+  glance, so the user sees the full configuration without expanding each row.
+- Rarely-used sub-controls (e.g. the clarity 高级 fold, custom scrim/angle) may still
+  nest one level down — depth is exposed, not dumped flat.
 
 ## 4. Strings
 

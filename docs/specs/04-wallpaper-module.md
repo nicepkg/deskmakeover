@@ -1,9 +1,13 @@
 # Spec 04 — 美化桌面壁纸 1.0 (wallpaper module)
 
-Living spec (ADR-0009). Goal: pale-wallpaper visibility enhancement + 分区
-(partition zones) baked into the wallpaper, edited visually on the existing
-desktop-mirror canvas, fully reversible. Basic 1.0 — the owner explicitly capped
-complexity; best-possible UX within that cap.
+Living spec (ADR-0009, **amended by ADR-0012** — premium interaction rebuild).
+Goal: pale-wallpaper visibility enhancement + 分区 (partition zones) baked into
+the wallpaper, edited visually on the existing desktop-mirror canvas, fully
+reversible. Capability scope is unchanged (zones + 清晰度 + titles; no new
+features — owner call 2026-07-08); the *quality* cap is lifted — every interaction
+and visual defect is fixed to a premium bar. §3.5 is the binding correction layer:
+several behaviours specified here (coach mark, dashed empty-state, live-snap, snap
+pulse, on-canvas rename) shipped as drift and are now acceptance-gated.
 
 ## 0. Non-goals (v1.1)
 
@@ -45,12 +49,18 @@ Top→bottom:
    - Mapping: 柔和 = 12% top-down gradient dim + label halo 18%; 强 = 22% + 30%.
      (Constants tuned during build with live screenshot verification.)
 5. **分区** section:
-   - Zone list (name · cells WxH · style dot); click selects on canvas; ✕ removes.
-   - [+ 添加分区] (drops a 6×4-cell zone at the first free grid area) and
-     [用推荐布局] (three zones: 常用软件 / 工作文件 / 正在进行 — left tall +
-     right two stacked, mirroring the reference shots).
-   - Style: two chips 磨砂白 (default) / 壁纸色; applies per-zone (selected zone)
-     or as default for new zones when none selected.
+   - Zone list: each row = a **leading 20px style swatch** (renders that zone's own
+     frosted/tint look) · editable title (visible-editable: hairline underline that
+     brightens on hover/focus, never bare static-looking text) · cells WxH · ✕.
+     Click selects on canvas; the selected row is washed.
+   - [+ 添加分区] drops a **6×4-cell zone at the first free grid area** (never a
+     fixed origin that stacks on the previous one) and [用推荐布局] (three zones:
+     常用软件 / 工作文件 / 正在进行 — left tall + right two stacked). 用推荐布局
+     **confirms before replacing** existing zones.
+   - **分区样式 (four styles: 磨砂白 default / 壁纸色 / 半透明黑 / 同色边框)** obey
+     the explicit edit-scope model of §3.5 — they act on the **selected** zone under
+     a visible `正在编辑：<名称>` header; there is no silent "nothing selected →
+     repaint every zone". Applying to every zone is an explicit **应用到全部** action.
 6. Footer (11px, hairline-top): honesty line from §1.
 
 ## 3. Zone editor (on the existing mirror canvas)
@@ -92,7 +102,47 @@ Top→bottom:
     would land. Real desktop icons are hidden in this module (owner call).
   - Edit chrome shows ONLY on the selected zone (owner: idle outlines polluted
     the preview); recommended/default layouts keep half-cell margins from edges.
-- Hold-to-compare (Space) shows the un-styled desktop, consistent with icons.
+- Hold-to-compare (Space) shows the un-styled desktop, consistent with icons —
+  and **hides all zone edit chrome** (selection outline, handles, ghost icons,
+  rubber-band) so the true before-state is visible (was drift: chrome stayed painted).
+
+## 3.5 Edit scope, reversibility & navigation (ADR-0012 — binding)
+
+The premium corrections that turn "barely usable" into "good". All are acceptance
+items (§7).
+
+- **Explicit edit scope (fixes the loudest complaint).** Style / fill / opacity /
+  corner controls act on the **currently selected** zone. The 分区样式 accordion
+  carries a persistent header `正在编辑：<zone name>`; with no selection it reads
+  `未选择分区` and the style controls are inert (or offer an explicit **应用到全部**
+  affordance) — the panel MUST NEVER silently repaint every zone because nothing is
+  selected. The zone-list readout with no selection reports `多个分区` honestly, not
+  a defaulted 磨砂白. Selection persists across an accidental empty-canvas click;
+  deleting a zone clears selection deliberately, not as a side effect that then
+  mass-edits.
+- **Reversibility (parity with icons' history).** A session undo/redo stack over
+  `look` snapshots (Ctrl+Z / Ctrl+Shift+Z) covers zone create / move / resize /
+  delete / restyle and 用推荐布局. Delete is `Delete` only — **`Backspace` is not a
+  delete key** (it is a common "go back" reflex over a stale selection). 用推荐布局
+  and any replace-all confirm first when zones exist.
+- **One canvas navigation model.** The paper canvas gains **Ctrl+wheel zoom at the
+  pointer + pan**, identical to the icons canvas (this spec already promised "manual
+  zoom still works after the switch"). Left-drag on empty canvas **creates** a zone
+  and the host wears `cursor-crosshair` so it reads as *draw*, not *pan*; pan is
+  space-drag or middle-drag. The two modules must feel like one app.
+- **Direct-manipulation feel.** The create rubber-band **live-snaps** as it is
+  dragged (it draws the snapped rect, not the raw pointer rect — was drift); on a
+  snap-cell change the zone plays `snap-pulse` (scale 1.02→1.0, 80ms; reduced-motion
+  none — was drift). Resize handles carry enlarged transparent hit boxes.
+- **On-canvas rename.** Double-click a zone's on-canvas **title band** → inline edit
+  (Enter/Esc) — the title is edited where it is seen (was drift: rename lived only in
+  the panel list, an execution gulf). The panel list input stays as a secondary path.
+- **First-run + empty state (binding, was drift).** The one-shot coach mark
+  (`wallpaperCoachShown`) shows on first module entry with the §1 copy. The empty
+  canvas (no zones) renders a **centered dashed drop-frame** + 「拖一个框，把桌面分成区」
+  + an inline **[用推荐布局]** button — not a small floating pill.
+- **Load feedback.** The paper canvas shows the shared scanning `shimmer` skeleton
+  while loading and fades the first compose frame in (no dead box → hard cut).
 
 ## 4. Bake pipeline (one renderer, WYSIWYG)
 
@@ -149,4 +199,11 @@ and the applied wallpaper (native resolution):
 - Fingerprint mismatch banner appears after a simulated resolution change
   (unit-tested via injected fingerprint).
 - Coach mark shows exactly once; all copy per §1; dark+light verified.
+- **§3.5 (ADR-0012):** with no selection, a style-control change repaints **nothing**
+  (never all zones); the 分区样式 header shows the selected zone name; the empty
+  canvas shows the dashed drop-frame (not a pill); the create rubber-band draws a
+  snapped rect that pulses on cell change; Ctrl+wheel zooms + drag pans the paper
+  canvas; hold-Space hides all zone chrome; double-click a zone title renames inline;
+  Ctrl+Z undoes a delete; `Backspace` does not delete; 用推荐布局 confirms when zones
+  exist. Each is a state/interaction test or a live-verified manual gate.
 - All new code unit-tested; suite stays green, 0 warnings.

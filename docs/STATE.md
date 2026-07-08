@@ -1,12 +1,29 @@
 ---
-updated: 2026-07-07 (overnight)
-version: v1.0.0 (parity rebuild complete; live-desktop run = owner-supervised gate)
+updated: 2026-07-08 (premium UI redesign — docs)
+version: pre-release (no version narrative until first release — ADR-0012)
 branch: main
 ---
 
 # State
 
 ## Active Work
+
+### 2026-07-08 Premium UI redesign (owner directive; docs done, build IN PROGRESS)
+
+Owner verdict after the replatform: still "勉强可用，谈不上好用" for an
+aesthetically-demanding, customization-heavy audience. A 4-seat design panel
+(PM/UX/UI/Interaction, isolated) reviewed the shipped web UI; disposition in
+`docs/reviews/2026-07-08-ui-premium-panel.md`. **Owner decisions:** ① aesthetic
+north star = **macOS System Settings** (calm/grouped/spacious/material) ②
+customization **visible by default** + presets as fast path ③ wallpaper = perfect
+the existing capability, **add no features** ④ zone editor stays **hand-rolled** (no
+lib). Governing docs: **ADR-0012**, **spec 02 v2**, **spec 03 §3/§3.1**, **spec 04
+§3.5**, plan **`docs/plans/2026-07-08-premium-ui-redesign.md`** (P1 design-system
+foundation → P2 wallpaper interaction → P3 wallpaper visual → P4 settings → P5
+customization IA/icons/global → P6 review+verify). The prototype is retired as
+binding law; **specs are the source of truth** now. Version narrative removed
+pre-release. Scope = `src/DeskMakeover.Web` only; engine/bridge/bake/apply +
+owner-supervised gates untouched. Baseline: 277 dotnet + 63 bun green.
 
 ### 2026-07-08 UI replatform: DONE through P7 (review fixes in)
 
@@ -284,10 +301,12 @@ smoke · supervised live switch-on run.
 - Accent is warm coral `#FF6F5E`; **never blue/violet** (reads as AI slop).
 - Extreme DRY; files ≤500 lines; aesthetic calls go through VOC + panel + the
   3-second-misread gate, not engineer fiat.
-- The prototype wins every conflict with prose docs; when unsure, open it in a
-  browser and compare (`open "docs/references/prototype/桌面美颜 v2.dc.html"`).
-- v1.0 adds **no functional territory beyond icon beautification** — the
-  future-form modules (净化/文管/壁纸) are design-locked IA for v1.1+.
+- **Specs are the source of truth** (ADR-0012). The prototype
+  `docs/references/prototype/桌面美颜 v2.dc.html` is a historical reference only; on
+  any conflict the specs win. Inviolable: coral-only accent (never blue/violet),
+  dark-default theme, and the WYSIWYG law (preview == bake).
+- **No version narrative pre-release** (ADR-0012): no version chip, no changelog UI,
+  `Directory.Build.props` stays a pre-release marker until the first real release.
 
 ## What exists and works (keep, don't rebuild)
 

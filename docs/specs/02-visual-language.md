@@ -243,3 +243,32 @@ tiles, and baked `.ico` render the same math.
 - Hold-interactions (对比/peek) keep non-hold equivalents; `?` keymap legend.
 - Reduced motion: complete coverage — waves, slides, thumb springs all degrade to
   crossfade; no exceptions.
+
+## Addenda (v3.1, owner iterations 2026-07-08)
+
+Owner-decided refinements layered onto v3 during the build; on conflict with the
+sections above, these win.
+
+- **Axis glyph keyline**: every shape/filter/mark glyph draws EXACTLY 16px on a
+  20px canvas; no optical exceptions. Path-based `clip-path` silhouettes are
+  authored in absolute pixels and `shape-paths.SWATCH` MUST equal the swatch box.
+- **The 无 dialect**: one slash-circle glyph (`NoneGlyph`) for every axis's none
+  option, always FIRST in its row. Dashed = auto (AutoDot); slash = none; never
+  conflated. The native Windows arrow (`WinArrowGlyph`, OS-blue `#0067C0`) sits
+  LAST behind the 60s penance gate; its blue never takes the accent.
+- **Selection grammars**: axis rows = `SwatchPicker` (uniform 28px tiles, wrap,
+  disabled roadmap slots at 40% opacity); welcome-flow choices = `ChoiceList`
+  (inset rows, spring ✓, coral ink) + right-set content-width 继续.
+- **Compact dropdown**: `SelectPopover compact` = 22px tall (IconAction scale);
+  the option list may grow wider than the trigger so labels never truncate.
+- **Colour-entry face**: every palette entry wears `WheelRing` (conic ring,
+  centre dot = current pick; white = auto). 标识配色 lives in its row header's
+  auxiliary slot at size 18.
+- **Recompute feedback**: a 1.5px coral top light-line (`CanvasProgress`,
+  400ms min-visible); full-canvas skeletons ONLY on true first load (no frame
+  AND no original). Slow updates (>200ms) dim the canvas to 88%, never block it.
+- **Copy law**: user-facing strings never contain dashes (owner decree; AI-text
+  tell). Sentences split with 。/；/： instead.
+- **Ceremonies added**: ArrowGateSheet (native-arrow penance) and the welcome
+  gate (language → brand → two-question survey → roast/bluff/typed confession).
+  Both reduced-motion complete; cancel is always instant.

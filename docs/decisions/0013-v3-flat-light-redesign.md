@@ -60,8 +60,29 @@ fallback typography, a handful of load-bearing components/feel gaps).
 - **2026-07-08 (owner): version narrative RESTORED** — supersedes ADR-0012's
   no-version-narrative rule. The identity card shows a clickable version line;
   it opens the in-app changelog dialog (per-locale entries over the bridge).
-  The host's changelog data source + the real version number are restored on
-  the Windows side in F8.
+  The changelog auto-opens exactly ONCE per installed update, never on first
+  install. The host's changelog data source + the real version number are
+  restored on the Windows side in F8.
+- **2026-07-08 (owner): one axis-glyph keyline + one 无 dialect** — every
+  shape/filter/mark glyph draws exactly 16px on a 20px canvas (no optical
+  exceptions); every axis's 「无」 sits FIRST wearing the slash-circle
+  (dashed = auto, slash = none, never conflated). Axis rows render through
+  the shared `SwatchPicker`.
+- **2026-07-08 (owner): the native arrow is gated** — it sits LAST in the
+  mark row and picking it opens a 60-second penance sheet (verbatim owner
+  copy, escalating stare captions, instant cancel). Presets never carry any
+  mark (engine `NamedStyles` truth); preset thumbnails render badge-free.
+- **2026-07-08 (owner): first-run welcome gate** — language roster
+  (OS-setup style, self-labeled, right-set 继续) → editorial brand beat
+  (two-column, BrandMosaic collage) → TWO innocent survey questions (native
+  arrow ugly? third-party icons tidy?) judged only after the last answer;
+  wrong answers route to the owner's verbatim send-off, the "go uninstall"
+  bluff-call, and a hand-TYPED confession (paste refused) before entry.
+  The survey face must never reveal it is a gate. Shown once
+  (`dm.welcome.done`); a DEV-only flask menu resets all first-run states.
+- **2026-07-08 (owner): copy law — no dashes** in any user-facing string
+  (reads as AI text). All existing values purged; grep-check before adding
+  strings.
 
 ## Consequences
 

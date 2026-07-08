@@ -163,26 +163,31 @@ were verified across ≥2 sources.
 
 ## DeskMakeover 补丁清单（build plan F6 的输入）
 
+> **Status legend (2026-07-08 checkpoint)**: ✅ web-side DONE (Mac session) ·
+> 🏗 host-side, audit/do in F8 on Windows · web-side belts live in
+> `src/DeskMakeover.Web/src/lib/webview-hardening.ts`.
+
 ### 🔴 必打（发布前必须）
-- [ ] Runtime 探测 + Bootstrapper 引导 + 友好兜底 UI（绝不裸崩）
-- [ ] 数字签名 + IT allowlist 指引文档（杀软白屏头号问题）
-- [ ] `ProcessFailed`/`BrowserProcessExited` 全分支兜底（Reload/重建/错误页）
-- [ ] UDF 显式 `%LOCALAPPDATA%\DeskMakeover\WebView2`；非 ASCII 用户名宽字符处理
-- [ ] PerMonitorV2 + `RasterizationScale` 跟踪；发丝线对齐设备像素；125%/150% 实测
-- [ ] 首帧白闪三保险（DefaultBackgroundColor + 环境变量 + host 同色）
-- [ ] 全资源单一虚拟 host（含字体，禁 file://）；字体 preload + block + fonts.ready 门（D2）
-- [ ] `IsNonClientRegionSupportEnabled` + `app-region: drag`，保留 `WM_NCHITTEST` 兜底；多屏最小化/还原回归
-- [ ] kiosk 化全套 settings 关闭（快捷键/右键/F12/状态栏/缩放/捏合/滑动导航/自动填充/AllowExternalDrop）
-- [ ] `NewWindowRequested` + `NavigationStarting` 白名单，外链走系统浏览器
-- [ ] 中文 IME 真机逐输入框实测（windowed hosting；多屏 + DPI 切换）
-- [ ] SharedBuffer 复用 + Close()；`--disable-features=CalculateNativeWinOcclusion`
+- [ ] 🏗 Runtime 探测 + Bootstrapper 引导 + 友好兜底 UI（绝不裸崩）
+- [ ] 🏗 数字签名 + IT allowlist 指引文档（杀软白屏头号问题）
+- [ ] 🏗 `ProcessFailed`/`BrowserProcessExited` 全分支兜底（Reload/重建/错误页）
+- [ ] 🏗 UDF 显式 `%LOCALAPPDATA%\DeskMakeover\WebView2`；非 ASCII 用户名宽字符处理
+- [ ] 🏗 PerMonitorV2 + `RasterizationScale` 跟踪；125%/150% 实测（⚠️ v3 卡片从 ring 改为真 border 1px——分数 DPI 下发丝线需实测，糊则回 box-shadow inset）
+- [ ] 🏗 首帧白闪三保险（DefaultBackgroundColor + 环境变量 + host 同色）
+- [x] ✅ 字体侧：preload + `font-display: block` + 显式 3-face `fonts.load` 门（D2，`main.tsx`）；🏗 虚拟 host 映射（禁 file://）待 F8 对 `WebShellWindow.cs` 审计
+- [ ] 🏗 `IsNonClientRegionSupportEnabled` + `app-region: drag`，保留 `WM_NCHITTEST` 兜底；多屏最小化/还原回归
+- [x] ✅ web 侧 kiosk 皮带：drop 导航守卫（任何环境）、Ctrl+滚轮页面缩放守卫（任何环境）、右键菜单 + 浏览器快捷键抑制（仅 host 内，dev 浏览器不受影响）——`webview-hardening.ts`；🏗 host settings 全套关闭仍需 F8 审计（老 Runtime 上 web 皮带是唯一兜底）
+- [ ] 🏗 `NewWindowRequested` + `NavigationStarting` 白名单，外链走系统浏览器（web 侧已统一走 `shell.openExternal`）
+- [ ] 🏗 中文 IME 真机逐输入框实测（windowed hosting；多屏 + DPI 切换；v3 新增输入框：欢迎页认错书、分区改名、标题字体搜索）
+- [ ] 🏗 SharedBuffer 复用 + Close()；`--disable-features=CalculateNativeWinOcclusion`
 
 ### 🟡 建议打
-- [ ] `ScrollBarStyle = FluentOverlay` 或自绘滚动条（最低 Runtime 实测）
-- [ ] `PreferredColorScheme = Auto` 与前端主题双向一致；滚动条配色兜底
-- [ ] reduced-motion 全量降级（已在 spec 02 v3）
-- [ ] 软件渲染/老显卡降级：blur→纯色、砍动画、花屏引导更新驱动
-- [ ] ClearType 缓解：文字垫不透明底 + 字重微调
+- [ ] 🏗 `ScrollBarStyle = FluentOverlay` 或自绘滚动条（web 侧已 `scrollbar-gutter: stable` 限定滚动容器；最低 Runtime 实测）
+- [ ] 🏗 `PreferredColorScheme = Auto` 与前端主题双向一致；滚动条配色兜底
+- [x] ✅ reduced-motion 全量降级（spec 02 v3；欢迎门/仪式/画布波纹全部覆盖）
+- [x] ✅ `overscroll-behavior: none`（滑动导航穿透兜底，`index.css`）
+- [ ] 🏗 软件渲染/老显卡降级：blur→纯色、砍动画、花屏引导更新驱动
+- [ ] 🏗 ClearType 缓解：文字垫不透明底 + 字重微调
 
 ### 🟢 可暂缓
 - [ ] `forced-colors` 高对比度完整适配（先保可读不崩）

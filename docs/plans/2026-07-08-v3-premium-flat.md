@@ -13,6 +13,15 @@ lines; i18n via resx source (`scripts/dev/upsert-strings.py` on Windows — new 
 are staged in the generated TS with a `// PENDING-RESX` marker and reconciled in F8,
 so the TS header rule is honoured).
 
+> **Status (2026-07-08 checkpoint)**: F1-F5 built and owner-iterated (~50 local
+> commits; scope grew mid-flight by owner decree: welcome gate, arrow penance,
+> keyline unification, keymap-by-page, DEV menu, dash-free copy — all recorded
+> as ADR-0013 amendments). F6's WEB-side belts are DONE
+> (`lib/webview-hardening.ts` + checklist ticks in webview2-pitfalls.md);
+> the host-side audit batches into F8. Remaining: D10 gesture remainder +
+> zone-drag DOM fill, dark/zh regression evidence, F7 codex review, F8 Windows
+> pass. Current truth lives in `docs/STATE.md`.
+
 ## Phases
 
 - **F1 — Type + tokens (the two P1 roots).**

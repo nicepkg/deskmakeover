@@ -33,20 +33,22 @@ New module `src/DeskMakeover.Web/src/icon-compositor/` (each file ≤500 lines):
   shape / rebuild from detected plate / bare-logo tile / inscribe-no-crop /
   full-bleed; color treatment application; per-tile ink/tone resolution. Ports
   `TileRenderer.ComposeTile` + treatment sequencing.
-- `filters.ts` + `shaders/` — glass (SDF edge + normal + refraction warp + Fresnel
-  + specular + shadow — custom fragment shader), pixel (cell downsample + candy
-  posterize + contour + top light — PixelateFilter + custom posterize), sticker
-  (outside die-cut border + shadow — Outline + DropShadow filters). Ports
-  `IconFilters.cs` with D5 tolerance targets.
+- `filters.ts` — glass (chamfer distance field + normals + refraction warp +
+  Fresnel + specular + shadow), pixel (cell downsample + candy posterize + contour
+  + top light), sticker (outside die-cut border + shadow halo). Direct CPU port of
+  `IconFilters.cs` — same math at any resolution, D5 tolerances apply to the GPU-free
+  output too (should land near-exact).
 - `marks.ts` — 7 marks (card/echo/satin/arc/fold/ring/glass-seat) + arrow glyph +
   adaptive mark tone reading post-compose luminance. Ports `Marks/*.cs` +
   `ShortcutMarkRenderer.cs` (classic-arrow real-frame path stays host-supplied:
   the scan may include an `arrowUrl` asset; mock draws the fallback arrow).
-- `icon-renderer.ts` — the pixi orchestrator: per-item scene (source sprite →
-  compose → filters → mark), display-size render on invalidate, `bakeMaster(id) →
-  256 RGBA` via RenderTexture + extract (same pipeline, two resolutions), hover
-  try-on layer (candidate config renders without committing), texture lifecycle.
-- Deps: add `pixi-filters` + `culori` to package.json (exact installed versions).
+- `icon-renderer.ts` — the CPU orchestrator: per-item staged cache (source → compose
+  keyed by shape/analysis → color keyed by treatment → filter → mark), display-size
+  interactive render + `bakeMaster(id) → 256 RGBA` from the SAME functions, hover
+  try-on renders a candidate config without committing, worker-pool offload for bake
+  and >N-tile recomputes, ImageBitmap/canvas texture lifecycle.
+- Deps: NONE added (deliberate deviation from the panel's pixi-filters/culori
+  toolkit — CPU port wins on parity/testability/determinism; spec 06 records it).
 
 Verify: `bun test` new suites `tests/icon-color.test.ts`, `tests/icon-analysis.test.ts`,
 `tests/icon-compose.test.ts` (synthetic canvas fixtures: solid plate / bare logo /

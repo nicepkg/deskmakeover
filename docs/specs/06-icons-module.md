@@ -24,8 +24,14 @@ styles (approved direction, sequenced AFTER this migration).
 Vite + mock bridge; all Windows-gated verification batches into one session with
 wallpaper F8 (ADR-0015 D6).
 
-**Dependencies**: pixi.js v8 (in bundle), pixi-filters + culori (new, ~30KB gz
-combined), optional pica (bake only, lazy). C# `TileRenderer` frozen as oracle.
+**Dependencies**: none added. The icon compositor is a CPU TypeScript port of the
+frozen C# pipeline (same functions at two resolutions: display-size interactive +
+256 master), with staged caching (compose / color / filter layers) and a Web Worker
+pool for bake and full recomputes. Rationale over a pixi/GPU pipeline: mechanical
+translation maximizes oracle parity, the full pipeline runs headless in bun tests,
+output is deterministic (no GPU float variance), and zero dependencies are added.
+GPU is a reserved optimization if visual acceptance shows scrub lag at large icon
+counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
 
 ## 1. Renderer ownership (ADR-0015 digest)
 

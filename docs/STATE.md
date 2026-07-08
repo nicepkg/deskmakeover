@@ -51,8 +51,9 @@ Directory.Build.props); engine/bridge/bake/apply + owner-supervised gates untouc
 - **i18n reconciliation** (`2ac58a6`): 21 new keys synced into the resx source.
 
 **Verified (2026-07-08): `bun run build` green · `bun test` 136 pass · banned
-blue/violet grep clean · files ≤500 · `dotnet test` 277 pass · `publish-win.mjs`
-green (214 MB self-contained).** P6 cross-vendor adversarial review (codex via
+blue/violet grep clean · files ≤500 · `dotnet test` 277 pass · release
+`scripts/dev/publish.ps1` green (**64.9 MB single-file, no .NET install**).** P6
+cross-vendor adversarial review (codex via
 `/multi-ai`) DONE — 7 findings, 5 fixed (`a96cad9`: offset-aware zoom focal math;
 empty-click preserves selection + Esc-deselect; gesture-coalescing cleanup on
 cancel/unmount; corner-radius ungated as a global control; mock version/changelog
@@ -69,17 +70,24 @@ gitignored — the muxer on PATH is the runtime-only Program Files one; always i
 · E2E 1). `bun scripts/publish-win.mjs` = **green**, output
 `artifacts/win-x64/DeskMakeover/` (self-contained, users install NOTHing).
 
-**Distribution size = 214 MB folder / 426 files** (self-contained WPF; React bundle
-is only 0.59 MB — the redesign added no bloat; publish config unchanged since the
-foundation commit `d8532fb`, so this size predates both refactors). The ElevatedHelper
-is a **70 MB self-contained single-file** — a second bundled runtime, but **NOT waste:
-it is a security boundary.** The helper is `requireAdministrator` and the app lives in
-`%LOCALAPPDATA%` (user-writable), so an elevated process must NOT load its runtime from
-the shared app folder — that would be a DLL-hijack privilege-escalation vector. Do NOT
-"share the runtime to save space". **Safe slimming (no security change): enable
-`EnableCompressionInSingleFile` — helper ~70→~35 MB, main app single-file+compressed
-→ ~90 MB download.** WPF is not trimmable, so this is near the zero-install floor;
-framework-dependent (~5 MB) is rejected (forces users to install .NET).
+**Two publish scripts — don't confuse them:**
+- **`scripts/dev/publish.ps1` = the SHIPPABLE release**: `dotnet publish` of the App
+  with `PublishProfile=win-x64` (single-file + compressed + self-contained) → ONE
+  `DeskMakeover.App.exe`. Measured with the redesign: **64.9 MB / 9 files** (exe
+  63.5 MB + web/ 0.6 MB + two stray WebView2 `.xml` doc files ~0.7 MB — a tiny cleanup
+  item). This matches the v1.0.0 release (62.5 MB, pre-WebView2). **No .NET install for
+  end users.** The redesign added ~0.6 MB (web) — no bloat.
+- **`scripts/publish-win.mjs` = the DEV/local publish**: an UNcompressed folder
+  (`PublishSingleFile=false`) → 214 MB / 426 files, plus a separate self-contained
+  single-file ElevatedHelper. This is for local smoke, NOT distribution — its 214 MB is
+  not the shipping size.
+
+The **ElevatedHelper's** standalone self-contained single-file build is a **security
+boundary, not waste**: it is `requireAdministrator` and the app runs from user-writable
+`%LOCALAPPDATA%`, so an elevated process must NOT load its runtime from the shared app
+folder (DLL-hijack privilege-escalation). Never "share the runtime to save space".
+(Open question: verify how the single-file release ships/embeds the helper — the
+release folder is app-only, as v1.0.0 was; the bake path needs the helper present.)
 
 ⚠️ **Remaining owner-only gates:** on the real desktop — manual-gate the spec 04 §3.5
 interactions (live-snap/pulse, Ctrl+wheel zoom, hold-Space hides chrome, double-click

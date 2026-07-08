@@ -27,9 +27,18 @@ shared frames; recompose revision drop; apply flushes pending look; debounce
 cancel on preset; schema assert at boot; stale revision folders purged);
 #2 click-token declined (same trust domain — web is the only trusted origin),
 #3 dispatcher lifetime = process (documented), #6 covered by host-monotonic
-revisions + client guard. **Remaining (punch list)**: compact (<1100px)
-overlay mode; settings 导出/保存 wiring (exporters exist host-side);
-Playwright(.NET) E2E harness; the owner-supervised LIVE icon-bake and
+revisions + client guard. **Punch list cleared (same day)**: compact (<1100px)
+mode shipped — summary toolbar (preset chips + 自定义 ▸ + compact CTA) + left
+slide-in panel overlay with scrim, Esc closes, hero/CTA derivation extracted to
+`lib/hero.ts` (panels + toolbars share it); settings 导出/保存 wired (保存 →
+the real comparison exporter via icons.exportCompare with lazy scan, 导出 →
+data folder, matching the old page's behaviour); E2E = `tests/DeskMakeover.E2E`
+— a ~150-line raw-CDP client (NO Node, NO Playwright; bun-only rule holds)
+driving one sequential user journey against the real exe under
+DESKMAKEOVER_FAKE_APPLY=1: boot → real scan → 纯净黑白 restyle → wallpaper
+canvas → English/back i18n round-trip → fake apply → success toast. Opt-in via
+DESKMAKEOVER_E2E=1 (plain `dotnet test` stays hermetic). Suite: **277 dotnet +
+63 bun** green. **Remaining**: ONLY the owner-supervised LIVE icon-bake and
 wallpaper-apply runs (NEVER auto-triggered) — unchanged gates.
 
 ### 2026-07-08 UI replatform: WebView2 + React (owner directive; IN PROGRESS)

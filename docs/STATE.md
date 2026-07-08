@@ -39,7 +39,11 @@ roster → editorial brand beat + mosaic → TWO innocent survey questions →
 roast/bluff → typed confession, paste refused) · DEV-only debug menu (flask,
 localStorage resets) · changelog-on-update semantics verified · dash purge
 across ALL user-facing strings · web-side WebView2 hardening
-(`lib/webview-hardening.ts`) · settings page at page-scale type (controls stay
+(`lib/webview-hardening.ts`) · global error capture + diagnostics (ring-buffer
+error log in localStorage, window.onerror/rejection/prod-console.error/host
+event; settings 问题诊断 row with copy/GitHub/email exits, every exit copies
+the FULL report first because issue URLs cap near 8KB; CrashGate boundary
+with a bilingual zero-dependency crash card + DEV crash probe) · settings page at page-scale type (controls stay
 sm — unified rule below) · ONE `Reveal` fold grammar for every conditional
 inspector section (ghost sub-margin bug fixed; native arrow sits `apart` at
 the mark flow's far edge) · segmented/toggle thumbs animate translateX in
@@ -55,6 +59,14 @@ track space (layout-projection drift on panel-height changes killed).
    persisted-set now unused outside the gallery).
 
 **F8 (Windows machine required) — the reconciliation list:**
+- Host-side error capture (web side is LIVE, contract ready): hook
+  AppDomain.UnhandledException + TaskScheduler.UnobservedTaskException +
+  Application.ThreadException + WebView2 ProcessFailed into a file log
+  (%LOCALAPPDATA%), implement `diagnostics.getInfo` (OS/.NET/WebView2/arch +
+  hostLogTail), stream errors as the `host-error` bridge event, add
+  `links.email` to AppInfo, and show a NATIVE crash dialog (copy log / GitHub
+  issue / email) for host-fatal crashes where the web layer is already dead —
+  mirror crash-gate.tsx's three exits.
 - resx is the i18n SOURCE: sweep every `PENDING-RESX` marker in
   `src/DeskMakeover.Web/src/lib/i18n/*.ts` into `Strings*.resx` via
   `scripts/dev/upsert-strings.py`, then regenerate the TS; delete dead strings

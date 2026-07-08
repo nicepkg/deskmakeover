@@ -38,8 +38,16 @@ driving one sequential user journey against the real exe under
 DESKMAKEOVER_FAKE_APPLY=1: boot → real scan → 纯净黑白 restyle → wallpaper
 canvas → English/back i18n round-trip → fake apply → success toast. Opt-in via
 DESKMAKEOVER_E2E=1 (plain `dotnet test` stays hermetic). Suite: **277 dotnet +
-63 bun** green. **Remaining**: ONLY the owner-supervised LIVE icon-bake and
-wallpaper-apply runs (NEVER auto-triggered) — unchanged gates.
+63 bun** green. Version bumped 1.0.0 → **1.1.0** (title chip + About match the
+changelog). Second codex pass over the post-review punch-list code (compact /
+hero / settings-export / E2E): 5 findings, 3 fixed (E2E CdpClient UTF-8
+per-chunk decode → accumulate-and-decode-once + receive timeout; boot handshake
+failure now resets `booted` so it's retryable), 2 declined (settings out-of-order
+— human-click cadence ≫ RPC round-trip + host serializes; fixed E2E port — single
+sequential test). **Remaining**: ONLY the owner-supervised LIVE icon-bake and
+wallpaper-apply runs (NEVER auto-triggered) — the checklist for that final gate
+is **`docs/verification/owner-supervised-live-runs.md`** (what to click, what to
+watch, how to recover).
 
 ### 2026-07-08 UI replatform: WebView2 + React (owner directive; IN PROGRESS)
 

@@ -70,11 +70,16 @@ gitignored — the muxer on PATH is the runtime-only Program Files one; always i
 `artifacts/win-x64/DeskMakeover/` (self-contained, users install NOTHing).
 
 **Distribution size = 214 MB folder / 426 files** (self-contained WPF; React bundle
-is only 0.59 MB — the redesign added no bloat). Biggest fat: the ElevatedHelper is a
-**70 MB self-contained single-file** = a DUPLICATE full runtime beside the app's.
-Slimming opportunity (not done — needs a UAC-flow test): make the helper share the
-app's bundled runtime → ~150 MB. WPF is not trimmable, so ~120-150 MB is the
-zero-install floor; single-file+compression → ~90 MB download.
+is only 0.59 MB — the redesign added no bloat; publish config unchanged since the
+foundation commit `d8532fb`, so this size predates both refactors). The ElevatedHelper
+is a **70 MB self-contained single-file** — a second bundled runtime, but **NOT waste:
+it is a security boundary.** The helper is `requireAdministrator` and the app lives in
+`%LOCALAPPDATA%` (user-writable), so an elevated process must NOT load its runtime from
+the shared app folder — that would be a DLL-hijack privilege-escalation vector. Do NOT
+"share the runtime to save space". **Safe slimming (no security change): enable
+`EnableCompressionInSingleFile` — helper ~70→~35 MB, main app single-file+compressed
+→ ~90 MB download.** WPF is not trimmable, so this is near the zero-install floor;
+framework-dependent (~5 MB) is rejected (forces users to install .NET).
 
 ⚠️ **Remaining owner-only gates:** on the real desktop — manual-gate the spec 04 §3.5
 interactions (live-snap/pulse, Ctrl+wheel zoom, hold-Space hides chrome, double-click

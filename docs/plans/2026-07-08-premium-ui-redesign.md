@@ -143,5 +143,9 @@ Spec 03 §3.1.
   muxer): `dotnet test` **277 pass**, `bun scripts/publish-win.mjs` green → 214 MB
   self-contained (`artifacts/win-x64/DeskMakeover/`). Remaining = owner-only: the
   spec 04 §3.5 manual interaction gates on the live desktop, then the supervised LIVE
-  icon-bake + wallpaper-apply (never auto-triggered). Packaging note: the 70 MB
-  self-contained ElevatedHelper duplicates the runtime — a ~65 MB slimming opportunity.
+  icon-bake + wallpaper-apply (never auto-triggered). Packaging note: 214 MB
+  self-contained (predates both refactors — config unchanged since `d8532fb`). The
+  70 MB standalone ElevatedHelper is a SECURITY boundary (elevated + app in
+  user-writable `%LOCALAPPDATA%` → must not load its runtime from the shared folder),
+  NOT waste. Safe slimming = single-file compression (~35 MB helper / ~90 MB download),
+  never runtime-sharing.

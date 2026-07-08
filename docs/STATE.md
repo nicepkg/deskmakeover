@@ -30,8 +30,10 @@ grammar) · canvas nav (non-passive wheel zoom, fill-axis floor, micro toolbar,
 top light-line progress) · gradient direction dial-synced dropdown (engine-truth
 0°=top mapping fixed) · ONE none-dialect (slash-circle first in every axis) +
 16px keyline + SwatchPicker extraction · flat mark row + native-arrow penance
-gate (60s stare) · keymap legend by page (keyboard icon) · mono seeds wallpaper
-primary · presets carry NO mark (mock aligned to engine NamedStyles truth) +
+gate (60s stare) · keymap legend by page (keyboard icon) · colour axis speaks the
+swatch dialect directly (无=原彩 · duotone disc=黑白 · tint dots=单色, pure
+black/white dots hidden as redundant, wheel=custom; mode segmented deleted —
+supersedes the old mono-seeds-wallpaper-primary rule) · presets carry NO mark (mock aligned to engine NamedStyles truth) +
 badge-free preset minis + per-style mark previews · welcome gate (language
 roster → editorial brand beat + mosaic → TWO innocent survey questions →
 roast/bluff → typed confession, paste refused) · DEV-only debug menu (flask,
@@ -56,7 +58,7 @@ track space (layout-projection drift on panel-height changes killed).
 - resx is the i18n SOURCE: sweep every `PENDING-RESX` marker in
   `src/DeskMakeover.Web/src/lib/i18n/*.ts` into `Strings*.resx` via
   `scripts/dev/upsert-strings.py`, then regenerate the TS; delete dead strings
-  (e.g. Dist_Mark if unreferenced).
+  (e.g. Dist_Mark / Color_Mono if unreferenced).
 - Host changelog data source + real version (Directory.Build.props off 0.0.0
   when the owner names it).
 - Fonts attribution line in About (HarmonyOS Sans license obligation — NOT yet

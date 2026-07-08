@@ -1,32 +1,30 @@
 # DeskMakeover Docs
 
-**Now:** DeskMakeover, Chinese product name "桌面美颜" (ADR-0002), is a Windows
-10/11 desktop-icon beautifier: one screen, one CTA, fully reversible. The owner
-built a complete interactive prototype (`references/prototype/桌面美颜 v2.dc.html`)
-which is the **binding UI/UX contract for v1.0** (ADR-0008). The foundation
-(domain, rendering, scanning, snapshots, journaled ops, elevated helper) is built
-and tested; the UI is being rebuilt to prototype parity per the 2026-07-06 plan.
-v1.0 = icon beautification only; system-ads / Explorer / wallpaper modules are
-design-locked for v1.1+.
-
-## Version Timeline
-
-- Unreleased → **v1.0.0** (renumbered from "v0.9 抢发" by ADR-0008) — foundation
-  done (~105 tests green); prototype-parity UI rebuild in progress.
+**Now:** DeskMakeover, Chinese product name "桌面美颜" (ADR-0002), is a Windows 10/11
+desktop-**icon** and **wallpaper** beautifier: one window, a left module rail (图标 /
+壁纸 / 设置), live desktop-mirror canvas, fully reversible. The UI is a **WebView2 +
+React** web app (ADR-0011) styled in the v2 "Quiet Material" (macOS-System-Settings)
+visual language (ADR-0012); the engine stays C#. The old interactive prototype
+(`references/prototype/桌面美颜 v2.dc.html`) is now a **historical reference only** —
+the specs are the source of truth (ADR-0012). Pre-release; no version narrative in-app
+until the first real release.
 
 ## Doc Map
 
 - [STATE](STATE.md) — current work, next steps, blockers, open questions. **Start here.**
-- [references/prototype/](references/prototype/) — the owner's Claude Design
-  prototype: **the v1.0 source of truth** (open the .html in a browser).
-- [plans/2026-07-06-v1-prototype-parity.md](plans/2026-07-06-v1-prototype-parity.md)
-  — the executable rebuild plan (phased, task-level, for the executing AI).
-- [specs/00-roadmap.md](specs/00-roadmap.md) — v1.0 原型复刻 → v1.1 净化 →
-  v1.2 文管 → v2.0 壁纸/AI.
-- [specs/01-product-architecture.md](specs/01-product-architecture.md) — product
-  scope, IA, copy, system architecture.
-- [specs/02-visual-language.md](specs/02-visual-language.md) — tokens, geometry,
-  colour math, the 7 shortcut marks, motion.
-- [decisions/](decisions/) — ADRs; 0008 is the governing one for v1.0.
-- [conventions/](conventions/) — project-local engineering conventions.
+- [development.md](development.md) — **dev & build runbook**: how to develop, test, and
+  package, plus the gotchas (the repo-local .NET SDK, the two publish scripts, the
+  ElevatedHelper security boundary, i18n source-of-truth, owner-supervised gates).
+- [decisions/](decisions/) — ADRs. Current governing: **0011** (WebView2 + React
+  replatform), **0012** (premium UI redesign / prototype retired). 0009 (rail +
+  wallpaper), 0010 (settings + i18n + shapes) still apply.
+- [specs/](specs/) — capability specs: 00 roadmap · 01 product architecture ·
+  **02 visual language (v2)** · 03 shell + settings + IA · 04 wallpaper module ·
+  05 web-shell / bridge.
+- [reviews/](reviews/) — design-panel reviews (e.g. the 2026-07-08 premium-UI panel).
 - [plans/](plans/) — point-in-time implementation plans (older plans are history).
+- [verification/](verification/) — the owner-supervised live-run checklist (real
+  icon-bake + wallpaper-apply — never auto-triggered).
+- [conventions/](conventions/) — project-local engineering conventions.
+- [references/prototype/](references/prototype/) — the owner's original design prototype;
+  **historical reference only** (superseded by the specs per ADR-0012).

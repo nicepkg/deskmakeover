@@ -50,8 +50,14 @@ the mark flow's far edge) · segmented/toggle thumbs animate translateX in
 track space (layout-projection drift on panel-height changes killed).
 
 **In flight / next (web):**
-1. D10 gesture unification remainder + wallpaper zone-drag DOM approximate fill
-   (IXD P1: frost tracks pointer 1:1, reconcile on true frame).
+0. **Zone editor rebuild (spec 04 v2.0, ADR-0014, plan
+   `docs/plans/2026-07-09-zone-editor-rebuild.md`)** — client-side WebGL
+   compositor (pixi v8) replaces host recompose; Adaptive Frost single material;
+   label-chip titles; curated presets on the user's wallpaper; interaction pack.
+   Expert-panel record + owner dispositions:
+   `docs/reviews/2026-07-09-zone-editor-expert-panel.md`. Slices Z1–Z6.
+   THIS SUPERSEDES the old item "wallpaper zone-drag DOM approximate fill".
+1. D10 gesture unification remainder (icons module side).
 2. Dark theme + zh locale full regression screenshots; evidence to
    `docs/plans/evidence/2026-07-v3/`.
 3. F7: cross-vendor adversarial review (codex via /multi-ai) over the full diff.
@@ -59,6 +65,12 @@ track space (layout-projection drift on panel-height changes killed).
    persisted-set now unused outside the gallery).
 
 **F8 (Windows machine required) — the reconciliation list:**
+- **Zone compositor host handoff (ADR-0014)**: implement `wallpaper.getSource`
+  (WIC decode + cover-crop → RGBA/PNG to web) + `wallpaper.applyBaked` (PNG in →
+  write file + SetWallpaper); run the parity fixtures (5 looks, legacy C# vs TS
+  bake, ΔE<2 / SSIM>0.99); THEN delete WallpaperBakeRenderer.cs /
+  WallpaperComposer.cs + their dotnet tests; verify WebView2 GPU path +
+  SwiftShader fallback on a weak VM.
 - Host-side error capture (web side is LIVE, contract ready): hook
   AppDomain.UnhandledException + TaskScheduler.UnobservedTaskException +
   Application.ThreadException + WebView2 ProcessFailed into a file log

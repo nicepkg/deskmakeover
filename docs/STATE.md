@@ -8,7 +8,7 @@ branch: main
 
 ## Active Work
 
-### 2026-07-08 Premium UI redesign (owner directive; docs done, build IN PROGRESS)
+### 2026-07-08 Premium UI redesign (owner directive; web build DONE, C# verify + live PENDING)
 
 Owner verdict after the replatform: still "勉强可用，谈不上好用" for an
 aesthetically-demanding, customization-heavy audience. A 4-seat design panel
@@ -18,12 +18,51 @@ north star = **macOS System Settings** (calm/grouped/spacious/material) ②
 customization **visible by default** + presets as fast path ③ wallpaper = perfect
 the existing capability, **add no features** ④ zone editor stays **hand-rolled** (no
 lib). Governing docs: **ADR-0012**, **spec 02 v2**, **spec 03 §3/§3.1**, **spec 04
-§3.5**, plan **`docs/plans/2026-07-08-premium-ui-redesign.md`** (P1 design-system
-foundation → P2 wallpaper interaction → P3 wallpaper visual → P4 settings → P5
-customization IA/icons/global → P6 review+verify). The prototype is retired as
-binding law; **specs are the source of truth** now. Version narrative removed
-pre-release. Scope = `src/DeskMakeover.Web` only; engine/bridge/bake/apply +
-owner-supervised gates untouched. Baseline: 277 dotnet + 63 bun green.
+§3.5**, plan **`docs/plans/2026-07-08-premium-ui-redesign.md`**. The prototype is
+retired as binding law; **specs are the source of truth** now. Version narrative
+removed pre-release. Scope = `src/DeskMakeover.Web` only (+ one version line in
+Directory.Build.props); engine/bridge/bake/apply + owner-supervised gates untouched.
+
+**Build phases DONE + committed** (commits `e428176`→`2ac58a6`):
+- **P1 foundation**: index.css v2 tokens (widened bg→raised, `--elev-1/2/cta`, warm
+  `--glass`/`--canvas-stage`, a real 5-step type ladder `text-caption/body/cardtitle/
+  section/display` replacing the ~10 micro-steps); grouped `Card`/`CardRow`; `Chip`
+  `leading` slot + `ShapeSwatch`/`ColorDot`/`MarkGlyph`; `shape-paths` (13 shapes).
+  Fixed a `--text-card`↔shadcn `--color-card` utility collision → `text-cardtitle`.
+- **P2 wallpaper interaction** (spec 04 §3.5): shared `useCanvasView` (Ctrl+wheel
+  zoom + pan on both mirrors, icons canvas verified non-regressed); session undo/redo
+  over `look` snapshots w/ drag-coalescing; live-snap rubber-band + `snapPulse`;
+  hide edit chrome while comparing; dashed empty-state; on-canvas rename; one-shot
+  coach mark; scan shimmer + first-frame fade; Delete-only. zone-layer/paper-coach/
+  scan-shimmer extracted (files ≤500).
+- **P3 wallpaper panel edit-scope**: the #1 fix — `正在编辑：<zone>` header, per-zone
+  controls target the SELECTION and go inert with none, the silent "no-selection →
+  restyle ALL" path DELETED, sole mass path = explicit 应用到全部分区 →
+  `applyToAllZones`; premium zone list (per-style swatch + editable title); 清晰度
+  高级 fold; 添加分区 → `firstFreeArea` 6×4.
+- **P4 settings = macOS-Settings showcase**: grouped Cards, one radius, consistent
+  icon badges, equal-weight cards, trust chips as pills; 本地数据 → 2 distinct actions
+  (no snapshot-export RPC exists, fake 导出快照 dropped); **version chip + changelog
+  removed**, `Directory.Build.props` 1.1.0→0.0.0; `?` keymap legend; popover.tsx → elev-2.
+- **P5 customization visible-by-default + polish**: both panels persist open axes
+  (`usePersistedSet`) + current-values summary; icons chip live previews; icons-mirror
+  pills → warm app-glass (TaskbarStrip keeps white OS frost, extracted); per-tile
+  hover ⋯ affordance; module switch overlap (no blank frame) + no re-scan on re-entry.
+- **i18n reconciliation** (`2ac58a6`): 21 new keys synced into the resx source.
+
+**Verified HERE (bun/web only): `bun run build` green · `bun test` 134 pass · banned
+blue/violet grep clean · files ≤500.** Cross-vendor codex adversarial review: in
+progress (P6).
+
+⚠️ **PENDING — this environment has NO .NET 10 SDK** (global.json pins 10.0.100), so
+`dotnet build/test`, `bun scripts/publish-win.mjs` (dotnet publish step), and the
+live-host E2E COULD NOT run here. The only C# change is the version string, so risk
+is nil — but the owner must, on the .NET-10 machine: (1) `dotnet test` (was 277 green),
+(2) `bun scripts/publish-win.mjs` to produce the exe, (3) launch + manual-gate the
+spec 04 §3.5 interaction items (live-snap/pulse, Ctrl+wheel zoom, hold-Space hides
+chrome, double-click rename, Ctrl+Z, coach once) in dark+light, (4) the supervised
+LIVE icon-bake + wallpaper-apply (NEVER auto-triggered — `docs/verification/
+owner-supervised-live-runs.md`).
 
 ### 2026-07-08 UI replatform: DONE through P7 (review fixes in)
 

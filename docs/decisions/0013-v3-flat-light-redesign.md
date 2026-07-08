@@ -55,6 +55,14 @@ fallback typography, a handful of load-bearing components/feel gaps).
 10. **Release (D4)** — No partial ship: icons + wallpaper + settings all land the v3
     redesign before the first public release.
 
+## Amendments
+
+- **2026-07-08 (owner): version narrative RESTORED** — supersedes ADR-0012's
+  no-version-narrative rule. The identity card shows a clickable version line;
+  it opens the in-app changelog dialog (per-locale entries over the bridge).
+  The host's changelog data source + the real version number are restored on
+  the Windows side in F8.
+
 ## Consequences
 
 - Spec 02 is rewritten to v3 (chrome half); the token table's exact OKLCH values are

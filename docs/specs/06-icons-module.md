@@ -63,8 +63,13 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
 - Apply: `icons.applyBaked` streams PNG-encoded 256 masters in chunks of ≤20 items
   (raw RGBA of 300 icons = 78.6MB and cannot ride one JSON postMessage; PNG total
   ≈5-7MB). Sequence: `applyBakedBegin{revision,count}` → N× `applyBakedChunk{items:
-  [{id, masterPng}]}` → `applyBakedCommit{config,overrides} → {ok, applied}`.
-  C# decodes → `GeneratedIconStore.Save` → shell writers, all unchanged.
+  [{id, sourceIndex, masterPng}]}` → `applyBakedCommit{config,overrides} → {ok,
+  applied}`. C# decodes → `GeneratedIconStore.Save` → shell writers, all unchanged.
+  Apply is RESTORE-FIRST (today's `DesktopBakeService.ApplyAsync` semantics):
+  「保留原样」overrides ship NO master — the restore step returns them to their
+  originals. Multi-source items bake one master per source: `sourceIndex` maps
+  Recycle Bin 0=empty / 1=full. Every advertised master MUST arrive; the web
+  aborts before commit if any source failed to decode.
 - `icons.applyVersion` becomes a WEB flow: load the history entry's config into the
   renderer → bake → applyBaked. It gets the SAME ceremony as apply (see §3.7).
 - `icons.restore`, `icons.exportCompare` unchanged.

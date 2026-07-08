@@ -78,15 +78,24 @@ washes (zone list + module rail, layoutId); presets alignment law (x.5 origins,
 whole-cell spans); emoji picker two pages + OS-panel free input; 壁纸压暗
 rename; per-input history coalescing. 222 bun tests green.
 
-**Icons v2 migration (spec 06, ADR-0015) — IN PROGRESS (overnight run
-2026-07-09, owner-approved Q1-Q12):** web icon compositor (pixi) becomes the
-interactive renderer + 256-master bake; C# TileRenderer frozen (oracle +
-reserved background renderer); bridge v2 (sourceUrls in, chunked masters out);
-UX contract (live scrub, hover try-on, per-pick undo, exception badges, size
-honesty, owned-verb menus, arrow gate softened to one-time 8s); taskbar P0 +
-mock icon pack. Panel record + dispositions:
+**Icons v2 migration (spec 06, ADR-0015) — WEB SIDE BUILT (overnight run
+2026-07-09, owner-approved Q1-Q12; commits 3e5f589..):** the CPU TS icon
+compositor (1:1 port of the frozen C# oracle — shapes/color/analysis/
+sampling/filters/marks/compose, zero new deps) renders every preview locally
+AND the 256 bake master; bridge v2 (sourceUrls in once, chunked
+{id,sourceIndex,masterPng} out, RESTORE-FIRST apply semantics); store rewrite
+(hover try-on, per-pick undo + gesture coalescing, ceremonied chunked apply,
+stageVersion); mirror = compositor canvases at observed positions (styleable
+gating, exception badges, owned-verbs menus, size honesty, double label
+shadow, undo/redo toolbar); taskbar P0 (pinned glyphs + indicator pills +
+tray + theme acrylic); 120-icon generated mock pack; arrow gate one-time 8s;
+C# oracle FROZEN (banners) + v0.9 chain deleted. Codex review: 6 fixed /
+2 dispositioned (record in the panel doc); 269 bun tests + tsc green;
+browser visual acceptance evidence in
+`docs/plans/evidence/2026-07-icons-v2/` (01-14). Panel record + dispositions:
 `docs/reviews/2026-07-09-icon-frontend-panel.md`; plan:
-`docs/plans/2026-07-09-icon-frontend-migration.md`.
+`docs/plans/2026-07-09-icon-frontend-migration.md`. Remaining: the Windows
+batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
 
 **In flight / next (web):**
 1. Zone rebuild polish tail: equal-gap ticks (deferred), rename-input visual

@@ -56,3 +56,20 @@ Standing owner orders for the run: write ALL docs before building; codex review
 afterwards with verification (fix only real findings — design-as-intended stands);
 C# frozen code gets banner comments + doc record; visual acceptance mandatory;
 no legacy compat; delete permanently-dead code on sight.
+
+## Codex adversarial review dispositions (post-build, 2026-07-09)
+
+| # | Sev | Finding | Verified | Disposition |
+|---|-----|---------|----------|-------------|
+| 1 | MAJOR | Apple bottom-left corner control points transposed vs `IconShapeGeometry.cs:120-123` | CONFIRMED (transcription error) | **fixed** — points swapped to oracle order |
+| 2 | MAJOR | Pixel filter skips the C# `(byte)` truncation before Posterize (boundary values jump a whole level) | CONFIRMED | **fixed** — `Math.trunc` before posterize + the outline/light blends |
+| 3 | MAJOR | Apply drops `keep` items so a previously-styled icon can't return to original | REFUTED — apply is RESTORE-FIRST (`DesktopBakeService.ApplyAsync` restores everything, then styles the non-keep set); keep items need no master | **no change; spec 06 §2 now states the restore-first semantics explicitly** |
+| 4 | MAJOR | Recycle Bin's second source (full state) never baked; chunk contract can't address it | CONFIRMED (spec promised 2 masters) | **fixed** — chunk items carry `sourceIndex`; apply bakes one master per source |
+| 5 | MAJOR | Apply during initial source loading under-delivers vs the advertised count | CONFIRMED | **fixed** — all bake sources awaited before `applyBakedBegin`; a missing master aborts before commit |
+| 6 | MAJOR | `loadSource` race: an old in-flight decode can clobber a newer source after rescan | CONFIRMED | **fixed** — per-id desired-url gate discards superseded decodes |
+| 7 | minor | `restore` leaves `working: true` on rejection | CONFIRMED | **fixed** — try/catch resets state + warn toast |
+| 8 | minor | Cancelled rAF tile jobs linger in the queue and "starve" fresh work | OVERSTATED — cancelled jobs are immediate-return no-ops; queue drain cost is negligible at realistic scrub rates | **no change** (revisit only if acceptance shows scrub lag) |
+
+Codex verdict was "block"; after fixes 1/2/4/5/6/7 and the §2 semantics record,
+269 bun tests + tsc green and the post-fix visual pass re-verified the Apple
+corners on screen (evidence 13/14).

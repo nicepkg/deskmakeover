@@ -8,7 +8,32 @@ branch: main
 
 ## Active Work
 
-### 2026-07-08 Premium UI redesign (owner directive; web build DONE, C# verify + live PENDING)
+### 2026-07-08 v3 "Premium Flat" redesign (owner directive; DESIGN DECIDED, build STARTING)
+
+Owner judged the shipped v2 web UI still ugly and issued a new brief: **flat ·
+white-leaning · Apple-flavored · dark follows system · bundled fonts · customization
+MAXED · plentiful Framer-Motion micro-interactions · every UX dimension to the
+extreme**. A five-seat isolated panel (UI/UX/IXD/PM/Type) judged the REAL light-theme
+screenshots + source — panel run #2, the last full panel for this artifact.
+**Governing docs: ADR-0013 · spec 02 v3 (rewritten) · review
+`docs/reviews/2026-07-08-ui-v3-premium-flat-panel.md`** (32-row disposition table, 12
+owner decisions D1-D12). Highlights: light-first OKLCH token rebuild (kill the taupe
+dark-flip), bundle Inter + HarmonyOS Sans SC 400/500 (~3-5MB, licenses verified,
+fonts.ready gate), coral kept + new `--coral-ink` for white, 6 curated shape chips +
+「更多形状」fold (all 13 stay reachable — customization never cut), filter axis all
+four kept (owner overrode PM), wallpaper hero → 清晰度 (zones = tool state), first-run
+auto 原样→美化 wave in the mirror, consent/done ceremony wired (strings existed,
+zero refs), gesture unification (drag=pan both canvases, Space=compare only), macOS-
+true segmented, zone-drag DOM approximate fill (WYSIWYG reconciles on release),
+release = all three modules together (no partial ship).
+
+**Mac dev environment (this session)**: `bridge/mock-desktop.ts` fakes the desktop
+(canvas wallpaper + 23 icons, config-reactive) so icons+wallpaper render fully in a
+plain browser via `bun run dev` — design iteration no longer needs Windows. 137 bun
+tests green incl. banned-colour scan. A WebView2 environment-pitfalls research report
+is being compiled → `docs/references/webview2-pitfalls.md` (hardening phase input).
+
+### 2026-07-08 Premium UI redesign v2 (SUPERSEDED by v3 above; web build DONE, C# verify done)
 
 Owner verdict after the replatform: still "勉强可用，谈不上好用" for an
 aesthetically-demanding, customization-heavy audience. A 4-seat design panel

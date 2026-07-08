@@ -1,0 +1,68 @@
+# ADR-0013 — v3 "Premium Flat" redesign: light-first, bundled type, ceremony & gesture unification
+
+- **Status**: accepted (owner interview 2026-07-08, 12 decisions D1-D12)
+- **Supersedes / amends**: ADR-0012's dark-default and Segoe-stack typography; spec 02 v2
+  chrome sections (rewritten as v3). Engine rendering law (WYSIWYG sections) untouched.
+- **Evidence**: `docs/reviews/2026-07-08-ui-v3-premium-flat-panel.md` (panel run #2 on
+  real screenshots — the final full-panel run for this artifact).
+
+## Context
+
+After the v2 "Quiet Material" redesign shipped to the web layer, the owner judged the
+rendered app still not beautiful ("丑的要命") and issued a new brief: **flat,
+white-leaning, Apple-flavored premium; dark mode follows the system; zh/en; responsive;
+bundled free-commercial fonts; deep-but-legible customization**. Pre-release, zero
+users — breaking chrome rewrites allowed. A five-seat isolated panel judged the real
+pixels and converged on three inherited root causes (taupe dark-flip palette, YaHei-
+fallback typography, a handful of load-bearing components/feel gaps).
+
+## Decisions
+
+1. **Theme (D3, D12)** — Default follows the system. The light theme is the design
+   first-citizen: rebuild the neutral ramp light-first in OKLCH (cool/true-white, no
+   warm taupe), then derive dark from it. Both themes ship at equal quality; current
+   responsive breakpoints stay (≥1100 regular / <1100 compact / min 1024×700).
+2. **Accent (D1)** — Coral `#FF6F5E` remains the only accent; blue/violet stay banned.
+   Add an `ink-coral` (deeper, less orange) for large solid fills on white; selected
+   states get border/ink reinforcement instead of wash-only.
+3. **Typography (D2)** — Bundle **Inter** (Latin, variable, OFL) + **HarmonyOS Sans SC**
+   (Regular 400 + Medium 500; license verified to permit embed/bundle/redistribute;
+   attribution line added to About). Subsets ≈3-5MB total. First frame gates on
+   `document.fonts.ready` (zero FOUT). Fallback chain → system CJK for rare glyphs.
+   The desktop mirror's tile labels keep an OS-faithful stack (`--font-os-mirror`).
+   Type ladder v3: caption 12/400 · body 13/400 · body-strong 13/500 · cardtitle 15/500
+   · section 19/500 · display 26/500 (700 escape hatch). Latin display/section tracking
+   −0.01em; CJK letter-spacing always 0. MiSans rejected on license risk.
+4. **Customization IA (D5, D6)** — Shape row shows 6 curated chips
+   (苹果/纯圆/三星/方块/水滴/无) + a 「更多形状」 fold for the remaining 7; all names
+   Chinese-first. The filter axis keeps all four options (无/玻璃/像素/贴纸) — owner
+   decision, PM's cut recommendation rejected.
+5. **Wallpaper narrative (D7)** — 清晰度 (clarity rescue) becomes the module's hero;
+   zones demote to a secondary, tool-gated capability. No feature add/remove.
+6. **First-run wow (D8)** — After the first scan, the mirror auto-plays one skippable
+   原样→美化 transformation (preview only; the real apply stays a human click).
+7. **Apply ceremony (D9)** — Wire the stranded strings: first-apply consent sheet
+   (what changes / what's untouched / one UAC), completion state with 「去看看桌面」,
+   restore confirmation. Icons and wallpaper share the ceremony components.
+8. **Gesture model (D10)** — Drag = pan on both canvases; wallpaper zone creation is an
+   explicit tool state (crosshair mode, Alt+drag shortcut); Space does compare only and
+   never hijacks focused-button activation.
+9. **Feel contract (D11)** — Accepted in bulk: gesture-time DOM approximation for zone
+   frost (reconcile on true frame — WYSIWYG holds at rest), latency-gated restyle cue
+   (no instant 45% dim), CTA working shimmer + text crossfade, `pop` on all menus,
+   reduced-motion completeness, macOS-true segmented (sliding thumb), elevated canvas
+   stage (no pure-black letterbox), single-source motion tokens.
+10. **Release (D4)** — No partial ship: icons + wallpaper + settings all land the v3
+    redesign before the first public release.
+
+## Consequences
+
+- Spec 02 is rewritten to v3 (chrome half); the token table's exact OKLCH values are
+  finalized during the build's design phase and locked by the banned-color and
+  contrast gates — the spec records the constraints and roles.
+- `Directory.Build.props` stays `0.0.0`; no version narrative until release (ADR-0012
+  rule carries over).
+- The i18n string table gains ceremony/coach strings already present; stranded strings
+  become referenced or get deleted at build end (no dead strings at release gate).
+- Panel protocol: this artifact has consumed its 2 full-panel runs; future UI judgment
+  comes from real-user evidence.

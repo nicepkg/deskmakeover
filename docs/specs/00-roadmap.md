@@ -24,8 +24,12 @@ mark bake with transparent global overlay; multi-size ico ladder; motion suite +
 reduced-motion; zh-Hans/en localization with theme/language following the OS by
 default.
 
-**Execution:** `plans/2026-07-06-v1-prototype-parity.md` (handed to an executing
-AI; prototype = binding contract).
+**Execution history:** built to prototype parity on WPF
+(`plans/2026-07-06-v1-prototype-parity.md`), then **replatformed to WebView2+React
+(ADR-0011, WPF UI layer deleted)** and redesigned twice (ADR-0012 v2 → **ADR-0013 v3
+"Premium Flat"**, the current visual law — spec 02 v3). The prototype is a historical
+reference only; there is ONE UI now and the first public release ships it — nothing
+ships on WPF.
 
 **Exit gate:** tests green (0 warnings) · prototype parity audit (side-by-side,
 every region/state) · fresh-VM smoke (apply → reboot → restore, zero residue) ·

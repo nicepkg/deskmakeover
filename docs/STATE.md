@@ -37,7 +37,11 @@ roster → editorial brand beat + mosaic → TWO innocent survey questions →
 roast/bluff → typed confession, paste refused) · DEV-only debug menu (flask,
 localStorage resets) · changelog-on-update semantics verified · dash purge
 across ALL user-facing strings · web-side WebView2 hardening
-(`lib/webview-hardening.ts`).
+(`lib/webview-hardening.ts`) · settings page at page-scale type (controls stay
+sm — unified rule below) · ONE `Reveal` fold grammar for every conditional
+inspector section (ghost sub-margin bug fixed; native arrow sits `apart` at
+the mark flow's far edge) · segmented/toggle thumbs animate translateX in
+track space (layout-projection drift on panel-height changes killed).
 
 **In flight / next (web):**
 1. D10 gesture unification remainder + wallpaper zone-drag DOM approximate fill

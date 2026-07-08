@@ -49,15 +49,22 @@ inspector section (ghost sub-margin bug fixed; native arrow sits `apart` at
 the mark flow's far edge) · segmented/toggle thumbs animate translateX in
 track space (layout-projection drift on panel-height changes killed).
 
+**Zone editor rebuild (spec 04 v2.0, ADR-0014) — BUILT on the Mac loop
+(commits 7cb8104/9b7ad79+, 211 bun tests green, browser-verified incl. baked
+PNG pixel check):** client WebGL compositor (pixi v8) live+bake, Adaptive
+Frost material + accent/emoji/label-chip titles, curated preset gallery,
+stable ids, per-zone controls + apply-to-all, magnetism + snapped-only guides
++ overlap warn-wash, Alt-drag duplicate, visible undo/redo + delete-undo
+toast, auto-rename on create, 分区落版 apply wave, DoneCard last-step. Panel
+record + dispositions: `docs/reviews/2026-07-09-zone-editor-expert-panel.md`;
+plan: `docs/plans/2026-07-09-zone-editor-rebuild.md`.
+
 **In flight / next (web):**
-0. **Zone editor rebuild (spec 04 v2.0, ADR-0014, plan
-   `docs/plans/2026-07-09-zone-editor-rebuild.md`)** — client-side WebGL
-   compositor (pixi v8) replaces host recompose; Adaptive Frost single material;
-   label-chip titles; curated presets on the user's wallpaper; interaction pack.
-   Expert-panel record + owner dispositions:
-   `docs/reviews/2026-07-09-zone-editor-expert-panel.md`. Slices Z1–Z6.
-   THIS SUPERSEDES the old item "wallpaper zone-drag DOM approximate fill".
-1. D10 gesture unification remainder (icons module side).
+1. Zone rebuild polish tail: equal-gap ticks (deferred), rename-input visual
+   polish over the chip, SwiftShader/`MAX_TEXTURE_SIZE` startup probe with
+   reduced-res fallback (renderer TODO), TS bake fixtures pinning compositor
+   output (Z6 remainder).
+2. D10 gesture unification remainder (icons module side).
 2. Dark theme + zh locale full regression screenshots; evidence to
    `docs/plans/evidence/2026-07-v3/`.
 3. F7: cross-vendor adversarial review (codex via /multi-ai) over the full diff.

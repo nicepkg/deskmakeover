@@ -87,7 +87,9 @@ track space (layout-projection drift on panel-height changes killed).
 - **No dashes in user-facing copy** (owner decree 2026-07-08: reads as AI
   text). Grep `—` over i18n values before shipping strings.
 - Every axis's 「无」 sits FIRST wearing the slash-circle glyph; dashed = auto,
-  slash = none — never conflate. One 16px keyline for all axis glyphs.
+  slash = none — never conflate. ONE keyline for all axis glyphs: authored on
+  the 20/16 grid, rendered at 25px canvas = 20px ink (owner legibility call
+  2026-07-09; `GLYPH` in chip-preview.tsx must stay = shape-paths `SWATCH` ÷ 0.8).
 - **Control scale is unified app-wide** (owner 2026-07-09): segmented stays
   `sm` (22px/11px) and chip buttons 11px on EVERY page, same as the
   icons/wallpaper inspectors. Page-scale adjustments touch the TEXT layer

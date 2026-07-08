@@ -67,7 +67,9 @@ fallback typography, a handful of load-bearing components/feel gaps).
   shape/filter/mark glyph draws exactly 16px on a 20px canvas (no optical
   exceptions); every axis's 「无」 sits FIRST wearing the slash-circle
   (dashed = auto, slash = none, never conflated). Axis rows render through
-  the shared `SwatchPicker`.
+  the shared `SwatchPicker`. *Amended 2026-07-09 (owner legibility call):
+  the authored 20/16 grid now renders at a 25px canvas — 20px ink — via one
+  `GLYPH` constant; the uniformity law itself is unchanged.*
 - **2026-07-08 (owner): the native arrow is gated** — it sits LAST in the
   mark row and picking it opens a 60-second penance sheet (verbatim owner
   copy, escalating stare captions, instant cancel). Presets never carry any

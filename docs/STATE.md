@@ -67,6 +67,17 @@ empty-state link, session bar chip) + 导出图片 (bake→PNG download), empty 
 slots with panel-tone ink, ▴▾ glyphs → ChevronDown icons app-wide. Record:
 `docs/reviews/2026-07-09-style-sets-import-export.md`. 220 bun tests green.**
 
+**Round 3 (owner-driven polish + reviews, commits 00805e2..b1540cb):** codex
+adversarial review disposed (9 fixed / 1 scheduled / 1 spec-amended / splits
+restore the 500-line law); motion audit disposed (3 added incl. two-layer zone
+delete exit via a compositor alpha exit lane, 10 no-add verdicts); modules stay
+mounted and hide via visibility+inert (display:none zeroed hidden viewports —
+the module-switch preview flash, triple-confirmed by rAF frame recorder + two
+independent investigations); toasts anchor to the canvas stage; sliding active
+washes (zone list + module rail, layoutId); presets alignment law (x.5 origins,
+whole-cell spans); emoji picker two pages + OS-panel free input; 壁纸压暗
+rename; per-input history coalescing. 222 bun tests green.
+
 **In flight / next (web):**
 1. Zone rebuild polish tail: equal-gap ticks (deferred), rename-input visual
    polish over the chip, SwiftShader/`MAX_TEXTURE_SIZE` startup probe with

@@ -71,10 +71,14 @@ Final groups:
 1. **外观**: language segmented (跟随系统 / 简体中文 / English) and theme segmented
    (跟随系统 / 深色 / 浅色), both defaulting to 跟随系统.
 2. **自动化**: 新图标自动美化 toggle (its own full-width card).
-3. **本地数据**: **three distinct actions** — 导出还原快照 (actually exports the
-   restore snapshot), 保存前后对比图 (the comparison exporter), 打开数据文件夹. No two
-   buttons may bind to the same effect (the old 导出/打开-both-open-folder duplication
-   and the retired `Drawer_Save` string are removed).
+3. **本地数据**: **distinct actions, none duplicated** — 保存前后对比图 (the
+   comparison exporter, `icons.exportCompare`) and 打开数据文件夹 (`shell.openDataFolder`).
+   No two buttons may bind to the same effect (the old 导出/打开-both-open-folder
+   duplication and the retired `Drawer_Save` string are removed). A separate
+   **导出还原快照** action is *deferred until the engine exposes a real snapshot-export
+   RPC* — there is none today, so a third button would only re-open the data folder;
+   per the no-duplicate-effect rule it is omitted rather than faked (the restore
+   snapshots are reachable via 打开数据文件夹 meanwhile).
 4. **关于**: product identity, **trust chips rendered as real pill chips** (not bare
    text), author/repo cards, 检查更新, 联系反馈, homepage. **No 更新日志 / changelog
    section and no version string** are shown pre-release (ADR-0012) — a version story

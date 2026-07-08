@@ -68,8 +68,9 @@ fallback typography, a handful of load-bearing components/feel gaps).
 - Spec 02 is rewritten to v3 (chrome half); the token table's exact OKLCH values are
   finalized during the build's design phase and locked by the banned-color and
   contrast gates — the spec records the constraints and roles.
-- `Directory.Build.props` stays `0.0.0`; no version narrative until release (ADR-0012
-  rule carries over).
+- Version narrative is BACK (see Amendments): the version line + in-app changelog
+  ship; `Directory.Build.props` moves off `0.0.0` when the owner names the first
+  public version (F8).
 - The i18n string table gains ceremony/coach strings already present; stranded strings
   become referenced or get deleted at build end (no dead strings at release gate).
 - Panel protocol: this artifact has consumed its 2 full-panel runs; future UI judgment

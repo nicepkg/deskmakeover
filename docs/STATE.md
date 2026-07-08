@@ -59,11 +59,19 @@ toast, auto-rename on create, 分区落版 apply wave, DoneCard last-step. Panel
 record + dispositions: `docs/reviews/2026-07-09-zone-editor-expert-panel.md`;
 plan: `docs/plans/2026-07-09-zone-editor-rebuild.md`.
 
+**Round 2 (same day, commit 39d4051): five material finishes + four title
+styles (combo matrix + designer pairing), wallpaper import (picker/drag-drop/
+empty-state link, session bar chip) + 导出图片 (bake→PNG download), empty state
+= glass preset gallery on the user's wallpaper gated on compositor ready
+(refresh dashed-frame flash killed), ghost slots redesigned as drawn landing
+slots with panel-tone ink, ▴▾ glyphs → ChevronDown icons app-wide. Record:
+`docs/reviews/2026-07-09-style-sets-import-export.md`. 220 bun tests green.**
+
 **In flight / next (web):**
 1. Zone rebuild polish tail: equal-gap ticks (deferred), rename-input visual
    polish over the chip, SwiftShader/`MAX_TEXTURE_SIZE` startup probe with
    reduced-res fallback (renderer TODO), TS bake fixtures pinning compositor
-   output (Z6 remainder).
+   output (Z6 remainder), Halo's under-frost (v1 skips it).
 2. D10 gesture unification remainder (icons module side).
 2. Dark theme + zh locale full regression screenshots; evidence to
    `docs/plans/evidence/2026-07-v3/`.
@@ -74,7 +82,9 @@ plan: `docs/plans/2026-07-09-zone-editor-rebuild.md`.
 **F8 (Windows machine required) — the reconciliation list:**
 - **Zone compositor host handoff (ADR-0014)**: implement `wallpaper.getSource`
   (WIC decode + cover-crop → RGBA/PNG to web) + `wallpaper.applyBaked` (PNG in →
-  write file + SetWallpaper); run the parity fixtures (5 looks, legacy C# vs TS
+  write file + SetWallpaper) + `wallpaper.exportPng` (native Save dialog) +
+  `wallpaper.setImportedSource` (persist imported source across launches;
+  session-only acceptable degrade) + `wallpaper.setLook` persistence; run the parity fixtures (5 looks, legacy C# vs TS
   bake, ΔE<2 / SSIM>0.99); THEN delete WallpaperBakeRenderer.cs /
   WallpaperComposer.cs + their dotnet tests; verify WebView2 GPU path +
   SwiftShader fallback on a weak VM.

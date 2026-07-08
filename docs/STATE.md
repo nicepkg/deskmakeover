@@ -84,6 +84,10 @@ across ALL user-facing strings · web-side WebView2 hardening
   text). Grep `—` over i18n values before shipping strings.
 - Every axis's 「无」 sits FIRST wearing the slash-circle glyph; dashed = auto,
   slash = none — never conflate. One 16px keyline for all axis glyphs.
+- **Control scale is unified app-wide** (owner 2026-07-09): segmented stays
+  `sm` (22px/11px) and chip buttons 11px on EVERY page, same as the
+  icons/wallpaper inspectors. Page-scale adjustments touch the TEXT layer
+  only (titles, labels, descriptions, row rhythm) — never inflate controls.
 - Presets never carry a shortcut mark (engine NamedStyles truth, owner call
   2026-07-07); nothing arrow-shaped may appear near preset thumbnails.
 - The native arrow is legal but gated (60s penance sheet); the welcome survey

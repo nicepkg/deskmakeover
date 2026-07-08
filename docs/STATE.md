@@ -58,7 +58,7 @@ track space (layout-projection drift on panel-height changes killed).
 - resx is the i18n SOURCE: sweep every `PENDING-RESX` marker in
   `src/DeskMakeover.Web/src/lib/i18n/*.ts` into `Strings*.resx` via
   `scripts/dev/upsert-strings.py`, then regenerate the TS; delete dead strings
-  (e.g. Dist_Mark / Color_Mono if unreferenced).
+  (e.g. Dist_Mark / Color_Mono / Paper_Footer if unreferenced).
 - Host changelog data source + real version (Directory.Build.props off 0.0.0
   when the owner names it).
 - Fonts attribution line in About (HarmonyOS Sans license obligation — NOT yet

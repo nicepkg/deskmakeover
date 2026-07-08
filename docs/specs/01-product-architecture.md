@@ -62,6 +62,12 @@ installer beyond self-contained zip/exe; English UI as a gate; Win7.
 > (shell navigation: rail, title bar sheds ⚙/⋯, overflow merges into the drawer)
 > and spec 04 (wallpaper module) supersede this section's window IA where they
 > disagree. The ASCII frame below is the v1.0 historical shape.
+>
+> **Icons v2 (ADR-0015, 2026-07-09)**: icon styling is rendered by the web
+> compositor (spec 06) — spec 06 supersedes this file's icon-editing interaction
+> details (debounce, per-tile menus, size preview, arrow gate) where they
+> disagree. The preview==desktop parity law below is amended by ADR-0015 D5
+> (visual tolerance bands at 256, not bit-exactness).
 
 ## The Window (IA)
 

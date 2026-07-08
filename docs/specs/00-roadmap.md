@@ -59,6 +59,12 @@ passes SmartScreen without a red interstitial (OV/individual cert — owner).
   WYSIWYG law are untouched. Architecture + bridge contract: spec 05.
   Execution: `plans/2026-07-08-webview2-react-migration.md`. The old WPF UI
   layer is deleted after parity (nothing is released yet — no compat).
+- **Icon renderer migration (ADR-0015, owner order 2026-07-09)**: icon styling
+  renders in the web compositor (spec 06); C# `TileRenderer` frozen as parity
+  oracle + reserved background renderer; C# keeps the ICO ladder + all shell
+  writes. Execution: `plans/2026-07-09-icon-frontend-migration.md`. The v1.2
+  auto-styler below renders in C# (never hidden WebView2) with the spec 06 §7
+  trust contract (default OFF, first-run proposal, undoable history entries).
 
 ## v1.2 — 信任 + 净化模块 · weeks
 

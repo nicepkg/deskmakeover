@@ -78,6 +78,16 @@ washes (zone list + module rail, layoutId); presets alignment law (x.5 origins,
 whole-cell spans); emoji picker two pages + OS-panel free input; 壁纸压暗
 rename; per-input history coalescing. 222 bun tests green.
 
+**Icons v2 migration (spec 06, ADR-0015) — IN PROGRESS (overnight run
+2026-07-09, owner-approved Q1-Q12):** web icon compositor (pixi) becomes the
+interactive renderer + 256-master bake; C# TileRenderer frozen (oracle +
+reserved background renderer); bridge v2 (sourceUrls in, chunked masters out);
+UX contract (live scrub, hover try-on, per-pick undo, exception badges, size
+honesty, owned-verb menus, arrow gate softened to one-time 8s); taskbar P0 +
+mock icon pack. Panel record + dispositions:
+`docs/reviews/2026-07-09-icon-frontend-panel.md`; plan:
+`docs/plans/2026-07-09-icon-frontend-migration.md`.
+
 **In flight / next (web):**
 1. Zone rebuild polish tail: equal-gap ticks (deferred), rename-input visual
    polish over the chip, SwiftShader/`MAX_TEXTURE_SIZE` startup probe with
@@ -122,6 +132,13 @@ rename; per-input history coalescing. 222 bun tests green.
   off in that doc; verify host items against `Host/WebShellWindow.cs`.
 - Engine preset minis: confirm badge-free on real host (engine NamedStyles are
   Distinction.None, so they should be — verify, don't assume).
+- **Icons v2 host handoff (ADR-0015)**: `icons.scan` v2 (256px `sourceUrls`
+  incl. Recycle Bin ×2 + arrowUrl) · chunked `icons.applyBaked` →
+  GeneratedIconStore · golden fixture generation (frozen oracle) + parity run
+  (flat ΔE<2/SSIM≥0.995; filters SSIM≥0.98) · discovery fix (shell-namespace
+  scan surfaces Recycle Bin; This PC/Network CLSID writers) · delete
+  `IconsSession.Render.cs` PNG-per-tile path · re-verify the grep-based v0.9
+  dead-code deletion with `dotnet build && dotnet test`.
 - `dotnet test` (was 277 green pre-v3) + real-host verify (fonts/IME/DPI/125%
   hairlines) + `scripts/dev/publish.ps1`.
 

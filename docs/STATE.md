@@ -50,9 +50,16 @@ Directory.Build.props); engine/bridge/bake/apply + owner-supervised gates untouc
   hover ⋯ affordance; module switch overlap (no blank frame) + no re-scan on re-entry.
 - **i18n reconciliation** (`2ac58a6`): 21 new keys synced into the resx source.
 
-**Verified HERE (bun/web only): `bun run build` green · `bun test` 134 pass · banned
-blue/violet grep clean · files ≤500.** Cross-vendor codex adversarial review: in
-progress (P6).
+**Verified HERE (bun/web only): `bun run build` green · `bun test` 136 pass · banned
+blue/violet grep clean · files ≤500.** P6 cross-vendor adversarial review (codex via
+`/multi-ai`) DONE — 7 findings, 5 fixed (`a96cad9`: offset-aware zoom focal math;
+empty-click preserves selection + Esc-deselect; gesture-coalescing cleanup on
+cancel/unmount; corner-radius ungated as a global control; mock version/changelog
+emptied), 2 disposed as docs/known (settings 本地数据 = 2 honest actions not 3 → spec
+03 §3 amended, no snapshot-export RPC exists; interaction-component tests are the
+documented manual gate — the raw-CDP E2E needs the host). codex confirmed clean:
+undo/redo core, no-selection-no-repaint, icons canvas non-regressed, hide-chrome,
+live-snap, snap-pulse, on-canvas rename, module overlap + no re-scan, persisted-set.
 
 ⚠️ **PENDING — this environment has NO .NET 10 SDK** (global.json pins 10.0.100), so
 `dotnet build/test`, `bun scripts/publish-win.mjs` (dotnet publish step), and the

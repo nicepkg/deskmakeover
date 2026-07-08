@@ -134,4 +134,12 @@ Spec 03 §3.1.
 ## Execution log
 
 - 2026-07-08: docs written (ADR-0012, spec 02 v2, spec 03 §3/§3.1, spec 04 §3.5,
-  this plan, panel review). Owner decisions recorded. Build phases pending.
+  this plan, panel review). Owner decisions recorded.
+- 2026-07-08: **P1–P5 built + committed** (`e428176`→`57daf4b`), each self-reviewed;
+  i18n reconciled into resx (`2ac58a6`). **P6**: cross-vendor codex review (7 findings
+  → 5 fixed `a96cad9`, 2 disposed docs/known). Web verified: `bun build` green,
+  `bun test` 136 pass, banned-colour grep clean, files ≤500.
+- **Deferred to a .NET-10 machine** (SDK absent in the build env; only C# change was
+  the version string): `dotnet test`, `bun scripts/publish-win.mjs`, live-host E2E,
+  and the spec 04 §3.5 manual interaction gates — then the owner-supervised LIVE
+  icon-bake + wallpaper-apply (never auto-triggered).

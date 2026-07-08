@@ -1,9 +1,12 @@
 # Spec 04 — 美化桌面壁纸 2.0 (wallpaper module)
 
 Living spec. Rewritten 2026-07-09 per **ADR-0014** (client-side compositor +
-Adaptive Frost + label-chip titles + curated presets), superseding the 1.0 spec
-(ADR-0009/0012 rendering pipeline and the 4-named-styles axis). Owner dispositions:
-`docs/reviews/2026-07-09-zone-editor-expert-panel.md`.
+adaptive materials + curated presets), superseding the 1.0 spec (ADR-0009/0012
+rendering pipeline and the 4-named-styles axis). Owner dispositions:
+`docs/reviews/2026-07-09-zone-editor-expert-panel.md`. **Round-2 amendment
+(same day): five material finishes, four title styles, wallpaper import/export,
+gallery-led empty state — `docs/reviews/2026-07-09-style-sets-import-export.md`
+is the binding detail record for §2.1/§2.3/§4.1/§4.2.**
 
 Goal: make a messy desktop read as DESIGNED — zones (分区) painted into the
 wallpaper as visual containers for grouping icons, plus 图标清晰度 (visibility

@@ -137,8 +137,13 @@ mock icon pack. Panel record + dispositions:
   GeneratedIconStore · golden fixture generation (frozen oracle) + parity run
   (flat ΔE<2/SSIM≥0.995; filters SSIM≥0.98) · discovery fix (shell-namespace
   scan surfaces Recycle Bin; This PC/Network CLSID writers) · delete
-  `IconsSession.Render.cs` PNG-per-tile path · re-verify the grep-based v0.9
-  dead-code deletion with `dotnet build && dotnet test`.
+  `IconsSession.Render.cs` PNG-per-tile path · re-verify the v0.9 deletion
+  (`MakeoverService`/`PreviewItemFactory` + their tests removed 2026-07-09,
+  grep-verified only) with `dotnet build && dotnet test` · patch
+  ComparisonImageExporterTests off `IconStyler`, then delete IconStyler +
+  IconStylerTests (banner in file) · slim `StylePreset.cs` to the live enums
+  (MaskShape/ColorTreatment/Badge*) — the StylePreset record + StylePresets/
+  StyleCombos statics are dead.
 - `dotnet test` (was 277 green pre-v3) + real-host verify (fonts/IME/DPI/125%
   hairlines) + `scripts/dev/publish.ps1`.
 

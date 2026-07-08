@@ -50,8 +50,9 @@ Directory.Build.props); engine/bridge/bake/apply + owner-supervised gates untouc
   hover ⋯ affordance; module switch overlap (no blank frame) + no re-scan on re-entry.
 - **i18n reconciliation** (`2ac58a6`): 21 new keys synced into the resx source.
 
-**Verified HERE (bun/web only): `bun run build` green · `bun test` 136 pass · banned
-blue/violet grep clean · files ≤500.** P6 cross-vendor adversarial review (codex via
+**Verified (2026-07-08): `bun run build` green · `bun test` 136 pass · banned
+blue/violet grep clean · files ≤500 · `dotnet test` 277 pass · `publish-win.mjs`
+green (214 MB self-contained).** P6 cross-vendor adversarial review (codex via
 `/multi-ai`) DONE — 7 findings, 5 fixed (`a96cad9`: offset-aware zoom focal math;
 empty-click preserves selection + Esc-deselect; gesture-coalescing cleanup on
 cancel/unmount; corner-radius ungated as a global control; mock version/changelog
@@ -61,15 +62,24 @@ documented manual gate — the raw-CDP E2E needs the host). codex confirmed clea
 undo/redo core, no-selection-no-repaint, icons canvas non-regressed, hide-chrome,
 live-snap, snap-pulse, on-canvas rename, module overlap + no re-scan, persisted-set.
 
-⚠️ **PENDING — this environment has NO .NET 10 SDK** (global.json pins 10.0.100), so
-`dotnet build/test`, `bun scripts/publish-win.mjs` (dotnet publish step), and the
-live-host E2E COULD NOT run here. The only C# change is the version string, so risk
-is nil — but the owner must, on the .NET-10 machine: (1) `dotnet test` (was 277 green),
-(2) `bun scripts/publish-win.mjs` to produce the exe, (3) launch + manual-gate the
-spec 04 §3.5 interaction items (live-snap/pulse, Ctrl+wheel zoom, hold-Space hides
-chrome, double-click rename, Ctrl+Z, coach once) in dark+light, (4) the supervised
-LIVE icon-bake + wallpaper-apply (NEVER auto-triggered — `docs/verification/
-owner-supervised-live-runs.md`).
+**C# side VERIFIED (2026-07-08):** the SDK is repo-local at `.dotnet/` (10.0.301,
+gitignored — the muxer on PATH is the runtime-only Program Files one; always invoke
+`.dotnet/dotnet.exe` or `bun scripts/publish-win.mjs`, which auto-resolves it).
+`dotnet test` = **277 pass** (Core 27 · Ops 21 · Shell 64 · IconRendering 104 · App 60
+· E2E 1). `bun scripts/publish-win.mjs` = **green**, output
+`artifacts/win-x64/DeskMakeover/` (self-contained, users install NOTHing).
+
+**Distribution size = 214 MB folder / 426 files** (self-contained WPF; React bundle
+is only 0.59 MB — the redesign added no bloat). Biggest fat: the ElevatedHelper is a
+**70 MB self-contained single-file** = a DUPLICATE full runtime beside the app's.
+Slimming opportunity (not done — needs a UAC-flow test): make the helper share the
+app's bundled runtime → ~150 MB. WPF is not trimmable, so ~120-150 MB is the
+zero-install floor; single-file+compression → ~90 MB download.
+
+⚠️ **Remaining owner-only gates:** on the real desktop — manual-gate the spec 04 §3.5
+interactions (live-snap/pulse, Ctrl+wheel zoom, hold-Space hides chrome, double-click
+rename, Ctrl+Z, coach once) in dark+light, then the supervised LIVE icon-bake +
+wallpaper-apply (NEVER auto-triggered — `docs/verification/owner-supervised-live-runs.md`).
 
 ### 2026-07-08 UI replatform: DONE through P7 (review fixes in)
 

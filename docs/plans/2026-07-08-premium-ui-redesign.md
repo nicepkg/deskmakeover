@@ -139,7 +139,9 @@ Spec 03 §3.1.
   i18n reconciled into resx (`2ac58a6`). **P6**: cross-vendor codex review (7 findings
   → 5 fixed `a96cad9`, 2 disposed docs/known). Web verified: `bun build` green,
   `bun test` 136 pass, banned-colour grep clean, files ≤500.
-- **Deferred to a .NET-10 machine** (SDK absent in the build env; only C# change was
-  the version string): `dotnet test`, `bun scripts/publish-win.mjs`, live-host E2E,
-  and the spec 04 §3.5 manual interaction gates — then the owner-supervised LIVE
-  icon-bake + wallpaper-apply (never auto-triggered).
+- **C# verified** (SDK is repo-local `.dotnet/` 10.0.301, not the runtime-only PATH
+  muxer): `dotnet test` **277 pass**, `bun scripts/publish-win.mjs` green → 214 MB
+  self-contained (`artifacts/win-x64/DeskMakeover/`). Remaining = owner-only: the
+  spec 04 §3.5 manual interaction gates on the live desktop, then the supervised LIVE
+  icon-bake + wallpaper-apply (never auto-triggered). Packaging note: the 70 MB
+  self-contained ElevatedHelper duplicates the runtime — a ~65 MB slimming opportunity.

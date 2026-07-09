@@ -168,14 +168,23 @@ own taskbar (neutral glyphs, not their real pinned apps).
 
 ## 6. Item taxonomy the web receives
 
-`kind ∈ {Shortcut, UrlShortcut, AppxShortcut, RecycleBin, Folder, RegularFile,
-Unsupported}` with `styleable` computed by C# (AppX always false). The web treats
-taxonomy as data: it renders and edits per `styleable`, and NEVER hardcodes kind
-behavior beyond: RecycleBin consumes 2 sources (empty/full) and bakes 2 masters;
-RegularFile carries the wrapper consent flag it has today. Discovery fix (C#,
-Windows batch): shell-namespace scan surfaces Recycle Bin; This PC/Network CLSID
-writers wired behind the same consent grammar. Recycle Bin is styleable
-(owner-approved).
+`kind ∈ {Shortcut, UrlShortcut, AppxShortcut, RecycleBin, SystemIcon, Folder,
+RegularFile, Unsupported}` with `styleable` computed by C# (AppX always false).
+**SystemIcon** = the per-user CLSID `DefaultIcon` family (This PC / Network /
+User Files / Control Panel) — the SAME HKCU registry mechanism the Recycle Bin
+writer uses, proven by the owner's original prototype (win-shell
+`Set-RecycleBinIcons`); these are STYLEABLE, and an early dev-mock
+classification of them as Unsupported was a mistake (corrected 2026-07-09).
+The web treats taxonomy as data: it renders and edits per `styleable`, and
+NEVER hardcodes kind behavior beyond: RecycleBin consumes 2 sources
+(empty/full) and bakes 2 masters; RegularFile carries the wrapper consent flag
+it has today. Discovery fix (C#, Windows batch): shell-namespace scan surfaces
+Recycle Bin + the SystemIcon set; `DesktopItemKind.SystemIcon` + generalized
+CLSID writers (This PC {20D04FE0-3AEA-1069-A2D8-08002B30309D}, Network
+{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}, User Files
+{59031A47-3F72-44A7-89C5-5595FE6B30EE}) wired behind the same consent grammar.
+Recycle Bin is styleable (owner-approved). Only true UWP/MSIX stays
+preview-only.
 
 ## 7. Background auto-format contract (v1.2 — direction approved, build later)
 

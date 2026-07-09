@@ -146,7 +146,9 @@ batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
   incl. Recycle Bin ×2 + arrowUrl) · chunked `icons.applyBaked` →
   GeneratedIconStore · golden fixture generation (frozen oracle) + parity run
   (flat ΔE<2/SSIM≥0.995; filters SSIM≥0.98) · discovery fix (shell-namespace
-  scan surfaces Recycle Bin; This PC/Network CLSID writers) · delete
+  scan surfaces Recycle Bin + SystemIcon set; `DesktopItemKind.SystemIcon` +
+  generalized per-user CLSID writers for This PC/Network/User Files — same
+  mechanism as RecycleBinIconWriter, owner-prototype-proven) · delete
   `IconsSession.Render.cs` PNG-per-tile path · re-verify the v0.9 deletion
   (`MakeoverService`/`PreviewItemFactory` + their tests removed 2026-07-09,
   grep-verified only) with `dotnet build && dotnet test` · patch

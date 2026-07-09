@@ -135,7 +135,10 @@ function main() {
     add(
       join(winDir, f),
       `win-${f}`,
-      base === 'thispc' || base === 'network' || base === 'user' ? 'Unsupported' // system CLSID icons: preview-only today
+      // This PC / Network / User Files style via the SAME per-user CLSID
+      // DefaultIcon mechanism as the Recycle Bin (owner prototype truth) —
+      // STYLEABLE; the C# writers are a Windows-batch addition.
+      base === 'thispc' || base === 'network' || base === 'user' ? 'SystemIcon'
         : isFolder ? 'Folder'
         : isNumbered ? 'RegularFile'
         : 'Shortcut',
@@ -161,7 +164,7 @@ function main() {
   if (existsSync(deskDir)) {
     for (const f of readdirSync(deskDir).filter((f) => f.endsWith('.webp'))) {
       const base = f.replace('.webp', '')
-      add(join(deskDir, f), `p11-${f}`, 'Unsupported', base === 'this_pc' ? '此电脑' : base === 'recyclebin' ? '回收站 (旧)' : '控制面板')
+      add(join(deskDir, f), `p11-${f}`, 'SystemIcon', base === 'this_pc' ? '此电脑' : base === 'recyclebin' ? '回收站 (旧)' : '控制面板')
     }
   }
 

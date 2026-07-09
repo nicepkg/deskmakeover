@@ -156,8 +156,9 @@ batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
   corner-smoothing engine from squircle-path-kit (MIT) + authored cubics; the
   C# coarse polygons are retired and the golden-parity baseline for shapes
   moves web→C#) · **IconShape enum follows the owner-curated catalog**
-  (2026-07-09: Google/Brave/Squircle/Blob/Rectellipse culled; Hexagon/Diamond/
-  Flower added — see the web union in `bridge/types.ts`) · delete
+  (2026-07-09: Google/Brave/Squircle/Blob/Rectellipse/Hexagon culled; Diamond/
+  Flower/Pebble added — see the web union in `bridge/types.ts`; TileRenderer
+  content placement gains the INSCRIBE_SHAPES rule from web compose.ts) · delete
   `IconsSession.Render.cs` PNG-per-tile path · re-verify the v0.9 deletion
   (`MakeoverService`/`PreviewItemFactory` + their tests removed 2026-07-09,
   grep-verified only) with `dotnet build && dotnet test` · patch

@@ -135,13 +135,15 @@ shows 「自定义中」 beside the 风格 label. Default on launch = 苹果极�
 
 ### 自定义 accordion (4 rows, each: label · summary value · chevron; ＋/− expand-all)
 
-- **外形**: 苹果 / 纯圆 / 三星 chips with live 14px clip swatches.
-- **配色**: 原彩 / 黑白 / 单色 chips; when 单色 → swatch row (纯白/纯黑/壁纸主色/
-  壁纸辅色/品牌珊瑚/湖水/琥珀) + 调色盘 button.
+- **外形**: 无/苹果/纯圆/三星/方块/水滴 curated + 「更多」 fold (11 shapes; catalog
+  and geometry engine in spec 02 §Shape System).
+- **配色** (two axes since 2026-07-09; detail in spec 02 §Colour Treatments): 原彩 /
+  黑白 / 单色 with concentric fg/bg pair swatches; 单色 gains a 渐变/纯色 depth switch
+  (纯色 = 极致单色); the row-end wheel opens a 前景/背景 dual-tab picker.
 - **快捷方式标识**: 美化标识 / 经典箭头 / 无标识; when 美化 → 6 mark-style chips
-  with 22px live previews (双层卡片 / 幽灵叠影 / 缎光角 / 珐琅光弧 / 卷角 /
-  细描边) + 标识配色 row (自动 default · 5 swatches · 调色盘). 玻璃箭头 is not
-  selectable after ADR-0010.
+  with 22px live previews (投影 / 光环 / 缎光角 / 珐琅光弧 / 卷角 / 细描边) +
+  标识配色 row (自动 default · 5 swatches · 调色盘; hidden for 投影). 玻璃箭头 is
+  not selectable after ADR-0010.
 - **图标大小**: 小 / 中 / 大 (preview 52/64/76; desktop mapping in plan).
 
 Every change: ~420ms debounce → in-place tile refresh + 「正在更新预览…」 cue.

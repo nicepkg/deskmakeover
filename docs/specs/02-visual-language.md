@@ -125,7 +125,9 @@ hairline dividers) at macOS density — no empty slabs, no duplicated identity b
 
 - **Shape axis**: first row = 苹果 · 纯圆 · 三星 · 方块 · 水滴 · 无; 「更多形状」fold
   reveals the other 7. All chip names Chinese-first.
-- **Filter axis**: all four (无/玻璃/像素/贴纸) stay visible (owner D6).
+- **Filter axis**: all five (无/光泽/玻璃/像素/贴纸) stay visible (owner D6; 光泽/Gloss
+  went live 2026-07-09 — an aqua specular sweep over the upper third, engine in
+  `icon-compositor/filters.ts`).
 - **Wallpaper hero**: clarity-first narrative; zone editing enters via explicit tool
   state (crosshair mode / Alt+drag). Zone list never leaks grid units (no 7×12.5).
 - **Axis summary strips** pair label:value (`外形 苹果 · 配色 原彩 · …`).
@@ -175,49 +177,84 @@ One `clipFor(shape, size)` service, cached; identical math in preview and render
 - **纯圆**: exact circle. Already-round source icons are left untouched (`IsRoundish`).
 - **三星**: the official One UI adaptive-icon mask path, scaled:
   `M50,0 C10,0 0,10 0,50 C0,90 10,100 50,100 C90,100 100,90 100,50 C100,10 90,0 50,0`.
-- **扩展形状** (ADR-0010): Google, Brave, Bookmark, Lemon, Squircle, Tile, Teardrop,
-  Blob, Rectellipse — maskable-icon preview shapes; same `clipFor` service
-  (preview==bake). Deterministic local geometry: Google = 20%-radius square · Brave =
-  shield/octagon · Bookmark = rounded top + bottom notch · Lemon = two opposing lobes ·
-  Squircle = Lamé `n≈4.5` · Tile = small-radius square · Teardrop = one lobe →
-  bottom-right point · Blob = soft asymmetric polygon · Rectellipse = rect/ellipse
-  hybrid.
+- **扩展形状** (curated 2026-07-09): 方块 Tile · 水滴 Teardrop · 书签 Bookmark ·
+  柠檬 Lemon · 菱形 Diamond · 花瓣 Flower · 卵石 Pebble — a 「更多」 fold below the
+  curated 无/苹果/纯圆/三星/方块/水滴 row. **11 shapes total.**
+  - **Geometry engine** (owner call 2026-07-09, replaces the coarse hand-plotted
+    C# polygons): Figma-style corner rounding + `cornerSmoothing` for arbitrary
+    polygons, ported from `msurguy/squircle-path-kit` (MIT; itself derived from
+    Figma's *Desperately seeking squircles*, verified Figma-exact to 0.01px). The
+    smoothing ramp — tangent cubics flanking a shrunken arc, ξ≈0.6 — is what gives
+    the iOS-class hand-feel that plain `border-radius` corners lack. Rounded-family
+    proportions come from `progressier.com/maskable-icons-editor`; Flower + Pebble
+    are `maskable.app`'s OEM masks (MIT, arcs → cubics, normalized to full extent).
+  - **Single source of truth**: `icon-compositor/shapes.ts` is the canonical
+    authoring; the chip clip-path (`lib/shape-paths.ts`) and the engine raster mask
+    both derive from it (preview==bake, can never drift). The C# `IconShapeGeometry`
+    now **re-ports FROM the web** (Windows batch) — the geometry oracle direction
+    flipped web-authoritative (ADR-0015 amendment 2026-07-09).
+  - **Content inscription**: pinched shapes (Diamond/Flower/Pebble) inscribe the
+    artwork inside their largest centred square with per-shape breathing margins, so
+    square plate icons never kiss the pinched edges.
+  - **Culled** (ugly/redundant, owner 2026-07-09): Google, Brave, Squircle, Blob,
+    Rectellipse, Hexagon.
 
 The app logo always wears the 苹果 clip (title bar 24, coach 26, about 56).
 
-## Colour Treatments (配色 · `styledFor` math)
+## Colour Treatments (配色 — two orthogonal axes)
 
-Luminance `l = (0.299R+0.587G+0.114B)/255` of the icon's dominant colour.
+Since 2026-07-09 the Colour row is the **foreground/subject axis**; a separate
+**background/plate colour** rides the same row's colour entry. Two axes, never a
+single tint pick (chief-UI/UX + owner). Exact channel math lives in
+`icon-compositor/color.ts` (OKLab ramp) — this is the structural contract.
 
-- **原彩**: keep own colour. Ink = dark `rgba(22,22,24,.85)` when `l > 0.66`, else
-  light `rgba(255,255,255,.94)`.
-- **黑白**: grey `v = 255·clamp(0.5+(l−0.5)·1.4, 0.08, 0.94)`; ink dark `#2A2A2E`
-  when `v > 168`, else `rgba(255,255,255,.92)`.
-- **单色 (tint)**: take tint's H,S; per-icon `L = 26+46·l` (%); fill
-  `hsl(H, S·0.85, L)`; ink `#26262A` when `L > 56` else light.
-- **Document-kind items**: light plate + coloured glyph — 原彩 `#F7F7F4`/own · 黑白
-  `#EFEFED`/`#3B3B3F` · 单色 plate `hsl(H, S·0.5, 90%)` / glyph `hsl(H, S·0.9, 30%)`.
-- Edge cases 纯黑/纯白 stay legible in all three treatments (keep both as test tiles).
+- **原彩 (Original)**: keep the icon's own colour. White plates take the Auto or a
+  chosen background colour.
+- **黑白 (BlackWhite)**: perceptual grayscale (luminance-preserving desaturation).
+  Its swatch is the concentric black-in-white pair. Background override inert (v2).
+- **单色 (Mono)**: the subject maps to the tint's hue. Two depths (`monoStyle`):
+  - **渐变 (Tonal)** — the classic single-hue tonal ramp (light end 0.965/0.22:
+    white plates read near-white with a whisper of tint).
+  - **纯色 (Flat) = 极致单色** — the SEGMENTED subject in ONE flat colour on ONE
+    flat plate, hard two-tone contrast, no gradient. Subject/background split =
+    `icon-compositor/segment.ts`: transparent-edge silhouette · border-flood that
+    follows gradient backdrops · a plate-split (distance-from-field Otsu + line-art
+    polarity / coherence / fragmentation guards) for opaque plates; degenerate cases
+    fall back to the whole silhouette. Mono composes LAYERED: plate colour raw,
+    subject per depth.
+- **背景色 (plateColor)**: applies in Original + Mono (BW inert until v2); `null` =
+  Auto (Original: detected bg / white; Mono: the ramp's light end).
 
-单色 swatch row: 纯白 `#FFFFFF` · 纯黑 `#141414` · 壁纸主色 · 壁纸辅色 · 品牌珊瑚 ·
-湖水 `#3FB6A8` · 琥珀 `#D9A94E` · 调色盘 button.
+Colour entry: the row-end wheel opens a **前景 / 背景 dual-tab** popover — 前景 picks
+the subject colour (selecting flips to 单色); 背景 = Auto + swatches + full picker.
+Mono reveals a 渐变/纯色 depth segmented below the row. The standalone plate ring was
+removed (owner: it read inverted — appeared only when NO colour was chosen).
+
+Swatch grammar: **concentric pair dots** — outer disc = the plate the pick produces
+(Auto = ramp light end), inner dot = the subject tint. Row: 无(原彩) · 黑白 pair ·
+壁纸主色 · 壁纸辅色 · 品牌珊瑚 · 湖水 `#3FB6A8` · 琥珀 `#D9A94E` · 调色盘 wheel.
+Continuous drags (前景/背景 picker + hue strip + mark-colour wheel) are throttled
+(leading+trailing, 140ms) so 100+ tile recomputes never pile up.
 
 ## Shortcut Marks (快捷方式标识 · six styles + classic arrow)
 
 States: **美化** / **经典箭头** (light plate `#F4F4F1`, dark ↗ `#2E3238`, bottom-left,
 size `max(14, 0.28S)`, radius 4) / **无标识** (launch default). Mark colour: **自动**
 (adaptive B/W per ADR-0006) or user colour (白/黑/珊瑚/壁纸主色/湖水/picker), mixed
-per style, never raw. Marks anchor bottom-left (双层卡片/卷角 corner-specific), ride
-the icon's alpha, bake into each per-icon `.ico`.
+per style, never raw — EXCEPT 投影, which is always neutral (the colour wheel hides
+for it). **Silhouette-aware** (owner call 2026-07-09): on 原始外形 (free-form / 异形)
+icons a mark uses the icon's REAL alpha silhouette (`stampMask` / chamfer
+`outsideDistance`), not a phantom box or Apple substitute — the mark follows the
+actual outline whatever the form.
 
 | Style | Algorithm |
 |---|---|
-| **双层卡片** | same-shape sibling 0.88S behind, offset (+0.17S,+0.18S); adaptive neutral tone (user colour → `hsl(H,S·0.7,30%)`/`hsl(H,S·0.75,86%)`); seam + grounding shadows. |
-| **幽灵叠影** | translucent same-shape echo 0.92S behind, offset (+0.14S,+0.155S); `rgba(24,22,20,.45)`/`rgba(255,255,255,.42)` (user colour 60% α); bg blur. |
+| **投影** (was 双层卡片) | a neutral DROP SHADOW: the icon's own silhouette offset down-right, blurred, blackish-translucent (`rgba(8,10,14)`×0.44). Mark colour deliberately inert (shadows are neutral by law). |
+| **光环** (was 幽灵叠影) | a floating OUTLINE tracing the silhouette at a small gap (chamfer outside-distance band ~4% out) — clearly distinct from 投影's solid offset, and it hugs free-form contours. |
 | **缎光角** | in-shape 45° satin gradient from bottom-left, 62%→30%→transparent by 46%. |
 | **珐琅光弧** | in-shape radial glow at (15%,88%), `mc` mixed 78%→`#141414` (light) / 82%→white (dark), fade by 46%. |
 | **卷角** | dog-ear bottom-right, corner cut `c=S·{apple .26,samsung .28,circle .30}`; mirrored fold, warm paper gradient, dual shadow. |
-| **细描边** | 2.5px same-shape ring behind (S+5), colour `mc`. |
+| **细描边** | same-shape ring behind; on free-form a snug band around the icon's silhouette; colour `mc`. |
 
 `玻璃箭头` removed from the gallery (ADR-0010); renderer stays only as legacy test
 scaffolding. Acceptance: ADR-0005 3-second misread gate; parity — mark chips, canvas

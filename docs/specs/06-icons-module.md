@@ -81,9 +81,10 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
 
 1. **Two feedback classes, no other latency budget exists**: discrete picks (preset,
    shape, color mode, filter, mark, size) repaint ALL tiles in the same frame
-   (≤16ms at 50 tiles, ≤50ms at 300); continuous inputs (tint wheel, mark-color
-   wheel) live-scrub at display resolution while dragging. The 420ms config debounce
-   is deleted; only setLook persistence stays debounced.
+   (≤16ms at 50 tiles, ≤50ms at 300); continuous inputs (前景/背景 tint pickers, hue
+   strip, mark-color wheel) live-scrub at display resolution while dragging, throttled
+   leading+trailing (~140ms) so 100+ tile recomputes never pile up. The 420ms config
+   debounce is deleted; only setLook persistence stays debounced.
 2. **Hover try-on**: hovering a shape/filter/mark/preset swatch paints that candidate
    across the whole desktop; pointer-out reverts; click commits. Hover NEVER writes
    history or config.
@@ -116,6 +117,18 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
     is deliberately obnoxious — that is its function (owner decree, re-affirmed
     2026-07-09; a batched-disposition softening to one-time 8s was reverted the
     same day).
+11. **Colour is two axes; 极致单色 is a subject/background duotone** (owner +
+    chief-UI/UX 2026-07-09). The Colour row is the FOREGROUND axis; a 背景色
+    (plate) rides the row's colour entry (前景/背景 dual-tab; Original + Mono, BW
+    inert until v2). 单色 gains a 渐变/纯色 depth (`monoStyle`): 纯色 = 极致单色, the
+    SEGMENTED subject in one flat colour on one flat plate. Subject/background
+    segmentation (`icon-compositor/segment.ts`), layered Mono composition, the
+    concentric-pair swatch grammar and the full catalog (shapes/colours/marks/
+    filters) live in **spec 02 §Shape System / §Colour Treatments / §Shortcut
+    Marks**. `ConfigDto` grew `monoStyle: Tonal|Flat` + `plateColor: string|null`
+    (bridge schema v2 — C# `IconsContracts.cs` + `BridgeSchema.Version` sync in the
+    Windows batch). Marks are silhouette-aware on free-form icons; Card→Shadow
+    (neutral drop shadow), Echo→Halo (silhouette outline).
 
 ## 4. Desktop mirror fidelity (taskbar P0 + tiles)
 
@@ -166,6 +179,13 @@ own taskbar (neutral glyphs, not their real pinned apps).
   (60-100%), source resolution (mix 32px upscales), lightness polarity.
 - The mock bridge maps pack entries onto item kinds (lnk/exe/folder/file/url/bin +
   a few styleable:false UWP stand-ins with statusReason).
+- **Dev-only real fixtures** (owner call — the synthetic pack is too clean to expose
+  真实适配 bugs): `scripts/dev/fetch-real-icons.mjs` harvests genuine MS/brand icons
+  from the two win11 simulator clones into a **gitignored** `public/mock-icons-real/`
+  (+ scenario wallpapers, art-matched semantic labels). The mock bridge prefers the
+  real pack when present and falls back to the committed synthetic pack on a fresh
+  clone. Extracted assets NEVER enter git or any shipped artifact (D9). Developer
+  Options adds Messy/Office/Gamer scenario switches for demos.
 
 ## 6. Item taxonomy the web receives
 

@@ -71,6 +71,28 @@ style batch after migration; 柔光 takes the curated slot of the weakest filter
 (像素, demoted not deleted); 缎光角/珐琅光弧 get heavier or demoted (3s-read gate).
 Sequenced after parity, not in the migration slice.
 
+## Amendment 2026-07-09 — web is the geometry oracle too; catalog + duotone
+
+The owner-iteration marathon (commits 5bee40c..7b8a5bc) extended D1 (web owns
+rendering) to **shape geometry authoring**: `icon-compositor/shapes.ts` is now the
+canonical geometry source (Figma corner-smoothing engine ported from
+`squircle-path-kit`, MIT), and the C# `IconShapeGeometry` **re-ports FROM the web**
+in the Windows batch — the shape-geometry oracle direction flipped web-authoritative
+(the C# pipeline stays the frozen PARITY oracle for colour/filter/mark rasters). Also
+decided:
+
+- **Catalog curated** (owner): culled Google/Brave/Squircle/Blob/Rectellipse/Hexagon;
+  added Diamond + Flower + Pebble (`maskable.app` OEM masks, MIT). 11 shapes.
+- **极致单色 duotone** — a new TS capability: subject/background segmentation
+  (`segment.ts`), layered Mono composition, `monoStyle: Tonal|Flat`.
+- **ConfigDto grew** `monoStyle` + `plateColor` → **bridge schema v2**; C#
+  `IconsContracts.cs` + `BridgeSchema.Version` + 4 preset defaults sync in the
+  Windows batch. Nullable/enum additions are strict-decoder-safe.
+- **Gloss filter** live (TS `filters.ts`); marks silhouette-aware; Card→Shadow,
+  Echo→Halo (MarkStyle enum renamed — C# enum syncs in the batch).
+
+Detail: spec 02 §Shape System/§Colour Treatments/§Shortcut Marks, spec 06 §3.11.
+
 ## Consequences
 
 - Icon visual iteration stops being Windows-gated; the Mac loop shows engine truth.

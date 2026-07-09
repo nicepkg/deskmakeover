@@ -1,7 +1,7 @@
 ---
-updated: 2026-07-08 (v3 owner-iteration marathon checkpoint)
+updated: 2026-07-09 (icons v2 web build + shape/colour/marks marathon — doc-sync checkpoint)
 version: pre-release (version narrative RESTORED per ADR-0013 amendment; Directory.Build.props stays 0.0.0 until the owner names the first release)
-branch: main (~50 local commits, NOT pushed — push is the owner's call)
+branch: main (~90 local commits, NOT pushed — push is the owner's call)
 ---
 
 # State
@@ -22,81 +22,28 @@ pointer: what is TRUE now, what is in flight, what comes next.
 - Runbook: `docs/development.md` (dual-mode dev: browser/mock on any OS, native host
   on Windows).
 
-## Active Work — v3 Premium Flat build (F-phases)
+## Recently shipped (web side, Mac mock loop → swept to `docs/journal/2026-07.md`)
 
-**Done through today (web side, Mac mock loop, ~50 commits, 168 bun tests green):**
-F1 fonts/tokens · layout rebuild (canvas-first + 280px inspector, InspectorCard
-grammar) · canvas nav (non-passive wheel zoom, fill-axis floor, micro toolbar,
-top light-line progress) · gradient direction dial-synced dropdown (engine-truth
-0°=top mapping fixed) · ONE none-dialect (slash-circle first in every axis) +
-16px keyline + SwatchPicker extraction · flat mark row + native-arrow penance
-gate (60s stare) · keymap legend by page (keyboard icon) · colour axis speaks the
-swatch dialect directly (无=原彩 · duotone disc=黑白 · tint dots=单色, pure
-black/white dots hidden as redundant, wheel=custom; mode segmented deleted —
-supersedes the old mono-seeds-wallpaper-primary rule) · presets carry NO mark (mock aligned to engine NamedStyles truth) +
-badge-free preset minis + per-style mark previews · welcome gate (language
-roster → editorial brand beat + mosaic → TWO innocent survey questions →
-roast/bluff → typed confession, paste refused) · DEV-only debug menu (flask,
-localStorage resets) · changelog-on-update semantics verified · dash purge
-across ALL user-facing strings · web-side WebView2 hardening
-(`lib/webview-hardening.ts`) · global error capture + diagnostics (ring-buffer
-error log in localStorage, window.onerror/rejection/prod-console.error/host
-event; settings 问题诊断 row with copy/GitHub/email exits, every exit copies
-the FULL report first because issue URLs cap near 8KB; CrashGate boundary
-with a bilingual zero-dependency crash card + DEV crash probe) · settings page at page-scale type (controls stay
-sm — unified rule below) · ONE `Reveal` fold grammar for every conditional
-inspector section (ghost sub-margin bug fixed; native arrow sits `apart` at
-the mark flow's far edge) · segmented/toggle thumbs animate translateX in
-track space (layout-projection drift on panel-height changes killed).
+- **v3 Premium Flat build** (F1 fonts/tokens · canvas-first layout + 280px
+  inspector · WebView2 hardening + diagnostics/CrashGate · welcome gate · dash
+  purge). Sweep 2026-07-08.
+- **Zone editor rebuild** (spec 04 v2.0, ADR-0014) rounds 1-3 — pixi v8 compositor
+  live+bake, five materials + four title styles, import/export, codex+motion review
+  disposed. Sweep 2026-07-08.
+- **Icons v2 migration** (spec 06, ADR-0015) — WEB SIDE COMPLETE. The CPU TS
+  compositor renders every preview + the 256 bake master; bridge v2; store rewrite;
+  desktop mirror + taskbar P0; 60s arrow gate. Then the 2026-07-09 marathon: Figma
+  corner-smoothing shape engine + curated 11-shape catalog · Gloss filter · 极致单色
+  duotone (`segment.ts` + layered Mono + `monoStyle`) · 前景/背景 dual-tab colour +
+  `plateColor` (schema v2) · silhouette-aware marks (Shadow/Halo). Sweep 2026-07-09.
 
-**Zone editor rebuild (spec 04 v2.0, ADR-0014) — BUILT on the Mac loop
-(commits 7cb8104/9b7ad79+, 211 bun tests green, browser-verified incl. baked
-PNG pixel check):** client WebGL compositor (pixi v8) live+bake, Adaptive
-Frost material + accent/emoji/label-chip titles, curated preset gallery,
-stable ids, per-zone controls + apply-to-all, magnetism + snapped-only guides
-+ overlap warn-wash, Alt-drag duplicate, visible undo/redo + delete-undo
-toast, auto-rename on create, 分区落版 apply wave, DoneCard last-step. Panel
-record + dispositions: `docs/reviews/2026-07-09-zone-editor-expert-panel.md`;
-plan: `docs/plans/2026-07-09-zone-editor-rebuild.md`.
+## Live now — icons module (web), fully built through commit 7b8a5bc
 
-**Round 2 (same day, commit 39d4051): five material finishes + four title
-styles (combo matrix + designer pairing), wallpaper import (picker/drag-drop/
-empty-state link, session bar chip) + 导出图片 (bake→PNG download), empty state
-= glass preset gallery on the user's wallpaper gated on compositor ready
-(refresh dashed-frame flash killed), ghost slots redesigned as drawn landing
-slots with panel-tone ink, ▴▾ glyphs → ChevronDown icons app-wide. Record:
-`docs/reviews/2026-07-09-style-sets-import-export.md`. 220 bun tests green.**
-
-**Round 3 (owner-driven polish + reviews, commits 00805e2..b1540cb):** codex
-adversarial review disposed (9 fixed / 1 scheduled / 1 spec-amended / splits
-restore the 500-line law); motion audit disposed (3 added incl. two-layer zone
-delete exit via a compositor alpha exit lane, 10 no-add verdicts); modules stay
-mounted and hide via visibility+inert (display:none zeroed hidden viewports —
-the module-switch preview flash, triple-confirmed by rAF frame recorder + two
-independent investigations); toasts anchor to the canvas stage; sliding active
-washes (zone list + module rail, layoutId); presets alignment law (x.5 origins,
-whole-cell spans); emoji picker two pages + OS-panel free input; 壁纸压暗
-rename; per-input history coalescing. 222 bun tests green.
-
-**Icons v2 migration (spec 06, ADR-0015) — WEB SIDE BUILT (overnight run
-2026-07-09, owner-approved Q1-Q12; commits 3e5f589..):** the CPU TS icon
-compositor (1:1 port of the frozen C# oracle — shapes/color/analysis/
-sampling/filters/marks/compose, zero new deps) renders every preview locally
-AND the 256 bake master; bridge v2 (sourceUrls in once, chunked
-{id,sourceIndex,masterPng} out, RESTORE-FIRST apply semantics); store rewrite
-(hover try-on, per-pick undo + gesture coalescing, ceremonied chunked apply,
-stageVersion); mirror = compositor canvases at observed positions (styleable
-gating, exception badges, owned-verbs menus, size honesty, double label
-shadow, undo/redo toolbar); taskbar P0 (pinned glyphs + indicator pills +
-tray + theme acrylic); 120-icon generated mock pack; arrow gate = the 60s
-every-time penance (owner reverted the panel softening on sight);
-C# oracle FROZEN (banners) + v0.9 chain deleted. Codex review: 6 fixed /
-2 dispositioned (record in the panel doc); 269 bun tests + tsc green;
-browser visual acceptance evidence in
-`docs/plans/evidence/2026-07-icons-v2/` (01-14). Panel record + dispositions:
-`docs/reviews/2026-07-09-icon-frontend-panel.md`; plan:
-`docs/plans/2026-07-09-icon-frontend-migration.md`. Remaining: the Windows
-batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
+283 bun tests + `tsc` green; browser visual-acceptance evidence
+`docs/plans/evidence/2026-07-icons-v2/` (01-69). Current catalog + math is
+authoritative in **spec 02** (§Shape System / §Colour Treatments / §Shortcut Marks),
+**spec 06** (module contract + §3.11), **ADR-0015** (+ 2026-07-09 amendment). The
+contract truth is `src/DeskMakeover.Web/src/bridge/types.ts` (bridge schema v2).
 
 **In flight / next (web):**
 1. Zone rebuild polish tail: equal-gap ticks (deferred), rename-input visual
@@ -104,11 +51,13 @@ batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
    reduced-res fallback (renderer TODO), TS bake fixtures pinning compositor
    output (Z6 remainder), Halo's under-frost (v1 skips it).
 2. D10 gesture unification remainder (icons module side).
-2. Dark theme + zh locale full regression screenshots; evidence to
+3. Dark theme + zh locale full regression screenshots; evidence to
    `docs/plans/evidence/2026-07-v3/`.
-3. F7: cross-vendor adversarial review (codex via /multi-ai) over the full diff.
-4. Debug/component-gallery cleanup (accordion-axis, link-chip, card.tsx,
-   persisted-set now unused outside the gallery).
+4. F7: cross-vendor adversarial review (codex via /multi-ai) over the full diff
+   (the shape/colour/marks marathon has NOT had a cross-vendor pass yet).
+5. Debug/component-gallery cleanup (accordion-axis, link-chip, card.tsx,
+   persisted-set now unused outside the gallery); AuxColorDot now used only by the
+   mark-colour wheel.
 
 **F8 (Windows machine required) — the reconciliation list:**
 - **Zone compositor host handoff (ADR-0014)**: implement `wallpaper.getSource`
@@ -216,5 +165,6 @@ batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
 ## Open Questions
 
 - First release version number + naming (owner).
-- Gloss filter (the coming-soon second tile): engine implementation timing
-  (owner said "到时候我再实现").
+- 极致单色 on photo-fill art (e.g. Minecraft): the fragmentation guard falls back
+  to the whole silhouette, but full-bleed photos still read noisy at 256px — a
+  tighter guard is a future polish item (owner-noted, not blocking).

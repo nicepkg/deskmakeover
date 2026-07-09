@@ -132,6 +132,19 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
     (web bridge is schema 3 today; the C# `Contracts.cs` + `BridgeSchema.Version`
     sync is F8). Marks are silhouette-aware on free-form icons; Card→Shadow
     (neutral drop shadow), Echo→Halo (silhouette outline).
+12. **Default look = 满彩 colour field (ADR-0016, owner 2026-07-10).** The colour
+    axis gains a fourth foreground mode **满彩 (Field)** — dominant-colour plate
+    in a shared OKLab harmony band, knockout/fidelity dual lane, global hue
+    de-duplication, kind colour families + in-container affordances (folder tab /
+    document dog-ear) — full recipe in spec 02 §Default Composition. It is the
+    factory default. Preset lineup: 默认(满彩) · 极简白 · 安静(柔彩包络,
+    per-icon hue — replaces the single-hue wallpaper-tone) · 原彩保真; Candy
+    demoted from recommended position, 玻璃 reworked as rim highlight. A full
+    four-shape kind split is an opt-in toggle. `ConfigDto` grows `colorMode:
+    'Field'`, `kindShapes: boolean` (default false) and the tail-only badge flag;
+    the WHITE plate fallback is retired from the default path (survives inside
+    原彩保真 only). Engine additions: memoized `dominantHue`, hue-dispersion
+    fidelity gate, id-cached de-dup pass, glyph padding 26/256, full-bleed 0.82.
 
 ## 4. Desktop mirror fidelity (taskbar P0 + tiles)
 
@@ -270,6 +283,12 @@ old opt-in consent flag).
 - bun tests: OKLab/ramp math vs known values; shape geometry properties (IoU vs
   authored paths); analysis classifiers on synthetic canvases (plate/bare/
   transparent-edge fixtures); compose-mode decision table; undo granularity.
+- **Findability net (ADR-0016 D4)**: (a) automated — over the committed mock
+  corpus under the default look, neighbouring-plate ΔE separability must clear
+  the threshold (bun test; also guards the hue de-dup pass); (b) owner-supervised
+  at F8 exit — default look, 20 random targets, locate time/error rate not worse
+  than the stock-desktop threshold. A default losing to stock on findability may
+  not ship.
   *Gap note 2026-07-10: the contract-chunking (applyBaked ≤20/chunk, count math)
   and mock-manifest-integrity tests promised here are NOT yet written — they are
   owed with the F8 host wiring, when the chunk path first runs against a real host.*

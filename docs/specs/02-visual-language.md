@@ -231,12 +231,56 @@ preview swatch, canvas tile, and bake:
 
 The app logo always wears the 苹果 clip (title bar 24, coach 26, about 56).
 
+## Default Composition — Colour Field (ADR-0016, 2026-07-10)
+
+Governing engine rule: **uniformity ≠ flattening**. Uniformity is carried by the
+CONTAINER layer (shape, grid rhythm, a shared lightness/chroma envelope,
+de-arrowing) and is never bought by deleting per-icon hue variance — a default
+that flattens the desktop into a single-hue or white field destroys parallel
+visual search (the 2026-07-10 findability panel's unanimous diagnosis) and fails
+the ADR-0016 D4 acceptance gate. iOS is the reference proof: uniform container,
+maximised per-app colour.
+
+The DEFAULT look (满彩 colour field) composes per icon:
+
+- **Plate** = the icon's dominant colour (`dominantHue`: memoized chroma-weighted
+  hue histogram over the subject mask) normalised into a shared **OKLab harmony
+  band** — one lightness/chroma envelope desktop-wide (tidy as a set), hue varying
+  per icon (colour pop-out restored).
+- **Subject** — two lanes, ONE system: single-hue subjects render as a
+  light/dark **knockout** (contrast-picked against the plate) at ~80% linear
+  (`CONTENT_PADDING_FRACTION` 42/256 → 26/256; full-bleed threshold 0.88 → 0.82);
+  multi-hue subjects (gradient orbs / photos / rich logos, split by a
+  hue-dispersion gate) take the **fidelity lane** — original artwork preserved on
+  its derived plate colour. Both lanes share the same plate system and envelope;
+  the lane split is a rendering detail and must never read as a style break.
+- **Hue de-duplication**: a deterministic global pass (id-cached, config-derived —
+  WYSIWYG-safe) pulls same-hue clusters (the blue-app pile) apart in OKLab so
+  neighbouring plates stay above the ΔE separability threshold.
+- **Fallback**: sources with no extractable hue (photos, near-white, generic
+  files) fall back to a kind-family plate colour; a letter/source-colour badge
+  may assist — tail-only, never global. The old WHITE fallback is retired from
+  the default path (it survives only inside 原彩保真, where strict 1:1 plate
+  reproduction is the point).
+- **Kind legibility**: kind-derived plate colour families plus a light
+  in-container affordance (folder tab, document dog-ear) — the container stays
+  one squircle. A full four-shape kind split ships as an opt-in toggle (D2),
+  never the default.
+
+Preset lineup (D3): 默认 = colour field · 极简白 (the previous white board, an
+explicit minority-taste preset) · 安静 (pastel envelope: fixed lightness, low
+chroma, per-icon hue — replaces the single-hue wallpaper-tone mono) · 原彩保真
+(native-plate faithful). Candy/glass leaves any recommended slot; 玻璃 is
+reworked as a rim highlight, never a full desaturating wash.
+
 ## Colour Treatments (配色 — two orthogonal axes)
 
 Since 2026-07-09 the Colour row is the **foreground/subject axis**; a separate
 **background/plate colour** rides the same row's colour entry. Two axes, never a
 single tint pick (chief-UI/UX + owner). Exact channel math lives in
 `icon-compositor/color.ts` (OKLab ramp) — this is the structural contract.
+*ADR-0016 adds 满彩 (Field) as a fourth foreground mode and the desktop default;
+the modes below are unchanged as user choices.*
 
 - **原彩 (Original)**: keep the icon's own colour. White plates take the Auto or a
   chosen background colour.

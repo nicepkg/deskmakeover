@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-10 (doc-sync correction sweep — Codex audit reconciled against HEAD)
+updated: 2026-07-10 (ADR-0016 icon colour-field default — panel disposed, build starting)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -64,11 +64,17 @@ pointer: what is TRUE now, what is in flight, what comes next.
 `scripts/dev/generate-mock-icons.mjs`).
 
 **In flight / next (web):**
-1. Zone rebuild polish tail: equal-gap ticks (deferred, NOT accepted), rename-input polish,
+1. **ADR-0016 icon colour-field default (ACTIVE)** — user feedback「美化后找图标变慢」
+   panel-diagnosed (colour+silhouette preattentive channels zeroed by the white-plate
+   default). Build: 满彩 Field colour mode (dominantHue + OKLab harmony band + knockout/
+   fidelity dual lane + hue de-dup), kind colour families + in-container affordances,
+   preset lineup rework (默认/极简白/安静/原彩保真, Candy demoted + glass→rim), padding
+   26/256, ΔE separability test. Plan: `docs/plans/2026-07-10-icon-colour-field.md`;
+   panel: `docs/reviews/2026-07-10-icon-findability-panel.md`.
+2. Zone rebuild polish tail: equal-gap ticks (deferred, NOT accepted), rename-input polish,
    SwiftShader/`MAX_TEXTURE_SIZE` startup probe with reduced-res fallback, TS bake fixtures.
-2. Dark theme + zh locale full regression screenshots → `docs/plans/evidence/2026-07-v3/`.
-3. F7: cross-vendor adversarial review (codex via /multi-ai) over the full diff.
-4. **This doc-sync sweep** — reconcile the specs/ADRs flagged in §Known doc drift.
+3. Dark theme + zh locale full regression screenshots → `docs/plans/evidence/2026-07-v3/`.
+4. F7: cross-vendor adversarial review (codex via /multi-ai) over the full diff.
 
 ## Known doc drift (Codex audit 2026-07-10 — RESOLVED; kept as the record)
 
@@ -159,6 +165,9 @@ webview2-pitfalls SharedBuffer-era scope note.
 - **Release packaging is UNVERIFIED**: `scripts/dev/publish.ps1` publishes only the App (no
   ElevatedHelper), does not build Web first, yet the App depends on an adjacent `web/`. The
   "single shippable exe" narrative does NOT hold — treat as incomplete until proven.
+
+- **Findability gate (ADR-0016 D4)**: at F8 exit, default look, 20 random targets —
+  locate time/error rate not worse than the stock-desktop threshold (owner-supervised).
 
 ⚠️ **Owner-only gates unchanged**: supervised LIVE icon-bake + wallpaper-apply (never
 auto-triggered) — `docs/verification/owner-supervised-live-runs.md` (itself pending F8 rewrite).

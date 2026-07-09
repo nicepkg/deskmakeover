@@ -1,106 +1,83 @@
 # DeskMakeover Roadmap
 
 Living document: edit in place as versions ship; history lives in CHANGELOG + git
-tags. Scopes set by ADR-0002/0003/0004/0005/0008. Standing rule (ADR-0002): every
-new capability folds into the default result or lives in settings — the primary
-flow (one CTA) never gains steps. **ADR-0008 renumbered the release train: the
-first public release is v1.0 (was "v0.9 抢发").**
+tags. Standing rule (ADR-0002): every new capability folds into the default
+result or lives in settings — the primary flow (one CTA) never gains steps.
 
-## v1.0 — 原型复刻 (prototype parity, icons only) · in progress
+> **Re-sliced 2026-07-10.** The old "v1.0 prototype-parity (icons only) → v1.1
+> rail+wallpaper" train is void: the prototype-parity build was replatformed to
+> WebView2+React (ADR-0011), redesigned twice (ADR-0012 → ADR-0013 v3), and the
+> renderers inverted into the web (ADR-0014/0015) — all BEFORE anything shipped.
+> Nothing has been released; the version is `Unreleased` until the owner names
+> the first number at release time. Prototype parity is NOT a release gate.
 
-**Goal:** the first public release replicates
-`docs/references/prototype/桌面美颜 v2.dc.html` (today form) completely — a
-one-screen, fully reversible desktop-icon beautifier a novice can double-click.
-No new functional territory beyond icon beautification.
+## Unreleased → 首个公开版 (the first public release)
 
-**Scope (spec 01):** left-panel + desktop-mirror layout with compact overlay
-mode; 4 风格 presets; 自定义 accordion (expanded 外形 · 配色 3+tint · 快捷方式标识
-3-state/6-mark-style/mark-colour + classic arrow · 图标大小 3); version history (10) + 上一版 +
-回到最初; per-icon right-click overrides; hold-to-compare + press-to-peek;
-dirty-state 更新桌面 with in-place refresh; one shared 调色盘 (SV+hue+hex+
-eyedropper+wallpaper palette); settings page / About(开源) /
-changelog; keep-up run-and-exit; journaled apply + zero-residue restore; per-icon
-mark bake with transparent global overlay; multi-size ico ladder; motion suite +
-reduced-motion; zh-Hans/en localization with theme/language following the OS by
-default.
+**What ships:** the v3 "Premium Flat" app — ONE window with the module rail:
+**图标** (11-shape catalog, colour treatments, marks, filters, per-icon overrides,
+kindPolicy, history/restore) + **壁纸** (zone editor: five materials, four title
+styles, clarity dim, import/export, backup/one-click return) + **设置** (theme /
+language / local data / about + changelog). zh-Hans + English, light-first
+following the system. Specs 01-06 describe it; `docs/STATE.md` tracks it.
 
-**Execution history:** built to prototype parity on WPF
-(`plans/2026-07-06-v1-prototype-parity.md`), then **replatformed to WebView2+React
-(ADR-0011, WPF UI layer deleted)** and redesigned twice (ADR-0012 v2 → **ADR-0013 v3
-"Premium Flat"**, the current visual law — spec 02 v3). The prototype is a historical
-reference only; there is ONE UI now and the first public release ships it — nothing
-ships on WPF.
+**Where it stands:** the web side is COMPLETE and green in the browser/mock loop
+(297 tests). The remaining distance to release is **F8 — the Windows host pass**
+(STATE.md §F8 is the authoritative list):
 
-**Exit gate:** tests green (0 warnings) · prototype parity audit (side-by-side,
-every region/state) · fresh-VM smoke (apply → reboot → restore, zero residue) ·
-supervised live switch-on → UAC → switch-off on the owner's machine · signed exe
-passes SmartScreen without a red interstitial (OV/individual cert — owner).
+1. Host → bridge schema 3 (`wallpaper.getSource/applyBaked/...`, chunked
+   `icons.applyBaked*`, `icons.scan` v2 with sourceUrls) + host-side error capture.
+2. Golden parity fixtures (web renderer vs frozen C# oracle) + legacy renderer
+   deletions (IconStyler, WallpaperBakeRenderer/Composer, …).
+3. resx i18n sweep (PENDING-RESX markers → Strings*.resx → regenerate TS).
+4. Release packaging made REAL (publish.ps1 currently App-only: no
+   ElevatedHelper, no web build — unverified; see development.md §5).
+5. `dotnet test` re-verified + real-host checks (fonts/IME/DPI/125% hairlines).
+
+**Exit gate:** web + dotnet tests green (0 warnings) · parity fixtures pass ·
+fresh-VM smoke (apply → reboot → restore, zero residue) · owner-supervised live
+runs (icon bake + wallpaper apply; checklist pending F8 rewrite) · signed exe
+passes SmartScreen (OV/individual cert — owner) · owner names the version
+number · repo made public (it exists, currently PRIVATE).
 
 > Platform guardrails (ADR-0004) stand: one hero action forever; modules are an
 > exclusion checklist, not a toolbox; risk tiers cold/warm/hot with the global
 > action never touching hot; cleaners/accelerators and global file-type
 > association icons permanently banned.
 
-## v1.1 — 侧栏 + 壁纸模块 + Web UI 重平台 · in progress (ADR-0009/0011)
+## Next (post-first-release candidates — owner picks and numbers them)
 
-- **Module rail unlocked now** (owner order 2026-07-07, overrides the "rail waits
-  for 4+ modules" note): 66px rail with 图标 / 壁纸 + a bottom 设置 utility; the
-  title bar sheds ⚙/⋯ and settings is a normal rail page, not a drawer
-  (spec 03, ADR-0010).
-- **美化桌面壁纸 1.0** (spec 04): pale-wallpaper 清晰度 enhancement (auto-detect
-  + 关/柔和/强) + partition zones baked into the wallpaper — semantic cell-grid
-  zones + environment fingerprint (regenerate on mismatch), full
-  `IDesktopWallpaper` snapshot/restore, primary monitor only, **no icon
-  auto-placement** (v1.2 candidate), no watermark, bundled handwritten title font.
-- Execution: `plans/2026-07-07-rail-and-wallpaper.md`.
-- **UI replatform (ADR-0011, owner order 2026-07-08)**: the entire visible UI
-  moves to WebView2 + React 19 + Tailwind 4 + shadcn/ui + Motion (Bun-only
-  toolchain, no Node) before the first public release; the C# engine and the
-  WYSIWYG law are untouched. Architecture + bridge contract: spec 05.
-  Execution: `plans/2026-07-08-webview2-react-migration.md`. The old WPF UI
-  layer is deleted after parity (nothing is released yet — no compat).
-- **Icon renderer migration (ADR-0015, owner order 2026-07-09)**: icon styling
-  renders in the web compositor (spec 06); C# `TileRenderer` frozen as parity
-  oracle + reserved background renderer; C# keeps the ICO ladder + all shell
-  writes. Execution: `plans/2026-07-09-icon-frontend-migration.md`. The v1.2
-  auto-styler below renders in C# (never hidden WebView2) with the spec 06 §7
-  trust contract (default OFF, first-run proposal, undoable history entries).
-
-## v1.2 — 信任 + 净化模块 · weeks
-
+- **新图标自动美化 (keep-up), done honestly** — a real watcher / app-launch
+  catch-up consuming `keepNewIconsStyled`; the setting un-hides and the C# side
+  renders via the reserved background renderer with the spec 06 §7 trust
+  contract (default OFF, first-run proposal, undoable history entries).
 - **系统净化 module** (HKCU one-shot, warm tier, no elevation): start-menu
   recommendations, lock-screen Spotlight tips, Explorer promotions, settings
-  suggestions, advertising ID, search highlights. UI = the prototype's future-form
-  净化 view (toggle list + 并入一键美化 + honest footer 「不是清理软件…」).
-  Module list / 「已帮你做的事」 checklist grammar arrived with the rail
-  (ADR-0004 as amended by ADR-0009).
+  suggestions, advertising ID, search highlights. Toggle list + 并入一键美化 +
+  honest footer 「不是清理软件…」. Requires the `Modules.Contracts` host
+  refactor first (the rail today is a lightweight switch).
 - 「整理到分区」 icon auto-placement experiment (explicit, previewable,
-  journaled `SelectAndPositionItems`) — candidate, per ADR-0009 §6.
-- `Modules.Contracts` + module host refactor lands **before** 净化 ships —
-  v1.1's rail deliberately used a lightweight two-view switch (ADR-0009).
-- Trust hardening: AV whitelist submissions (Microsoft/360/火绒); opt-in real-time
-  watcher with visible exit + tray presence; multi-monitor/mixed-DPI edge
-  coverage; installer + emergency restore entry.
-- English localization if demand shows.
+  journaled) — candidate per ADR-0009 §6.
+- Trust hardening: AV whitelist submissions (Microsoft/360/火绒), installer +
+  emergency restore entry, multi-monitor / mixed-DPI edge coverage.
 
-## v1.3 — 第二战场 (Explorer) · weeks
+## Later — 第二战场 (Explorer)
 
-- **资源管理器 module** per the prototype future-form view: folder icons
-  (desktop.ini) + drive icons (registry DriveIcons only — autorun.inf never),
-  same shape×colour engine, per-surface toggles, full restore.
+- **资源管理器 module**: folder icons (desktop.ini) + drive icons (registry
+  DriveIcons only — autorun.inf never), same shape×colour engine, per-surface
+  toggles, full restore.
 - Global file-type-association icons: **permanently out** (constitution).
 
-## v2.0+ — 代差 (moat) · months
+## Later — 代差 (moat)
 
-- **壁纸 curated sets** (prototype future-form view): the local 壁纸 module
-  shipped in v1.1 (spec 04); this expands it with curated wallpaper sets matched
-  to the icon look — auto-backup + one-click revert, never替换 without consent.
+- **壁纸 curated sets**: curated wallpaper sets matched to the icon look —
+  auto-backup + one-click revert, never replaced without consent.
 - AI icon generation (`IIconGenerator` extension point reserved); whole-desktop
   unified colour-filter style packs; EV cert when volume justifies.
 
 ## Standing open questions
 
-- Signing entity/name for the OV certificate (owner; v1.0 gate).
-- Create the public GitHub repo `nicepkg/deskmakeover` the About panel links to
-  (owner; needed before release since the About card and 免费开源 chip promise it).
-- v1.0 distribution channel (direct download + pinned comment reply).
+- First release version number + name (owner — release time).
+- Signing entity/name for the OV certificate (owner; release gate).
+- Repo visibility: `nicepkg/deskmakeover` exists but is PRIVATE — make public at
+  release (the About card and the 免费开源 chip promise it).
+- Distribution channel (direct download + pinned comment reply).

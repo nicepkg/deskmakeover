@@ -1,9 +1,9 @@
 # Spec 03 — Shell Navigation: Module Rail + Settings Page
 
-Living spec (ADR-0009, amended by ADR-0010, **amended by ADR-0012** — settings is
-rebuilt to the macOS-System-Settings visual language; the version chip + changelog
-UI are removed pre-release). The prototype is now a historical reference only
-(ADR-0012); spec 02 v2 governs the look.
+Living spec (ADR-0009, amended by ADR-0010/0012, **now governed by ADR-0013 v3
+"Premium Flat"** — light-first; the version narrative is RESTORED by the ADR-0013
+amendment: version line + in-app changelog live in About, auto-opens once per
+update). The prototype is a historical reference only; spec 02 **v3** governs the look.
 
 ## 1. Window anatomy
 
@@ -16,9 +16,11 @@ UI are removed pre-release). The prototype is now a historical reference only
 └──────┴──────────────┴──────────────────────────────────────────┘
 ```
 
-- The title bar has no ⚙/⋯ and **no version chip** (pre-release — ADR-0012). It
-  keeps logo · 产品名 · an optional `?` keymap affordance · caption buttons. The `?`
-  opens a small legend popover (Space 对比 · Ctrl+1/2/3 模块 · 画布拖拽建区 · Del 删除).
+- The title bar has no ⚙/⋯ and no version chip — the version story lives in the
+  settings About card instead (ADR-0013 amendment: visible version line + in-app
+  changelog, auto-opens once per update, never on first install). The bar keeps
+  logo · 产品名 · dev-menu flask (DEV builds) · `?` keymap affordance · caption
+  buttons. The `?` legend: Space 对比 · Ctrl+1/2/3 模块 · 画布拖拽建区 · Del 删除.
 - `OverflowMenuView` and the right-side settings drawer are retired. Normal
   navigation always goes through the rail.
 
@@ -41,63 +43,60 @@ UI are removed pre-release). The prototype is now a historical reference only
 - 设置 is pinned near the bottom with a spacer above it, but it is selected like a
   normal module. Clicking it shows the settings page in the main body; it never
   opens a drawer or modal.
-- Module switch keeps the app's single window. 图标/壁纸 keep the 300px panel +
-  canvas model; 设置 replaces the work area with the settings page. Switching
-  modules never discards unsaved zone edits.
-- Compact mode (<1100px): rail stays. 图标/壁纸 keep the existing slide-over panel
-  behaviour; 设置 hides the compact summary toolbar and shows a scrollable page.
+- Module switch keeps the app's single window. 图标/壁纸 use the **canvas-left +
+  RIGHT inspector (280px; 248px compact)** model (ADR-0013 amendment — the old
+  left-300px panel + slide-over are superseded); 设置 replaces the work area with
+  the settings page. **Switching is INSTANT and modules stay MOUNTED**
+  (visibility-hidden — spec 05 §4); unsaved zone edits always survive.
+- Compact mode (<1100px): rail stays; the inspector narrows to 248px (pure CSS).
 - Keyboard/UIA: rail buttons are real Buttons with AutomationProperties.Name =
   full module name; Ctrl+1/Ctrl+2/Ctrl+3 switch modules.
 
-## 3. Settings page (macOS System Settings language — ADR-0012)
+## 3. Settings page (v3 "Premium Flat" — ADR-0013; body synced to HEAD 2026-07-10)
 
-The settings page is the **showcase of the v2 visual language** (spec 02): a calm
-full page of **grouped inset cards**. On wide windows a narrow identity column sits
-beside the settings column; below compact width it stacks into one scroll surface.
+A calm full PAGE (not a 280px inspector — it uses page-scale type: 13px labels, md
+controls, 54px rows, macOS System Settings density). Two columns on wide windows,
+stacking below compact width:
 
-Composition law (fixes the "very ugly" verdict):
+- **Right = the working settings**: **ONE grouped inset card per column** holding
+  hairline-separated rows (label left, control right) — never a scatter of
+  look-alike cardlets. (The earlier "each group its own full-width card" law was
+  superseded by this grouped-card idiom in the v3 build.)
+- **Left = identity**: logo, product names, slogan; **trust facts render as one
+  quiet dotted TEXT line** (statements, not pills — the pill treatment was
+  dropped); links are text links; only real push-buttons wear a chip fill, so the
+  text/button hierarchy reads at a glance.
 
-- **One card system.** Every group is a `--raised` card with `--elev-1`, one radius
-  (16), and a consistent **leading icon badge** (coral 16% seat) on its header — no
-  card wears a badge while its siblings don't; no two radii sit side by side.
-- **Equal-weight, full-width cards.** A lone control (e.g. 新图标自动美化) never
-  shares a cramped 2-column grid with a dense card. Each group is its own full-width
-  card; a card may hold multiple hairline-separated rows (macOS inset-list idiom).
-- Type per spec 02 ladder: page title `display/26`, card title `card/15`, row label
-  `body/13` t2, value `body/13` t1, helper `caption/11` t3.
-
-Final groups:
+Groups (HEAD):
 
 1. **外观**: language segmented (跟随系统 / 简体中文 / English) and theme segmented
    (跟随系统 / 深色 / 浅色), both defaulting to 跟随系统.
-2. **自动化**: 新图标自动美化 toggle (its own full-width card).
-3. **本地数据**: **distinct actions, none duplicated** — 保存前后对比图 (the
-   comparison exporter, `icons.exportCompare`) and 打开数据文件夹 (`shell.openDataFolder`).
-   No two buttons may bind to the same effect (the old 导出/打开-both-open-folder
-   duplication and the retired `Drawer_Save` string are removed). A separate
-   **导出还原快照** action is *deferred until the engine exposes a real snapshot-export
-   RPC* — there is none today, so a third button would only re-open the data folder;
-   per the no-duplicate-effect rule it is omitted rather than faked (the restore
-   snapshots are reachable via 打开数据文件夹 meanwhile).
-4. **关于**: product identity, **trust chips rendered as real pill chips** (not bare
-   text), author/repo cards, 检查更新, 联系反馈, homepage. **No 更新日志 / changelog
-   section and no version string** are shown pre-release (ADR-0012) — a version story
-   returns only at the first real release.
+2. **自动化**: 新图标自动美化 — **HIDDEN until the capability actually exists**
+   (owner decision 2026-07-10; nothing consumes the setting yet, default false).
+   The row returns, in the grouped card, when the host watcher/catch-up ships.
+3. **本地数据**: distinct actions, none duplicated — 保存前后对比图
+   (`icons.exportCompare`) and 打开数据文件夹 (`shell.openDataFolder`). A separate
+   导出还原快照 stays deferred until a real snapshot-export RPC exists.
+4. **关于**: product identity + trust line + author/repo links, 检查更新, 联系反馈
+   — and the **version line + 更新日志** (RESTORED per the ADR-0013 amendment,
+   reversing ADR-0012's removal): the version opens the in-app changelog dialog;
+   the changelog auto-opens exactly once per installed update, never on first
+   install. Version values stay `Unreleased` until the owner names the first release.
 
-Settings actions that open external links open the default browser. About content is
-inline; no modal/scrim is used for normal settings navigation.
+Settings actions that open external links go through `shell.openExternal` to the
+default browser. About content is inline; no modal/scrim for normal navigation.
 
-## 3.1 Customization visibility (ADR-0012 — applies to the 图标 & 壁纸 panels)
+## 3.1 Customization visibility (as-built v3)
 
-The audience is customization-heavy, so depth is **visible, not hunted**:
-
-- Presets stay the one-tap fast path at the top of each panel.
-- The 自定义 axes are **open by default / persist their last open-state** across
-  sessions (localStorage), instead of all-collapsed on every launch.
-- A compact **current-values summary strip** shows every axis's active value at a
-  glance, so the user sees the full configuration without expanding each row.
-- Rarely-used sub-controls (e.g. the clarity 高级 fold, custom scrim/angle) may still
-  nest one level down — depth is exposed, not dumped flat.
+The audience is customization-heavy, so depth is **visible, not hunted** — realized
+in v3 by the inspector grammar itself (spec 02 §Module IA): every axis is a visible
+`PropertyRow` with its live value/swatch on the row face; curated first rows with
+「更多」 folds expose the full catalog; rarely-used dials nest exactly one Reveal
+fold down (clarity 高级, zone 高级). *The older mechanisms this section once
+prescribed — localStorage-persisted accordion open-state and a separate
+current-values summary strip — were NOT built and are superseded by the always-
+visible row grammar (rows are never collapsed, so there is nothing to persist or
+summarize).*
 
 ## 4. Strings
 
@@ -117,4 +116,4 @@ The audience is customization-heavy, so depth is **visible, not hunted**:
 - Ctrl+1/2/3 switch modules; Esc order has no settings drawer branch.
 - Theme and language default to system on a clean settings file.
 - Zone edits survive module round-trip 壁纸 → 图标 → 壁纸.
-- 208+ existing tests stay green; new VM tests cover module switching state.
+- The web test suite stays green (297 at HEAD 2026-07-10; count moves with the tree).

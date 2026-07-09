@@ -7,12 +7,13 @@ and safety source. Decisions: ADR-0015 (renderer ownership). Panel record:
 
 ## Scope / Non-scope / Assumptions / Dependencies
 
-**Scope**: icon styling rendered by ONE TypeScript renderer (pixi.js v8) at two
-resolutions (display-size interactive preview + 256px bake master); bridge contract v2
+**Scope**: icon styling rendered by ONE **CPU TypeScript renderer** (Worker-run —
+NOT pixi; see Dependencies, which this line once contradicted) at two resolutions
+(display-size interactive preview + 256px bake master); bridge contract **schema 3**
 (sources in, masters out); editing UX contract (live scrubbing, hover try-on, undo,
-exception visibility, size honesty, owned-verb context menu); desktop-mirror fidelity
-(taskbar P0, labels, selection states); dev mock icon pack; C# renderer freeze
-discipline; background auto-format CONTRACT (direction only — build is v1.2).
+exception visibility, owned-verb context menu); desktop-mirror fidelity (taskbar,
+labels, selection states); dev mock icon pack; C# renderer freeze discipline;
+background auto-format CONTRACT (direction only — build later).
 
 **Non-scope**: ICO assembly (stays C# `IcoWriter`), sub-256 resampling (stays C#
 `IconResampler`), all shell writes (stay C#), UWP PACKAGE-asset editing (the
@@ -50,7 +51,7 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
   SSIM≥0.98 (visual parity, owner-approved — bit-exactness is off the table across
   GPU/CPU). The corpus is the TS renderer's permanent regression net.
 
-## 2. Bridge contract v2 (icons.*)
+## 2. Bridge contract (icons.* — schema 3)
 
 - `icons.getState → { config, overrides, applied, dirty, history, settings }` —
   unchanged shape minus render fields.
@@ -80,7 +81,7 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
 ## 3. Editing UX contract
 
 1. **Two feedback classes, no other latency budget exists**: discrete picks (preset,
-   shape, color mode, filter, mark, size) repaint ALL tiles in the same frame
+   shape, color mode, filter, mark) repaint ALL tiles in the same frame
    (≤16ms at 50 tiles, ≤50ms at 300); continuous inputs (前景/背景 tint pickers, hue
    strip, mark-color wheel) live-scrub at display resolution while dragging, throttled
    leading+trailing (~140ms) so 100+ tile recomputes never pile up. The 420ms config
@@ -100,15 +101,17 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
    (never dimmed) but expose NO ⋯ button and NO context menu; hover shows an info
    tooltip with the human reason (`statusReason`, e.g. 「此图标由 Windows 管理，
    无法修改」). Counts in the status line use styleable counts only.
-6. **Size honesty**: the size control previews as IN-PLACE scale at observed
-   positions with one caption line 「应用后位置由 Windows 重新排列」. The mirror
-   never re-packs into a predicted grid. After a real apply, re-scan and settle tiles
-   to actual positions.
+6. **Icon size: REMOVED from the product** (owner, commit `d708f87` 2026-07-09 —
+   the user sets icon size on the real desktop, not here). No panel control, no
+   canvas-menu entry. `ConfigDto.size` survives as a READ-ONLY observed field;
+   nothing (including history replay) may write the real desktop icon size
+   (C# guard = F8). The old "size honesty" preview contract is retired with it.
 7. **Every real-desktop crossing is ceremonied**: apply, applyVersion and restore all
    get the same confirm + DoneCard treatment. No silent desktop writes, ever.
 8. **Context menu = owned verbs only** (app-styled, our chrome): on a tile —
-   保留原样 / 跟随全局 / 单独配色 (existing) + 对比原图 hint; on empty canvas —
-   图标大小 (3 options) + 刷新 (真 rescan). Windows' Sort/AutoArrange verbs are
+   保留原样 / 跟随全局 / 单独配色 + the whole-bucket kindPolicy shortcut
+   (「所有<此类>不参与美化」); on empty canvas — 刷新 (真 rescan) ONLY (图标大小
+   was removed with the size control). Windows' Sort/AutoArrange verbs are
    permanently out (we do not own positions). Never render a Win32-lookalike menu.
 9. **Compare**: global hold-to-compare pill stays primary. The per-tile
    press-to-peek stays but gains a cursor affordance + tooltip on first hover
@@ -126,22 +129,25 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
     concentric-pair swatch grammar and the full catalog (shapes/colours/marks/
     filters) live in **spec 02 §Shape System / §Colour Treatments / §Shortcut
     Marks**. `ConfigDto` grew `monoStyle: Tonal|Flat` + `plateColor: string|null`
-    (bridge schema v2 — C# `IconsContracts.cs` + `BridgeSchema.Version` sync in the
-    Windows batch). Marks are silhouette-aware on free-form icons; Card→Shadow
+    (web bridge is schema 3 today; the C# `Contracts.cs` + `BridgeSchema.Version`
+    sync is F8). Marks are silhouette-aware on free-form icons; Card→Shadow
     (neutral drop shadow), Echo→Halo (silhouette outline).
 
 ## 4. Desktop mirror fidelity (taskbar P0 + tiles)
 
-OS-mirror layer exemption: OS blue `#0067C0` only; coral never appears in the
-simulated OS chrome. The taskbar is scenery: zero interactivity, no flyouts, no
-fake notifications; it looks like real Windows but never impersonates the user's
-own taskbar (neutral glyphs, not their real pinned apps).
+OS-mirror layer exemption: OS-authentic hues are allowed INSIDE the simulated OS
+chrome (the reviewed allowlist in `tests/banned-colors.test.ts` — Windows blues +
+the taskbar-icons palette); coral never appears there. The taskbar is scenery:
+zero interactivity, no flyouts, no fake notifications; it looks like real Windows
+but never impersonates the user's own taskbar. The SAME taskbar renders on both
+the icons and wallpaper canvases (one component).
 
-1. **Pinned row (centered)**: Start + Search + 4 neutral app glyphs (explorer-like,
-   browser-like, store-like, media-like — drawn Fluent-style, MIT/own art only),
-   40×40 hover cells (`hover:bg-white/[.08]` dark / `hover:bg-black/[.05]` light),
-   24px glyphs. Running indicators via `::after` pills: 6px×3px gray for「open」,
-   16px×3px OS-blue for「active」; statically assign 2 open + 1 active.
+1. **Pinned row (centered)**: Start + Search + a small set of COLOURFUL
+   own-vector app glyphs depicting the OS layer (flag / folder / browser orb /
+   store / music — own art, OS-authentic hues per the exemption; owner iteration
+   `88ed05f`), 40×40 hover cells (`hover:bg-white/[.08]` dark /
+   `hover:bg-black/[.05]` light), 24px glyphs. *Running-indicator pills were
+   REMOVED (owner reversal — the earlier 2-open/1-active prescription is void).*
 2. **Tray cluster (right)**: chevron-up glyph · grouped pill (wifi + volume +
    battery, 16px glyphs, full states, static) · two-line clock (HH:mm over
    yyyy/M/d, `font-variant-numeric: tabular-nums`, right-aligned, live) ·
@@ -164,9 +170,9 @@ own taskbar (neutral glyphs, not their real pinned apps).
 - Committed, ship-safe only: procedurally GENERATED messy icons (script in
   `scripts/dev/`) + hand-drawn Fluent-style neutral glyphs. Encumbered material
   (extracted Windows icons, brand marks) never enters git or any shipped artifact.
-- Target ~120 at 256px, stored as WebP (quality 82+) under
-  `src/DeskMakeover.Web/public/mock-icons/` with a generated `manifest.json`
-  (id, kind, label).
+- Target ~120 at 256px, stored as **PNG** (as built — the WebP plan was dropped;
+  120 files at HEAD) under `src/DeskMakeover.Web/public/mock-icons/` with a
+  generated `manifest.json` (id, kind, label).
 - Distribution: 30% clean flat plates · 15% skeuomorphic/legacy (incl. PRE-BAKED
   rounded corners — the double-rounding trap) · 12% photo-fill · 10% badged (badges
   in ALL four corners) · 12% transparent-edge irregular logos · 8% letter tiles
@@ -177,8 +183,9 @@ own taskbar (neutral glyphs, not their real pinned apps).
   glyph kind, glyph-plate contrast (crosses the 0.66 ink and 0.58 mark thresholds),
   alpha edge (hard/AA/glow/semi), badge presence/corner, content safe-area
   (60-100%), source resolution (mix 32px upscales), lightness polarity.
-- The mock bridge maps pack entries onto item kinds (lnk/exe/folder/file/url/bin +
-  a few styleable:false UWP stand-ins with statusReason).
+- The mock bridge maps pack entries onto item kinds (lnk/exe/folder/file/url/bin/
+  uwp). UWP stand-ins are STYLEABLE like every AppxShortcut (§6 correction);
+  only genuinely `Unsupported` entries carry `styleable:false` + statusReason.
 - **Dev-only real fixtures** (owner call — the synthetic pack is too clean to expose
   真实适配 bugs): `scripts/dev/fetch-real-icons.mjs` harvests genuine MS/brand icons
   from the two win11 simulator clones into a **gitignored** `public/mock-icons-real/`
@@ -225,12 +232,22 @@ part of ConfigDto (that would pollute every preset/history entry) — it rides
 the module state, persisted via `icons.setLook`. **Cascade** (folded by
 `effectiveTileConfig`): `styleable:false` > per-icon override > kindPolicy —
 an icon the user styled individually stays styled even if its whole bucket is
-opted out. Two entry points, one state: the panel's collapsed 「参与美化的类型」
-chip section (shows even count-0 buckets — the persistent entry when the
-desktop has none of a kind) and the tile right-click 「所有<此类>不参与美化」.
-The RegularFile 「文件美化」 setting is subsumed as `kindPolicy.File`.
+opted out. Two entry points, one state: the panel's **always-visible 「参与美化的
+类型」 section — a 2×2 grid of labeled chips** (glyph + name + check/hollow ring;
+the earlier collapsed-fold and toggle-wall designs were rejected by the owner
+2026-07-10; shows even count-0 buckets) and the tile right-click
+「所有<此类>不参与美化」. The RegularFile 「文件美化」 setting is subsumed as
+`kindPolicy.File` — **default TRUE** (owner decision 2026-07-10: ordinary files
+participate by default; reversibility + the one-click bucket opt-out replace the
+old opt-in consent flag).
 
-## 7. Background auto-format contract (v1.2 — direction approved, build later)
+## 7. Background auto-format contract (direction approved, build later)
+
+> **Status 2026-07-10 (owner decision):** nothing consumes `keepNewIconsStyled`
+> yet — no watcher, no catch-up. Accordingly the settings toggle is **HIDDEN**
+> (`SHOW_KEEP_UP=false` in settings-page.tsx) and the default flipped to
+> **false** in both mock and `AppSettings.cs`, honouring this section's
+> default-OFF trust contract. Un-hide + re-default only when the build below ships.
 
 - Renders in C# in-process (frozen TileRenderer path); never via hidden WebView2.
 - Tray-resident watcher: FileSystemWatcher on user+public Desktop with poll
@@ -252,8 +269,10 @@ The RegularFile 「文件美化」 setting is subsumed as `kindPolicy.File`.
 
 - bun tests: OKLab/ramp math vs known values; shape geometry properties (IoU vs
   authored paths); analysis classifiers on synthetic canvases (plate/bare/
-  transparent-edge fixtures); compose-mode decision table; undo granularity;
-  contract chunking (applyBaked ≤20/chunk, count math); mock manifest integrity.
+  transparent-edge fixtures); compose-mode decision table; undo granularity.
+  *Gap note 2026-07-10: the contract-chunking (applyBaked ≤20/chunk, count math)
+  and mock-manifest-integrity tests promised here are NOT yet written — they are
+  owed with the F8 host wiring, when the chunk path first runs against a real host.*
 - Parity fixtures (Windows batch): §1 tolerances, goldens committed under
   `tests/fixtures/icon-parity/`.
 - Visual acceptance (every UI slice, browser): scrub latency, hover try-on,

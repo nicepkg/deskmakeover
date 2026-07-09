@@ -29,7 +29,10 @@ Governing rules:
    remain permanently banned. Two coral registers: `--coral` (identity, chips, small
    marks) and `--coral-ink` — a deeper, less-orange register for LARGE solid fills on
    white (the CTA) and accent-as-text on light. Selection is never wash-only: wash +
-   ink text + hairline border.
+   ink text + hairline border. *Reviewed exceptions (test-gated allowlists in
+   `tests/banned-colors.test.ts`): OS-authentic depictions inside the desktop mirror,
+   and the ONE-shot celebration confetti (multicolour by owner decree, single file —
+   persistent UI stays coral).*
 4. **Type carries the premium.** Bundled dual-script system (below); hierarchy from
    size + colour + the 400/500 weight pair only.
 5. **Customization is maxed, layered, never dumped.** Every engine capability is
@@ -78,9 +81,12 @@ canvas mirror). Base-surface cards use **no** shadow — hairline + luminance st
 
 ## Typography (bundled — ADR-0013 D2)
 
-**Families:** `Inter` (Latin, variable, subset) + `HarmonyOS Sans SC` (CJK, static
-Regular 400 + Medium 500 subsets). Total budget ≈ 3-5 MB. About page carries the
-attribution line "Fonts: HarmonyOS Sans (Huawei) · Inter".
+**Families:** `Inter` (Latin, variable, subset ~100 KB) + `HarmonyOS Sans SC` (CJK,
+static Regular 400 + Medium 500). *Status correction 2026-07-10: the CJK faces ship
+as FULL TTFs today (~15.7 MB the pair) — the "3-5 MB subset" target was never
+executed. Subsetting (≈ GB2312) is an open F8/pre-release task; the fallback-chain
+design below already assumes it.* About page carries the attribution line
+"Fonts: HarmonyOS Sans (Huawei) · Inter" (NOT yet rendered — F8).
 
 ```css
 --font-sans: 'Inter', 'HarmonyOS Sans SC', 'Segoe UI', 'Microsoft YaHei UI',
@@ -108,14 +114,21 @@ attribution line "Fonts: HarmonyOS Sans (Huawei) · Inter".
 | `body` | 13 / 400 | row value, label, chip, menu, list | value t1 · label t2 |
 | `caption` | 12 / 400 | status, hint, counts | t3 |
 
-No other chrome sizes exist (the 9.5/12.5px strays are deleted). Mirror tile labels
-and baked zone titles remain out-of-chrome exceptions (engine/OS rules).
+Mirror tile labels and baked zone titles remain out-of-chrome exceptions (engine/OS
+rules). *Amendment 2026-07-09 (owner "control scale is unified app-wide"): the dense
+INSPECTOR dialect is a sanctioned sub-ladder — segmented `sm` = 22px tall / 11px
+label, chip buttons 11px, fine annotations down to ~10.5px — used identically on
+every page. Page-scale adjustments touch the TEXT layer only (titles, labels, row
+rhythm), never inflate controls. The six-step ladder governs text; the control
+dialect governs controls.*
 
 ## Spacing & Geometry
 
 8px soft grid `{4, 8, 12, 16, 24}` unchanged. Key metrics carried from v2 unless
 listed: window regular ≈1340×840, compact <1100, min 1024×700 (D12). Radius: card 16 ·
-control 10-12 · chip 9. Panel 300px. CTA 44px solid `--coral-ink` on light.
+control 10-12 · chip 9. **Inspector RIGHT, 280px (248px compact)** — the old left
+300px panel is superseded (ADR-0013 amendment 2026-07-10). CTA 44px solid
+`--coral-ink` on light.
 **Segmented control is macOS-true**: inset gray track + a sliding WHITE thumb
 (spring, soft shadow) carrying the selected segment; max-width 360px — never a
 full-card slab. Settings pages use inset list rows (label left, control right,
@@ -123,18 +136,23 @@ hairline dividers) at macOS density — no empty slabs, no duplicated identity b
 
 ## Module IA touchpoints (visual layer of ADR-0013)
 
-- **Shape axis**: first row = 苹果 · 纯圆 · 三星 · 方块 · 水滴 · 无; 「更多形状」fold
-  reveals the other 7. All chip names Chinese-first.
+- **Shape axis**: first row = 无 · 苹果 · 纯圆 · 三星 · 方块 · 水滴 (无 sits FIRST —
+  the slash-circle law, see Addenda); 「更多形状」fold reveals the other 5 (书签 ·
+  柠檬 · 菱形 · 花瓣 · 卵石). **11 options total.** All chip names Chinese-first.
 - **Filter axis**: all five (无/光泽/玻璃/像素/贴纸) stay visible (owner D6; 光泽/Gloss
   went live 2026-07-09 — an aqua specular sweep over the upper third, engine in
   `icon-compositor/filters.ts`).
-- **Wallpaper hero**: clarity-first narrative; zone editing enters via explicit tool
-  state (crosshair mode / Alt+drag). Zone list never leaks grid units (no 7×12.5).
+- **Wallpaper hero**: clarity-first narrative; **blank left-drag on the canvas
+  CREATES a zone directly** (ADR-0013 amendment 2026-07-10 — the explicit-tool
+  model was reversed; pan is middle-drag / compare-hold). Zone list never leaks
+  grid units (no 7×12.5).
 - **Axis summary strips** pair label:value (`外形 苹果 · 配色 原彩 · …`).
-- **Ceremony**: first-apply consent sheet, per-apply completion + 「去看看桌面」,
-  restore confirm — shared components, both modules.
-- **First-run wow**: after first scan the mirror auto-plays one skippable
-  原样→美化 wave (preview only).
+- **Ceremony**: first-apply consent sheet, per-apply completion + 「去看看桌面」 +
+  the ONE-per-launch celebration confetti, restore confirm — shared components,
+  both modules.
+- **First-run wow**: REMOVED (2026-07-10). The auto-played 原样→美化 reveal was
+  built, broke the icons twice, and was rolled back by owner order. Do not
+  reintroduce without a fixed-duration always-removes-itself design + owner sign-off.
 
 ## Motion (owner directive: plentiful, premium, one family)
 
@@ -144,7 +162,7 @@ bloom/settle waves and module slides — no holes).
 
 | Name | Spec | Use |
 |---|---|---|
-| `bloom` | scale .88→1.05→1 + brightness flash, .6s `cubic-bezier(.34,1.4,.4,1)`, 42ms stagger | apply wave + first-run wow |
+| `bloom` | scale .88→1.05→1 + brightness flash, .6s `cubic-bezier(.34,1.4,.4,1)`, 42ms stagger | apply wave |
 | `settle` | scale 1.06→1 fade, .8s family ease (no outlier easings) | restore exhale |
 | `pop` | scale .95→1 + fade .12-.18s, transform-origin at anchor | EVERY menu/popover/picker/coach/toast — no dead-cut mounts |
 | `thumb-slide` | segmented white thumb spring (damping ≈ 44, no toy bounce) | segmented, toggles |
@@ -152,16 +170,21 @@ bloom/settle waves and module slides — no holes).
 | `chip-select` | wash+ink fade .15s; NO weight-jump reflow (reserve bold width) | chips |
 | `cta-working` | indeterminate coral shimmer sweep 1.3s ∞ + label crossfade 120ms + ✓ pop on synced | CTA |
 | `restyle cue` | latency-gated: only if round-trip >200ms → 88% dim or pill, in place swaps | axis changes (kills the instant 45% dim) |
-| `zone drag` | DOM approximate fill (frost/tint + title wash) tracks pointer 1:1; true frame reconciles ≤150ms after release; snap-pulse 80ms on cell change | wallpaper editor |
+| `zone drag` | the Pixi compositor paints the TRUE material same-source same-frame with the pointer (ADR-0014 D5 — the old DOM-approximation+reconcile model is superseded); snap-pulse 80ms on cell change | wallpaper editor |
 | `slide/rise` | compact overlay, cards entering — v2 specs carried | |
-| module switch | crossfade+slide overlap, no blank frame; reduced → opacity only | Ctrl+1/2/3 |
+| module switch | **INSTANT, modules stay mounted** (visibility-hidden) — the crossfade overlapped a remounting canvas and was removed (2026-07-09); reduced → same | Ctrl+1/2/3 |
 
-Single source: every duration/easing/stagger lives in `lib/motion.ts` (helpers for
-per-index delays + a reduced-motion wrapper); consumers never inline curves.
+Motion tokens: shared durations/easings/staggers live in `lib/motion.ts` (per-index
+delay helpers + reduced-motion wrapper). *Reality note 2026-07-10: a number of
+component-local timings exist in the tree; new motion should prefer the shared
+tokens, and strays get folded in opportunistically — but "never inline" is an
+aspiration, not the current state.*
 
-Gesture model (D10): drag = pan on both canvases; Ctrl+wheel zoom at pointer; Space =
-hold-to-compare ONLY (passes through when focus sits on a button); zone creation via
-tool state. Hold-interactions keep non-hold equivalents; `?` keymap legend stays.
+Gesture model (D10 as amended 2026-07-10): icons canvas drag = pan; wallpaper canvas
+blank left-drag = CREATE zone (pan via middle-drag / while comparing); Ctrl+wheel
+zoom at pointer; **Space = global hold-to-compare** (text inputs excluded; a focused
+button activates via Enter — the old pass-through-on-button clause is dropped, see
+§Accessibility). Hold-interactions keep non-hold equivalents; `?` keymap legend stays.
 
 ---
 
@@ -170,10 +193,17 @@ preview and the bake share this exact math. The v3 chrome renewal does not touch
 
 ## Shape System (icon geometry)
 
-One `clipFor(shape, size)` service, cached; identical math in preview and renderer:
+One canonical authoring (`icon-compositor/shapes.ts`), cached; identical math in
+preview swatch, canvas tile, and bake:
 
-- **苹果**: quintic Lamé superellipse `|x|⁵+|y|⁵=1` — continuous curvature, apparent
-  corner ≈22.37% of width. 96-point polygon.
+- **苹果**: the TRUE iOS continuous-corner squircle — **three cubic Béziers per
+  corner** (the authentic Apple control points, verified against the public
+  reverse-engineering; constants like `1.528665/1.08849296/0.86840694…`), corner
+  radius `0.225·S` (≈ the documented 22.37%). *Corrected 2026-07-10: this replaces
+  the old "quintic Lamé superellipse" description — Apple's real shape is a cubic
+  spline, not a Lamé curve, and since `3a6ec48` the chip swatch shares the same
+  cubic path (`applePathD`) instead of a Lamé approximation. The C# oracle
+  (`IconShapeGeometry.cs`) carries the identical constants.*
 - **纯圆**: exact circle. Already-round source icons are left untouched (`IsRoundish`).
 - **三星**: the official One UI adaptive-icon mask path, scaled:
   `M50,0 C10,0 0,10 0,50 C0,90 10,100 50,100 C90,100 100,90 100,50 C100,10 90,0 50,0`.
@@ -275,8 +305,11 @@ tiles, and baked `.ico` render the same math.
 
 - Every interactive element: localized accessible name; status via live regions.
 - Full keyboard reachability; visible coral focus ring; Esc closes
-  menu/overlay/coach/picker; Space activates the focused control (compare never
-  hijacks button focus — D10).
+  menu/overlay/coach/picker. **Space is the global compare gesture** (owner decision
+  2026-07-10, reversing the old Space-activates-button clause): this UI is
+  button-dense and a just-clicked control keeps focus, so letting a focused button
+  eat Space would break compare exactly when it is reached for. Buttons activate
+  via ENTER; only text inputs own Space (it is a character there).
 - Hold-interactions (对比/peek) keep non-hold equivalents; `?` keymap legend.
 - Reduced motion: complete coverage — waves, slides, thumb springs all degrade to
   crossfade; no exceptions.
@@ -286,9 +319,12 @@ tiles, and baked `.ico` render the same math.
 Owner-decided refinements layered onto v3 during the build; on conflict with the
 sections above, these win.
 
-- **Axis glyph keyline**: every shape/filter/mark glyph draws EXACTLY 16px on a
-  20px canvas; no optical exceptions. Path-based `clip-path` silhouettes are
-  authored in absolute pixels and `shape-paths.SWATCH` MUST equal the swatch box.
+- **Axis glyph keyline**: every shape/filter/mark glyph is authored on the 20/16
+  grid (ink = 0.8 × canvas); no optical exceptions. *Amended 2026-07-09 (owner
+  legibility call): the authored grid now RENDERS at a 25px canvas = 20px ink via
+  the single `GLYPH` constant in chip-preview.tsx, which MUST stay =
+  `shape-paths.SWATCH ÷ 0.8`.* Path-based `clip-path` silhouettes are authored in
+  absolute pixels and `shape-paths.SWATCH` MUST equal the swatch box.
 - **The 无 dialect**: one slash-circle glyph (`NoneGlyph`) for every axis's none
   option, always FIRST in its row. Dashed = auto (AutoDot); slash = none; never
   conflated. The native Windows arrow (`WinArrowGlyph`, OS-blue `#0067C0`) sits

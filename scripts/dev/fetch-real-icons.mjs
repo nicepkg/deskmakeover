@@ -103,6 +103,58 @@ const APP_LABELS = {
   yourphone: '手机连接',
 }
 
+
+// Numbered imageres icons, identified by eye from the contact sheet
+// (2026-07-09): every label MUST match the art — a PDF name on a printer icon
+// is exactly the confusion the owner banned. kind: doc-like art = RegularFile,
+// tool-like art = Shortcut.
+const NUM_ICONS = {
+  3: { label: '新建文本文档.txt', kind: 'RegularFile' },
+  50: { label: '归档', kind: 'Folder' },
+  58: { label: '资源', kind: 'Folder' },
+  67: { label: '项目计划.docx', kind: 'RegularFile' },
+  90: { label: '待办事项.txt', kind: 'RegularFile' },
+  98: { label: '未读邮件.eml', kind: 'RegularFile' },
+  106: { label: '产品截图.png', kind: 'RegularFile' },
+  114: { label: '录音备忘.mp3', kind: 'RegularFile' },
+  122: { label: '宣传片素材.mp4', kind: 'RegularFile' },
+  130: { label: '合同定稿.docx', kind: 'RegularFile' },
+  170: { label: '季度汇报.pptx', kind: 'RegularFile' },
+  175: { label: 'Internet', kind: 'Shortcut' },
+  183: { label: '网络位置', kind: 'Shortcut' },
+  199: { label: '打印机', kind: 'Shortcut' },
+  255: { label: '帮助文档', kind: 'Shortcut' },
+  797: { label: '卸载工具', kind: 'Shortcut' },
+  805: { label: '年度总结草稿.docx', kind: 'RegularFile' },
+  837: { label: '页面设置', kind: 'Shortcut' },
+  877: { label: '快速启动', kind: 'Shortcut' },
+  893: { label: '会议纪要_0708.txt', kind: 'RegularFile' },
+  1077: { label: '主打歌demo.mp3', kind: 'RegularFile' },
+  1085: { label: '海报终稿.jpg', kind: 'RegularFile' },
+  1093: { label: '发布会回放.mp4', kind: 'RegularFile' },
+  1101: { label: '播客节目.m4a', kind: 'RegularFile' },
+  1154: { label: '相机导入', kind: 'Shortcut' },
+  1247: { label: '显示设置', kind: 'Shortcut' },
+  1278: { label: '合同_副本.docx', kind: 'RegularFile' },
+  1286: { label: '截图工具', kind: 'Shortcut' },
+  1294: { label: '入职清单.docx', kind: 'RegularFile' },
+  1437: { label: '搜索', kind: 'Shortcut' },
+  1479: { label: '屏幕键盘', kind: 'Shortcut' },
+  1569: { label: '公司资料.docx', kind: 'RegularFile' },
+  1577: { label: '设计稿.png', kind: 'RegularFile' },
+  1585: { label: '音乐库', kind: 'Shortcut' },
+  1593: { label: '击杀集锦.mp4', kind: 'RegularFile' },
+  1609: { label: '共享文件', kind: 'Shortcut' },
+  1669: { label: '铃声剪辑.mp3', kind: 'RegularFile' },
+  1677: { label: '已禁用项', kind: 'Shortcut' },
+  1693: { label: '系统镜像.iso', kind: 'RegularFile' },
+  1736: { label: '固定便签', kind: 'Shortcut' },
+  1780: { label: '剪贴板历史', kind: 'Shortcut' },
+  1788: { label: '命令提示符', kind: 'Shortcut' },
+  1836: { label: '窗口布局', kind: 'Shortcut' },
+  2000: { label: '数据备份_0630', kind: 'RegularFile' },
+}
+
 function main() {
   const [w11react, w11web] = REPOS.map(ensureRepo)
   rmSync(OUT, { recursive: true, force: true })
@@ -131,7 +183,7 @@ function main() {
     }
     const label = WIN_LABELS[base]
     const isFolder = /folder|docs|down|music|pics|vid|desk/.test(base)
-    const isNumbered = /^\d+$/.test(base)
+    const num = /^\d+$/.test(base) ? NUM_ICONS[base] : null
     add(
       join(winDir, f),
       `win-${f}`,
@@ -139,10 +191,10 @@ function main() {
       // DefaultIcon mechanism as the Recycle Bin (owner prototype truth) —
       // STYLEABLE; the C# writers are a Windows-batch addition.
       base === 'thispc' || base === 'network' || base === 'user' ? 'SystemIcon'
+        : num ? num.kind
         : isFolder ? 'Folder'
-        : isNumbered ? 'RegularFile'
         : 'Shortcut',
-      typeof label === 'string' ? label : isNumbered ? `文件_${base}` : base,
+      num ? num.label : typeof label === 'string' ? label : base,
     )
   }
 
@@ -172,8 +224,12 @@ function main() {
   for (const [src, out] of [
     [join('default', 'img0.jpg'), 'wallpaper-default.jpg'],
     [join('dark', 'img0.jpg'), 'wallpaper-dark.jpg'],
-    // ThemeD art doubles as the gamer-scenario wallpaper (dev menu).
-    [join('ThemeD', 'img0.jpg'), 'wallpaper-gamer.jpg'],
+    // Scenario wallpapers (dev menu): gamer = ThemeA neon arc, office = ThemeC
+    // lake morning; ThemeB/D ride along as spares for future scenarios.
+    [join('ThemeA', 'img0.jpg'), 'wallpaper-gamer.jpg'],
+    [join('ThemeC', 'img0.jpg'), 'wallpaper-office.jpg'],
+    [join('ThemeB', 'img0.jpg'), 'wallpaper-spare-b.jpg'],
+    [join('ThemeD', 'img0.jpg'), 'wallpaper-spare-d.jpg'],
   ]) {
     const p = join(wallDir, src)
     if (existsSync(p)) cpSync(p, join(OUT, out))

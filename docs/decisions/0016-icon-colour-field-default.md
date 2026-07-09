@@ -69,6 +69,32 @@ the native arrow).
 positions (trust + restore surface); with D1 restoring per-icon pop-out it is no
 longer load-bearing for findability. (Panel 4:0 after UX flipped.)
 
+## Amendment (2026-07-10, same day — owner live steering + designer acceptance)
+
+The D1 recipe was rebuilt live under four owner rejections and closed by a
+designer-seat pixel acceptance (PASS after one FAIL round):
+
+- **D8 — Iron law: subject pixels are NEVER recoloured.** The knockout lane
+  shipped, was rejected on sight (「很多 icon 根本认不出」「绝对不能改变图标
+  主体的颜色」), and is DELETED. Uniformity comes from everyone keeping their
+  original colours; separation comes from plates, silhouette shadows, and
+  outlines only.
+- **D1 recipe v7 (as accepted)**: one light line (Vivid plates L 0.87,
+  C [0.09, 0.12]); plated anchors keep their own colour clamped L [0.60, 0.80]
+  with a neutral-white exemption; bare art at 72% linear over a same-hue plate
+  with an airy dock shadow (L 0.38 / α 0.24 / blur 4%); pale art (mean L>0.72)
+  gets a contrast-target plate (mean − 0.20, clamp [0.62, 0.78]) plus a 360°
+  ring halo; hue spread = global min-gap relaxation, 12° guaranteed inside a
+  ±18° brand cap, identical artwork keeps identical plates, feeding preview
+  AND bake. D6's 26/256 glyph box is superseded by 36/256 (owner: 80% read
+  as chaos).
+- **Recorded hard limit**: same-hue brand piles cannot separate further at
+  the plate level without violating a law; beyond the 12° spread the preserved
+  subject glyphs + spatial memory carry identification (iOS-equivalent).
+  Chasing it further in the plate layer is out of bounds.
+- Non-blocking polish noted by the designer: warm/cool chroma asymmetry may
+  later be evened (warm cap ~0.10) if the field reads warm-tinted.
+
 ## Consequences
 
 - The default demos AND lives well: colour pop-out returns to native level while

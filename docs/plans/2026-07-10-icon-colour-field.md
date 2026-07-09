@@ -4,6 +4,16 @@ Scope: implement the 满彩 Field colour mode + preset lineup rework, web side (
 mock loop). C# TileRenderer sync moves to F8 (see Global constraints). Panel:
 `docs/reviews/2026-07-10-icon-findability-panel.md`.
 
+> **Status 2026-07-10:** T1-T4 + T6(presets/mock) SHIPPED; the constants table
+> below is SUPERSEDED by the as-accepted recipe v7 (ADR-0016 amendment / spec 02
+> §Default Composition): knockout deleted (owner iron law — subjects never
+> recoloured), Vivid plates C[0.09,0.12]@L0.87, plated clamp [0.60,0.80] with
+> neutral exemption, pale contrast-target lane + ring halo, box 36/256, hue
+> spread 12° min-gap in ±18° cap. Designer-seat acceptance: PASS. Owed: T5
+> (kind families/affordances/kindShapes), T6 colour-row UI (满彩 swatch + band
+> depth), T7 glass rim, T8 letter badge, D4 corpus ΔE test, T9 adversarial
+> review sweep.
+
 ## Global constraints
 
 - WYSIWYG: preview and bake share `renderTile`; anything per-icon (seed, plate,

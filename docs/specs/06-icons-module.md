@@ -132,19 +132,23 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
     (web bridge is schema 3 today; the C# `Contracts.cs` + `BridgeSchema.Version`
     sync is F8). Marks are silhouette-aware on free-form icons; Card→Shadow
     (neutral drop shadow), Echo→Halo (silhouette outline).
-12. **Default look = 满彩 colour field (ADR-0016, owner 2026-07-10).** The colour
-    axis gains a fourth foreground mode **满彩 (Field)** — dominant-colour plate
-    in a shared OKLab harmony band, knockout/fidelity dual lane, global hue
-    de-duplication, kind colour families + in-container affordances (folder tab /
-    document dog-ear) — full recipe in spec 02 §Default Composition. It is the
-    factory default. Preset lineup: 默认(满彩) · 极简白 · 安静(柔彩包络,
-    per-icon hue — replaces the single-hue wallpaper-tone) · 原彩保真; Candy
-    demoted from recommended position, 玻璃 reworked as rim highlight. A full
-    four-shape kind split is an opt-in toggle. `ConfigDto` grows `colorMode:
-    'Field'`, `kindShapes: boolean` (default false) and the tail-only badge flag;
-    the WHITE plate fallback is retired from the default path (survives inside
-    原彩保真 only). Engine additions: memoized `dominantHue`, hue-dispersion
-    fidelity gate, id-cached de-dup pass, glyph padding 26/256, full-bleed 0.82.
+12. **Default look = 满彩 colour field (ADR-0016 + amendment, owner
+    2026-07-10).** The colour axis gains a fourth foreground mode **满彩
+    (Field)** — the factory default; recipe v7 (designer-seat acceptance PASS)
+    lives in spec 02 §Default Composition. **Iron law: subject pixels are never
+    recoloured** (the knockout lane was built, owner-rejected, deleted);
+    separation = coloured plates (one light line) + silhouette shadows/halos +
+    the cross-icon hue-spread pass (worker-reported seeds → deterministic
+    main-thread relaxation → `RenderOpts.fieldSeed` on renders AND bakes).
+    Preset lineup: 默认(满彩) · 极简白 · 安静(柔彩, per-icon hue — replaces the
+    single-hue wallpaper-tone) · 原彩保真 (the only home of the white
+    fallback); Candy left the preset row, 玻璃 rework to rim highlight owed
+    (plan T7). Still owed: kind colour families + in-container affordances +
+    `kindShapes` opt-in toggle (T5), the 满彩 swatch on the colour-axis row +
+    band depth segmented (T6 UI), tail-only letter badge (T8), and the
+    ΔE-separability corpus test wired to the committed mock manifest (D4).
+    Engine facts: memoized whole-canvas `dominantColor`, pale contrast-target
+    lane, glyph box 36/256 (~72%), full-bleed 0.82.
 
 ## 4. Desktop mirror fidelity (taskbar P0 + tiles)
 

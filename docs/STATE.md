@@ -64,13 +64,14 @@ pointer: what is TRUE now, what is in flight, what comes next.
 `scripts/dev/generate-mock-icons.mjs`).
 
 **In flight / next (web):**
-1. **ADR-0016 icon colour-field default (ACTIVE)** — user feedback「美化后找图标变慢」
-   panel-diagnosed (colour+silhouette preattentive channels zeroed by the white-plate
-   default). Build: 满彩 Field colour mode (dominantHue + OKLab harmony band + knockout/
-   fidelity dual lane + hue de-dup), kind colour families + in-container affordances,
-   preset lineup rework (默认/极简白/安静/原彩保真, Candy demoted + glass→rim), padding
-   26/256, ΔE separability test. Plan: `docs/plans/2026-07-10-icon-colour-field.md`;
-   panel: `docs/reviews/2026-07-10-icon-findability-panel.md`.
+1. **ADR-0016 icon colour-field default** — CORE SHIPPED + designer-seat acceptance
+   PASS (recipe v7 after four owner live rejections; see ADR amendment). ⛔ Iron law:
+   icon SUBJECT pixels are never recoloured — separation only via plates/shadows/
+   outlines. Field mode + preset lineup (默认满彩/极简白/安静/原彩保真) + hue-spread
+   pipeline live through preview AND bake. Owed tail: T5 kind families + affordances +
+   kindShapes toggle · T6 colour-row 满彩 swatch + band depth UI · T7 glass rim rework ·
+   T8 tail letter badge · D4 corpus ΔE test · T9 cross-vendor adversarial review.
+   Plan: `docs/plans/2026-07-10-icon-colour-field.md` (status note on top).
 2. Zone rebuild polish tail: equal-gap ticks (deferred, NOT accepted), rename-input polish,
    SwiftShader/`MAX_TEXTURE_SIZE` startup probe with reduced-res fallback, TS bake fixtures.
 3. Dark theme + zh locale full regression screenshots → `docs/plans/evidence/2026-07-v3/`.
@@ -187,6 +188,12 @@ auto-triggered) — `docs/verification/owner-supervised-live-runs.md` (itself pe
 - Presets never carry a shortcut mark; nothing arrow-shaped near preset thumbnails.
 - The native arrow is legal but gated (60s penance sheet); the welcome survey must never
   reveal it is a gate. (The roast/penance tone is a DELIBERATE owner brand choice — do not soften.)
+- ⛔ **Icon subject pixels are never recoloured** (ADR-0016 D8, owner 2026-07-10):
+  every icon keeps its own colours; looks differentiate via plates, silhouette
+  shadows/halos, outlines, backgrounds — never by re-inking some subjects.
+- **Visual work acceptance loop** (owner order 2026-07-10): a look/effect is done only
+  when the designer-seat subagent passes a pixel-level acceptance on REAL renders;
+  FAIL → iterate and resubmit.
 - Extreme DRY; files ≤500 lines; WYSIWYG (preview == bake pixels); bake/apply owner-supervised.
 - Specs are the intended source of truth — but see §Known doc drift; the old prototype HTML is historical only.
 

@@ -241,31 +241,45 @@ visual search (the 2026-07-10 findability panel's unanimous diagnosis) and fails
 the ADR-0016 D4 acceptance gate. iOS is the reference proof: uniform container,
 maximised per-app colour.
 
-The DEFAULT look (满彩 colour field) composes per icon:
+**Iron law (owner, 2026-07-10): subject pixels are NEVER recoloured.** Every
+icon keeps its own colours uniformly; separation comes from the plate and
+silhouette shadows only. The original knockout lane was built, rejected by the
+owner on sight (「很多 icon 根本认不出」), and deleted.
 
-- **Plate** = the icon's dominant colour (`dominantHue`: memoized chroma-weighted
-  hue histogram over the subject mask) normalised into a shared **OKLab harmony
-  band** — one lightness/chroma envelope desktop-wide (tidy as a set), hue varying
-  per icon (colour pop-out restored).
-- **Subject** — two lanes, ONE system: single-hue subjects render as a
-  light/dark **knockout** (contrast-picked against the plate) at ~80% linear
-  (`CONTENT_PADDING_FRACTION` 42/256 → 26/256; full-bleed threshold 0.88 → 0.82);
-  multi-hue subjects (gradient orbs / photos / rich logos, split by a
-  hue-dispersion gate) take the **fidelity lane** — original artwork preserved on
-  its derived plate colour. Both lanes share the same plate system and envelope;
-  the lane split is a rendering detail and must never read as a style break.
-- **Hue de-duplication**: a deterministic global pass (id-cached, config-derived —
-  WYSIWYG-safe) pulls same-hue clusters (the blue-app pile) apart in OKLab so
-  neighbouring plates stay above the ΔE separability threshold.
-- **Fallback**: sources with no extractable hue (photos, near-white, generic
-  files) fall back to a kind-family plate colour; a letter/source-colour badge
-  may assist — tail-only, never global. The old WHITE fallback is retired from
-  the default path (it survives only inside 原彩保真, where strict 1:1 plate
-  reproduction is the point).
-- **Kind legibility**: kind-derived plate colour families plus a light
-  in-container affordance (folder tab, document dog-ear) — the container stays
-  one squircle. A full four-shape kind split ships as an opt-in toggle (D2),
-  never the default.
+The DEFAULT look (满彩 colour field, recipe v7 — designer-seat acceptance PASS
+2026-07-10 after four owner-steered rounds) composes per icon:
+
+- **Plate** = the icon's dominant colour (memoized chroma-weighted OKLab hue
+  histogram over the whole canvas — neutral plates carry no votes) set on ONE
+  light line: Vivid **L 0.87, C clamp [0.09, 0.12]** (gamut splits the work:
+  warm hues saturate fully, blues cap lower — accepted as natural separation);
+  Quiet band L 0.91, C [0.04, 0.07].
+- **Plated anchors**: sources with their own detected plate KEEP it (identity
+  colour), lightness clamped into **[0.60, 0.80]**; near-neutral plates
+  (C < 0.04, Office white boards) are exempt so white stays white.
+- **Bare artwork**: original pixels at **~72% linear** (36/256 padding; the
+  80% attempt read as chaos — owner call) over a same-hue coloured plate,
+  lifted by an airy dock shadow (tone L 0.38, α 0.24, blur 4%, drop 1.5%).
+- **Pale class** (solid-pixel mean L > 0.72): a **contrast-target plate**
+  (L = subject mean − 0.20, clamp [0.62, 0.78], C [0.07, 0.10]) plus a 360°
+  ring halo (α 0.34, blur 3.5%, no offset) — near-white line art separates
+  while the field stays light.
+- **Hue spread** (cross-icon, deterministic, id-cached, feeds preview AND
+  bake): global min-gap relaxation guarantees **12° between distinct plates
+  inside a ±18° brand cap**; identical artwork keeps identical plates (three
+  .docx files SHOULD match).
+- **Fallback**: no-hue sources take a slate family plate — the WHITE fallback
+  is retired from the default path (it survives only inside 原彩保真, where
+  strict 1:1 plate reproduction is the point). Kind colour families + light
+  in-container affordances (folder tab, document dog-ear) remain planned (D2);
+  the four-shape kind split stays an opt-in toggle, never the default.
+
+**Honest hard limit (designer-acknowledged):** same-hue brand piles (the blue
+apps) cannot separate further at the plate level without breaking a law —
+rotating past the brand cap lies, lightness offsets break the one-line field,
+recolouring subjects is forbidden. Beyond the 12° spread, identification is
+carried by the PRESERVED subject glyphs and spatial memory, exactly as on a
+real iOS home screen. Do not chase this further in the plate layer.
 
 Preset lineup (D3): 默认 = colour field · 极简白 (the previous white board, an
 explicit minority-taste preset) · 安静 (pastel envelope: fixed lightness, low

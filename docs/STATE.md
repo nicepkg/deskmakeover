@@ -88,7 +88,8 @@ AND the 256 bake master; bridge v2 (sourceUrls in once, chunked
 stageVersion); mirror = compositor canvases at observed positions (styleable
 gating, exception badges, owned-verbs menus, size honesty, double label
 shadow, undo/redo toolbar); taskbar P0 (pinned glyphs + indicator pills +
-tray + theme acrylic); 120-icon generated mock pack; arrow gate one-time 8s;
+tray + theme acrylic); 120-icon generated mock pack; arrow gate = the 60s
+every-time penance (owner reverted the panel softening on sight);
 C# oracle FROZEN (banners) + v0.9 chain deleted. Codex review: 6 fixed /
 2 dispositioned (record in the panel doc); 269 bun tests + tsc green;
 browser visual acceptance evidence in

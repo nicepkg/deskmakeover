@@ -111,9 +111,10 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
 9. **Compare**: global hold-to-compare pill stays primary. The per-tile
    press-to-peek stays but gains a cursor affordance + tooltip on first hover
    (discoverability), and never conflicts with drag/menu gestures.
-10. **Native-arrow gate**: softened from 60s penance to a one-time explainer sheet
-    with a 8s reflection pause (first选择 only; afterwards instant). Owner call
-    2026-07-09 (supersedes the 60s stare in STATE owner rules).
+10. **Native-arrow gate**: the SIXTY-second penance stare, EVERY time. The gate
+    is deliberately obnoxious — that is its function (owner decree, re-affirmed
+    2026-07-09; a batched-disposition softening to one-time 8s was reverted the
+    same day).
 
 ## 4. Desktop mirror fidelity (taskbar P0 + tiles)
 

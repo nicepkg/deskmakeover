@@ -50,7 +50,7 @@ Owner request: (1) move icon editing/rendering to pure frontend with live previe
 | Q9 | Mock pack: Fluent-style own art + synthetic generator in git; encumbered assets dev-local only; ~120 icons | **accept** → D9 |
 | Q10 | Five-material unification (磨砂/柔光/实色/悬浮/描边 on icons): approved as direction, sequenced AFTER migration as first TS-only styles; 柔光 takes 像素's curated slot (像素 demoted); 缎光/珐琅弧 heavied or demoted | **accept** → D10 |
 | Q11 | Discovery fix (Recycle Bin surfacing + This PC/Network CLSID writers) joins the Windows batch | **accept** |
-| Q12 | (a) Recycle Bin styleable: yes; (b) 60s arrow gate softened → one-time explainer + 8s pause; (c) size preview = in-place scale + honesty caption + post-apply rescan | **accept** |
+| Q12 | (a) Recycle Bin styleable: yes; (b) arrow-gate softening — **REVERSED by the owner on sight** (the 60s every-time penance is intentional product character; batched recommendation slipped through); (c) size preview = in-place scale + honesty caption + post-apply rescan | (a)(c) accept · (b) reverted |
 
 Standing owner orders for the run: write ALL docs before building; codex review
 afterwards with verification (fix only real findings — design-as-intended stands);

@@ -98,25 +98,37 @@ Facts verified against HEAD. Specs are NOT yet rewritten; do not trust them over
   ownership superseded by 0014/0015; 0014 material decision reversed to five materials).
   Full table lives in the Codex audit; amendments to be added, history NOT rewritten.
 
-## Open decisions (owner — block the spec rewrites)
+## Decisions (owner-resolved 2026-07-10 — drive the spec rewrites)
 
-1. **`win-native-arrow.png` is git-tracked** and imported by production renderer, but
-   ADR-0015 forbids shipping extracted Windows assets. Release blocker: redraw
-   programmatically vs. relax the ADR with a licensed asset?
-2. **Apple corner geometry** — unify chip-preview (Lamé n=5) + TS renderer (iOS 0.225
-   cubic) + C# oracle (cubic) onto ONE shared path, THEN fix Spec 02 / old ADR.
-3. **`ConfigDto.size` / `TrySetIconSize`** survive the size-control removal — make `size`
-   a read-only OBSERVED field, or a migration field? (must not let history replay resize the
-   real desktop.)
-4. **Wallpaper gesture** — HEAD is blank-left-drag-creates-zone (pan on middle/compare);
-   ADR-0013 wants drag-pans / explicit create tool. Amend the ADR, or change the code?
-5. **New-icon auto-beautify** — C# + mock default `true` and settings promise auto-handling,
-   but there is NO watcher/consumer anywhere. Default false + hide until built, or override Spec 06?
-6. **Ordinary-file participation** — `kindPolicy.File` + `CanStyle` include ordinary files
-   by default; Spec 01 promised opt-in. Which is the final trust model?
-7. **Space key** — App.tsx makes hold-Space = compare everywhere (owner call), but Spec 02
-   a11y wants Space to activate a focused button. Except buttons, or amend the spec?
-8. **First release number/name** — standardize all changelogs to `Unreleased` until set?
+1. **`win-native-arrow.png`** — RESOLVED: leave it. The owner accepts the git-tracked
+   extracted arrow as-is (do NOT redraw, do NOT re-flag as a release blocker). ADR-0015's
+   no-ship-extracted-assets clause carries an owner exception for this one asset.
+2. **Apple corner geometry** — the TS renderer's iOS-0.225 cubic (`shapes.ts`) is CANONICAL
+   (it is the WYSIWYG bake truth). chip-preview must drop its Lamé n=5 and share the same
+   cubic path; Spec 02 + old ADR updated to cubic. C# oracle already cubic. [code + doc]
+3. **`ConfigDto.size` / `TrySetIconSize`** — `size` becomes a READ-ONLY observed field;
+   guard the writer so history/version replay can never resize the real desktop. [C# guard = F8]
+4. **Wallpaper gesture** — KEEP HEAD (blank-left-drag creates a zone; pan on middle/compare);
+   add a reversal amendment to ADR-0013. [doc]
+5. **New-icon auto-beautify** — default FALSE and HIDE the setting until a real watcher/
+   consumer exists (no promising an absent capability); Spec 06 updated. [code + doc]
+6. **Ordinary-file participation** — KEEP default-on (product is reversible + supervised;
+   kindPolicy gives one-click per-bucket opt-out); update Spec 01 to match. [doc]
+7. **Space key** — REVISED 2026-07-10 (owner challenge): the "focused button gets Space"
+   a11y clause does NOT apply to this product. Space stays a GLOBAL compare gesture (only
+   text inputs excluded). Reason: the inspector is button-dense and a just-clicked swatch/chip
+   keeps focus — letting Space activate it would break the compare gesture exactly when it is
+   used. Buttons remain keyboard-activatable via ENTER, so nothing is stranded. No code
+   behaviour change; amend Spec 02's generic Space-activates-button clause to record this. [doc]
+8. **Release identity** — standardize ALL changelogs to `Unreleased` until the owner names
+   the first number (root CHANGELOG, Host changelog.json, mock). [doc]
+
+**doc-sync part 2 status**: [x] code changes (2/5/7 web done `3a6ec48`; 3 size-guard C#=F8)
+· [x] ADR amendments 0013 gesture/Space/layout/confetti + 0014 five-material `9453656`
+· [x] changelogs → Unreleased `b1890fa` (Host json feature-copy still needs owner curation at release)
+· [ ] Spec 05 rewrite (schema 3 / web-renders-pixels) · [ ] Spec 01 rewrite (arch + trust models)
+· [ ] Spec 00 re-slice (Unreleased train) · [ ] Spec 02/03/04/06 body sync · [ ] code-style.md React/TS
+· deferred: per-ADR Superseded banners (status map above), historical banners on plans/reviews/evidence.
 
 ## F8 (Windows machine required) — the reconciliation list
 

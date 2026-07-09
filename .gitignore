@@ -33,3 +33,7 @@ Desktop.ini
 # Web (Bun + Vite)
 node_modules/
 src/DeskMakeover.Web/dist/
+
+# Real-icon dev fixtures (extracted MS/brand assets — NEVER ship, never commit)
+src/DeskMakeover.Web/public/mock-icons-real/
+.cache/

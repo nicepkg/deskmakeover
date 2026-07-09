@@ -290,3 +290,12 @@ Notes:
 | Design-panel reviews | `docs/reviews/` |
 | Live owner-gated runs | `docs/verification/owner-supervised-live-runs.md` |
 | Engineering conventions | `docs/conventions/code-style.md` |
+
+## Real icon fixtures (dev only)
+
+`node scripts/dev/fetch-real-icons.mjs` harvests REAL Windows system icons,
+app icons and the Win11 Bloom wallpapers from two open-source Win11 simulator
+clones into `src/DeskMakeover.Web/public/mock-icons-real/` (gitignored — these
+are extracted Microsoft/brand assets: local fixtures only, NEVER shipped or
+committed). The mock bridge prefers this pack automatically; without it the
+committed synthetic pack is the fallback.

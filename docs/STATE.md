@@ -148,7 +148,10 @@ batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
   (flat ΔE<2/SSIM≥0.995; filters SSIM≥0.98) · discovery fix (shell-namespace
   scan surfaces Recycle Bin + SystemIcon set; `DesktopItemKind.SystemIcon` +
   generalized per-user CLSID writers for This PC/Network/User Files — same
-  mechanism as RecycleBinIconWriter, owner-prototype-proven) · delete
+  mechanism as RecycleBinIconWriter, owner-prototype-proven) · AppxShortcut
+  joins CanStyle (UWP .lnk = ordinary IconLocation write, prototype-proven;
+  extraction ports Get-AppxIconSource manifest-logo resolution; delete the
+  purple APPX fallback tile) · delete
   `IconsSession.Render.cs` PNG-per-tile path · re-verify the v0.9 deletion
   (`MakeoverService`/`PreviewItemFactory` + their tests removed 2026-07-09,
   grep-verified only) with `dotnet build && dotnet test` · patch

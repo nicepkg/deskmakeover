@@ -159,14 +159,12 @@ function main() {
     add(join(appDir, f), `app-${f}`, uwp ? 'AppxShortcut' : 'Shortcut', label)
   }
 
-  // 3) piyushsuthar desktop set (webp, extracted originals)
+  // 3) piyushsuthar desktop set — ONLY Control Panel survives (this_pc and
+  //    recyclebin duplicate the better 256px win11React art; the「旧」suffix
+  //    the dupes forced looked terrible — owner call 2026-07-09).
   const deskDir = join(w11web, 'src', 'assets', 'icons', 'Desktop')
-  if (existsSync(deskDir)) {
-    for (const f of readdirSync(deskDir).filter((f) => f.endsWith('.webp'))) {
-      const base = f.replace('.webp', '')
-      add(join(deskDir, f), `p11-${f}`, 'SystemIcon', base === 'this_pc' ? '此电脑' : base === 'recyclebin' ? '回收站 (旧)' : '控制面板')
-    }
-  }
+  const cp = join(deskDir, 'control_panel.webp')
+  if (existsSync(cp)) add(cp, 'p11-control_panel.webp', 'SystemIcon', '控制面板')
 
   // 4) Real Win11 default wallpapers (owner order: the dev fallback wallpaper
   //    must be the REAL default, not a drawn scene). Light + dark Bloom.

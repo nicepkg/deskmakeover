@@ -15,10 +15,11 @@ exception visibility, size honesty, owned-verb context menu); desktop-mirror fid
 discipline; background auto-format CONTRACT (direction only — build is v1.2).
 
 **Non-scope**: ICO assembly (stays C# `IcoWriter`), sub-256 resampling (stays C#
-`IconResampler`), all shell writes (stay C#), UWP/MSIX icon editing (impossible
-safely — preview-only forever), taskbar interactivity, desktop Sort verbs,
-hidden-WebView2 background rendering (rejected, ADR-0015 D4), five-material icon
-styles (approved direction, sequenced AFTER this migration).
+`IconResampler`), all shell writes (stay C#), UWP PACKAGE-asset editing (the
+package logo itself is immutable; the desktop .lnk IS styleable — see §6),
+taskbar interactivity, desktop Sort verbs, hidden-WebView2 background rendering
+(rejected, ADR-0015 D4), five-material icon styles (approved direction,
+sequenced AFTER this migration).
 
 **Assumptions**: pre-release, no legacy compat required; dev loop = Mac browser +
 Vite + mock bridge; all Windows-gated verification batches into one session with
@@ -169,7 +170,7 @@ own taskbar (neutral glyphs, not their real pinned apps).
 ## 6. Item taxonomy the web receives
 
 `kind ∈ {Shortcut, UrlShortcut, AppxShortcut, RecycleBin, SystemIcon, Folder,
-RegularFile, Unsupported}` with `styleable` computed by C# (AppX always false).
+RegularFile, Unsupported}` with `styleable` computed by C#.
 **SystemIcon** = the per-user CLSID `DefaultIcon` family (This PC / Network /
 User Files / Control Panel) — the SAME HKCU registry mechanism the Recycle Bin
 writer uses, proven by the owner's original prototype (win-shell
@@ -183,8 +184,16 @@ Recycle Bin + the SystemIcon set; `DesktopItemKind.SystemIcon` + generalized
 CLSID writers (This PC {20D04FE0-3AEA-1069-A2D8-08002B30309D}, Network
 {F02C1A0D-BE21-4350-88B0-7367FC96EF3C}, User Files
 {59031A47-3F72-44A7-89C5-5595FE6B30EE}) wired behind the same consent grammar.
-Recycle Bin is styleable (owner-approved). Only true UWP/MSIX stays
-preview-only.
+Recycle Bin is styleable (owner-approved). **AppxShortcut (UWP) is styleable
+too** (correction 2026-07-09, owner-prototype-proven): the desktop entry is an
+ordinary `.lnk` — `IconLocation` write + full-bytes restore, identical to any
+shortcut; what is immutable is the PACKAGE asset, and the early recon wrongly
+promoted that fact into "the shortcut can't be masked". Windows batch:
+AppxShortcut joins CanStyle, source extraction reads the AppxManifest logo
+(port of the prototype's `Get-AppxIconSource`: AUMID → PackageFamilyName →
+manifest Application logo → scale-variant PNG), and the purple "APPX"
+fallback tile dies. Nothing on the desktop is un-styleable except genuinely
+broken/Unsupported items.
 
 ## 7. Background auto-format contract (v1.2 — direction approved, build later)
 

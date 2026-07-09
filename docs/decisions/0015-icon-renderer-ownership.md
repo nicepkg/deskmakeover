@@ -110,5 +110,8 @@ Detail: spec 02 §Shape System/§Colour Treatments/§Shortcut Marks, spec 06 §3
   (~5-7MB per 300-icon apply); preview traffic drops to zero.
 - 300-icon apply stays 20-30s (shell-write-bound, unchanged); progress UI required.
 - The parity corpus becomes a permanent regression net for the TS renderer.
-- Deleted: the v0.9 legacy styling path (IconStyler chain) and the mock styling
-  approximation — grep-verified, `dotnet build` re-verified in the Windows batch.
+- Deleted: the v0.9 `MakeoverService` / `PreviewItemFactory` path (grep-verified gone) and
+  the mock styling approximation (the web mock is now data-only). ⚠️ **status correction
+  2026-07-10:** `IconStyler.cs` + `IconStylerTests` are NOT yet deleted — they are still in
+  the tree; retiring them (after patching `ComparisonImageExporterTests` off IconStyler) is
+  F8 work, not done. The earlier "IconStyler chain deleted" wording overreached.

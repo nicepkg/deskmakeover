@@ -19,7 +19,9 @@ Zone/clarity composition moves from C# to the web layer: a single TS compositor
   apply → `convertToBlob('image/png')` → PNG bytes to the host, which writes the
   file and calls `IDesktopWallpaper.SetWallpaper`.
 
-`WallpaperBakeRenderer.cs` / `WallpaperComposer.cs` are DELETED. Source DECODE
+`WallpaperBakeRenderer.cs` / `WallpaperComposer.cs` are to be DELETED at F8 (⚠️ status
+correction 2026-07-10: both files are STILL PRESENT in the tree — the native-host handoff
+that retires them is not done; see STATE.md §F8). Source DECODE
 stays in C# (WPF/WIC handles JPEG XR/HEIC/cover-crop; browsers do not): the host
 hands the web one cover-cropped RGBA bitmap per source change. The per-edit
 host→web 33MB (4K) / 133MB (8K) frame traffic disappears; the bridge carries the

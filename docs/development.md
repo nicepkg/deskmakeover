@@ -10,6 +10,16 @@ supersedes ADR-0012's chrome decisions), **spec 05** (web-shell / bridge),
 **spec 02 v3** (visual language). The old `references/prototype/*.html` is a
 historical reference only — the specs are the source of truth.
 
+> ⚠️ **Architecture note (2026-07-10 — read before trusting the passages below).** The
+> pixel-production model has INVERTED since these were written: icons are now rendered by a
+> **CPU TypeScript compositor + Worker** and wallpaper by **Pixi**, both IN THE WEB. C# keeps
+> only window / source-image decode / ICO packaging / shell write / backup-restore. There is
+> no live SharedBuffer frame stream. **Native Mode B/C (host-driven) is NOT wired yet** — the
+> host is bridge **schema 1** while the web is **schema 3**, so only Mode A (browser + mock)
+> runs today. Any line below describing C#-produced pixels, a shared-buffer channel, or
+> host-rendered previews is STALE pending the Spec 05 rewrite — authoritative picture is
+> `STATE.md` §Bridge state + §Known doc drift.
+
 ---
 
 ## 0. Quick commands
@@ -22,7 +32,7 @@ See §3 for the three dev modes and when to use which.
 bun install                 # first time
 bun run dev                 # Vite dev server (default :5173, auto-increments) + mock bridge
 bun run build               # production web bundle -> dist/
-bun test                    # web unit tests (currently 168, incl. banned-colour scan)
+bun test                    # web unit tests (currently 297, incl. banned-colour scan)
 bun run lint                # oxlint
 ```
 
@@ -31,9 +41,9 @@ bun run lint                # oxlint
 .\.dotnet\dotnet.exe build
 .\.dotnet\dotnet.exe test   # engine + host + E2E (277 pre-v3; re-verify in F8)
 
-# --- package (Windows) ---
-pwsh scripts\dev\publish.ps1        # THE SHIPPABLE release (single-file ~64 MB) — see §5
-bun  scripts\publish-win.mjs        # DEV/local folder (214 MB, NOT for shipping) — see §5
+# --- package (Windows) — ⚠️ packaging is UNVERIFIED, not yet shippable (see §5) ---
+pwsh scripts\dev\publish.ps1        # publishes the App only (no ElevatedHelper, no web build) — see §5
+bun  scripts\publish-win.mjs        # DEV/local folder (uncompressed) — see §5
 ```
 
 ---
@@ -114,22 +124,28 @@ Any AI/tooling session can therefore develop the UI from a Mac (mode A) and the 
 branch continues on Windows (mode B/C) with zero code changes — the mode is chosen by
 how you LAUNCH, not by build flags.
 
+> ⚠️ **Modes B/C are NOT usable today.** The host is bridge schema 1; the web is schema 3,
+> and the web already calls RPCs (`wallpaper.applyBaked`, chunked `icons.applyBaked*`) the
+> host does not expose. Wiring the host to schema 3 is **F8** (see STATE.md §Bridge state).
+> Until then, **Mode A (browser + mock) is the only working loop.**
+
 ### 3.1 Mode A — browser + mock (any OS)
 
 ```bash
 cd src/DeskMakeover.Web && bun run dev     # http://localhost:5173 (auto-increments)
 ```
 Uses the **mock bridge** (`src/bridge/mock.ts` + `src/bridge/mock-desktop.ts`) — NO C#
-host needed. **The mock renders the FULL app** (since v3): a canvas-generated fake
-desktop (wallpaper + 23 icons, config-reactive restyles, per-style mark previews),
-both mirrors, all panels, settings, the welcome gate. Engine-true pixels it is NOT —
-compose frames, scrim rendering and real icon art remain host-only — but every
-interaction, layout, and motion is exercisable.
+host needed. **The mock renders the FULL app** (since v3): a fake desktop (wallpaper +
+a full ~120-icon pack from `public/mock-icons/`, config-reactive restyles, per-style
+mark previews), both mirrors, all panels, settings, the welcome gate. The web now
+renders the real preview + bake pixels itself (CPU TS icons, Pixi wallpaper) — the mock
+only supplies the DATA (grid/items/source URLs); every interaction, layout, and motion
+is exercisable.
 
 - `?debug=components` — the component gallery (primitives in dark + light).
 - First-run flows replay via the **DEV menu** (flask icon, title bar; DEV builds
-  only): per-key resets for `dm.welcome.done` / `dm.wow.icons` / `dm.consent.icons` /
-  `dm.changelog.seen`, plus clear-all-and-reload.
+  only): per-key resets for `dm.welcome.done` / `dm.consent.icons` / `dm.changelog.seen`,
+  plus clear-all-and-reload. (The `dm.wow.icons` first-screen reveal was removed.)
 - Design tokens live in `src/index.css` (`@theme` — type ladder, hairlines, washes).
   Accent is coral `#FF6F5E` **only**; blue/violet AND stock cool-gray utilities are
   banned and test-gated (§4). Light theme is the design first-citizen (ADR-0013).
@@ -169,7 +185,7 @@ yourself typing `npm`/`node`, stop.
 
 | Suite | Command | Count |
 |-------|---------|-------|
-| Web unit | `cd src/DeskMakeover.Web && bun test` | 168 |
+| Web unit | `cd src/DeskMakeover.Web && bun test` | 297 |
 | C# engine + host + E2E | `.\.dotnet\dotnet.exe test` (Windows) | 277 (pre-v3; re-verify in F8) |
 | Web lint | `bun run lint` (oxlint) | — |
 
@@ -190,12 +206,19 @@ yourself typing `npm`/`node`, stop.
 
 ## 5. Build / Package  ← the biggest gotcha lives here
 
+> ⚠️ **Packaging is UNVERIFIED — there is no proven shippable artifact yet.** `publish.ps1`
+> publishes the **App only** (no `ElevatedHelper.exe` — the one-click bake path would fail for
+> end users), and it does **not** build the web first even though the App carries an adjacent
+> `web/`. A bare exe is missing web + helper; the whole folder is not a single file. Nothing has
+> shipped (version `0.0.0`). Treat the "single shippable exe" story as an OPEN item until proven
+> on a real host (F8). The two scripts below still differ in output, but neither is release-ready.
+
 **There are TWO publish scripts. Do not confuse them.**
 
 | Script | Output | Size | Purpose |
 |--------|--------|------|---------|
-| **`scripts/dev/publish.ps1`** | `publish/DeskMakeover-v<ver>-win-x64/DeskMakeover.App.exe` | **~64 MB, single-file, compressed** | **THE SHIPPABLE RELEASE.** Self-contained → end users install **nothing** (no .NET). This is what you distribute. |
-| `scripts/publish-win.mjs` | `artifacts/win-x64/DeskMakeover/` (426 files) | 214 MB **uncompressed folder** | DEV/local smoke only. **Not** the shipping size. Also publishes the ElevatedHelper as a separate self-contained single-file. |
+| **`scripts/dev/publish.ps1`** | `publish/DeskMakeover-v<ver>-win-x64/DeskMakeover.App.exe` | ~64 MB, single-file, compressed | Intended shippable target, but **App-only** (no helper, no web build) — packaging UNVERIFIED (see banner). |
+| `scripts/publish-win.mjs` | `artifacts/win-x64/DeskMakeover/` | uncompressed folder | DEV/local smoke. **Not** the shipping size. Also publishes the ElevatedHelper as a separate self-contained single-file. |
 
 ```powershell
 # ship:
@@ -237,9 +260,9 @@ Notes:
    *standalone self-contained single-file* exe (it does not load code from the shared app
    folder). The ~70 MB is buying that boundary — do not collapse it. Safe slimming is
    single-file compression, not runtime-sharing.
-   - **Open item**: the single-file release folder is app-only (no `ElevatedHelper.exe`);
-     verify how the release delivers/embeds the helper before shipping, or the one-click
-     bake path fails for end users. (v1.0.0 shipped the same way — confirm it, don't assume.)
+   - **Open item (release blocker)**: `publish.ps1`'s output is app-only (no
+     `ElevatedHelper.exe`); the release must deliver/embed the helper before shipping or the
+     one-click bake path fails for end users. Nothing has shipped yet — this is unproven, verify on a real host.
 
 3. **WYSIWYG law** (spec 05 §3, ADR-0011): preview pixels **==** baked pixels. Web CSS
    scaling is viewport-fit only; never paint UI state the bake cannot reproduce. Zone-title
@@ -254,8 +277,9 @@ Notes:
    i18n/{en,zh-hans}.ts` carry a *"GENERATED by scripts/resx-to-i18n.ts — do not edit by
    hand"* header; the source is `src/DeskMakeover.App/Resources/Strings*.resx` (the C#
    host reads them via `UiText.cs`). To add/change a string, run
-   `python scripts/dev/upsert-strings.py <json>` (`{"en":{Key:val},"zh":{Key:val}}` — it
-   writes both resx), then regenerate the TS. Hand-editing only the TS works until someone
+   `python scripts/dev/upsert-strings.py <path-to-json>` (the JSON file holds
+   `{"en":{Key:val},"zh":{Key:val}}` — it writes both resx), then regenerate the TS.
+   Hand-editing only the TS works until someone
    regenerates, then your keys vanish (compile error / missing strings).
    **Mac-session convention**: strings authored off-Windows are added to the TS with a
    trailing `// PENDING-RESX` marker; the F8 Windows pass sweeps every marker into the
@@ -293,7 +317,7 @@ Notes:
 
 ## Real icon fixtures (dev only)
 
-`node scripts/dev/fetch-real-icons.mjs` harvests REAL Windows system icons,
+`bun scripts/dev/fetch-real-icons.mjs` harvests REAL Windows system icons,
 app icons and the Win11 Bloom wallpapers from two open-source Win11 simulator
 clones into `src/DeskMakeover.Web/public/mock-icons-real/` (gitignored — these
 are extracted Microsoft/brand assets: local fixtures only, NEVER shipped or

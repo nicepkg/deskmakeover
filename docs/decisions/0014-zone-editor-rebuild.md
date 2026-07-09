@@ -106,3 +106,19 @@ the compositor. Guided post-apply 整理模式 is deferred to v1.x.
   parity fixtures (F8 verifies on real host).
 - Spec 04 is rewritten in place (living spec); §7 acceptance now tests the TS
   compositor, the material/title recipes above, and the interaction contract.
+
+## Amendments
+
+- **2026-07-10 (owner, round 2 — D3/D4 material system EXPANDED).** D3's "ONE
+  material (Adaptive Frost)" and D4's single label-chip title were reversed after
+  the round-2 review: shipped behaviour is **five materials** and **four title
+  styles**, an **optional baked drop shadow** (D3's "no baked drop shadows" no
+  longer holds), and wallpaper **import / export**. The default Frost opacity moved
+  from `.60/.52` to about **`.74/.76`** (`src/compositor/material.ts`). The
+  ownership decision (compositor in the web, host shrinks) stands; only the
+  material/title catalogue widened. Formal record here supersedes the "one material"
+  wording in D3 above; Spec 04's body still needs the same widening (pending sync).
+- **2026-07-10 (status correction).** Bake runs on the MAIN thread via Pixi
+  `canvas.toBlob`, not an OffscreenCanvas worker as some passages imply. The
+  equal-gap ticks in D5 remain DEFERRED (not accepted). `WallpaperBakeRenderer.cs` /
+  `WallpaperComposer.cs` are still in the tree (F8 deletion — see the D1 note).

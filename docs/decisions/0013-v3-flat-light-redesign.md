@@ -85,6 +85,24 @@ fallback typography, a handful of load-bearing components/feel gaps).
 - **2026-07-08 (owner): copy law — no dashes** in any user-facing string
   (reads as AI text). All existing values purged; grep-check before adding
   strings.
+- **2026-07-10 (owner): D10 gesture — wallpaper canvas REVERSED.** D10 above
+  said drag = pan and zone creation is an explicit tool. Shipped behaviour
+  (kept by owner call): on the wallpaper canvas a blank left-drag CREATES a zone
+  directly; panning is middle-drag / compare-hold. The icons canvas keeps
+  drag = pan. D10's "explicit create tool" no longer holds for wallpaper.
+- **2026-07-10 (owner): D10 Space — stays a GLOBAL compare gesture.** The
+  "never hijacks focused-button activation" clause does NOT apply here: the
+  inspector is button-dense and a just-clicked control keeps focus, so letting
+  a focused button eat Space would break compare exactly when it is used. Space
+  is global compare (text inputs excluded); buttons activate via ENTER. Spec 02's
+  generic Space-activates-button a11y clause is amended to match.
+- **2026-07-10 (owner): layout is a RIGHT inspector**, not a left panel — the
+  canvas sits left, a 280px (248px compact) inspector sits right. (Spec 02/03's
+  "left 300px panel / compact drawer" language is superseded.)
+- **2026-07-10 (owner): multicolour celebration confetti** — one first-apply-per-
+  launch celebration (飘丝带 from both screen corners) is allowed a full festive
+  palette; a reviewed single-file exception to the coral-only rule (persistent UI
+  stays coral). The first-scan original→beautified reveal was TRIED then rolled back.
 
 ## Consequences
 

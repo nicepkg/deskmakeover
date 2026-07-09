@@ -172,6 +172,8 @@ function main() {
   for (const [src, out] of [
     [join('default', 'img0.jpg'), 'wallpaper-default.jpg'],
     [join('dark', 'img0.jpg'), 'wallpaper-dark.jpg'],
+    // ThemeD art doubles as the gamer-scenario wallpaper (dev menu).
+    [join('ThemeD', 'img0.jpg'), 'wallpaper-gamer.jpg'],
   ]) {
     const p = join(wallDir, src)
     if (existsSync(p)) cpSync(p, join(OUT, out))

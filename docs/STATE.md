@@ -151,7 +151,11 @@ batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
   mechanism as RecycleBinIconWriter, owner-prototype-proven) · AppxShortcut
   joins CanStyle (UWP .lnk = ordinary IconLocation write, prototype-proven;
   extraction ports Get-AppxIconSource manifest-logo resolution; delete the
-  purple APPX fallback tile) · delete
+  purple APPX fallback tile) · **replace `IconShapeGeometry.cs` with a port of
+  the web's canonical geometry** (`src/icon-compositor/shapes.ts` — the
+  Progressier CSS border-radius catalog, elliptical corners + §5.1 overlap
+  rule + Blob 10° rotate-refit; the C# coarse polygons are retired and the
+  golden-parity baseline for shapes moves web→C#) · delete
   `IconsSession.Render.cs` PNG-per-tile path · re-verify the v0.9 deletion
   (`MakeoverService`/`PreviewItemFactory` + their tests removed 2026-07-09,
   grep-verified only) with `dotnet build && dotnet test` · patch

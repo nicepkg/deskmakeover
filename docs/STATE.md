@@ -9,10 +9,11 @@ branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE
 Completed work is swept to `docs/journal/2026-07.md` (append-only). This file is a
 pointer: what is TRUE now, what is in flight, what comes next.
 
-> ⚠️ **Doc drift is live (2026-07-10).** Several specs/ADRs still describe the OLD
-> architecture and were flagged in the Codex audit. Until the correction sweep + owner
-> decisions land, trust THIS file and the CODE over the specs. The stale map is in
-> **§Known doc drift** below. New sessions: read that section before treating any spec as truth.
+> ✅ **Doc-sync sweep COMPLETE (2026-07-10).** The Codex-audit drift was reconciled:
+> specs 00/01/05 rewritten, 02/03/04/06 bodies synced, ADR amendments recorded,
+> changelogs → Unreleased, onboarding docs corrected. Specs are trustworthy again;
+> §Known doc drift below is kept as the RECORD of what was fixed (+ the few
+> deliberately deferred low-stakes items in §Decisions).
 
 ## Governing docs (current truth)
 
@@ -69,9 +70,11 @@ pointer: what is TRUE now, what is in flight, what comes next.
 3. F7: cross-vendor adversarial review (codex via /multi-ai) over the full diff.
 4. **This doc-sync sweep** — reconcile the specs/ADRs flagged in §Known doc drift.
 
-## Known doc drift (Codex audit 2026-07-10 — pending correction / owner decision)
+## Known doc drift (Codex audit 2026-07-10 — RESOLVED; kept as the record)
 
-Facts verified against HEAD. Specs are NOT yet rewritten; do not trust them over code.
+Facts verified against HEAD. Every item below has been corrected in the named docs
+(commits `6ec1ffc` / `f0542ff` / `9453656` / `80dbaf4`); this list stays as the map of
+what changed and why.
 
 - **Specs 01 & 05 — most misleading.** They describe C# producing pixels (SharedBuffer
   frame stream, WebView2-as-viewer, left 300px panel). CURRENT: icons rendered by CPU
@@ -123,12 +126,13 @@ Facts verified against HEAD. Specs are NOT yet rewritten; do not trust them over
 8. **Release identity** — standardize ALL changelogs to `Unreleased` until the owner names
    the first number (root CHANGELOG, Host changelog.json, mock). [doc]
 
-**doc-sync part 2 status**: [x] code changes (2/5/7 web done `3a6ec48`; 3 size-guard C#=F8)
-· [x] ADR amendments 0013 gesture/Space/layout/confetti + 0014 five-material `9453656`
-· [x] changelogs → Unreleased `b1890fa` (Host json feature-copy still needs owner curation at release)
-· [ ] Spec 05 rewrite (schema 3 / web-renders-pixels) · [ ] Spec 01 rewrite (arch + trust models)
-· [ ] Spec 00 re-slice (Unreleased train) · [ ] Spec 02/03/04/06 body sync · [ ] code-style.md React/TS
-· deferred: per-ADR Superseded banners (status map above), historical banners on plans/reviews/evidence.
+**doc-sync part 2: COMPLETE 2026-07-10.** Code 2/5/7 `3a6ec48` (3 size-guard = F8) ·
+ADR amendments `9453656` · changelogs → Unreleased `b1890fa` (Host json feature-copy
+still needs owner curation at release) · Specs 00/01/05 rewritten `6ec1ffc` ·
+Specs 02/03/04/06 bodies synced `f0542ff` · code-style.md two-stack rewrite.
+Still deferred (low-stakes): per-ADR Superseded status banners (map above suffices),
+historical banners on old plans/reviews/evidence, HarmonyOS font subsetting task,
+webview2-pitfalls SharedBuffer-era scope note.
 
 ## F8 (Windows machine required) — the reconciliation list
 

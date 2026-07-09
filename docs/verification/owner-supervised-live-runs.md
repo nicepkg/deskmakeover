@@ -1,8 +1,15 @@
 # Owner-supervised live runs — verification runbook
 
+> ⚠️ **DO NOT EXECUTE AS-IS — pending F8 rewrite (2026-07-10).** This checklist predates the
+> web-renders-pixels inversion and the schema-1→3 host work: the native host cannot yet drive
+> Web v3, there is no published `v1.1.0` build, the byte-identical wallpaper claim no longer
+> matches the dual-resolution path, and the icon-size edge pass was removed with the size control.
+> Two supervised live runs are also NOT a release gate (they miss all F8 + packaging work). The
+> live-run gate itself (a human click bakes the real desktop) stands; the STEPS here must be
+> rebuilt after F8. Authoritative state: `docs/STATE.md`.
+
 The one gate no automation may cross (ADR-0011 §7, spec 04 §5, spec 01 Safety
-Rules): the REAL desktop icon bake and the REAL wallpaper apply. Everything else
-in v1.1 is built, tested (277 .NET + 63 bun) and published. This runbook is the
+Rules): the REAL desktop icon bake and the REAL wallpaper apply. This runbook is the
 owner's checklist for signing those two operations off on the real machine.
 
 Why it can't be automated: both operations mutate the live desktop (icon caches,

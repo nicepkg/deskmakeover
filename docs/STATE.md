@@ -163,7 +163,10 @@ batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
   plate override now Original + LAYERED Mono; Flat = 极致单色 (segmented
   subject flat on a flat plate — port web segment.ts: border-flood +
   distance-from-field Otsu + guards); FilterStyle gains `Gloss`
-  (port web filters.ts gloss) · delete
+  (port web filters.ts gloss); MarkStyle renames Card→Shadow (neutral
+  translucent drop shadow, markColor inert) + Echo→Halo (silhouette outline);
+  marks are silhouette-aware on free-form (port web marks.ts stampMask +
+  outsideDistance) · delete
   `IconsSession.Render.cs` PNG-per-tile path · re-verify the v0.9 deletion
   (`MakeoverService`/`PreviewItemFactory` + their tests removed 2026-07-09,
   grep-verified only) with `dotnet build && dotnet test` · patch

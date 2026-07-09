@@ -94,6 +94,14 @@ designer-seat pixel acceptance (PASS after one FAIL round):
   Chasing it further in the plate layer is out of bounds.
 - Non-blocking polish noted by the designer: warm/cool chroma asymmetry may
   later be evened (warm cap ~0.10) if the field reads warm-tinted.
+- **D2 as-built (v8.1, designer PASS same day)**: generic-folder amber family
+  (chroma ≤0.10) + top-left tab (L −0.14, 9-20%); File family blue-violet
+  ~250° (C 0.05-0.06) via per-family chroma windows; System family true
+  neutral (C ≤0.015); the plate-level dog-ear was cut (documents carry their
+  own fold). Designer ruling: brand-artwork library folders (music/video)
+  KEEP their own plates — anchor fidelity beats group purity. The four-shape
+  split ships as the 统一外形/分类外形 toggle (default uniform); the designer
+  recommends folder-Bookmark by default — **owner decision pending**.
 
 ## Consequences
 

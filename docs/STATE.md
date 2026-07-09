@@ -64,14 +64,16 @@ pointer: what is TRUE now, what is in flight, what comes next.
 `scripts/dev/generate-mock-icons.mjs`).
 
 **In flight / next (web):**
-1. **ADR-0016 icon colour-field default** — CORE SHIPPED + designer-seat acceptance
-   PASS (recipe v7 after four owner live rejections; see ADR amendment). ⛔ Iron law:
-   icon SUBJECT pixels are never recoloured — separation only via plates/shadows/
-   outlines. Field mode + preset lineup (默认满彩/极简白/安静/原彩保真) + hue-spread
-   pipeline live through preview AND bake. Owed tail: T5 kind families + affordances +
-   kindShapes toggle · T6 colour-row 满彩 swatch + band depth UI · T7 glass rim rework ·
-   T8 tail letter badge · D4 corpus ΔE test · T9 cross-vendor adversarial review.
-   Plan: `docs/plans/2026-07-10-icon-colour-field.md` (status note on top).
+1. **ADR-0016 icon colour-field default** — SHIPPED through T6; designer-seat
+   acceptance PASS on v7 (base recipe) AND v8.1 (kind families). ⛔ Iron law:
+   icon SUBJECT pixels are never recoloured. Field mode + presets + hue spread +
+   kind families (amber folders/tab · blue-violet files · true-neutral system;
+   brand library folders keep own plates) + colour-row 满彩 swatch + 鲜明/柔和 +
+   统一外形/分类外形 toggle all live through preview AND bake. Owed tail: T7 glass
+   rim rework · T8 letter badge (re-evaluate: File family may cover it) · D4 corpus
+   ΔE test · T9 cross-vendor adversarial review · resx sweep of new PENDING-RESX.
+   ❓ OPEN owner decision: folder Bookmark shape ON by default (designer recommends;
+   comparison shots in .dev-shots). Plan: `docs/plans/2026-07-10-icon-colour-field.md`.
 2. Zone rebuild polish tail: equal-gap ticks (deferred, NOT accepted), rename-input polish,
    SwiftShader/`MAX_TEXTURE_SIZE` startup probe with reduced-res fallback, TS bake fixtures.
 3. Dark theme + zh locale full regression screenshots → `docs/plans/evidence/2026-07-v3/`.

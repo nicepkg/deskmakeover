@@ -268,11 +268,19 @@ The DEFAULT look (满彩 colour field, recipe v7 — designer-seat acceptance PA
   bake): global min-gap relaxation guarantees **12° between distinct plates
   inside a ±18° brand cap**; identical artwork keeps identical plates (three
   .docx files SHOULD match).
-- **Fallback**: no-hue sources take a slate family plate — the WHITE fallback
-  is retired from the default path (it survives only inside 原彩保真, where
-  strict 1:1 plate reproduction is the point). Kind colour families + light
-  in-container affordances (folder tab, document dog-ear) remain planned (D2);
-  the four-shape kind split stays an opt-in toggle, never the default.
+- **Kind families (D2, as accepted v8.1)**: generic folders plate as ONE amber
+  group (chroma capped 0.10) with a top-left tab affordance (same hue, L −0.14,
+  9-20% tall — sub-threshold shallower cuts read as nothing at 48px); no-hue
+  files take a blue-violet family (~250°, C 0.05-0.06, via per-family chroma
+  windows below the Vivid floor); system items a TRUE neutral (C ≤ 0.015) so
+  File-cold vs System-neutral actually separates. The plate-level dog-ear was
+  CUT (documents carry their own fold; a second one is noise). Special library
+  folders with brand artwork (music/video) keep their own plates — anchor
+  fidelity beats group purity (designer ruling: never flatten an existing
+  strong signal into the family). The WHITE fallback stays retired from the
+  default path (原彩保真 only). The four-shape kind split (统一外形/分类外形,
+  Folder→Bookmark / File→Tile / System→Circle) ships as a UI toggle, default
+  OFF; the designer recommends folder-By-type by default — owner decision open.
 
 **Honest hard limit (designer-acknowledged):** same-hue brand piles (the blue
 apps) cannot separate further at the plate level without breaking a law —

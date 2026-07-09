@@ -152,10 +152,12 @@ batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
   joins CanStyle (UWP .lnk = ordinary IconLocation write, prototype-proven;
   extraction ports Get-AppxIconSource manifest-logo resolution; delete the
   purple APPX fallback tile) · **replace `IconShapeGeometry.cs` with a port of
-  the web's canonical geometry** (`src/icon-compositor/shapes.ts` — the
-  Progressier CSS border-radius catalog, elliptical corners + §5.1 overlap
-  rule + Blob 10° rotate-refit; the C# coarse polygons are retired and the
-  golden-parity baseline for shapes moves web→C#) · delete
+  the web's canonical geometry** (`src/icon-compositor/shapes.ts` — Figma
+  corner-smoothing engine from squircle-path-kit (MIT) + authored cubics; the
+  C# coarse polygons are retired and the golden-parity baseline for shapes
+  moves web→C#) · **IconShape enum follows the owner-curated catalog**
+  (2026-07-09: Google/Brave/Squircle/Blob/Rectellipse culled; Hexagon/Diamond/
+  Flower added — see the web union in `bridge/types.ts`) · delete
   `IconsSession.Render.cs` PNG-per-tile path · re-verify the v0.9 deletion
   (`MakeoverService`/`PreviewItemFactory` + their tests removed 2026-07-09,
   grep-verified only) with `dotnet build && dotnet test` · patch

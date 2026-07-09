@@ -159,8 +159,10 @@ batch (host scan v2 / applyBaked / parity goldens / discovery fix — in F8).
   (2026-07-09: Google/Brave/Squircle/Blob/Rectellipse/Hexagon culled; Diamond/
   Flower/Pebble added — see the web union in `bridge/types.ts`; TileRenderer
   content placement gains the INSCRIBE_SHAPES rule from web compose.ts) ·
-  **ConfigDto gains `plateColor` (schema v2)** — plate/bare-white fill override,
-  Original-only (chief-UI/UX design 2026-07-09); FilterStyle gains `Gloss`
+  **ConfigDto gains `plateColor` (schema v2) + `monoStyle: Tonal|Flat`** —
+  plate override now Original + LAYERED Mono; Flat = 极致单色 (segmented
+  subject flat on a flat plate — port web segment.ts: border-flood +
+  distance-from-field Otsu + guards); FilterStyle gains `Gloss`
   (port web filters.ts gloss) · delete
   `IconsSession.Render.cs` PNG-per-tile path · re-verify the v0.9 deletion
   (`MakeoverService`/`PreviewItemFactory` + their tests removed 2026-07-09,

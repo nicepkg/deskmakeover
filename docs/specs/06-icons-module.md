@@ -215,14 +215,32 @@ manifest Application logo → scale-variant PNG), and the purple "APPX"
 fallback tile dies. Nothing on the desktop is un-styleable except genuinely
 broken/Unsupported items.
 
+**Participation policy (schema v3, chief-UI/UX + owner 2026-07-09).** A
+persistent per-BUCKET participation switch, `IconsStateDto.kindPolicy`
+(`{App, Folder, File, System}: boolean`, default all true — buckets over
+IconKind per `lib/kind-policy.ts`; Unsupported is ungoverned). ONE switch per
+bucket governs BOTH manual apply (that kind renders as-original, ships no
+master — RESTORE-FIRST) AND the future background auto-format (§7). It is NOT
+part of ConfigDto (that would pollute every preset/history entry) — it rides
+the module state, persisted via `icons.setLook`. **Cascade** (folded by
+`effectiveTileConfig`): `styleable:false` > per-icon override > kindPolicy —
+an icon the user styled individually stays styled even if its whole bucket is
+opted out. Two entry points, one state: the panel's collapsed 「参与美化的类型」
+chip section (shows even count-0 buckets — the persistent entry when the
+desktop has none of a kind) and the tile right-click 「所有<此类>不参与美化」.
+The RegularFile 「文件美化」 setting is subsumed as `kindPolicy.File`.
+
 ## 7. Background auto-format contract (v1.2 — direction approved, build later)
 
 - Renders in C# in-process (frozen TileRenderer path); never via hidden WebView2.
 - Tray-resident watcher: FileSystemWatcher on user+public Desktop with poll
   fallback; user-set debounce 2-10s (default 4s) coalescing installer bursts.
 - Incremental: the `active-makeover.json` ledger gains styled-item ids + source
-  hashes; only NEW/changed items are styled; user per-tile 「保留原样」 exceptions
-  and styleable:false items are NEVER touched.
+  hashes; only NEW/changed items are styled; user per-tile 「保留原样」 exceptions,
+  styleable:false items, AND any bucket with `kindPolicy` false (§6) are NEVER
+  touched — a newly-added folder is auto-styled ONLY when auto is ON, the Folder
+  bucket participates, and the icon has no per-icon keep. The type section is the
+  退订面 (opt-out surface) for auto-format.
 - Trust contract: default OFF; the offer appears in the post-apply DoneCard; the
   FIRST run is a proposal (「有 N 个新图标，要美化吗？」), silent mode only after
   that consent; every run lands in version history as an undoable entry; the icons

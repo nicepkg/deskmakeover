@@ -90,6 +90,15 @@ decided:
   Windows batch. Nullable/enum additions are strict-decoder-safe.
 - **Gloss filter** live (TS `filters.ts`); marks silhouette-aware; Card→Shadow,
   Echo→Halo (MarkStyle enum renamed — C# enum syncs in the batch).
+- **Plate auto-detect** — a shaped icon fills with its OWN plate colour, not
+  white, when the silhouette is an absolute square/rounded-square/circle with a
+  uniform outer ring and a flat body (segment.ts detectFlatPlate; owner-gated
+  strictly to avoid mis-firing on Outlook-shaped / gradient icons).
+- **Participation policy `kindPolicy`** — schema v3, `IconsStateDto.kindPolicy`
+  (App/Folder/File/System buckets), a persistent participation layer governing
+  manual apply + future auto-format; cascade styleable>override>kindPolicy. C#
+  `IconsContracts.cs` + auto-format read the same map (Windows batch). Detail:
+  spec 06 §6/§7.
 
 Detail: spec 02 §Shape System/§Colour Treatments/§Shortcut Marks, spec 06 §3.11.
 

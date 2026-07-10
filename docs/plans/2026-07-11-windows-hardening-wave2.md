@@ -126,6 +126,27 @@ the driver verify + the reader/applier port contract), so it is one sequential o
   P2-7; `[WINDOWS-VERIFY]` markers for the COM/FlushFileBuffers paths (no msvc runtime on host).
 - **Phase 9 gate:** every one of the 7 fixes ships a red→green regression test.
 
+## Landed (2026-07-11, lead-verified)
+
+Apply/txn/CAS bundle complete — `0b71476` P1-4 (verify = `new_fp == expected_applied`, applier
+returns achieved fp) · `609b72d` P1-10 (fingerprint the styled surface, host-tested
+`fingerprint_surface.rs`) · `59f44d2` P1-14 (`AssetStore::put_empty_variant` + existence verify)
+· `d7cbade` P2-5 (only `Ok(None)` → conflict; real errors fail the batch) · `2ed365b` P1-9
+(`durable.rs::write_atomic`, temp+fsync+rename) · `834cb2e` P2-2 (single-txn idempotent migrate)
+· `d21ee1f` P1-5 folded (append failure rolls back mutated items). Every fix ships a red→green
+regression test; independently re-run by the lead: dm-domain 24 · dm-operations 54 · dm-windows 31,
+0 failed; msvc cross-check clean. M6 wiring note: the real Windows `AssetStore` must place the empty
+ICO at `paired_empty(primary.path)` to match the applier (documented in the trait comments).
+
+**Flagged, NOT folded (deliberate — need their own decision/task):**
+- **P1-12** — spec 06 §6 is ambiguous on SystemIcon (documented registry-styleable yet
+  `is_styleable` excludes it); route to the classification owner with the spec in hand.
+- **P1-7** — txn-id allocator + committed-wins precedence is its own small task (allocation
+  semantics + recovery precedence + test surface), required **before apply is wired at M6**.
+- **P2-4** — driver-side checkpoint CONFLICTS with the current recovery-owns-truncation invariant
+  (`recover_from_journal_truncates_the_journal_after_reconciling` asserts the driver leaves the
+  journal intact). Needs a who-owns-truncation design decision first; not a fold-in.
+
 ## Not in this wave (explicit)
 
 OUT-OF-SCOPE by design: P1-11 (manual undo/restore txn — post-M6 UI), P1-13 (Public-desktop consent

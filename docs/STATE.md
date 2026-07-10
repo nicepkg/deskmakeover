@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-10 (owner approved the subject×plate two-axis colour reshape — spec in flight; ladder v2 + control grammar v3 shipped)
+updated: 2026-07-10 (REPLATFORM DECIDED: Tauri 2 + Rust, ADR-0019/0020/0021 — F8 is void; also: two-axis reshape + preset collection v2 shipped)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -9,6 +9,16 @@ branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE
 Completed work is swept to `docs/journal/2026-07.md` (append-only). This file is a
 pointer: what is TRUE now, what is in flight, what comes next.
 
+> 🚨 **REPLATFORM DECIDED (2026-07-10, owner + 4-seat adversarial panel incl.
+> Codex).** The product moves to **Tauri 2 + Rust**; .NET exits. One Rust icon
+> core (WASM preview + native apply/background) is the single pixel truth in
+> v1.0; the TS compositor is FROZEN as the parity oracle until certification;
+> background resident auto-format ships in v1 (spec 07); the global transparent
+> arrow overlay is the default and the 60s penance gate retired. Read:
+> **ADR-0019 / ADR-0020 / ADR-0021**, plan
+> `docs/plans/2026-07-10-tauri-migration.md` (M0–M8), panel record
+> `docs/reviews/2026-07-10-tauri-rust-migration-panel.md`. §F8 below is VOID.
+
 > ✅ **Doc-sync sweep COMPLETE (2026-07-10).** The Codex-audit drift was reconciled:
 > specs 00/01/05 rewritten, 02/03/04/06 bodies synced, ADR amendments recorded,
 > changelogs → Unreleased, onboarding docs corrected. Specs are trustworthy again;
@@ -17,6 +27,8 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 ## Governing docs (current truth)
 
+- **ADR-0019/0020/0021 + `docs/plans/2026-07-10-tauri-migration.md`** — the
+  Tauri 2 + Rust replatform, background-resident v1 (spec 07), arrow default.
 - **ADR-0013** + amendments — v3 "Premium Flat": light-first OKLCH, follows system;
   bundled Inter + HarmonyOS Sans SC; version narrative RESTORED (About version line +
   in-app changelog, auto-opens once per UPDATE, never on first install).
@@ -30,12 +42,13 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 ## Bridge state (the P0 reality)
 
-- Web bridge = **schema 3** (`src/DeskMakeover.Web/src/bridge/types.ts`,
-  `BRIDGE_SCHEMA_VERSION = 3`); C# host = **schema 1** (`Contracts.cs`, `Version = 1`).
-- Web already calls `wallpaper.applyBaked` + chunked `icons.applyBaked*`; the host still
-  exposes the OLD `icons.setConfig` / `icons.apply` / `wallpaper.recompose`.
-- **Native host CANNOT drive Web v3 today.** Only the browser/mock loop runs. Wiring the
-  host to schema 3 is F8 (Windows machine required). Spec 05 must be rewritten to schema 3.
+- Web bridge = **schema 4** (`src/DeskMakeover.Web/src/bridge/types.ts`,
+  `BRIDGE_SCHEMA_VERSION = 4`, two-axis subject×plate); C# host = **schema 1**
+  (`Contracts.cs`) and will NEVER be wired — the host is replaced by the Tauri/Rust
+  stack (ADR-0019). Only the browser/mock loop runs today.
+- Under Tauri the contract is GENERATED from `dm-contracts` (tauri-specta); the
+  schema-1/4 split is the standing proof that hand-mirrored schemas fail.
+- Spec 05 rewrite (Tauri bridge) happens alongside M2 of the migration plan.
 
 ## Recently shipped (web side, Mac mock loop → swept to `docs/journal/2026-07.md`)
 
@@ -57,9 +70,9 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 ## Live now — web, through commit `b881568`
 
-**297 bun tests + `tsc -b` green**; browser visual-acceptance evidence
+**356 bun tests + `tsc -b` green**; browser visual-acceptance evidence
 `docs/plans/evidence/2026-07-icons-v2/` (01-75). The contract truth is
-`src/DeskMakeover.Web/src/bridge/types.ts` (bridge **schema 3**). Mock desktop = a full
+`src/DeskMakeover.Web/src/bridge/types.ts` (bridge **schema 4**). Mock desktop = a full
 ~120-icon fake desktop (`bridge/mock-desktop.ts` + `public/mock-icons/`, PNG pack from
 `scripts/dev/generate-mock-icons.mjs`).
 
@@ -206,37 +219,20 @@ Still deferred (low-stakes): per-ADR Superseded status banners (map above suffic
 historical banners on old plans/reviews/evidence, HarmonyOS font subsetting task,
 webview2-pitfalls SharedBuffer-era scope note.
 
-## F8 (Windows machine required) — the reconciliation list
+## F8 — VOID (superseded 2026-07-10 by the ADR-0019 replatform)
 
-- **Host → schema 3**: implement `wallpaper.getSource` (WIC decode + cover-crop → RGBA/PNG),
-  `wallpaper.applyBaked` (PNG → write file + SetWallpaper), `wallpaper.exportPng`,
-  `wallpaper.setImportedSource`, `wallpaper.setLook`; chunked `icons.applyBaked` →
-  GeneratedIconStore; `icons.scan` v2 (256px `sourceUrls` incl. Recycle Bin ×2 + arrowUrl).
-- **Parity fixtures**: 5 wallpaper looks (legacy C# vs TS bake, ΔE<2 / SSIM>0.99); icon
-  golden oracle (flat ΔE<2/SSIM≥0.995; filters SSIM≥0.98).
-- **Delete-at-F8 (still present today)**: `WallpaperBakeRenderer.cs` / `WallpaperComposer.cs`
-  + dotnet tests; `IconStyler.cs` + `IconStylerTests` (patch `ComparisonImageExporterTests`
-  off it first); `IconsSession.Render.cs` PNG-per-tile; dead `StylePreset` statics.
-- **Port web→C# geometry**: replace `IconShapeGeometry.cs` with a port of `shapes.ts` (Figma
-  corner-smoothing); IconShape enum follows the 11-shape curated catalog (+Diamond/Flower/Pebble).
-- **ConfigDto parity**: `plateColor`, `monoStyle: Tonal|Flat`, `Gloss` filter, Card→Shadow /
-  Echo→Halo mark renames, silhouette-aware marks; then port segment.ts / filters.ts / marks.ts.
-- **Host-side error capture** (web LIVE, contract ready): AppDomain/TaskScheduler/ThreadException
-  + WebView2 ProcessFailed → file log; `diagnostics.getInfo`; `host-error` event; native crash dialog.
-- **resx i18n sweep**: `PENDING-RESX` markers in `src/.../i18n/*.ts` → `Strings*.resx` via
-  `scripts/dev/upsert-strings.py <path-to-json>`; regenerate TS; delete dead strings.
-- **Fonts attribution** line in About (HarmonyOS Sans license — not yet rendered).
-- **WebView2 host hardening** audit (webview2-pitfalls.md §补丁清单) against `Host/WebShellWindow.cs`.
-- `dotnet build && dotnet test` (was 277 green pre-v3) + real-host verify (fonts/IME/DPI/125%).
-- **Release packaging is UNVERIFIED**: `scripts/dev/publish.ps1` publishes only the App (no
-  ElevatedHelper), does not build Web first, yet the App depends on an adjacent `web/`. The
-  "single shippable exe" narrative does NOT hold — treat as incomplete until proven.
+The C#-host reconciliation list that lived here is dead work: the host is never
+wired; the Tauri/Rust migration plan (`docs/plans/2026-07-10-tauri-migration.md`)
+replaces it. Items that CARRY FORWARD into the plan (not lost, re-homed):
+wallpaper get-source/apply (M4) · parity fixtures → the TS-oracle corpus +
+tri-target harness (M0/M5) · host error capture → Rust tracing/minidumps (M2) ·
+fonts attribution line in About (M8) · packaging made real → NSIS + helper (M8) ·
+**findability gate (ADR-0016 D4)** at release exit (M8) · i18n: the resx sweep is
+CANCELLED — TS dictionaries become the source of truth (ADR-0019 defaults).
 
-- **Findability gate (ADR-0016 D4)**: at F8 exit, default look, 20 random targets —
-  locate time/error rate not worse than the stock-desktop threshold (owner-supervised).
-
-⚠️ **Owner-only gates unchanged**: supervised LIVE icon-bake + wallpaper-apply (never
-auto-triggered) — `docs/verification/owner-supervised-live-runs.md` (itself pending F8 rewrite).
+⚠️ **Owner-only gates unchanged**: supervised LIVE icon-bake + wallpaper-apply +
+resident-mode audit (never auto-triggered) —
+`docs/verification/owner-supervised-live-runs.md` (rewrite for the Tauri stack at M8).
 
 ## Owner rules (durable)
 
@@ -251,8 +247,10 @@ auto-triggered) — `docs/verification/owner-supervised-live-runs.md` (itself pe
 - **Control scale unified app-wide**: segmented `sm` (22px/11px), chip buttons 11px on every
   page. Page-scale adjustments touch the TEXT layer only, never inflate controls.
 - Presets never carry a shortcut mark; nothing arrow-shaped near preset thumbnails.
-- The native arrow is legal but gated (60s penance sheet); the welcome survey must never
-  reveal it is a gate. (The roast/penance tone is a DELIBERATE owner brand choice — do not soften.)
+- **Arrow semantics (ADR-0021, 2026-07-10)**: the global transparent overlay is the
+  DEFAULT; every shortcut is redrawn; 「保留原样」 = subject + baked classic arrow;
+  the 60s penance gate RETIRED (its object no longer exists). The rest of the
+  welcome-gate ritual is untouched owner brand ceremony — do not soften it.
 - ⛔ **Icon subject pixels are never recoloured** (ADR-0016 D8, owner 2026-07-10):
   every icon keeps its own colours; looks differentiate via plates, silhouette
   shadows/halos, outlines, backgrounds — never by re-inking some subjects.
@@ -264,5 +262,7 @@ auto-triggered) — `docs/verification/owner-supervised-live-runs.md` (itself pe
 
 ## Blockers
 
-- None for web development. F8 needs a Windows machine. Release gates: signing cert (owner),
-  public repo visibility (owner), first version number (owner).
+- None for web/core development (M0/M2/M5 run on Mac). M1 spikes + M3/M4/M7/M8
+  need the Windows box (SSH/Tailscale, logged-in interactive session). Release
+  gates: signing cert (owner), public repo visibility (owner), first version
+  number (owner).

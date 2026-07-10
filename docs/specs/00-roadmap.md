@@ -20,24 +20,26 @@ styles, clarity dim, import/export, backup/one-click return) + **设置** (theme
 language / local data / about + changelog). zh-Hans + English, light-first
 following the system. Specs 01-06 describe it; `docs/STATE.md` tracks it.
 
+**Two v1 additions (owner, 2026-07-10):** 后台常驻自动美化 (background resident
+auto-format, spec 07 + ADR-0020) and the global transparent shortcut-arrow
+default (ADR-0021) ship in the first release.
+
 **Where it stands:** the web side is COMPLETE and green in the browser/mock loop
-(297 tests). The remaining distance to release is **F8 — the Windows host pass**
-(STATE.md §F8 is the authoritative list):
+(356 tests). **The old "F8 Windows host pass" is VOID** — the product replatforms
+to Tauri 2 + Rust (ADR-0019: the C# host never left schema 1 and its bridge was
+WebView2-specific; the panel priced finish-F8-then-migrate as the worst path).
+The remaining distance to release is the migration plan
+`docs/plans/2026-07-10-tauri-migration.md` (M0 freeze → M1 go/no-go spikes → M2
+Tauri foundation → M3 vertical slice → M4 platform breadth ∥ M5 Rust icon core →
+M6 single-truth cutover (WASM+native, TS pixel code deleted after certification)
+→ M7 resident mode → M8 release engineering + .NET deletion).
 
-1. Host → bridge schema 3 (`wallpaper.getSource/applyBaked/...`, chunked
-   `icons.applyBaked*`, `icons.scan` v2 with sourceUrls) + host-side error capture.
-2. Golden parity fixtures (web renderer vs frozen C# oracle) + legacy renderer
-   deletions (IconStyler, WallpaperBakeRenderer/Composer, …).
-3. resx i18n sweep (PENDING-RESX markers → Strings*.resx → regenerate TS).
-4. Release packaging made REAL (publish.ps1 currently App-only: no
-   ElevatedHelper, no web build — unverified; see development.md §5).
-5. `dotnet test` re-verified + real-host checks (fonts/IME/DPI/125% hairlines).
-
-**Exit gate:** web + dotnet tests green (0 warnings) · parity fixtures pass ·
-fresh-VM smoke (apply → reboot → restore, zero residue) · owner-supervised live
-runs (icon bake + wallpaper apply; checklist pending F8 rewrite) · signed exe
-passes SmartScreen (OV/individual cert — owner) · owner names the version
-number · repo made public (it exists, currently PRIVATE).
+**Exit gate:** bun + cargo tests green · TS↔Rust parity corpus certified +
+wasm↔native byte-equality CI · kill-point recovery + spec 07 resident battery ·
+fresh-VM matrix (apply → reboot → restore, zero residue; Win10 22H2/Win11) ·
+owner-supervised live runs (manual + resident) · signed exe passes SmartScreen
+(OV/individual cert — owner) · .NET tree deleted (`last-dotnet` tag) · owner
+names the version number · repo made public (it exists, currently PRIVATE).
 
 > Platform guardrails (ADR-0004) stand: one hero action forever; modules are an
 > exclusion checklist, not a toolbox; risk tiers cold/warm/hot with the global
@@ -46,10 +48,10 @@ number · repo made public (it exists, currently PRIVATE).
 
 ## Next (post-first-release candidates — owner picks and numbers them)
 
-- **新图标自动美化 (keep-up), done honestly** — a real watcher / app-launch
-  catch-up consuming `keepNewIconsStyled`; the setting un-hides and the C# side
-  renders via the reserved background renderer with the spec 06 §7 trust
-  contract (default OFF, first-run proposal, undoable history entries).
+- ~~新图标自动美化 (keep-up)~~ — **promoted into v1** (ADR-0020, spec 07; native
+  Rust renderer, reconcile-led watcher, incremental-ledger restore). Post-v1
+  candidates here are the EXTENSIONS: silent file-wrapping promotion, Shell-level
+  virtual-item coverage, machine-level public-desktop mode.
 - **系统净化 module** (HKCU one-shot, warm tier, no elevation): start-menu
   recommendations, lock-screen Spotlight tips, Explorer promotions, settings
   suggestions, advertising ID, search highlights. Toggle list + 并入一键美化 +

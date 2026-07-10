@@ -385,8 +385,10 @@ sections above, these win.
   absolute pixels and `shape-paths.SWATCH` MUST equal the swatch box.
 - **The 无 dialect**: one slash-circle glyph (`NoneGlyph`) for every axis's none
   option, always FIRST in its row. Dashed = auto (AutoDot); slash = none; never
-  conflated. The native Windows arrow (`WinArrowGlyph`, OS-blue `#0067C0`) sits
-  LAST behind the 60s penance gate; its blue never takes the accent.
+  conflated. The classic-arrow mark is an ordinary BAKED option (ADR-0021: the
+  native overlay is globally transparent by default; the 60s penance gate retired
+  with it). `WinArrowGlyph`'s OS-blue `#0067C0` remains an OS-authentic depiction
+  and never takes the accent.
 - **Selection grammars**: axis rows = `SwatchPicker` (uniform 28px tiles, wrap,
   disabled roadmap slots at 40% opacity); welcome-flow choices = `ChoiceList`
   (inset rows, spring ✓, coral ink) + right-set content-width 继续.
@@ -400,6 +402,7 @@ sections above, these win.
   AND no original). Slow updates (>200ms) dim the canvas to 88%, never block it.
 - **Copy law**: user-facing strings never contain dashes (owner decree; AI-text
   tell). Sentences split with 。/；/： instead.
-- **Ceremonies added**: ArrowGateSheet (native-arrow penance) and the welcome
-  gate (language → brand → two-question survey → roast/bluff/typed confession).
-  Both reduced-motion complete; cancel is always instant.
+- **Ceremonies added**: the welcome gate (language → brand → two-question survey
+  → roast/bluff/typed confession); reduced-motion complete; cancel is always
+  instant. ArrowGateSheet (native-arrow penance) RETIRED per ADR-0021 — its
+  object no longer exists; the component is deleted at the M6 cutover.

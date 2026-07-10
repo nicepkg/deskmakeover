@@ -35,23 +35,35 @@ output is deterministic (no GPU float variance), and zero dependencies are added
 GPU is a reserved optimization if visual acceptance shows scrub lag at large icon
 counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
 
-## 1. Renderer ownership (ADR-0015 digest)
+## 1. Renderer ownership (ADR-0019 digest; supersedes the ADR-0015 table)
 
-- The web renderer is authoritative for everything the user SEES and for the 256px
-  RGBA master of every applied icon.
-- The web NEVER emits sub-256 sizes. C# `GeneratedIconStore` downscales the master
-  through the linear-light `IconResampler` ladder [256,48,32,24,20,16] and `IcoWriter`
-  assembles — both byte-for-byte unchanged.
-- C# `TileRenderer` + its pipeline are FROZEN: parity oracle + reserved background
-  renderer. Freeze = banner comment in the C# files + this spec + no new styles in C#.
-  New styles ship TS-only until background auto-format is built (v1.2), which renders
-  in C# in-process for unattended writes.
-- Parity: golden PNGs from C# at 256 only; ~15-20 source canvases × sampled 60-100
-  style cells. Tolerance: flat shape/color ΔE<2 AND SSIM≥0.995; glass/pixel/sticker
-  SSIM≥0.98 (visual parity, owner-approved — bit-exactness is off the table across
-  GPU/CPU). The corpus is the TS renderer's permanent regression net.
+- **One Rust core (`dm-icon-core`) is the single algorithm truth source in v1.0**:
+  compiled to WASM for in-window preview + manual bake, and to native for apply and
+  the resident background path (spec 07). Preview, bake, and background render the
+  SAME code — the WYSIWYG law becomes structural.
+- The core is authoritative for everything the user SEES and for the 256px RGBA
+  master. Sub-256 sizes: `dm-icon-codec` ports the linear-light resample ladder
+  [256,48,32,24,20,16] + ICO assembly from C# `IconResampler`/`IcoWriter`
+  (semantics byte-for-byte).
+- **The TS compositor is FROZEN** (banner comments; no new styles, no fixes except
+  oracle corrections): it is the PRIMARY parity oracle for the Rust port and is
+  deleted only after the M6 certification gate (owner order 2026-07-10: never
+  before the rewrite is written AND verified). The frozen C# `TileRenderer`
+  remains an oracle only for the legacy style subset it still covers.
+- Parity gates (ADR-0019): TS↔Rust — classification/branch/plate-seed decisions
+  exactly equal; pixels SSIM≥0.995 / bounded ΔE (documented regional tolerances
+  for blur/filters). Rust-WASM↔Rust-native — **byte-equal** (libm-routed
+  transcendentals, no FMA, no SIMD in core v1). Golden updates require reviewed
+  `--bless`; the corpus lives in `testdata/icons/`.
 
-## 2. Bridge contract (icons.* — schema 3)
+## 2. Bridge contract (icons.*)
+
+> **Replatform note (ADR-0019)**: the code truth is `bridge/types.ts`
+> (`BRIDGE_SCHEMA_VERSION = 4`, two-axis subject×plate per ADR-0018). Under Tauri
+> the SAME verbs and semantics ride Tauri commands + the scoped asset protocol;
+> the DTOs below are generated from `dm-contracts` (tauri-specta) — hand-mirrored
+> schemas are banned. Transport-era details (WebAssets host, JSON postMessage
+> limits) are historical rationale, not requirements.
 
 - `icons.getState → { config, overrides, applied, dirty, history, settings }` —
   unchanged shape minus render fields.
@@ -66,10 +78,13 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
   (raw RGBA of 300 icons = 78.6MB and cannot ride one JSON postMessage; PNG total
   ≈5-7MB). Sequence: `applyBakedBegin{revision,count}` → N× `applyBakedChunk{items:
   [{id, sourceIndex, masterPng}]}` → `applyBakedCommit{config,overrides} → {ok,
-  applied}`. C# decodes → `GeneratedIconStore.Save` → shell writers, all unchanged.
-  Apply is RESTORE-FIRST (today's `DesktopBakeService.ApplyAsync` semantics):
-  「保留原样」overrides ship NO master — the restore step returns them to their
-  originals. Multi-source items bake one master per source: `sourceIndex` maps
+  applied}`. The host decodes → generated-icon store → shell writers.
+  Apply is INCREMENTAL per item (ADR-0019; the old C# restore-entire-desktop-first
+  semantics are NOT ported): owned fields update via compare-and-swap against the
+  ledger fingerprint; externally-modified items surface as conflicts.
+  「保留原样」overrides ship NO master — they revert to their recorded originals
+  (+ the baked classic arrow per ADR-0021 while an overlay-hiding makeover is
+  active). Multi-source items bake one master per source: `sourceIndex` maps
   Recycle Bin 0=empty / 1=full. Every advertised master MUST arrive; the web
   aborts before commit if any source failed to decode.
 - `icons.applyVersion` becomes a WEB flow: load the history entry's config into the
@@ -116,10 +131,11 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
 9. **Compare**: global hold-to-compare pill stays primary. The per-tile
    press-to-peek stays but gains a cursor affordance + tooltip on first hover
    (discoverability), and never conflicts with drag/menu gestures.
-10. **Native-arrow gate**: the SIXTY-second penance stare, EVERY time. The gate
-    is deliberately obnoxious — that is its function (owner decree, re-affirmed
-    2026-07-09; a batched-disposition softening to one-time 8s was reverted the
-    same day).
+10. **Native-arrow gate: RETIRED (ADR-0021, owner 2026-07-10).** The native
+    overlay is globally transparent by default and every shortcut is redrawn, so
+    the gate's object no longer exists. The classic-arrow mark is an ordinary
+    baked option with no ceremony. (History: the 60s penance stare was owner
+    decree 2026-07-09; superseded, not softened.)
 11. **Colour is two axes; 极致单色 is a subject/background duotone** (owner +
     chief-UI/UX 2026-07-09). The Colour row is the FOREGROUND axis; a 背景色
     (plate) rides the row's colour entry (前景/背景 dual-tab; Original + Mono, BW
@@ -302,29 +318,16 @@ contract facts here:
 - **v2 parking lot** (recorded, not built): per-type hue BIAS over Field
   derivation · copy-once from another type · live follow-type chains.
 
-## 7. Background auto-format contract (direction approved, build later)
+## 7. Background auto-format — SUPERSEDED by spec 07 (ADR-0020)
 
-> **Status 2026-07-10 (owner decision):** nothing consumes `keepNewIconsStyled`
-> yet — no watcher, no catch-up. Accordingly the settings toggle is **HIDDEN**
-> (`SHOW_KEEP_UP=false` in settings-page.tsx) and the default flipped to
-> **false** in both mock and `AppSettings.cs`, honouring this section's
-> default-OFF trust contract. Un-hide + re-default only when the build below ships.
-
-- Renders in C# in-process (frozen TileRenderer path); never via hidden WebView2.
-- Tray-resident watcher: FileSystemWatcher on user+public Desktop with poll
-  fallback; user-set debounce 2-10s (default 4s) coalescing installer bursts.
-- Incremental: the `active-makeover.json` ledger gains styled-item ids + source
-  hashes; only NEW/changed items are styled; user per-tile 「保留原样」 exceptions,
-  styleable:false items, AND any bucket with `kindPolicy` false (§6) are NEVER
-  touched — a newly-added folder is auto-styled ONLY when auto is ON, the Folder
-  bucket participates, and the icon has no per-icon keep. The type section is the
-  退订面 (opt-out surface) for auto-format.
-- Trust contract: default OFF; the offer appears in the post-apply DoneCard; the
-  FIRST run is a proposal (「有 N 个新图标，要美化吗？」), silent mode only after
-  that consent; every run lands in version history as an undoable entry; the icons
-  module shows 「新增图标」markers since last visit + an always-visible toggle
-  chip; turning it off never retro-reverts (and says so). App closed → next-open
-  audit summary is the primary surface; Windows toast optional (settings).
+Background resident auto-format is a **v1.0 feature** (owner, 2026-07-10) with
+**spec 07** as the normative behaviour spec: native Rust rendering (never C#
+TileRenderer, never a hidden WebView), reconcile-led watcher, incremental-ledger
+versions with pinned hue seeds, and the consent ladder (default OFF · first-run
+proposal · opt-in silent · every run undoable · kindPolicy/per-icon keeps as the
+opt-out surface — all carried over from this section's original trust contract).
+`keepNewIconsStyled` un-hides when the M7 build ships
+(`docs/plans/2026-07-10-tauri-migration.md`).
 
 ## 8. Verification
 

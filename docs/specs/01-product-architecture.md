@@ -19,9 +19,10 @@ Windows 回到它本该的样子」 — a beauty camera for the desktop, never a
 additive voice only; no anxiety/cleaner/fear language.
 *Owner-decreed exception (2026-07-10):* the first-run welcome-gate survey ritual
 (ADR-0013 amendment — the send-off, the "go uninstall" bluff-call, the typed
-confession, and the native-arrow 60s penance sheet) is a deliberate brand
-ceremony authored verbatim by the owner. It is NOT subject to the tone rule and
-must not be softened; the rule continues to govern everything else.
+confession) is a deliberate brand ceremony authored verbatim by the owner. It is
+NOT subject to the tone rule and must not be softened; the rule continues to
+govern everything else. (The native-arrow 60s penance sheet RETIRED per ADR-0021
+— its object no longer exists; the rest of the ritual is untouched.)
 
 ## Target Users
 
@@ -48,10 +49,13 @@ by default — the product is fully reversible and every apply is user-clicked, 
 default-on with a one-click per-bucket opt-out (`kindPolicy`) beats a buried
 opt-in. (This supersedes the old "wrapping stays opt-in and off by default".)
 
-**Not in scope / not yet:** 新图标自动美化 (keep-up) — the setting is HIDDEN and
-defaults OFF until a real watcher/catch-up exists (owner decision 2026-07-10;
-never promise an absent capability). AI icon generation; system-cleaner
-anything; auto-update framework; Win7.
+**Also in scope (v1, ADR-0020)**: 新图标自动美化 (background resident auto-format,
+spec 07) — a tray-resident native process formats NEW desktop icons per the saved
+style behind the consent ladder (default OFF · first-run proposal · opt-in silent ·
+every run undoable). The setting stays HIDDEN until the M7 build ships.
+
+**Not in scope / not yet:** AI icon generation; system-cleaner anything;
+auto-update framework (v1 ships without an updater — ADR-0019 defaults); Win7.
 
 ## The Window (IA)
 
@@ -70,7 +74,9 @@ drawer + compact slide-in overlay are superseded.)
 - **Hold-Space / hold-pill = compare originals** (global gesture); per-tile
   press-to-peek; per-icon right-click overrides (保留原样 / 跟随全局 / 单独配色 /
   whole-bucket keep).
-- Kept-original shortcuts render the classic Windows arrow, matching the desktop.
+- Kept-original shortcuts render the BAKED classic arrow (ADR-0021: the native
+  overlay is globally transparent by default; 「保留原样」 = original subject
+  pixels + a DeskMakeover-baked classic arrow, matching what the desktop shows).
 
 ## UI Language Rules (binding)
 
@@ -87,27 +93,35 @@ first; disruptive refresh only after telling the user. The elevated helper stays
 a fixed whitelist of named verbs and its own self-contained exe (a security
 boundary — `docs/development.md` §6).
 
-## System Architecture (post-inversion, ADR-0014/0015)
+## System Architecture (Tauri 2 + Rust, ADR-0019)
 
-**The web renders the pixels; C# is the system hand.** Details: spec 05 §1.
+**Rust owns every pixel and every system hand; the web is the interactive face.**
+Endpoint layout (migration phases: `docs/plans/2026-07-10-tauri-migration.md`):
 
 | Piece | Role |
 |---|---|
-| `DeskMakeover.Web` | The visible UI (React 19 + Tailwind 4 + Motion, Bun-only). Renders ALL preview + bake pixels: CPU TS icon compositor (Worker) + Pixi wallpaper compositor. Zustand state, undo/redo, i18n (resx-generated) |
-| `DeskMakeover.App` | WPF host: frameless window + WebView2 + JSON-RPC bridge (schema 3 contract; host wiring = F8), settings/changelog/diagnostics, orchestration of bake/apply |
-| `DeskMakeover.Core` | Pure domain types — no Win32/WPF |
-| `DeskMakeover.IconRendering` | ICO ladder/packaging + the frozen C# TileRenderer as the golden parity oracle (ADR-0015 D3); legacy renderers pending F8 deletion |
-| `DeskMakeover.Shell` | Win32/Shell adapters: scanner, shortcut COM, Explorer refresh, wallpaper, restore metadata |
-| `DeskMakeover.Operations` | Journaled runner, planner, snapshot factory/store, history ledger |
-| `DeskMakeover.ElevatedHelper` | Whitelisted privileged verbs, one-UAC batching |
+| `apps/desktop/frontend` | The visible UI (React 19 + Tailwind 4 + Motion, Bun-only): Zustand state, undo/redo, i18n (TS dictionaries = source of truth); Worker pool hosting the WASM icon core; Pixi wallpaper compositor (stays web-only) |
+| `apps/desktop/src-tauri` | Thin composition root: window/tray/single-instance lifecycle (window close destroys the WebView; resident mode is windowless), commands, capabilities/CSP |
+| `crates/dm-icon-core` | THE single pixel truth (ADR-0019): analysis/segmentation/colour/shapes/marks/filters/compose + planner + RenderSession; compiled to WASM (preview/bake) AND native (apply/background) |
+| `crates/dm-icon-codec` + `dm-contracts` + `dm-domain` | Resample ladder + ICO assembly; generated TS bindings (tauri-specta — hand-mirrored schemas banned); pure domain types |
+| `crates/dm-windows` | ALL windows-rs/COM/unsafe: STA actor, desktop scan/layout, icon extraction, .lnk/.url/desktop.ini/system-icon writers, IDesktopWallpaper, watcher, Explorer refresh |
+| `crates/dm-operations` | Durable transaction ledger (rusqlite), snapshots, CAS restore, history |
+| `crates/dm-resident` | Background reconciler/jobs/privileged queue (spec 07) |
+| `apps/elevated-helper` | Whitelisted privileged verbs (overlay pair), one-UAC batching, Program Files install |
 
-**Config truth**: `src/DeskMakeover.Web/src/bridge/types.ts` (BRIDGE_SCHEMA_VERSION
-= 3) — ConfigDto axes: shape (11-shape catalog) × colour {orig, bw, mono(+tint,
-monoStyle Tonal|Flat, plateColor)} × distinction {mark, keep, none} × markStyle
-{Glass, Shadow, Halo, Satin, Arc, Fold, Ring} × markColor × filter {None, Gloss,
-Glass, Pixel, Sticker} × kindPolicy. `size` is a READ-ONLY observed field —
-the size control was removed (owner, `d708f87`); nothing may write the real
-desktop icon size, incl. history replay (guard = F8).
+*Transition*: the legacy .NET tree is FROZEN as an executable oracle during the
+port (BakeService invariants harvested into named Rust tests) and deleted at M8
+(`last-dotnet` tag). The frozen TS compositor is the primary pixel oracle until
+the M6 certification gate.
+
+**Config truth**: `bridge/types.ts` (BRIDGE_SCHEMA_VERSION = 4, two-axis
+subject×plate per ADR-0018) — ConfigDto axes: shape (11-shape catalog) × subject
+{Original, BlackWhite, Mono(+tint, monoStyle Tonal|Flat)} × plate {plateColor,
+plateBand Vivid|Quiet, plateFallback derived|white} × distinction/markStyle ×
+markColor × filter × kindPolicy × typeOverrides. Under Tauri these DTOs are
+GENERATED from `dm-contracts`. `size` is a READ-ONLY observed field — the size
+control was removed (owner, `d708f87`); nothing may write the real desktop icon
+size, incl. history replay (guard lands with the Rust host, M3).
 
 **Snapshot/restore**: auto snapshot → journaled apply → one-click zero-residue
 restore; version history (cap 10) persists across restore.
@@ -131,13 +145,19 @@ links" undercounted; this list is the truth.)
 
 ## Verification Strategy
 
-- Web: `bun test` (297 at HEAD — compositor fixtures, stores, zone math, i18n
+- Web: `bun test` (356 at HEAD — compositor fixtures, stores, zone math, i18n
   parity, banned-colour + copy gates) + `tsc -b` + browser visual evidence
   (`docs/plans/evidence/`).
-- C#: `dotnet test` (277 pre-v3; re-verify at F8) + golden parity fixtures
-  (web renderer vs frozen C# oracle: flat ΔE<2 / SSIM≥0.995, filters ≥0.98).
+- Rust: `cargo test` + the ADR-0019 parity gates — TS↔Rust corpus (classification
+  exact, SSIM≥0.995/bounded ΔE, stage-level differential dumps) and
+  wasm↔native byte-equality in CI; kill-point recovery battery around every
+  ledger transition; spec 07 resident battery (bursts/overflow/self-write/
+  conflict/OneDrive/sleep matrix).
+- Legacy C# runs only as a differential oracle during the port; it is not a
+  shipping test surface.
 - E2E: raw CDP client (Bun), opt-in, applies stubbed (`DESKMAKEOVER_FAKE_APPLY=1`).
-- Manual matrix on clean VMs (Win10+11, mixed DPI, OneDrive, UAC denial,
-  interrupted apply) + the owner-supervised live runs
-  (`docs/verification/owner-supervised-live-runs.md`, pending F8 rewrite).
+- Manual matrix on clean VMs (Win10 22H2+/Win11, mixed DPI, OneDrive, standard
+  user, UAC denial, interrupted apply) in a logged-in interactive session + the
+  owner-supervised live runs (`docs/verification/owner-supervised-live-runs.md`,
+  to be rewritten for the Tauri stack at M8).
 - A bug fix ships a regression test reproducing the failure.

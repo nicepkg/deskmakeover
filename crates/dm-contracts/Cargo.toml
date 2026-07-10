@@ -5,3 +5,9 @@ version.workspace = true
 publish.workspace = true
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+# Pinned to the tauri-specta 2.0.0-rc.25 line (the src-tauri exporter must agree).
+specta = { version = "=2.0.0-rc.25", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

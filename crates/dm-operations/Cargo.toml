@@ -5,3 +5,12 @@ version.workspace = true
 publish.workspace = true
 
 [dependencies]
+dm-contracts = { path = "../dm-contracts" }
+# `bundled` builds SQLite from source so the app never depends on a system copy.
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = "1"
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1"

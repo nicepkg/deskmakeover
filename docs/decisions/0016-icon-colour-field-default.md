@@ -101,7 +101,12 @@ designer-seat pixel acceptance (PASS after one FAIL round):
   own fold). Designer ruling: brand-artwork library folders (music/video)
   KEEP their own plates — anchor fidelity beats group purity. The four-shape
   split ships as the 统一外形/分类外形 toggle (default uniform); the designer
-  recommends folder-Bookmark by default — **owner decision pending**.
+  recommended folder-Bookmark by default — **owner decision 2026-07-10: keep
+  the UNIFORM container as default** (container purity won across four owner
+  rounds; the amber family + tab carries the folder group; By-type stays one
+  click away). The tail-only letter badge (D3) is CLOSED as subsumed: the
+  File family plate now carries no-hue tail identity — revisit only if real
+  use shows the tail still reads anonymous.
 
 ## Consequences
 

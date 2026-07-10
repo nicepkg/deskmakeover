@@ -280,7 +280,8 @@ The DEFAULT look (满彩 colour field, recipe v7 — designer-seat acceptance PA
   strong signal into the family). The WHITE fallback stays retired from the
   default path (原彩保真 only). The four-shape kind split (统一外形/分类外形,
   Folder→Bookmark / File→Tile / System→Circle) ships as a UI toggle, default
-  OFF; the designer recommends folder-By-type by default — owner decision open.
+  OFF (owner decision 2026-07-10: uniform container stays the default; By-type
+  is one click away).
 
 **Honest hard limit (designer-acknowledged):** same-hue brand piles (the blue
 apps) cannot separate further at the plate level without breaking a law —

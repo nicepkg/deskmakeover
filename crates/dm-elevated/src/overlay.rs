@@ -45,7 +45,7 @@ mod windows_impl {
     use winreg::RegKey;
 
     use crate::args::Style;
-    use crate::guards::{check_size, validate_ico};
+    use crate::guards::read_capped_ico;
     use crate::secure_dir::secure_data_dir;
 
     const SHELL_ICONS_KEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons";
@@ -98,10 +98,10 @@ mod windows_impl {
 
     /// Validates the rendered ICO and copies it into the hardened data `dir`, returning its path.
     ///
-    /// The size cap is checked against metadata FIRST (never read an over-cap caller file), then
-    /// the bounded bytes are read once and validated structurally by the codec's `parse` (the one
-    /// truth source). The exact validated bytes are what gets written to ProgramData — no second
-    /// read of `src`, so the file can't change between validation and copy.
+    /// `read_capped_ico` opens the caller's `--file` exactly once and does the size cap and the
+    /// structural `parse` validation through that single handle, so a swap of the path between a
+    /// check and the read cannot smuggle an over-cap file past the cap (TOCTOU). The exact
+    /// validated bytes we already hold are written to ProgramData — no second read of `src`.
     ///
     /// NOTE (blind-write divergence): the oracle generated the built-in refined/transparent ICOs
     /// in-process (`OverlayBadgeIconFactory`). Here EVERY style's ICO arrives as a validated
@@ -111,10 +111,7 @@ mod windows_impl {
     fn materialize_ico(dir: &Path, style: Style, source_file: Option<&str>) -> Result<PathBuf, String> {
         let src = source_file
             .ok_or_else(|| format!("--file (a rendered .ico) is required for the {} overlay", style.as_str()))?;
-        let meta = std::fs::metadata(src).map_err(io)?;
-        check_size(meta.len())?; // reject an over-cap file before reading it
-        let bytes = std::fs::read(src).map_err(io)?; // now bounded ≤ MAX_ICO_BYTES
-        validate_ico(&bytes)?; // structural validation via dm_icon_codec::parse
+        let bytes = read_capped_ico(Path::new(src))?;
         let dst = dir.join(format!("{}-overlay.ico", style.as_str()));
         std::fs::write(&dst, &bytes).map_err(io)?;
         Ok(dst)

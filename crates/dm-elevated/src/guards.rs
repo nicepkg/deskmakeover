@@ -10,6 +10,8 @@
 //! Together they guarantee the registry only ever points at a validated, DeskMakeover-owned
 //! `%ProgramData%` copy — never a caller-supplied path.
 
+use std::path::Path;
+
 use dm_icon_codec::parse;
 
 /// The custom overlay ICO size cap (oracle: `MaxCustomIcoBytes`).
@@ -37,6 +39,32 @@ pub fn check_size(size_bytes: u64) -> Result<(), String> {
 /// ICONDIR but a truncated or tampered body is now rejected, closing a spoof the old check missed.
 pub fn validate_ico(bytes: &[u8]) -> Result<(), String> {
     parse(bytes).map(|_| ()).map_err(|e| format!("overlay file is not a valid .ico: {e}"))
+}
+
+/// Opens `path` ONCE and returns its validated overlay-ICO bytes through that single handle.
+///
+/// This closes a TOCTOU: the previous flow called `metadata()` and then `read()` on the path
+/// separately, so a caller could swap a small file for a large one between the size check and the
+/// read to smuggle an over-cap payload past [`MAX_ICO_BYTES`]. Here every check runs against one
+/// open handle — the file object is fixed at open time, immune to a later path swap. It also
+/// rejects non-regular files (a directory reached via junction has `is_file() == false`), caps
+/// the read itself so a file that grows after `fstat` is still bounded, and validates the
+/// container structurally via [`validate_ico`].
+pub fn read_capped_ico(path: &Path) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let meta = file.metadata().map_err(|e| e.to_string())?;
+    if !meta.is_file() {
+        return Err("overlay --file is not a regular file".to_string());
+    }
+    check_size(meta.len())?; // cheap pre-check on the OPEN handle's length, not a re-resolved path
+    let mut bytes = Vec::new();
+    // Bound the read regardless of what the handle reports: reading MAX+1 lets check_size reject a
+    // file that grew past the cap after fstat (and an empty file, which yields zero bytes).
+    file.by_ref().take(MAX_ICO_BYTES + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    check_size(bytes.len() as u64)?;
+    validate_ico(&bytes)?;
+    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -152,5 +180,41 @@ mod tests {
         let field = 6 + 8; // ICONDIRENTRY[0].bytesInRes (u32 at entry byte 8)
         bytes[field] = bytes[field].wrapping_add(1);
         assert!(validate_ico(&bytes).is_err());
+    }
+
+    // ── read_capped_ico: single-handle read (P2-4 TOCTOU) ──
+
+    #[test]
+    fn read_capped_ico_returns_the_bytes_of_a_valid_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("overlay.ico");
+        let expected = valid_ico();
+        std::fs::write(&path, &expected).unwrap();
+        assert_eq!(read_capped_ico(&path).unwrap(), expected);
+    }
+
+    #[test]
+    fn read_capped_ico_rejects_a_directory() {
+        // A directory (e.g. reached through a junction) is not a regular file.
+        let dir = tempfile::tempdir().unwrap();
+        let err = read_capped_ico(dir.path()).unwrap_err();
+        assert!(err.contains("regular file"));
+    }
+
+    #[test]
+    fn read_capped_ico_rejects_an_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.ico");
+        std::fs::write(&path, b"").unwrap();
+        assert!(read_capped_ico(&path).is_err());
+    }
+
+    #[test]
+    fn read_capped_ico_rejects_a_small_non_ico_file() {
+        // Within the size cap but not an icon container — structural validation still rejects it.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("not.ico");
+        std::fs::write(&path, b"hello, not an icon").unwrap();
+        assert!(read_capped_ico(&path).is_err());
     }
 }

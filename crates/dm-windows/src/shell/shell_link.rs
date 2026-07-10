@@ -41,18 +41,29 @@ pub fn read_icon_location(shortcut_path: &str) -> PortResult<Option<(String, i32
 pub fn set_icon_location(shortcut_path: &str, icon_path: &str, index: i32) -> PortResult<()> {
     let target = extended_length_path(shortcut_path);
     let tmp = extended_length_path(&crate::durable::temp_path_for(shortcut_path));
+    // A failed Save can return before finalize_saved runs, leaving a partial temp sibling — never
+    // strand it (new-P3). finalize_saved cleans up on ITS own failure.
+    let saved = save_icon_to_temp(&target, &tmp, icon_path, index);
+    if saved.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    saved?;
+    crate::durable::finalize_saved(&tmp, &target)
+}
+
+/// Loads the `.lnk`, sets its icon location, and Saves it to `tmp` (fRemember = false). Split out so
+/// the caller can clean up the temp on any failure. [WINDOWS-VERIFY] runtime.
+fn save_icon_to_temp(target: &str, tmp: &str, icon_path: &str, index: i32) -> PortResult<()> {
     // SAFETY: COM object confined to this STA thread; dropped before we publish, so the target is
     // no longer held open when ReplaceFileW runs.
     unsafe {
         let link: IShellLinkW =
             CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com)?;
         let file: IPersistFile = link.cast().map_err(com)?;
-        file.Load(&HSTRING::from(target.as_str()), STGM_READWRITE).map_err(com)?;
+        file.Load(&HSTRING::from(target), STGM_READWRITE).map_err(com)?;
         link.SetIconLocation(&HSTRING::from(icon_path), index).map_err(com)?;
-        // Save to the temp path (fRemember = false); durable::finalize_saved publishes it.
-        file.Save(&HSTRING::from(tmp.as_str()), false).map_err(com)?;
+        file.Save(&HSTRING::from(tmp), false).map_err(com)
     }
-    crate::durable::finalize_saved(&tmp, &target)
 }
 
 /// The identity fields a loose-file wrapper `.lnk` carries: its icon location, its resolved target,
@@ -124,6 +135,24 @@ pub fn create_shortcut(
 ) -> PortResult<()> {
     let out = extended_length_path(out_lnk);
     let tmp = extended_length_path(&crate::durable::temp_path_for(out_lnk));
+    // A failed Save can strand a partial temp sibling before finalize_saved runs — never leave it
+    // (new-P3).
+    let saved = save_new_shortcut_to_temp(&tmp, target, working_dir, icon_path);
+    if saved.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    saved?;
+    crate::durable::finalize_saved(&tmp, &out)
+}
+
+/// Creates a fresh `.lnk` (target/working-dir/icon) and Saves it to `tmp`. Split out so the caller
+/// can clean up the temp on any failure. [WINDOWS-VERIFY] runtime.
+fn save_new_shortcut_to_temp(
+    tmp: &str,
+    target: &str,
+    working_dir: &str,
+    icon_path: &str,
+) -> PortResult<()> {
     // SAFETY: COM object created, used, and dropped on this STA thread before we publish.
     unsafe {
         let link: IShellLinkW =
@@ -133,9 +162,8 @@ pub fn create_shortcut(
         link.SetIconLocation(&HSTRING::from(icon_path), 0).map_err(com)?;
         let file: IPersistFile = link.cast().map_err(com)?;
         // Save to a temp sibling, then flush + atomically publish over the target (P1-3).
-        file.Save(&HSTRING::from(tmp.as_str()), false).map_err(com)?;
+        file.Save(&HSTRING::from(tmp), false).map_err(com)
     }
-    crate::durable::finalize_saved(&tmp, &out)
 }
 
 fn wide_to_string(buf: &[u16]) -> String {

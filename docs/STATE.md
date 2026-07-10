@@ -70,24 +70,27 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 ## Live now — web, through commit `b881568`
 
-**357 bun tests + `tsc -b` green**; browser visual-acceptance evidence
+**359 bun tests + `tsc -b` green**; browser visual-acceptance evidence
 `docs/plans/evidence/2026-07-icons-v2/` (01-75). The contract truth is
 `src/bridge/types.ts` (bridge **schema 4**). Mock desktop = a full
 fake desktop (`bridge/mock-desktop.ts` + the REAL pack `public/real-icons/`, the
-gitignored asset SSoT — owner order 2026-07-11; no synthetic fallback). The 120-PNG
-synthetic pack is parity-fixture-only at `testdata/icons/source-pack/`.
+COMMITTED asset SSoT — ADR-0015 D9 amendment, owner override 2026-07-11; no
+synthetic fallback; vite closeBundle strips it from every build). The synthetic
+source pack is DELETED — the corpus is all-real (M5.12).
 
-**M0b DONE** — parity oracle corpus committed under `testdata/icons/` (1,368 PNGs,
-19 MB): Tier A full desktop under the spectrum default, Tier B 24-source style matrix
-(47 cells each), Tier C per-look hue-spread sessions, per-source stage dumps. Harness
-`scripts/capture-oracle.ts` (`--capture` / `--verify [--sample N]`,
-deterministic); CI smoke `tests/oracle-corpus.test.ts`. This is the TS side of the M5
-tri-target differential.
+**M0b DONE (recaptured all-real at M5.12)** — parity oracle corpus committed under
+`testdata/icons/` (1,611 PNGs): Tier A full desktop under the spectrum default,
+Tier B 29-source style matrix (47 cells each), Tier C per-look hue-spread sessions,
+per-source stage dumps. Harness `scripts/capture-oracle.ts` (`--capture` /
+`--verify [--sample N]`, deterministic); test-suite smoke
+`tests/oracle-corpus.test.ts` (no CI pipeline exists yet — all gates are local).
+This is the TS side of the M5 tri-target differential.
 
 **M1 Spike 4 DONE (tri-target pixel slice — the one M1 spike that runs on Mac)** —
 Circle + white plate + subject blit + dock shadow over 120 sources × {256,512} = 240
 cells: **native↔wasm 240/240 byte-identical, TS↔Rust 0 diff bytes of 157.3M**
-(byte-equal; gate was SSIM≥0.995). `crates/dm-icon-core` slice modules + plain-ABI
+(byte-equal; gate was SSIM≥0.995; re-run at HEAD over the real pack:
+248/248 native↔wasm, TS↔Rust 0/162,529,280). `crates/dm-icon-core` slice modules + plain-ABI
 `dm-icon-wasm` + `xtask spike4-*`; one command `bun tests/icon-parity/spike4/run.ts`.
 Determinism intel (M5 checklist seed): JSC pow vs libm pow = 1 ulp apart on 34/256
 decode-LUT entries → TS↔Rust byte parity is EMPIRICAL (full-corpus differential remains

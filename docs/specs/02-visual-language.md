@@ -246,8 +246,11 @@ The five steps (each icon takes the FIRST matching step):
 2. **Own background** (square / rounded-square / circle silhouette whose
    outermost solid ring is one colour — the ONE generic `tryDetectBackground`
    detector, solid-edge spans + multi-depth outer-ring probing, no inner-ring
-   test): expand that exact colour to fill the shape, subject re-centred.
-   UNCHANGED — no clamps, no contrast pushes, no band restyle, no shadow.
+   test, PLUS a corner-symmetry gate: those three silhouettes all have four
+   near-equal corner diagonal insets, so a dog-eared document page or clipped
+   corner is rejected even when its blank ring reads uniform): expand that
+   exact colour to fill the shape, subject re-centred. UNCHANGED — no clamps,
+   no contrast pushes, no band restyle, no shadow.
 3. **Irregular artwork**: segment the subject directly (`segmentSubject`) —
    the background is OURS to add.
 4. **Subject colour + lightness** (recorded metadata): neighbour-hue merged
@@ -263,7 +266,10 @@ The five steps (each icon takes the FIRST matching step):
    never outvotes the ring) gives the plate its hue; the band's mean lightness
    picks the side: rim ≥ 0.7 → deep board of that hue (亮圈配深底), rim < 0.7 →
    pale board of that hue (暗圈配浅底). A yellow-ringed folder takes 淡黄/深黄,
-   never another hue; neutral rims take pure neutral boards. Subjects on
+   never another hue; neutral rims take pure neutral boards. Deep boards must
+   still carry their hue: sRGB has no dark saturated yellow-green, so that
+   zone pulls to the amber side (h≈78, 深金 not 军绿) and L lifts (≤ +0.12)
+   until the FITTED chroma reaches 0.09 or the gamut ceiling. Subjects on
    derived plates carry a silhouette-shaped shadow OPPOSING the plate (deep
    shadow on light boards, light glow on dark boards). Glyph box ~72% (36/256);
    composeFromPlate's no-foreground fallback centres content at the keyline —

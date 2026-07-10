@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-10 (ADR-0016 icon colour-field default — panel disposed, build starting)
+updated: 2026-07-10 (colour-field v20 designer PASS — rim band law + corner gate + amber deep boards)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -65,16 +65,22 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 **In flight / next (web):**
 1. **ADR-0016 icon colour-field default** — COMPLETE to the owner's FIVE-STEP
-   LAW (spec 02 §Default Composition, ADR-0016 Amendment 2; `IconProfile`
-   metadata layer in profile.ts). Designer verdicts: v7 PASS · v8.1 PASS ·
-   v17 PASS (implementation fidelity; 4 verification targets probe-confirmed
-   compliant). ⛔ Iron laws: subject pixels never recoloured; own backgrounds
-   never altered. T7 glass rim SHIPPED (PASS + lightness-inverse guard). T9
-   codex review DONE (11/11 fixed + gap tests). 343 bun tests + tsc green.
-   Superseded experiments deleted (knockout, kind family colours, folder tab,
-   pale lane, contrast guard, letter badge). Owner-informed aesthetic notes
-   (law consequences) recorded in spec 02. Owed: D4 corpus ΔE probe (browser
-   harness) · resx sweep of new PENDING-RESX. Plan: `docs/plans/2026-07-10-icon-colour-field.md`.
+   LAW + the RIM BAND law (spec 02 §Default Composition, ADR-0016 Amendments
+   2-3; `IconProfile` metadata layer in profile.ts). Derived plates take the
+   artwork's outermost solid BAND (α≥245, ~minDim/16 deep, majority hue via
+   dominantColor): 亮圈深底 / 暗圈浅底 / 黄圈黄底; law-② boards additionally
+   pass a corner-symmetry gate (dog-eared pages rejected); deep boards keep
+   fitted chroma ≥0.09 where the gamut allows (yellow-green zone pulls to
+   amber h≈78 — 深金, never olive). Designer verdicts: v7 PASS · v8.1 PASS ·
+   v17 PASS · **v19 FAIL → v20 PASS (4/4 items cleared, 11 own-boards
+   pixel-identical, zero collateral)**. ⛔ Iron laws: subject pixels never
+   recoloured; own backgrounds never altered. T7 glass rim SHIPPED. T9 codex
+   review DONE (11/11). 346 bun tests + tsc green (rim regression trio:
+   light-outline / accent-vs-majority / soft-shadow). OWNER-PENDING: info-class
+   solid circle badges legally anchor their own colour (law ②) — designer
+   suggests optional ring-seam lightness polish, owner call. Owed: D4 corpus
+   ΔE probe (browser harness) · resx sweep of new PENDING-RESX. Plan:
+   `docs/plans/2026-07-10-icon-colour-field.md`.
 2. Zone rebuild polish tail: equal-gap ticks (deferred, NOT accepted), rename-input polish,
    SwiftShader/`MAX_TEXTURE_SIZE` startup probe with reduced-res fallback, TS bake fixtures.
 3. Dark theme + zh locale full regression screenshots → `docs/plans/evidence/2026-07-v3/`.

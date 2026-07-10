@@ -31,6 +31,10 @@ pub struct ApplyRequest {
     pub owned: OwnedFields,
     pub asset_hash: String,
     pub asset_bytes: Vec<u8>,
+    /// The paired empty-state ICO bytes for a two-state item (the Recycle Bin). When present the
+    /// driver materializes AND verifies this asset exists before the mutation references it
+    /// (P1-14). `None` for single-asset kinds.
+    pub empty_asset_bytes: Option<Vec<u8>>,
     pub pinned_seed: Option<u32>,
 }
 
@@ -214,6 +218,17 @@ impl<'p> TxnDriver<'p> {
         // Write the generated asset new-file-first, then journal it.
         let asset = self.assets.put(&req.asset_hash, &req.asset_bytes)?;
         item.asset = asset.clone();
+
+        // A two-state item (the Recycle Bin) needs a paired empty ICO the mutation references by
+        // convention. Materialize AND verify it exists BEFORE the registry write, so we never
+        // point a live registry value at an asset that was only guessed and never written (P1-14).
+        if let Some(empty_bytes) = &req.empty_asset_bytes {
+            let empty = self.assets.put_empty_variant(&asset, empty_bytes)?;
+            if !self.assets.exists(&empty)? {
+                return Err(PortError::AssetMissing(empty.path).into());
+            }
+        }
+
         journal.append(&JournalRecord::AssetWritten { txn, item: req.target.id.clone(), asset: asset.clone() })?;
 
         // The external mutation (icon-location swap). The applier reports the fingerprint the

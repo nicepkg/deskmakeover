@@ -91,6 +91,15 @@ impl World {
     }
 }
 
+/// The fake store's paired empty-variant path convention (mirrors the Windows `paired_empty`):
+/// `x.ico` → `x-empty.ico`.
+pub fn paired_empty_path(primary_path: &str) -> String {
+    match primary_path.strip_suffix(".ico") {
+        Some(stem) => format!("{stem}-empty.ico"),
+        None => format!("{primary_path}-empty"),
+    }
+}
+
 /// A reader/applier/asset-store bundle over one shared `World`.
 #[derive(Clone)]
 pub struct FakePlatform {
@@ -99,6 +108,8 @@ pub struct FakePlatform {
     capture_fails: Rc<RefCell<HashSet<String>>>,
     /// Paths whose anchor capture returns a hard `Err`.
     capture_errors: Rc<RefCell<HashSet<String>>>,
+    /// Asset paths the store has materialized (so `exists` can confirm a paired asset was written).
+    materialized: Rc<RefCell<HashSet<String>>>,
 }
 
 impl FakePlatform {
@@ -107,7 +118,13 @@ impl FakePlatform {
             world,
             capture_fails: Rc::new(RefCell::new(HashSet::new())),
             capture_errors: Rc::new(RefCell::new(HashSet::new())),
+            materialized: Rc::new(RefCell::new(HashSet::new())),
         }
+    }
+
+    /// Whether the store has materialized an asset at `path` (for test assertions).
+    pub fn asset_exists(&self, path: &str) -> bool {
+        self.materialized.borrow().contains(path)
     }
 
     /// The anchor capture returns a `CaptureFailed` anchor (no restore material — skipped).
@@ -188,7 +205,19 @@ impl IconApplier for FakePlatform {
 
 impl AssetStore for FakePlatform {
     fn put(&self, hash: &str, _bytes: &[u8]) -> PortResult<AssetRef> {
-        Ok(AssetRef::new(hash, format!("assets/{hash}.ico")))
+        let path = format!("assets/{hash}.ico");
+        self.materialized.borrow_mut().insert(path.clone());
+        Ok(AssetRef::new(hash, path))
+    }
+
+    fn put_empty_variant(&self, primary: &AssetRef, _bytes: &[u8]) -> PortResult<AssetRef> {
+        let path = paired_empty_path(&primary.path);
+        self.materialized.borrow_mut().insert(path.clone());
+        Ok(AssetRef::new(format!("{}-empty", primary.hash), path))
+    }
+
+    fn exists(&self, asset: &AssetRef) -> PortResult<bool> {
+        Ok(self.materialized.borrow().contains(&asset.path))
     }
 
     fn gc(&self, _live: &[String]) -> PortResult<()> {
@@ -271,6 +300,14 @@ pub struct FailingAssetStore;
 impl AssetStore for FailingAssetStore {
     fn put(&self, _hash: &str, _bytes: &[u8]) -> PortResult<AssetRef> {
         Err(PortError::Io("injected asset write failure".into()))
+    }
+
+    fn put_empty_variant(&self, _primary: &AssetRef, _bytes: &[u8]) -> PortResult<AssetRef> {
+        Err(PortError::Io("injected asset write failure".into()))
+    }
+
+    fn exists(&self, _asset: &AssetRef) -> PortResult<bool> {
+        Ok(false)
     }
 
     fn gc(&self, _live: &[String]) -> PortResult<()> {

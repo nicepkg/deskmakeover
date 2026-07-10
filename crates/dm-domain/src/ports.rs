@@ -49,6 +49,16 @@ pub trait AssetStore {
     /// Writes `bytes` under `hash`, returning the reference (new-file-first semantics).
     fn put(&self, hash: &str, bytes: &[u8]) -> PortResult<AssetRef>;
 
+    /// Materializes the paired empty-state variant of `primary` and returns its reference. Some
+    /// items have two visual states the registry references together (the Recycle Bin's
+    /// full/empty icons); the empty asset is addressed relative to the full one by the store's
+    /// convention, so the applier can reference it without guessing an unwritten path (P1-14).
+    fn put_empty_variant(&self, primary: &AssetRef, bytes: &[u8]) -> PortResult<AssetRef>;
+
+    /// Whether `asset` has actually been materialized in the store. The driver verifies a paired
+    /// asset exists before the mutation points a registry value at it (P1-14).
+    fn exists(&self, asset: &AssetRef) -> PortResult<bool>;
+
     /// Deletes any stored asset whose hash is not in `live`.
     fn gc(&self, live: &[String]) -> PortResult<()>;
 }

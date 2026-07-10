@@ -10,7 +10,8 @@ use dm_domain::{Fingerprint, ItemId, ItemKind, ItemTarget, OwnedFields};
 
 use super::driver::{ApplyRequest, TxnDriver};
 use super::fakes::{
-    styled_bytes, FailingAssetStore, FailingJournal, FakePlatform, RecordingJournal, World,
+    paired_empty_path, styled_bytes, FailingAssetStore, FailingJournal, FakePlatform,
+    RecordingJournal, World,
 };
 use super::journal::{JournalRecord, VecJournal};
 use super::recovery::{recover, recover_from_journal, RecoveryOutcome};
@@ -36,6 +37,7 @@ fn request(t: &ItemTarget, world: &Rc<RefCell<World>>, asset_hash: &str) -> Appl
         owned: OwnedFields::icon_only(),
         asset_hash: asset_hash.into(),
         asset_bytes: b"ico-bytes".to_vec(),
+        empty_asset_bytes: None,
         pinned_seed: None,
     }
 }
@@ -534,6 +536,43 @@ fn apply_that_lands_a_different_asset_than_requested_does_not_commit() {
     assert!(out.error.is_some());
     assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // rolled back to the true original
     assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
+fn recyclebin_apply_materializes_and_verifies_the_paired_empty_asset() {
+    // P1-14: the Recycle Bin's registry references BOTH a full and an empty ICO, the empty one by
+    // convention (`<full>-empty.ico`). The driver used to write only the primary asset, so the
+    // empty ICO could be a path the registry pointed at but that was never materialized — a
+    // dangling reference that breaks the empty-bin icon. The driver must materialize AND verify
+    // the paired empty asset before the mutation.
+    let world = World::shared();
+    let bin =
+        ItemTarget::new(ItemId::from_raw("RB"), ItemKind::RecycleBin, "HKCU/RecycleBin/DefaultIcon");
+    world.borrow_mut().put(&bin.path, b"orig-registry-state");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let current = Fingerprint::of_bytes(&world.borrow().get(&bin.path).unwrap());
+    let req = ApplyRequest {
+        target: bin.clone(),
+        expected_fingerprint: current,
+        owned: OwnedFields::icon_only(),
+        asset_hash: "hashRB".into(),
+        asset_bytes: b"full-ico".to_vec(),
+        empty_asset_bytes: Some(b"empty-ico".to_vec()),
+        pinned_seed: None,
+    };
+    let out = driver.apply(1, vec![req], &mut journal, &mut ledger).unwrap();
+
+    assert_eq!(out.committed, vec![ItemId::from_raw("RB")]);
+    // The paired empty ICO the registry will reference must actually exist in the store.
+    let empty_path = paired_empty_path("assets/hashRB.ico");
+    assert!(
+        plat.asset_exists(&empty_path),
+        "driver must materialize the paired empty asset before committing the Recycle Bin"
+    );
 }
 
 #[test]

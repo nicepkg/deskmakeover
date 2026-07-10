@@ -49,7 +49,10 @@ pub enum ItemKind {
     Shortcut,
     /// A `.url` internet shortcut — icon via the `[InternetShortcut]` `IconFile`/`IconIndex`.
     UrlShortcut,
-    /// A Store/AppX shortcut — no safe reversible write, never styled.
+    /// A Store/UWP shortcut. Its desktop entry is an ordinary `.lnk`, so it is styled exactly
+    /// like any shortcut — `IconLocation` write + full-bytes restore. Only the PACKAGE asset is
+    /// immutable, which does not block masking the shortcut (spec 06 §6, owner-prototype-proven
+    /// 2026-07-09).
     AppxShortcut,
     /// The Recycle Bin virtual item — icon via per-user `DefaultIcon` registry values.
     RecycleBin,
@@ -57,7 +60,9 @@ pub enum ItemKind {
     Folder,
     /// A loose file — styled by a companion wrapper `.lnk` with the original hidden.
     RegularFile,
-    /// A generic system virtual item styled through registry `DefaultIcon` values.
+    /// A system virtual item (This PC / Network / User Files / Control Panel) styled via the
+    /// per-user CLSID `DefaultIcon` values — the same HKCU mechanism the Recycle Bin uses, hence
+    /// styleable (spec 06 §6; an early dev-mock that classified these Unsupported was a mistake).
     System,
     /// Anything that could not be read or has no reversible write.
     Unsupported,
@@ -65,21 +70,19 @@ pub enum ItemKind {
 
 impl ItemKind {
     /// Whether this kind has a reversible styling write (mirrors `DesktopBakeService.CanStyle`
-    /// minus the state check, which lives on [`DesktopItem`]).
+    /// minus the state check, which lives on [`DesktopItem`]). Per spec 06 §6 nothing on the
+    /// desktop is un-styleable except genuinely broken/[`Unsupported`](ItemKind::Unsupported)
+    /// items: AppxShortcut is an ordinary `.lnk`, and System uses the same HKCU `DefaultIcon`
+    /// mechanism as the Recycle Bin.
     pub fn is_styleable(self) -> bool {
-        matches!(
-            self,
-            ItemKind::Shortcut
-                | ItemKind::UrlShortcut
-                | ItemKind::Folder
-                | ItemKind::RegularFile
-                | ItemKind::RecycleBin
-        )
+        !matches!(self, ItemKind::Unsupported)
     }
 
-    /// Real shortcuts (`.lnk`/`.url`) carry the arrow/mark; everything else is styled without one.
+    /// Shortcuts (`.lnk`/`.url`/UWP) carry the arrow/mark; everything else is styled without one.
+    /// A UWP shortcut's desktop entry is an ordinary `.lnk`, so it must wear the mark too
+    /// (spec 06 §6.5).
     pub fn is_shortcut(self) -> bool {
-        matches!(self, ItemKind::Shortcut | ItemKind::UrlShortcut)
+        matches!(self, ItemKind::Shortcut | ItemKind::UrlShortcut | ItemKind::AppxShortcut)
     }
 }
 
@@ -179,17 +182,21 @@ mod tests {
 
     #[test]
     fn styleable_kinds_match_oracle_can_style() {
+        // Spec 06 §6: nothing on the desktop is un-styleable except Unsupported. AppxShortcut is an
+        // ordinary `.lnk`, and System uses the same HKCU DefaultIcon mechanism as the Recycle Bin
+        // (an early dev-mock that classified either as un-styleable was corrected 2026-07-09).
         for kind in [
             ItemKind::Shortcut,
             ItemKind::UrlShortcut,
             ItemKind::Folder,
             ItemKind::RegularFile,
             ItemKind::RecycleBin,
+            ItemKind::AppxShortcut,
+            ItemKind::System,
         ] {
             assert!(kind.is_styleable(), "{kind:?} should be styleable");
         }
-        assert!(!ItemKind::AppxShortcut.is_styleable());
-        assert!(!ItemKind::Unsupported.is_styleable());
+        assert!(!ItemKind::Unsupported.is_styleable(), "only genuinely broken items are un-styleable");
     }
 
     #[test]
@@ -247,9 +254,16 @@ mod tests {
 
     #[test]
     fn can_style_covers_every_kind_at_ready() {
-        let styleable =
-            [ItemKind::Shortcut, ItemKind::UrlShortcut, ItemKind::Folder, ItemKind::RegularFile, ItemKind::RecycleBin];
-        let not_styleable = [ItemKind::AppxShortcut, ItemKind::System, ItemKind::Unsupported];
+        let styleable = [
+            ItemKind::Shortcut,
+            ItemKind::UrlShortcut,
+            ItemKind::Folder,
+            ItemKind::RegularFile,
+            ItemKind::RecycleBin,
+            ItemKind::AppxShortcut,
+            ItemKind::System,
+        ];
+        let not_styleable = [ItemKind::Unsupported];
         for kind in styleable {
             assert!(mk(kind, ItemState::Ready).can_style(), "{kind:?} should style when ready");
         }
@@ -263,10 +277,25 @@ mod tests {
     }
 
     #[test]
-    fn is_shortcut_is_only_lnk_and_url() {
-        assert!(ItemKind::Shortcut.is_shortcut());
-        assert!(ItemKind::UrlShortcut.is_shortcut());
-        for kind in [ItemKind::Folder, ItemKind::RegularFile, ItemKind::RecycleBin, ItemKind::AppxShortcut, ItemKind::System] {
+    fn appx_and_system_are_styleable_and_appx_wears_the_mark() {
+        // P1-12 / spec 06 §6+§6.5: the dev-mock wrongly treated AppxShortcut and System as
+        // un-styleable, and AppxShortcut as a non-shortcut. Both are styleable now, and a UWP
+        // shortcut wears the mark like any other shortcut.
+        assert!(ItemKind::AppxShortcut.is_styleable(), "a UWP shortcut is an ordinary .lnk");
+        assert!(ItemKind::System.is_styleable(), "System uses the HKCU DefaultIcon mechanism");
+        assert!(ItemKind::AppxShortcut.is_shortcut(), "UWP shortcuts must wear the mark");
+        // System is styleable but is NOT a shortcut (a virtual item, no arrow).
+        assert!(!ItemKind::System.is_shortcut());
+    }
+
+    #[test]
+    fn is_shortcut_covers_lnk_url_and_uwp() {
+        // Spec 06 §6.5: a UWP shortcut's desktop entry is an ordinary `.lnk`, so it must wear the
+        // mark too — is_shortcut includes AppxShortcut.
+        for kind in [ItemKind::Shortcut, ItemKind::UrlShortcut, ItemKind::AppxShortcut] {
+            assert!(kind.is_shortcut(), "{kind:?} carries the shortcut mark");
+        }
+        for kind in [ItemKind::Folder, ItemKind::RegularFile, ItemKind::RecycleBin, ItemKind::System] {
             assert!(!kind.is_shortcut(), "{kind:?} is not a shortcut");
         }
     }

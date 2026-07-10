@@ -108,6 +108,23 @@ designer-seat pixel acceptance (PASS after one FAIL round):
   File family plate now carries no-hue tail identity — revisit only if real
   use shows the tail still reads anonymous.
 
+## Amendment 2 (2026-07-10, late — the owner's five-step law, FINAL)
+
+Nine live owner orders replaced the D1/D2 recipe details with a five-step
+algorithm law (spec 02 §Default Composition is the normative text): full-bleed
+squares clip untouched; own backgrounds (generic outer-ring detector, AA-fixed
+solid-edge spans, outer-ring-only multi-depth probing) expand UNCHANGED;
+irregular icons segment their subject; theme colour = neighbour-merged band
+covering ≥50% of the SUBJECT; derived plates oppose the subject's lightness
+(dark boards only for mean ≥0.7), silhouette shadows oppose the plate. The
+`IconProfile` metadata layer (profile.ts) centralizes all per-icon analysis
+(owner DRY order). Along the way: colour-row order corrected (无 first, 满彩
+second), the folder tab stripe cut, plateColor made EFFECTIVE in Field, kind
+family colours removed (grouping is emergent), the letter-badge/knockout/
+pale-lane/contrast-guard experiments deleted. Designer final verdict on v17:
+PASS (implementation fidelity); three law-consequence aesthetic notes recorded
+for the owner in spec 02.
+
 ## Consequences
 
 - The default demos AND lives well: colour pop-out returns to native level while

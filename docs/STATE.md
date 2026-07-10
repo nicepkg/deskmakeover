@@ -64,23 +64,17 @@ pointer: what is TRUE now, what is in flight, what comes next.
 `scripts/dev/generate-mock-icons.mjs`).
 
 **In flight / next (web):**
-1. **ADR-0016 icon colour-field default** — SHIPPED through T6; designer-seat
-   acceptance PASS on v7 (base recipe) AND v8.1 (kind families). ⛔ Iron law:
-   icon SUBJECT pixels are never recoloured. Field mode + presets + hue spread +
-   kind families (amber folders/tab · blue-violet files · true-neutral system;
-   brand library folders keep own plates) + colour-row 满彩 swatch + 鲜明/柔和 +
-   统一外形/分类外形 toggle all live through preview AND bake. Owner 2026-07-10:
-   kindShapes default stays UNIFORM (By-type one click away); T8 letter badge
-   CLOSED (subsumed by the File family plate). T7 glass rim SHIPPED
-   (designer PASS + lightness-inverse gloss guard — plates keep their pixels,
-   fresnel rim + counter-shade + top sheen only). T9 codex adversarial review DONE:
-   11 findings all verified + fixed same day (styleKey kindShapes hole, backdrop
-   rectangle behind recoloured crops, bake-time spread freeze barrier, source
-   URL generation gate, dispatch-epoch render gate, dead-seed clearing + idle
-   spread recompute, ±π seam pair, Field-inert 背景 tab hidden, matcher semantics,
-   single-pass dominantColor + slim stats, shadow scratch reuse) + 3 gap tests
-   (338 green). Owed: D4 corpus ΔE probe (browser harness — bun cannot decode
-   PNGs) · resx sweep of new PENDING-RESX. Plan: `docs/plans/2026-07-10-icon-colour-field.md`.
+1. **ADR-0016 icon colour-field default** — COMPLETE to the owner's FIVE-STEP
+   LAW (spec 02 §Default Composition, ADR-0016 Amendment 2; `IconProfile`
+   metadata layer in profile.ts). Designer verdicts: v7 PASS · v8.1 PASS ·
+   v17 PASS (implementation fidelity; 4 verification targets probe-confirmed
+   compliant). ⛔ Iron laws: subject pixels never recoloured; own backgrounds
+   never altered. T7 glass rim SHIPPED (PASS + lightness-inverse guard). T9
+   codex review DONE (11/11 fixed + gap tests). 343 bun tests + tsc green.
+   Superseded experiments deleted (knockout, kind family colours, folder tab,
+   pale lane, contrast guard, letter badge). Owner-informed aesthetic notes
+   (law consequences) recorded in spec 02. Owed: D4 corpus ΔE probe (browser
+   harness) · resx sweep of new PENDING-RESX. Plan: `docs/plans/2026-07-10-icon-colour-field.md`.
 2. Zone rebuild polish tail: equal-gap ticks (deferred, NOT accepted), rename-input polish,
    SwiftShader/`MAX_TEXTURE_SIZE` startup probe with reduced-res fallback, TS bake fixtures.
 3. Dark theme + zh locale full regression screenshots → `docs/plans/evidence/2026-07-v3/`.

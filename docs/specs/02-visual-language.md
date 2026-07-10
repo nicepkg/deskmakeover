@@ -231,70 +231,48 @@ preview swatch, canvas tile, and bake:
 
 The app logo always wears the 苹果 clip (title bar 24, coach 26, about 56).
 
-## Default Composition — Colour Field (ADR-0016, 2026-07-10)
+## Default Composition — Colour Field (ADR-0016; FINAL = the owner's five-step law, 2026-07-10)
 
-Governing engine rule: **uniformity ≠ flattening**. Uniformity is carried by the
-CONTAINER layer (shape, grid rhythm, a shared lightness/chroma envelope,
-de-arrowing) and is never bought by deleting per-icon hue variance — a default
-that flattens the desktop into a single-hue or white field destroys parallel
-visual search (the 2026-07-10 findability panel's unanimous diagnosis) and fails
-the ADR-0016 D4 acceptance gate. iOS is the reference proof: uniform container,
-maximised per-app colour.
+**Iron laws:** subject pixels are NEVER recoloured; an icon's OWN background is
+never altered; every derived decision flows from ONE per-icon metadata
+extraction (`icon-compositor/profile.ts` — classification, own background
+colour/lightness, subject theme colour/lightness, subject mask; WeakMap-memoized,
+consumed by plates, shadows, the seed pipeline and any future stage).
 
-**Iron law (owner, 2026-07-10): subject pixels are NEVER recoloured.** Every
-icon keeps its own colours uniformly; separation comes from the plate and
-silhouette shadows only. The original knockout lane was built, rejected by the
-owner on sight (「很多 icon 根本认不出」), and deleted.
+The five steps (each icon takes the FIRST matching step):
 
-The DEFAULT look (满彩 colour field, recipe v7 — designer-seat acceptance PASS
-2026-07-10 after four owner-steered rounds) composes per icon:
+1. **Full-bleed opaque square** (coverage ≥ 0.98): already a complete tile —
+   clip into the target shape, zero processing.
+2. **Own background** (square / rounded-square / circle silhouette whose
+   outermost solid ring is one colour — the ONE generic `tryDetectBackground`
+   detector, solid-edge spans + multi-depth outer-ring probing, no inner-ring
+   test): expand that exact colour to fill the shape, subject re-centred.
+   UNCHANGED — no clamps, no contrast pushes, no band restyle, no shadow.
+3. **Irregular artwork**: segment the subject directly (`segmentSubject`) —
+   the background is OURS to add.
+4. **Subject colour + lightness**: neighbour-hue merged band (adjacent buckets
+   join at ≥10% of peak weight, span ≤ ±65°) must cover ≥50% of the SUBJECT's
+   pixels to count as a theme; subject mean lightness over the mask.
+5. **Derived plate**: theme hue (grayscale subjects → pure neutral, hue never
+   forced) at the lightness OPPOSING the subject — the dark board is reserved
+   for genuinely light subjects (mean ≥ 0.7; mid tones read dark to the eye
+   and take the bright board; white plates are legal). Subjects on derived
+   plates carry a silhouette-shaped shadow OPPOSING the plate (deep shadow on
+   light boards, light glow on dark boards). Glyph box ~72% (36/256);
+   composeFromPlate's no-foreground fallback centres content at the keyline —
+   nothing ever runs wall-to-wall.
 
-- **Plate** = the icon's dominant colour (memoized chroma-weighted OKLab hue
-  histogram over the whole canvas — neutral plates carry no votes) set on ONE
-  light line: Vivid **L 0.87, C clamp [0.09, 0.12]** (gamut splits the work:
-  warm hues saturate fully, blues cap lower — accepted as natural separation);
-  Quiet band L 0.91, C [0.04, 0.07].
-- **Plated anchors**: sources with their own detected plate KEEP it (identity
-  colour), lightness clamped into **[0.60, 0.80]**; near-neutral plates
-  (C < 0.04, Office white boards) are exempt so white stays white.
-- **Bare artwork**: original pixels at **~72% linear** (36/256 padding; the
-  80% attempt read as chaos — owner call) over a same-hue coloured plate,
-  lifted by an airy dock shadow (tone L 0.38, α 0.24, blur 4%, drop 1.5%).
-- **Pale class** (solid-pixel mean L > 0.72): a **contrast-target plate**
-  (L = subject mean − 0.20, clamp [0.62, 0.78], C [0.07, 0.10]) plus a 360°
-  ring halo (α 0.34, blur 3.5%, no offset) — near-white line art separates
-  while the field stays light.
-- **Hue spread** (cross-icon, deterministic, id-cached, feeds preview AND
-  bake): global min-gap relaxation guarantees **12° between distinct plates
-  inside a ±18° brand cap**; identical artwork keeps identical plates (three
-  .docx files SHOULD match).
-- **Kind families (D2, as accepted v8.1)**: generic folders plate as ONE amber
-  group (chroma capped 0.10) with a top-left tab affordance (same hue, L −0.14,
-  9-20% tall — sub-threshold shallower cuts read as nothing at 48px); no-hue
-  files take a blue-violet family (~250°, C 0.05-0.06, via per-family chroma
-  windows below the Vivid floor); system items a TRUE neutral (C ≤ 0.015) so
-  File-cold vs System-neutral actually separates. The plate-level dog-ear was
-  CUT (documents carry their own fold; a second one is noise). Special library
-  folders with brand artwork (music/video) keep their own plates — anchor
-  fidelity beats group purity (designer ruling: never flatten an existing
-  strong signal into the family). The WHITE fallback stays retired from the
-  default path (原彩保真 only). The four-shape kind split (统一外形/分类外形,
-  Folder→Bookmark / File→Tile / System→Circle) ships as a UI toggle, default
-  OFF (owner decision 2026-07-10: uniform container stays the default; By-type
-  is one click away).
+Cross-icon hue spread (deterministic min-gap relaxation, 12° inside a ±18°
+brand cap, identical artwork identical plates) still adjusts step-5 seeds
+through preview AND bake. 背景色 hand-pick overrides every derived plate
+(effective in Field; owner reversal). Quiet band = the same law with the
+lighter slots. Preset lineup unchanged (默认满彩 / 极简白 / 安静 / 原彩保真);
+kindShapes toggle default UNIFORM.
 
-**Honest hard limit (designer-acknowledged):** same-hue brand piles (the blue
-apps) cannot separate further at the plate level without breaking a law —
-rotating past the brand cap lies, lightness offsets break the one-line field,
-recolouring subjects is forbidden. Beyond the 12° spread, identification is
-carried by the PRESERVED subject glyphs and spatial memory, exactly as on a
-real iOS home screen. Do not chase this further in the plate layer.
-
-Preset lineup (D3): 默认 = colour field · 极简白 (the previous white board, an
-explicit minority-taste preset) · 安静 (pastel envelope: fixed lightness, low
-chroma, per-icon hue — replaces the single-hue wallpaper-tone mono) · 原彩保真
-(native-plate faithful). Candy/glass leaves any recommended slot; 玻璃 is
-reworked as a rim highlight, never a full desaturating wash.
+Designer-recorded, owner-informed aesthetic notes (law consequences, not
+defects): dark-board population ≈35-40% of a text-heavy desktop; white-subject
+brands (Outlook/Skype/OneDrive) read neutral-boarded; folders do not group by
+colour. Changing any of these means changing the law — owner-only.
 
 ## Colour Treatments (配色 — two orthogonal axes)
 

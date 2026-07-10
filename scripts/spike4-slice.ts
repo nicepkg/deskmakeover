@@ -29,7 +29,7 @@ import type { Raster } from '@/icon-compositor/raster'
 import { makeRaster, overAt, shapeMask, WHITE } from '@/icon-compositor/raster'
 import { drawScaled } from '@/icon-compositor/sampling'
 import { shapeContains } from '@/icon-compositor/shapes'
-import { loadMockSources } from './oracle/desktop-session'
+import { loadSources } from './oracle/desktop-session'
 import { rasterHash } from './oracle/png-codec'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
@@ -264,7 +264,7 @@ function fixtures(): string {
 function main(): void {
   mkdirSync(join(OUT, 'sources'), { recursive: true })
   mkdirSync(join(OUT, 'ts'), { recursive: true })
-  const sources = loadMockSources(REPO_ROOT)
+  const sources = loadSources(REPO_ROOT)
   const rows: string[] = []
   let area = 0
   let supersample = 0

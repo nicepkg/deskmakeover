@@ -13,13 +13,13 @@ import { computeHueSpread } from '@/icon-compositor/hue-spread'
 import type { SpreadEntry } from '@/icon-compositor/hue-spread'
 import { resolveTypeConfig, typeHasFixedPlate } from '@/lib/type-config'
 import type { IconKindBucket } from '@/bridge/types'
-import { loadMockSources, lookOf, PRESET_IDS } from '../../../scripts/oracle/desktop-session'
+import { loadSources, lookOf, PRESET_IDS } from '../../../scripts/oracle/desktop-session'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const OUT = join(process.argv[2] ?? join(REPO_ROOT, 'target/m5'), 'hue')
 mkdirSync(OUT, { recursive: true })
 
-const sources = loadMockSources(REPO_ROOT)
+const sources = loadSources(REPO_ROOT)
 for (const id of PRESET_IDS) {
   const { config, typeOverrides } = lookOf(id)
   const isDerivedParticipant = (bucket: IconKindBucket | null): boolean => {

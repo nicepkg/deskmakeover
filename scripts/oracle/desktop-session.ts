@@ -1,17 +1,21 @@
 // Headless replica of the icon store's per-desktop RenderSession (stores/icons.ts
-// recomputeHueSpread + effectiveTileConfig) for the M0b oracle corpus. Bun has
-// no Worker/canvas, so the browser path (render.worker decode + IconCompositor
+// recomputeHueSpread + effectiveTileConfig) for the oracle corpus. Bun has no
+// Worker/canvas, so the browser path (render.worker decode + IconCompositor
 // seed/spread) cannot run — this module reproduces its DETERMINISTIC parts:
 // decode-time seed (iconProfile.subjectRimColour), cross-icon hue spread, the
 // App-accent fallback, and the resolved per-item config + opts. Every algorithm
 // primitive is imported from the real code (no re-implementation); only the
 // session orchestration is mirrored, and the Rust RenderSession must reproduce
 // exactly what this emits (Tier C session dumps pin the seeds).
+//
+// The corpus is captured over the REAL icon pack (public/real-icons/, the committed
+// dev-fixture SSoT, ADR-0015 D9) — the same artwork the mock desktop renders. Sources
+// arrive at native sizes / colour types and are normalized to 256² (source-decode).
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ConfigDto, IconItemDto, IconKind, IconKindBucket, TypeOverrides } from '@/bridge/types'
-import { BASE_CONFIGS, KIND_MAP, PRESET_TYPE_OVERRIDES } from '@/bridge/mock-desktop'
+import { BASE_CONFIGS, PRESET_TYPE_OVERRIDES } from '@/bridge/mock-desktop'
 import { DEFAULT_KIND_POLICY, kindBucket } from '@/lib/kind-policy'
 import { appAccentSeed, resolveTypeConfig, typeHasFixedPlate } from '@/lib/type-config'
 import { computeHueSpread } from '@/icon-compositor/hue-spread'
@@ -19,25 +23,29 @@ import type { SpreadEntry } from '@/icon-compositor/hue-spread'
 import { iconProfile } from '@/icon-compositor/profile'
 import type { Raster } from '@/icon-compositor/raster'
 import { effectiveTileConfig } from '@/stores/icons'
-import { decodePng } from './png-codec'
+import { decodeSourceImage } from './source-decode'
 
 /** Preset card order (mock-desktop BASE_CONFIGS key order); spectrum is the
  *  factory default and Tier A's look. */
 export const PRESET_IDS = ['spectrum', 'glass', 'ink', 'white', 'stationery', 'pebble', 'ascast'] as const
 export type PresetId = (typeof PRESET_IDS)[number]
 
-// Synthetic parity fixtures (deterministic, committed — the oracle corpus is
-// anchored to them; the mock DESKTOP itself uses public/real-icons only).
-export const MOCK_ICONS_DIR = 'testdata/icons/source-pack'
-// LEGACY IDENTITY PREFIX, not a served URL: sourceUrl is the hue-spread
-// artKey pinned throughout the committed corpus — do not rename.
-const MOCK_ICONS_URL = '/mock-icons'
+// The real-icon pack: the committed dev-fixture SSoT (Microsoft system + brand art,
+// ADR-0015 D9 — lives in the repo, stripped from every ship).
+export const SOURCE_ICONS_DIR = 'public/real-icons'
+// Source identity / hue-spread artKey prefix (IconItemDto.sourceUrls[0]); unique per
+// subfolder-relative file, pinned throughout the committed corpus.
+const SOURCE_ICONS_URL = '/real-icons'
 
-interface SyntheticEntry {
+/** One real-pack manifest entry. `kind` is already a resolved IconKind (no translation
+ *  layer); `extraSources` (e.g. the empty Recycle Bin) are the codec's paired-ICO concern,
+ *  not separate render sources. */
+interface RealEntry {
   file: string
   id: string
-  kind: keyof typeof KIND_MAP
+  kind: IconKind
   label: string
+  extraSources: string[]
 }
 
 /** A source's identity + raw bytes, WITHOUT the (expensive) decode/segment —
@@ -72,35 +80,32 @@ function seedOf(raster: Raster): string | null {
   return `#${h(colour.r)}${h(colour.g)}${h(colour.b)}`.toUpperCase()
 }
 
-/** Read the committed synthetic mock pack's identity + bytes, in manifest
- *  order, WITHOUT decoding (cheap — enough for setHash + selective decode). */
+/** Read the committed real pack's identity + bytes, in manifest order, WITHOUT decoding
+ *  (cheap — enough for setHash + selective decode). Kinds are already resolved IconKinds. */
 export function readSourceMetas(rootDir: string): SourceMeta[] {
-  const dir = join(rootDir, MOCK_ICONS_DIR)
-  const entries = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as SyntheticEntry[]
-  return entries.map((e) => {
-    const kind = KIND_MAP[e.kind]
-    return {
-      id: e.id,
-      file: e.file,
-      path: join(dir, e.file),
-      label: e.label,
-      kind,
-      bucket: kindBucket(kind),
-      isShortcut: kind === 'Shortcut' || kind === 'UrlShortcut' || kind === 'AppxShortcut',
-      sourceUrl: `${MOCK_ICONS_URL}/${e.file}`,
-      bytes: new Uint8Array(readFileSync(join(dir, e.file))),
-    }
-  })
+  const dir = join(rootDir, SOURCE_ICONS_DIR)
+  const entries = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as RealEntry[]
+  return entries.map((e) => ({
+    id: e.id,
+    file: e.file,
+    path: join(dir, e.file),
+    label: e.label,
+    kind: e.kind,
+    bucket: kindBucket(e.kind),
+    isShortcut: e.kind === 'Shortcut' || e.kind === 'UrlShortcut' || e.kind === 'AppxShortcut',
+    sourceUrl: `${SOURCE_ICONS_URL}/${e.file}`,
+    bytes: new Uint8Array(readFileSync(join(dir, e.file))),
+  }))
 }
 
-/** Decode one source raster + derive its hue-spread seed. */
+/** Decode one source raster (normalized to 256²) + derive its hue-spread seed. */
 export function decodeSource(meta: SourceMeta): OracleSource {
-  const raster = decodePng(meta.bytes)
+  const raster = decodeSourceImage(meta.path, meta.bytes)
   return { ...meta, raster, seed: seedOf(raster) }
 }
 
 /** Decode the whole pack (capture + full verify need every source). */
-export function loadMockSources(rootDir: string): OracleSource[] {
+export function loadSources(rootDir: string): OracleSource[] {
   return readSourceMetas(rootDir).map(decodeSource)
 }
 

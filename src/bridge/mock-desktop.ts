@@ -188,13 +188,6 @@ const MARK_SWATCHES = ['#FFFFFF', '#141414', '#FF6F5E', '#B97D4E', '#3FB6A8']
 // + real app icons at their native sizes. A fresh clone must run the harvest
 // script once; there is no synthetic fallback.
 
-interface SyntheticEntry {
-  file: string
-  id: string
-  kind: 'lnk' | 'exe' | 'url' | 'uwp' | 'folder' | 'file' | 'bin'
-  label: string
-}
-
 interface RealEntry {
   file: string
   id: string
@@ -209,18 +202,6 @@ interface PackEntry {
   kind: IconKind
   label: string
   sourceUrls: string[]
-}
-
-export const KIND_MAP: Record<SyntheticEntry['kind'], IconKind> = {
-  lnk: 'Shortcut',
-  url: 'UrlShortcut',
-  uwp: 'AppxShortcut',
-  folder: 'Folder',
-  // Bare launchers are PROGRAMS (ADR-0017 D1) — styled via wrapper-.lnk like
-  // any loose file, but bucketed with App, never with documents.
-  exe: 'ExecutableFile',
-  file: 'RegularFile',
-  bin: 'RecycleBin',
 }
 
 let manifestPromise: Promise<PackEntry[]> | null = null

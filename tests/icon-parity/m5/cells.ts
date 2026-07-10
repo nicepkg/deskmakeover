@@ -7,13 +7,13 @@
 //
 //   bun tests/icon-parity/m5/cells.ts [outDir]
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { renderTile } from '@/icon-compositor/compose'
 import type { ComposeDiagnostics } from '@/icon-compositor/compose'
 import { setNativeArrowRaster } from '@/icon-compositor/marks'
 import { decodePng } from '../../../scripts/oracle/png-codec'
-import { loadMockSources } from '../../../scripts/oracle/desktop-session'
+import { loadSources } from '../../../scripts/oracle/desktop-session'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const TESTDATA = join(REPO_ROOT, 'testdata/icons')
@@ -29,6 +29,9 @@ interface Cell {
   opts: { fieldSeed: string | null; kindBucket: string | null } | null
 }
 
+// Clear stale dumps first — the comparator lists these dirs, so a leftover cell/source
+// from a previous pack would break the re-render (missing source or orphan golden).
+rmSync(OUT, { recursive: true, force: true })
 mkdirSync(join(OUT, 'expected'), { recursive: true })
 mkdirSync(join(OUT, 'sources'), { recursive: true })
 
@@ -39,7 +42,7 @@ setNativeArrowRaster(arrow)
 writeFileSync(join(OUT, 'arrow.rgba'), Buffer.from(arrow.data.buffer, arrow.data.byteOffset, arrow.data.byteLength))
 writeFileSync(join(OUT, 'arrow.json'), JSON.stringify({ width: arrow.width, height: arrow.height }))
 
-const sources = loadMockSources(REPO_ROOT)
+const sources = loadSources(REPO_ROOT)
 const byId = new Map(sources.map((s) => [s.id, s]))
 for (const s of sources) {
   const d = s.raster.data

@@ -9,8 +9,9 @@
 // 4. hue-spread parity       (module 6)
 // 5. full pixel differential (modules 8/9/10: compose + marks + filters)
 //
-// Each TS dumper writes to target/m5/<stage>; the matching `xtask m5-*` reruns
-// the stage through dm-icon-core and compares byte-for-byte. Any failure exits
+// Every gate runs over the REAL icon corpus (public/real-icons via testdata/icons),
+// the only pack. Each TS dumper writes to target/m5/<stage>; the matching `xtask m5-*`
+// reruns the stage through dm-icon-core and compares byte-for-byte. Any failure exits
 // non-zero. Spike-4 (tests/icon-parity/spike4/run.ts) remains the tri-target
 // (TS↔native↔wasm) gate for the shared slice.
 

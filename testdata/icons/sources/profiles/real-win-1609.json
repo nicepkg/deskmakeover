@@ -1,0 +1,38 @@
+{
+  "alphaBBox": [
+    14,
+    14,
+    253,
+    242
+  ],
+  "anchorRect": [
+    14,
+    14,
+    253,
+    242
+  ],
+  "cornerSymmetric": false,
+  "coverage": 0.831482,
+  "foregroundBBox": null,
+  "kind": "bare",
+  "maskCoverage": 0.355591,
+  "matchesApple": false,
+  "matchesCircle": false,
+  "maxScaleCircle": 0.800781,
+  "ownBackground": null,
+  "ownBackgroundLightness": null,
+  "profileKeepsMask": true,
+  "rimColour": "#43BA41",
+  "rimLightness": 0.695045,
+  "seed": "#43BA41",
+  "solidBBox": [
+    16,
+    16,
+    249,
+    240
+  ],
+  "subjectColour": "#43BA40",
+  "subjectLightness": 0.694785,
+  "transparentEdges": true,
+  "visibleLightness": 0.694759
+}

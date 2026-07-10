@@ -20,7 +20,7 @@ import { encodeRgbaPng, rasterHash } from './oracle/png-codec'
 import { decodePng } from './oracle/png-codec'
 import {
   decodeSource,
-  loadMockSources,
+  loadSources,
   lookOf,
   optsOf,
   PRESET_IDS,
@@ -29,7 +29,7 @@ import {
 } from './oracle/desktop-session'
 import type { OracleSource } from './oracle/desktop-session'
 import { dumpSource } from './oracle/stage-dump'
-import { selectTierBSources, styleCells, TIER_B_SELECTION } from './oracle/style-matrix'
+import { selectTierBSources, styleCells } from './oracle/style-matrix'
 import {
   CORPUS_SCHEMA_VERSION,
   deterministicSample,
@@ -113,7 +113,7 @@ function cellRecord(path: string, source: OracleSource, config: ConfigDto, isSho
 
 export function capture(): void {
   const arrowBytes = initNativeArrow()
-  const sources = loadMockSources(REPO_ROOT)
+  const sources = loadSources(REPO_ROOT)
   const sourceEntries = sources.map((s) => ({ id: s.id, sha256: sha256Hex(s.bytes) }))
   const set = setHash(sourceEntries)
 
@@ -167,7 +167,7 @@ export function capture(): void {
   }
   writeJson(join(TESTDATA, 'tier-b/cells.json'), {
     set,
-    selection: TIER_B_SELECTION,
+    selection: picks.map((p) => p.pick),
     cellsPerSource: cells.length,
     cells: tierBCells,
   })
@@ -202,12 +202,12 @@ export function capture(): void {
     description: 'Parity oracle corpus for the frozen TS icon compositor (ADR-0019 M0b).',
     parity: {
       note: 'Byte-comparison in --verify is on DECODED RGBA pixels (platform-independent), not PNG container bytes. The per-cell rasterHash is sha256 of decoded RGBA and is the canonical parity anchor for the M5 tri-target differential.',
-      decode: 'Pure node:zlib inflate + PNG un-filter (colortype 6 / 8-bit / no interlace). No colour management; straight alpha. Verified byte-identical to PIL and the browser canvas on the mock pack.',
+      decode: 'Goldens: pure node:zlib inflate + PNG un-filter (colortype 6 / 8-bit / no interlace); straight alpha, no colour management. Sources (real pack): oracle/source-decode handles PNG colortype 0/2/3/4/6 incl. 4-bit indexed + PLTE/tRNS (one .webp via macOS sips) and normalizes to 256² with a premultiplied bilinear resize (the app resizes every source to MASTER before renderTile).',
       encode: 'Deterministic: Paeth per-scanline filter + zlib deflate level 9. Proven by capture-twice byte-diff.',
       masterSize: MASTER,
       shortcutArrow: { asset: 'public/win-native-arrow.png', sha256: sha256Hex(arrowBytes), note: 'Loaded at native 100² and composited by drawClassicArrow exactly as the app worker does at boot; shortcut/Keep goldens carry the real badge, not the vector fallback. The Rust port must composite the same asset.' },
     },
-    sourceDir: 'testdata/icons/source-pack',
+    sourceDir: 'public/real-icons',
     setHash: set,
     sources: sourceManifest,
     tiers: {

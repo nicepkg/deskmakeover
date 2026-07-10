@@ -1,0 +1,43 @@
+{
+  "alphaBBox": [
+    0,
+    0,
+    256,
+    256
+  ],
+  "anchorRect": [
+    0,
+    0,
+    256,
+    256
+  ],
+  "cornerSymmetric": true,
+  "coverage": 1,
+  "foregroundBBox": [
+    0,
+    0,
+    256,
+    256
+  ],
+  "kind": "ownBoard",
+  "maskCoverage": 0.207092,
+  "matchesApple": false,
+  "matchesCircle": false,
+  "maxScaleCircle": 0.765625,
+  "ownBackground": "#020202",
+  "ownBackgroundLightness": 0.084673,
+  "profileKeepsMask": true,
+  "rimColour": null,
+  "rimLightness": 0.032665,
+  "seed": null,
+  "solidBBox": [
+    0,
+    0,
+    256,
+    256
+  ],
+  "subjectColour": null,
+  "subjectLightness": 0.143062,
+  "transparentEdges": true,
+  "visibleLightness": 0.7846
+}

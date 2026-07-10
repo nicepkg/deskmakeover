@@ -7,18 +7,21 @@
 //
 //   bun tests/icon-parity/m5/profiles.ts [outDir]
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { loadMockSources } from '../../../scripts/oracle/desktop-session'
+import { loadSources } from '../../../scripts/oracle/desktop-session'
 import { iconProfile } from '@/icon-compositor/profile'
 import { segmentSubject } from '@/icon-compositor/segment'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const OUT = join(process.argv[2] ?? join(REPO_ROOT, 'target/m5'), 'profiles')
+// Clear stale dumps first — the comparator lists this dir, so a leftover id from a
+// previous pack would make it look for a golden that no longer exists.
+rmSync(OUT, { recursive: true, force: true })
 mkdirSync(join(OUT, 'sources'), { recursive: true })
 mkdirSync(join(OUT, 'masks'), { recursive: true })
 
-const sources = loadMockSources(REPO_ROOT)
+const sources = loadSources(REPO_ROOT)
 for (const s of sources) {
   const rd = s.raster.data
   writeFileSync(join(OUT, `sources/${s.id}.rgba`), Buffer.from(rd.buffer, rd.byteOffset, rd.byteLength))

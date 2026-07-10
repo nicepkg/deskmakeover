@@ -14,6 +14,7 @@
 //! [`classify`], which compiles and is unit-tested on the host.
 
 pub mod classify;
+pub mod fingerprint_surface;
 pub mod textfmt;
 
 #[cfg(windows)]

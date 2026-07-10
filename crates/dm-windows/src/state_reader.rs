@@ -24,8 +24,27 @@ pub struct WindowsStateReader;
 impl ItemStateReader for WindowsStateReader {
     fn read_fingerprint(&self, target: &ItemTarget) -> PortResult<Fingerprint> {
         match target.kind {
-            ItemKind::Shortcut | ItemKind::UrlShortcut | ItemKind::RegularFile => {
+            // `.lnk`/`.url` apply rewrites the file's own bytes, so the file bytes ARE the surface.
+            ItemKind::Shortcut | ItemKind::UrlShortcut => {
                 Ok(Fingerprint::of_bytes(&read_bytes(&target.path)?))
+            }
+            // A loose file is styled by a sibling wrapper `.lnk` + hiding the original; the file's
+            // own bytes are never touched. Fingerprint what apply actually changes — the wrapper's
+            // presence/bytes and the original's attribute bits — so styled ≠ unstyled and the item
+            // can commit (P1-10). A missing original still errors NotFound (via `attrs::get`), so a
+            // deleted file is skipped, not misread as an unchanged surface.
+            ItemKind::RegularFile => {
+                let wrapper = file_wrapper::wrapper_path(&target.path);
+                let wrapper_bytes = match std::fs::read(&wrapper) {
+                    Ok(bytes) => Some(bytes),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(e) => return Err(PortError::Io(e.to_string())),
+                };
+                let file_attributes = attrs::get(&target.path)?;
+                Ok(crate::fingerprint_surface::regular_file(
+                    wrapper_bytes.as_deref(),
+                    file_attributes,
+                ))
             }
             ItemKind::Folder => {
                 let ini = ini_bytes(&target.path);

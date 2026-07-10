@@ -211,7 +211,7 @@ interface PackEntry {
   sourceUrls: string[]
 }
 
-const KIND_MAP: Record<SyntheticEntry['kind'], IconKind> = {
+export const KIND_MAP: Record<SyntheticEntry['kind'], IconKind> = {
   lnk: 'Shortcut',
   url: 'UrlShortcut',
   uwp: 'AppxShortcut',
@@ -298,7 +298,7 @@ function toItem(entry: PackEntry, index: number, rows: number, g: IconsStateDto[
 // Distinction.Mark with the lightweight Shadow style.
 // Lineup reworked per ADR-0016 D3 (findability panel, owner 2026-07-10):
 // Presets are COORDINATE BOOKMARKS in the subject × plate space (ADR-0018).
-const BASE_CONFIGS: Record<string, ConfigDto> = {
+export const BASE_CONFIGS: Record<string, ConfigDto> = {
   // Preset Collection v2 (chief-designer curation, owner order 2026-07-10):
   // six distinct material worlds, six mark styles (Fold retired), dark-brown
   // folder boards banned. docs/product/preset-collection-v2.md is normative.
@@ -316,7 +316,7 @@ const BASE_CONFIGS: Record<string, ConfigDto> = {
 }
 
 // Per-preset type ladders (Preset Collection v2) — every set ships its own.
-const PRESET_TYPE_OVERRIDES: Record<string, TypeOverrides> = {
+export const PRESET_TYPE_OVERRIDES: Record<string, TypeOverrides> = {
   spectrum: {
     Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: null, plateFallback: 'derived' } },
     File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },

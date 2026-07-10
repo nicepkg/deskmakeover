@@ -395,7 +395,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Settings_Diagnostics": "诊断信息",
   "Settings_Export": "导出",
   "Settings_Diag": "问题诊断", // PENDING-RESX (v3 error reporting)
-  "Settings_DiagDesc": "复制错误日志,或带上环境信息向作者报告问题", // PENDING-RESX (v3 error reporting)
+  "Settings_DiagDesc": "复制错误日志，或带上环境信息向作者报告问题", // PENDING-RESX (v3 error reporting)
   "Diag_CopyLog": "复制错误日志", // PENDING-RESX (v3 error reporting)
   "Diag_Report": "去 GitHub 报告", // PENDING-RESX (v3 error reporting)
   "Diag_Email": "发邮件给作者", // PENDING-RESX (v3 error reporting)

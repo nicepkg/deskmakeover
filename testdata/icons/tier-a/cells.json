@@ -1,0 +1,3606 @@
+{
+  "cells": [
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#EAAA71",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-000.png",
+      "rasterHash": "cf850c2734511c7d708d29c68bbb791cd18c6b10d29dae612ad0cc314636b937",
+      "showOriginal": false,
+      "sourceId": "mock-000",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#D5BD5F",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-001.png",
+      "rasterHash": "6cbfe654de209f1efc6dee840fcc0c35dff49e29e68942a8ef4bcb85969f141d",
+      "showOriginal": false,
+      "sourceId": "mock-001",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3FB6A8",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-002.png",
+      "rasterHash": "63e4f34830d4b2fd2490b139efbeedfa49f8fc5c7f6129241d9f86956d70c5cd",
+      "showOriginal": false,
+      "sourceId": "mock-002",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#87BD36",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-003.png",
+      "rasterHash": "ea88e686494dae4c5c9d9cd44122ef658a9793ce2bbecdc9a77390c755813808",
+      "showOriginal": false,
+      "sourceId": "mock-003",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": "#EDEAE4",
+        "plateFallback": "derived",
+        "shape": "Circle",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "BlackWhite",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": null,
+      "isShortcut": false,
+      "lane": "plate-detect",
+      "opts": {
+        "fieldSeed": null,
+        "kindBucket": "System"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-004.png",
+      "rasterHash": "9d2605816b13abdd8d981432f0069e33aa7b2ea4135099eaf45a897b9ba63cd7",
+      "showOriginal": false,
+      "sourceId": "mock-004",
+      "styleKey": "Circle|BlackWhite|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|#EDEAE4|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#BC7A3A",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-005.png",
+      "rasterHash": "0ded4f9a30a36793416d22a2694fda168bfe943dfaf19690a8575fe4c7f00ec7",
+      "showOriginal": false,
+      "sourceId": "mock-005",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#0E3B90",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-006.png",
+      "rasterHash": "cb116a0fcad2b53a5deca7cc999a17929988a19fa618a3a9c7e2451c66ddae71",
+      "showOriginal": false,
+      "sourceId": "mock-006",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#FF6F5E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-007.png",
+      "rasterHash": "890967fc53848b1afb8387b05ac877eab88b14b619736981bb1f6e566e87ae16",
+      "showOriginal": false,
+      "sourceId": "mock-007",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#85D675",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-008.png",
+      "rasterHash": "038dd5394edb8494ace4494747c8ed28dc08b15fc79db315a82c8f2620bc589b",
+      "showOriginal": false,
+      "sourceId": "mock-008",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#9CBB14",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-009.png",
+      "rasterHash": "c7a9eb4633177bdad830652774dc3acee2a531cc38552a7d34e8bca6c6b1121f",
+      "showOriginal": false,
+      "sourceId": "mock-009",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#8336DD",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-010.png",
+      "rasterHash": "e09a44814161297f2c6ab15bc4a519065478d7377f3c5c727bbe2c3749a5d880",
+      "showOriginal": false,
+      "sourceId": "mock-010",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3FB6A8",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-011.png",
+      "rasterHash": "287afd510f1513f9fc6da96e89dc4cd8d3ff8363db0ba041dd69def7589c2cbf",
+      "showOriginal": false,
+      "sourceId": "mock-011",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#AF4F41",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-012.png",
+      "rasterHash": "3134d4a16fe55db91d6dc9396c71c785c4e64a717f606bb248087e66ca4f9f6c",
+      "showOriginal": false,
+      "sourceId": "mock-012",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3D9C65",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-013.png",
+      "rasterHash": "da828380d993953b11fafa883a5206ca14ce797ad38f4db0a194e5cb9345a328",
+      "showOriginal": false,
+      "sourceId": "mock-013",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#1C60C2",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-014.png",
+      "rasterHash": "b2ea99d7275bb752ddf6fc50e2ec26598d5404028eaa7ba2c9af350f90ac66ae",
+      "showOriginal": false,
+      "sourceId": "mock-014",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#F5A855",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-015.png",
+      "rasterHash": "23b9d510146389cc8b8b8fed7938a5b5130c5cbf416b5ad1ba8cc82fbbca35ef",
+      "showOriginal": false,
+      "sourceId": "mock-015",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#5CCBA3",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-016.png",
+      "rasterHash": "afeb7c74dfc31c8012fd917e548c5eac628ed7e2884bce933590f502e9b594d5",
+      "showOriginal": false,
+      "sourceId": "mock-016",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#002D8C",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-017.png",
+      "rasterHash": "c66e2d8a4cfd92cd799d25cefa7e4af6805c75302f2280e08f76e04f5efe168d",
+      "showOriginal": false,
+      "sourceId": "mock-017",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#DDC74D",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-018.png",
+      "rasterHash": "21a95eda2aef740b00864eada082ad8edfb4905a87e324a7656333efabbd430d",
+      "showOriginal": false,
+      "sourceId": "mock-018",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#0F3867",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-019.png",
+      "rasterHash": "fe6ec2ac710bc3c9b075d55acc8b5f70b94e7638b8b6327f4cc44afe6b31eb3d",
+      "showOriginal": false,
+      "sourceId": "mock-019",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#B260DD",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-020.png",
+      "rasterHash": "9f4eea0a20d00ceb4c63befb1254e02644228138668f5a476061afcd82e0b0a3",
+      "showOriginal": false,
+      "sourceId": "mock-020",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#838C30",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-021.png",
+      "rasterHash": "cdc4ee056cabf0984c2b1c47bd8a278387da809476bd33d3ee42bd90fbe8ea96",
+      "showOriginal": false,
+      "sourceId": "mock-021",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#CC7643",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-022.png",
+      "rasterHash": "86ca244aa1cd914c5f07206d2d7ebc91f4900d0c9322a1249a443af366394cac",
+      "showOriginal": false,
+      "sourceId": "mock-022",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#C99D7C",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-023.png",
+      "rasterHash": "f9bb281f6ab21b4bf11f55a8023fee438ba8fb05bd74bc1e09e4052f8357d07f",
+      "showOriginal": false,
+      "sourceId": "mock-023",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3FB6A8",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-024.png",
+      "rasterHash": "a7d479fac4843e92a80d699f3fd1d2c290c99f5461c37ab5220db84ea70ce380",
+      "showOriginal": false,
+      "sourceId": "mock-024",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#88573E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-025.png",
+      "rasterHash": "8f8705c7c25110765b6d5a8ca9fadf5d7d8b0742fdd35e0d8c0f4c6210f178fe",
+      "showOriginal": false,
+      "sourceId": "mock-025",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#FCA862",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-026.png",
+      "rasterHash": "9a0e6f08e0aff8086eb04e7ab09a63c8b053afd64ede99e2ba3b8232633eb60e",
+      "showOriginal": false,
+      "sourceId": "mock-026",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#1A695C",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-027.png",
+      "rasterHash": "1dd6d8f37233385258890661355e1d24e6bed72a57ccf122388552545c575e26",
+      "showOriginal": false,
+      "sourceId": "mock-027",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#953431",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-028.png",
+      "rasterHash": "a9796c6d7cc6bcdb54b94a5894560dd6f8ed114f09fcb4b375e675a59fef74a2",
+      "showOriginal": false,
+      "sourceId": "mock-028",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#B4689A",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-029.png",
+      "rasterHash": "3ff499845df78ff0d91a0f071e48ea7bf241416d659ae965f6b6f74cff741586",
+      "showOriginal": false,
+      "sourceId": "mock-029",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#655BEA",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-030.png",
+      "rasterHash": "eb2b713d0c913c87923cacf5293371328f962f03c81edff6bea51a71ee7ce5f3",
+      "showOriginal": false,
+      "sourceId": "mock-030",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#8F49F6",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-031.png",
+      "rasterHash": "95c7b5f5f08c05c50288ea1bd67eae53340f4c99b25b79f823b1d845f8875080",
+      "showOriginal": false,
+      "sourceId": "mock-031",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#A6D267",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-032.png",
+      "rasterHash": "14f4ad9ed60a7669d6e58a2854cddf732751b0957c2f6c0e5edbdd1a9ac1703d",
+      "showOriginal": false,
+      "sourceId": "mock-032",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#35A1A7",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-033.png",
+      "rasterHash": "20a352d92a8b4b93edf77965a2a546d1e9bc31bf3c0301b55f007d2598625d3b",
+      "showOriginal": false,
+      "sourceId": "mock-033",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#998E1F",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-034.png",
+      "rasterHash": "2a5367db6d146870296e7d3490596adb02c0e8a27857d60350b80a0a02a47aaf",
+      "showOriginal": false,
+      "sourceId": "mock-034",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#F4AD22",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-035.png",
+      "rasterHash": "eb1f138faf5128812235baca70044ff035314f7fde29ca337dadd27feb75dc66",
+      "showOriginal": false,
+      "sourceId": "mock-035",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#E1A91D",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-036.png",
+      "rasterHash": "1aab2b36b00d1414e3f4981e11c98b7f5ca17067a5c6633f722af59c199285af",
+      "showOriginal": false,
+      "sourceId": "mock-036",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#7F0D32",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-037.png",
+      "rasterHash": "d49e0e1655e1e3ddb3824082e15ecc56b42484593e0d4f5c53085554ef220cbd",
+      "showOriginal": false,
+      "sourceId": "mock-037",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#9D33D1",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-038.png",
+      "rasterHash": "d8d86288b5e5de615629f3e58e852fb30f3b3b61a3e2db8b7eb812c87295f4a8",
+      "showOriginal": false,
+      "sourceId": "mock-038",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#AE5ECE",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-039.png",
+      "rasterHash": "131b208de7a6ab2b6fa8a95687fa7876fa246d7dcd9df270bcec21b7c59a6351",
+      "showOriginal": false,
+      "sourceId": "mock-039",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#35939D",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-040.png",
+      "rasterHash": "bdc0e9d35baed24a1a93417f05e18d961cff024777963181448aae2c9d5f8d4a",
+      "showOriginal": false,
+      "sourceId": "mock-040",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#FF6F5E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-041.png",
+      "rasterHash": "35b24494badc605792bdebb16d9aa63599c483db51421ccf2a21e7eb0b3b3bf5",
+      "showOriginal": false,
+      "sourceId": "mock-041",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#6B4ABF",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-042.png",
+      "rasterHash": "07fbc4ae28cb2f25bbcfeb36996b043e4f214ce958406607fcc56534a5585abe",
+      "showOriginal": false,
+      "sourceId": "mock-042",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#0724A6",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-043.png",
+      "rasterHash": "998b1d067726aaf383b2da5c4e4b70185678063e817a12777cb1b1c27b352571",
+      "showOriginal": false,
+      "sourceId": "mock-043",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#B55A57",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-044.png",
+      "rasterHash": "4526eaefa9d237a97ec12311adf272d5b5405a823fb17ff88b3efeb4bc38cdc6",
+      "showOriginal": false,
+      "sourceId": "mock-044",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#FF6F5E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-045.png",
+      "rasterHash": "293746a7fc1d333cc4d8f50f3702fec04aae17259bc1e6740d4d4b4f0edfd614",
+      "showOriginal": false,
+      "sourceId": "mock-045",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#28AC8C",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-046.png",
+      "rasterHash": "947d140dd80babcd17a3d762d41bac7d1a7ea1dada56df55ac8228fd02f4dd71",
+      "showOriginal": false,
+      "sourceId": "mock-046",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#FF6F5E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-047.png",
+      "rasterHash": "e3ea26dbc2cc6d5635f240108816581aeb23bdd959ed2aa137da95ac10045cb2",
+      "showOriginal": false,
+      "sourceId": "mock-047",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#28A597",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-048.png",
+      "rasterHash": "b6e218f941dd7bea69d1b66f641463b670517703351bae28f386d95e7c3105b0",
+      "showOriginal": false,
+      "sourceId": "mock-048",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#BD325D",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-049.png",
+      "rasterHash": "33ab19cae69aef54dbfffeee6412896e06416bf9f0dcd9c8035cc1ac6ba09d76",
+      "showOriginal": false,
+      "sourceId": "mock-049",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#C98E77",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-050.png",
+      "rasterHash": "1fd79b3e0b1134ba2e0879ca3d5061c3f79b7efb271fd1c2fcb69d7969715036",
+      "showOriginal": false,
+      "sourceId": "mock-050",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3FB6A8",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-051.png",
+      "rasterHash": "e70df25c8bec96f6254c04e052155e488a51b4f7512da867e9596a0ac61b99aa",
+      "showOriginal": false,
+      "sourceId": "mock-051",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#AB5DE8",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-052.png",
+      "rasterHash": "3d66e05722896d3f4faa95d6408d4a18ab4c0cdea8e814a5270dc91dde1e70b3",
+      "showOriginal": false,
+      "sourceId": "mock-052",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3FB6A8",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-053.png",
+      "rasterHash": "81f658d5ced1a6c2aacc03c967f9e25f13c1d9e9ef1f5ac0db49d7eb134087a6",
+      "showOriginal": false,
+      "sourceId": "mock-053",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "full-square",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#B31254",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-054.png",
+      "rasterHash": "ec9920600293e237ba3a920706ed6867cef0398bee84e12df331f1398357ed5f",
+      "showOriginal": false,
+      "sourceId": "mock-054",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "full-square",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#74236F",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-055.png",
+      "rasterHash": "9f2893e34f30f9a1ef90a9cc49e866e3a1796a7c0e5ca9a66e9230f0d5978aa9",
+      "showOriginal": false,
+      "sourceId": "mock-055",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#FF6F5E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-056.png",
+      "rasterHash": "22bb9bbca7b0c3eeb91fb0d4813d095e9465ff4c90bdedc736cdf94db22cf245",
+      "showOriginal": false,
+      "sourceId": "mock-056",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#175083",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-057.png",
+      "rasterHash": "80c75f24e67d15f38300b1c212216ed80f77138ed1afde03c94e5548f35f3391",
+      "showOriginal": false,
+      "sourceId": "mock-057",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "full-square",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#676833",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-058.png",
+      "rasterHash": "1816a2d3f6a6515343f42125f1b6ad75294c18484f9547b9f5b4c1a0fdd770d7",
+      "showOriginal": false,
+      "sourceId": "mock-058",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#0B8898",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-059.png",
+      "rasterHash": "5a90f13e0f6cd7df96cf49233f69d4553a2153eab53c46d74dc91e179c5f622c",
+      "showOriginal": false,
+      "sourceId": "mock-059",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "full-square",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#2E978D",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-060.png",
+      "rasterHash": "2c609b4db930a6c3be660776a60a08d6cfbfcbc6befcf02299aee651cb8cff00",
+      "showOriginal": false,
+      "sourceId": "mock-060",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#FF6F5E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-061.png",
+      "rasterHash": "865fe17cc7a4e5117f1f6401e491ba3426af354a8c0eae6f806570b69bb8a3f6",
+      "showOriginal": false,
+      "sourceId": "mock-061",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3FB6A8",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-062.png",
+      "rasterHash": "051121f20c4c25cb2f210ebaa0521b1ea0c55887ea70b3a765089a0194e35e3b",
+      "showOriginal": false,
+      "sourceId": "mock-062",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "full-square",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#258297",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-063.png",
+      "rasterHash": "725aedfe9cfbaab586155ca286892153fe5c328618aa408667c2381ebe4d823d",
+      "showOriginal": false,
+      "sourceId": "mock-063",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "full-square",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#7B288A",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-064.png",
+      "rasterHash": "be6c697afb3df7cc41d66c6bd9f48dc2b07734efbffff07664b5f2344c8d8d66",
+      "showOriginal": false,
+      "sourceId": "mock-064",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#A6424C",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-065.png",
+      "rasterHash": "1e0b44cb3a0cd8e029e1b71cc7c63b2c272994b88c8cff2abff28f9057ca909c",
+      "showOriginal": false,
+      "sourceId": "mock-065",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#6C2B96",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-066.png",
+      "rasterHash": "e6f3c42668f74366445c8c0fb40c8165a23e1cb9e7fc1b7d6fad868cee7c2419",
+      "showOriginal": false,
+      "sourceId": "mock-066",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#959A13",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-067.png",
+      "rasterHash": "86e983e004fe7c7ddc7e5d8d89c711ed1903738f1f2e022697cc69e2f9a921db",
+      "showOriginal": false,
+      "sourceId": "mock-067",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#A69B14",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-068.png",
+      "rasterHash": "9f0121ad756c3dea7b270e93a0f9eaa3307fd532d38ad24846ab42fe45f313d6",
+      "showOriginal": false,
+      "sourceId": "mock-068",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#F8CA70",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-069.png",
+      "rasterHash": "3d37fc731b4accbc0bf4f1f1c6411cde091b1d737382e15bd27cdca325d26e3f",
+      "showOriginal": false,
+      "sourceId": "mock-069",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#72236D",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-070.png",
+      "rasterHash": "24b378190d2c549806bf6386b72273599c2f3755c27d3f4f7a5527e6d76eed4d",
+      "showOriginal": false,
+      "sourceId": "mock-070",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#C36DEA",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-071.png",
+      "rasterHash": "4272197be1ecb13a0387e9513aabda6b63ae2aa6deb3140e62bf1b6a04c260a4",
+      "showOriginal": false,
+      "sourceId": "mock-071",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#BE623B",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-072.png",
+      "rasterHash": "1f839979f23ddbefc1f0230735281b896cc92ecf19646446d7e958c2c22c16c1",
+      "showOriginal": false,
+      "sourceId": "mock-072",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3FB6A8",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-073.png",
+      "rasterHash": "e8ea9a79efec1e7d27805b207137c0e88cbbfa775154c5520b7c9a67d45a9fef",
+      "showOriginal": false,
+      "sourceId": "mock-073",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#61B3B5",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-074.png",
+      "rasterHash": "10cf088aaaa23805eff778ea9252294e5633330459d3fdde9e9453593a817729",
+      "showOriginal": false,
+      "sourceId": "mock-074",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3B8A6F",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-075.png",
+      "rasterHash": "94a5012fe0fb0963056e0928fd3a82c07127be7e66a89a707eef79b3bc8e21d4",
+      "showOriginal": false,
+      "sourceId": "mock-075",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#62CAAF",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-076.png",
+      "rasterHash": "3fedfbcab23307ff7fdf265dad6748d5299579f7f1d25eca376386708aebcd97",
+      "showOriginal": false,
+      "sourceId": "mock-076",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#E5D83C",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-077.png",
+      "rasterHash": "faa402f9ba206cf4f64413ca48e8ae35f765de0be5e526237fa74964add4b4eb",
+      "showOriginal": false,
+      "sourceId": "mock-077",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#1B5998",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-078.png",
+      "rasterHash": "0f6bee54958e9c832be54033416cf1718f41e22aeb5c5a0aa5eda7fdbcc0fb4d",
+      "showOriginal": false,
+      "sourceId": "mock-078",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#B9A82F",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-079.png",
+      "rasterHash": "b6a468d0ae65ad3c1f25b21d4eab49fa4eb7b6b385880b9eb67fd681283fa7d9",
+      "showOriginal": false,
+      "sourceId": "mock-079",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#CD1B54",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-080.png",
+      "rasterHash": "a71abb7d46e5db08bb0113bd561b9eed6c728ea4deb1f0f7de7a21077292da91",
+      "showOriginal": false,
+      "sourceId": "mock-080",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#91B932",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-081.png",
+      "rasterHash": "eb76a7ab553204ec3e00d4ef0593592f9baed5f7b518573a9ff5ec562717d2ef",
+      "showOriginal": false,
+      "sourceId": "mock-081",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3398B4",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-082.png",
+      "rasterHash": "501af8e1800a55e923101cfbb547bb03b735edb143a5366aff600253ecbecf45",
+      "showOriginal": false,
+      "sourceId": "mock-082",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#A15842",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-083.png",
+      "rasterHash": "a7cfd9bc275f73c8cc8b385afcaa63b9bd1a69294a8edcefb65540e563fd67f8",
+      "showOriginal": false,
+      "sourceId": "mock-083",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#86443A",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-084.png",
+      "rasterHash": "670b38bbfff0a40284e10252102f9c32ede16666f5b69c64babfc2c4248497c2",
+      "showOriginal": false,
+      "sourceId": "mock-084",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#317BB6",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-085.png",
+      "rasterHash": "28c38ef9e94648a0b9e33edc246fff4d01c773c89535fc6bedc73bc28b6897f4",
+      "showOriginal": false,
+      "sourceId": "mock-085",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#8F2CA1",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-086.png",
+      "rasterHash": "c75a3ceeedee3415f38198b3e93fec2bef6a647bc299fae0213dad0e7899a506",
+      "showOriginal": false,
+      "sourceId": "mock-086",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#A59625",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-087.png",
+      "rasterHash": "581b3bcda800c994719b9c951af6cccf7e2a607dadf4eaaffde2f5545b3ec2f8",
+      "showOriginal": false,
+      "sourceId": "mock-087",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#8221BD",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-088.png",
+      "rasterHash": "6b8fdb7e19b62e48b71f9329275d867b11683bb85550c0b6c1b019a7c9f13c4e",
+      "showOriginal": false,
+      "sourceId": "mock-088",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#FF6F5E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-089.png",
+      "rasterHash": "ed34280265ad98a934fe96d1904b67286256b35e57c8e51e7b1c2be469e62f3f",
+      "showOriginal": false,
+      "sourceId": "mock-089",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#DBB867",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-090.png",
+      "rasterHash": "bc0338f64d95adcb4cf1bbc043aac04b502aeb2a726d1a8cc59131f90743876d",
+      "showOriginal": false,
+      "sourceId": "mock-090",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#8DB63C",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-091.png",
+      "rasterHash": "6a54ec9fad6b9fbfdc963014b6b59a9181412f2574dcd7a0cdcdc779e1489548",
+      "showOriginal": false,
+      "sourceId": "mock-091",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#FDCB75",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-092.png",
+      "rasterHash": "f07641d9afe7dcb6d65ee33524b9c3e64455e82c4e00c18867f256dd58487c4a",
+      "showOriginal": false,
+      "sourceId": "mock-092",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#828EED",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-093.png",
+      "rasterHash": "2ced8d0181b294dd962e7b23d5231aa139a480b65ad5122535315c99175052ff",
+      "showOriginal": false,
+      "sourceId": "mock-093",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#006170",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-094.png",
+      "rasterHash": "d2f5a66179f1815866c6456b2030d91a5fb488b13629d45e5d1c2ee973001337",
+      "showOriginal": false,
+      "sourceId": "mock-094",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#ABDD0E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-095.png",
+      "rasterHash": "88f3a9b4b8bbe304448d355c4310d85b5b23404c9ebe7e7efb9990c782eca942",
+      "showOriginal": false,
+      "sourceId": "mock-095",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#E5BC8E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-096.png",
+      "rasterHash": "b3246528b6101a9b079fccba50e96e5323265993b99dcf86519943ef60712228",
+      "showOriginal": false,
+      "sourceId": "mock-096",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#D52686",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-097.png",
+      "rasterHash": "36c1beced9ab462f25d90fa2ac40f2f0ea283dc6fcb15c4d2629fe9e7d4cdad9",
+      "showOriginal": false,
+      "sourceId": "mock-097",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#64AA44",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-098.png",
+      "rasterHash": "5f54d251ae9e4ef4fdfe2257a8336eaad201585ec50e37c9a79062bb64392869",
+      "showOriginal": false,
+      "sourceId": "mock-098",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#3FB6A8",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-099.png",
+      "rasterHash": "b49b6ca7bc28c0ed4a536ddbc047b0b8220f7113c50a89c9edca3aac267656de",
+      "showOriginal": false,
+      "sourceId": "mock-099",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#F77A51",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-100.png",
+      "rasterHash": "50143f9bf7138ddbad22ab5969c1ff9f9886ea3c73d7414ad2538e4e0bacff74",
+      "showOriginal": false,
+      "sourceId": "mock-100",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#115082",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-101.png",
+      "rasterHash": "dc1651e855722e2630e1c5c27e584f71a6b397b6d8ea1a014dc4d308f0bae0c3",
+      "showOriginal": false,
+      "sourceId": "mock-101",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": true,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#88F381",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-102.png",
+      "rasterHash": "07c60c3b38e8d16616d2b3c0acf4d9cf8dfcf6867c5d460a33c2cd7c46a697e9",
+      "showOriginal": false,
+      "sourceId": "mock-102",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|true|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Apple",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "own-board",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#EFAA6E",
+        "kindBucket": "App"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-103.png",
+      "rasterHash": "c3aee03399bbfcedad5c80f13c3b88df523e6c6a57c05ffb84c303240e59c62e",
+      "showOriginal": false,
+      "sourceId": "mock-103",
+      "styleKey": "Apple|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Folder",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#52A5D0",
+        "kindBucket": "Folder"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-104.png",
+      "rasterHash": "06269c46c9014f6c53d821778545656832eaad83e3906884bc5a48a32f502803",
+      "showOriginal": false,
+      "sourceId": "mock-104",
+      "styleKey": "Folder|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Folder",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#D98073",
+        "kindBucket": "Folder"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-105.png",
+      "rasterHash": "4831f9f282e3318a8c17231d7311db94f37f6ce2e200597b003cd65c9eb44561",
+      "showOriginal": false,
+      "sourceId": "mock-105",
+      "styleKey": "Folder|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Folder",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#E4AC5F",
+        "kindBucket": "Folder"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-106.png",
+      "rasterHash": "60bd513ab5a1cbe2ebf3b0994ad681cac2742a029096c713fa0d9d4333057160",
+      "showOriginal": false,
+      "sourceId": "mock-106",
+      "styleKey": "Folder|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Folder",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#E2A662",
+        "kindBucket": "Folder"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-107.png",
+      "rasterHash": "80d3dee407f1f47a48df4c432c18ed0c91499ad3011401b05d0a232ac14cb9e7",
+      "showOriginal": false,
+      "sourceId": "mock-107",
+      "styleKey": "Folder|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Folder",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#E4A865",
+        "kindBucket": "Folder"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-108.png",
+      "rasterHash": "9d4cbcf1b9d3a0c89f603c94321658ed653c3c2a671a86825a97ad970b97b930",
+      "showOriginal": false,
+      "sourceId": "mock-108",
+      "styleKey": "Folder|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Folder",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#48AACB",
+        "kindBucket": "Folder"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-109.png",
+      "rasterHash": "da983f001aab51ec9294770c5e71282d49accfb9f0f16b0baac8be15b255845e",
+      "showOriginal": false,
+      "sourceId": "mock-109",
+      "styleKey": "Folder|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Folder",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#E6AE62",
+        "kindBucket": "Folder"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-110.png",
+      "rasterHash": "ce9034e56be94f35e49ec0a45a69b0fd6b431abfffda97aa0de38e991eb0f6b5",
+      "showOriginal": false,
+      "sourceId": "mock-110",
+      "styleKey": "Folder|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Folder",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#E3A763",
+        "kindBucket": "Folder"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-111.png",
+      "rasterHash": "99b70be21a20064803f0c992f42dbf54544d7f5a4df6c688a56076da30fe4b7a",
+      "showOriginal": false,
+      "sourceId": "mock-111",
+      "styleKey": "Folder|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Folder",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": "#E2A662",
+        "kindBucket": "Folder"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-112.png",
+      "rasterHash": "858f2094512ffa495075cfa9d024dc74edd050733b3d4c499a346d110cab6e6b",
+      "showOriginal": false,
+      "sourceId": "mock-112",
+      "styleKey": "Folder|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": null,
+        "plateFallback": "derived",
+        "shape": "Folder",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "derived-bare-shadow",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": null,
+        "kindBucket": "Folder"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-113.png",
+      "rasterHash": "dff29e251195fb0c227e9cc82e8a96373a31637aa212e035ac7f187b800423ef",
+      "showOriginal": false,
+      "sourceId": "mock-113",
+      "styleKey": "Folder|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|-|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": "#E9E2D4",
+        "plateFallback": "derived",
+        "shape": "Tile",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "user-plate-bare",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": null,
+        "kindBucket": "File"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-114.png",
+      "rasterHash": "81b0caaf073a9474ba914165f9d4a10b7573666afe2b76066fa4860c9d55a7d1",
+      "showOriginal": false,
+      "sourceId": "mock-114",
+      "styleKey": "Tile|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|#E9E2D4|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": "#E9E2D4",
+        "plateFallback": "derived",
+        "shape": "Tile",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "user-plate-bare",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": null,
+        "kindBucket": "File"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-115.png",
+      "rasterHash": "4c1879c73077186898f29bc1a7ca5d83c4006c0d334a4b2d0ae77629e379aa7f",
+      "showOriginal": false,
+      "sourceId": "mock-115",
+      "styleKey": "Tile|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|#E9E2D4|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": "#E9E2D4",
+        "plateFallback": "derived",
+        "shape": "Tile",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "user-plate-bare",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": null,
+        "kindBucket": "File"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-116.png",
+      "rasterHash": "99302c86059cef9982e4ef0806cdab640d01d8532725037a8a1e10cff0a7f3ce",
+      "showOriginal": false,
+      "sourceId": "mock-116",
+      "styleKey": "Tile|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|#E9E2D4|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": "#E9E2D4",
+        "plateFallback": "derived",
+        "shape": "Tile",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "user-plate-bare",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": null,
+        "kindBucket": "File"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-117.png",
+      "rasterHash": "ed2042cc8ffd09ddfbcc663e2bfb8c07b0dcc0a2d49af9213c214c2b7817a4fd",
+      "showOriginal": false,
+      "sourceId": "mock-117",
+      "styleKey": "Tile|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|#E9E2D4|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": "#E9E2D4",
+        "plateFallback": "derived",
+        "shape": "Tile",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "user-plate-bare",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": null,
+        "kindBucket": "File"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-118.png",
+      "rasterHash": "d0a0bc5a67ab6013575e1bea3fb29ad38470fbdc122eb1caae830230be02dc9e",
+      "showOriginal": false,
+      "sourceId": "mock-118",
+      "styleKey": "Tile|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|#E9E2D4|None|false|256"
+    },
+    {
+      "config": {
+        "distinction": "Mark",
+        "filter": "None",
+        "markColor": null,
+        "markStyle": "Halo",
+        "monoStyle": "Tonal",
+        "plateBand": "Vivid",
+        "plateColor": "#E9E2D4",
+        "plateFallback": "derived",
+        "shape": "Tile",
+        "shortcutShape": null,
+        "size": "Mid",
+        "subject": "Original",
+        "tint": "#FF6F5E"
+      },
+      "fieldLane": "user-plate-bare",
+      "isShortcut": false,
+      "lane": "derived-field",
+      "opts": {
+        "fieldSeed": null,
+        "kindBucket": "File"
+      },
+      "passThrough": false,
+      "path": "tier-a/masters/mock-119.png",
+      "rasterHash": "1bf7cfacd93f687e084bb7ccd3e735443f807dce37eed0c89dd40bd76345d0ad",
+      "showOriginal": false,
+      "sourceId": "mock-119",
+      "styleKey": "Tile|Original|#FF6F5E|Tonal|Vivid|derived||Mark|Halo|-|#E9E2D4|None|false|256"
+    }
+  ],
+  "look": "spectrum",
+  "set": "b6f151b9c7aa68bed9f9b3538e94c64e8dc2bef08bbbacac4d1577c44222e202"
+}

@@ -1,0 +1,886 @@
+{
+  "config": {
+    "distinction": "Mark",
+    "filter": "None",
+    "markColor": null,
+    "markStyle": "Ring",
+    "monoStyle": "Tonal",
+    "plateBand": "Vivid",
+    "plateColor": null,
+    "plateFallback": "white",
+    "shape": "Apple",
+    "shortcutShape": null,
+    "size": "Mid",
+    "subject": "Original",
+    "tint": "#FF6F5E"
+  },
+  "items": [
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-000",
+      "poolMember": false,
+      "seed": "#DDB268"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-001",
+      "poolMember": false,
+      "seed": "#BEC669"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-002",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-003",
+      "poolMember": false,
+      "seed": "#51C565"
+    },
+    {
+      "bucket": "System",
+      "fieldSeed": null,
+      "id": "mock-004",
+      "poolMember": false,
+      "seed": "#778E1D"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-005",
+      "poolMember": false,
+      "seed": "#AF832C"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-006",
+      "poolMember": false,
+      "seed": "#3910B2"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-007",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-008",
+      "poolMember": false,
+      "seed": "#53DB98"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-009",
+      "poolMember": false,
+      "seed": "#6DC552"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-010",
+      "poolMember": false,
+      "seed": "#9F23C3"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-011",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-012",
+      "poolMember": false,
+      "seed": "#AB5522"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-013",
+      "poolMember": false,
+      "seed": "#2F9D6D"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-014",
+      "poolMember": false,
+      "seed": "#4D4DD5"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-015",
+      "poolMember": false,
+      "seed": "#E4B348"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-016",
+      "poolMember": false,
+      "seed": "#5FCBA0"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-017",
+      "poolMember": false,
+      "seed": "#320C9C"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-018",
+      "poolMember": false,
+      "seed": "#C0D25F"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-019",
+      "poolMember": false,
+      "seed": "#232B7E"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-020",
+      "poolMember": false,
+      "seed": "#C956C1"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-021",
+      "poolMember": false,
+      "seed": "#629633"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-022",
+      "poolMember": false,
+      "seed": "#C17F2A"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-023",
+      "poolMember": false,
+      "seed": "#C1A276"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-024",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-025",
+      "poolMember": false,
+      "seed": "#825C34"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-026",
+      "poolMember": false,
+      "seed": "#EDB252"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-027",
+      "poolMember": false,
+      "seed": "#276952"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-028",
+      "poolMember": false,
+      "seed": "#933A08"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-029",
+      "poolMember": false,
+      "seed": "#BD6685"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-030",
+      "poolMember": false,
+      "seed": "#8E38F2"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-031",
+      "poolMember": false,
+      "seed": "#AE38DC"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-032",
+      "poolMember": false,
+      "seed": "#80D986"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-033",
+      "poolMember": false,
+      "seed": "#05A0BF"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-034",
+      "poolMember": false,
+      "seed": "#7F9737"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-035",
+      "poolMember": false,
+      "seed": "#DCBA19"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-036",
+      "poolMember": false,
+      "seed": "#C8B524"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-037",
+      "poolMember": false,
+      "seed": "#81110F"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-038",
+      "poolMember": false,
+      "seed": "#B520B1"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-039",
+      "poolMember": false,
+      "seed": "#C355B3"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-040",
+      "poolMember": false,
+      "seed": "#1F91B2"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-041",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-042",
+      "poolMember": false,
+      "seed": "#843FAE"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-043",
+      "poolMember": false,
+      "seed": "#3A0DA2"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-044",
+      "poolMember": false,
+      "seed": "#B35F3E"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-045",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-046",
+      "poolMember": false,
+      "seed": "#25AC8D"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-047",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-048",
+      "poolMember": false,
+      "seed": "#29A596"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-049",
+      "poolMember": false,
+      "seed": "#C03436"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-050",
+      "poolMember": false,
+      "seed": "#C3936B"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-051",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-052",
+      "poolMember": false,
+      "seed": "#C551CC"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-053",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-054",
+      "poolMember": false,
+      "seed": "#B71428"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-055",
+      "poolMember": false,
+      "seed": "#7F1C58"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-056",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-057",
+      "poolMember": false,
+      "seed": "#243DB1"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-058",
+      "poolMember": false,
+      "seed": "#586C3D"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-059",
+      "poolMember": false,
+      "seed": "#2984A6"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-060",
+      "poolMember": false,
+      "seed": "#299695"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-061",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-062",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-063",
+      "poolMember": false,
+      "seed": "#397DA2"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-064",
+      "poolMember": false,
+      "seed": "#8A1E71"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-065",
+      "poolMember": false,
+      "seed": "#A6462E"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-066",
+      "poolMember": false,
+      "seed": "#7E2181"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-067",
+      "poolMember": false,
+      "seed": "#6EA612"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-068",
+      "poolMember": false,
+      "seed": "#89A537"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-069",
+      "poolMember": false,
+      "seed": "#E2D472"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-070",
+      "poolMember": false,
+      "seed": "#7D1C56"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-071",
+      "poolMember": false,
+      "seed": "#DA63CC"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-072",
+      "poolMember": false,
+      "seed": "#B66A1A"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-073",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-074",
+      "poolMember": false,
+      "seed": "#64B0C3"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-075",
+      "poolMember": false,
+      "seed": "#298A81"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-076",
+      "poolMember": false,
+      "seed": "#54C9C5"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-077",
+      "poolMember": false,
+      "seed": "#BCE726"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-078",
+      "poolMember": false,
+      "seed": "#3F519A"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-079",
+      "poolMember": false,
+      "seed": "#9BB416"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-080",
+      "poolMember": false,
+      "seed": "#CF221C"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-081",
+      "poolMember": false,
+      "seed": "#10CB17"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-082",
+      "poolMember": false,
+      "seed": "#4A93C0"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-083",
+      "poolMember": false,
+      "seed": "#9C5E2E"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-084",
+      "poolMember": false,
+      "seed": "#834828"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-085",
+      "poolMember": false,
+      "seed": "#5273BA"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-086",
+      "poolMember": false,
+      "seed": "#A01F84"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-087",
+      "poolMember": false,
+      "seed": "#8AA108"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-088",
+      "poolMember": false,
+      "seed": "#9907A0"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-089",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-090",
+      "poolMember": false,
+      "seed": "#C7C06B"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-091",
+      "poolMember": false,
+      "seed": "#09C82E"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-092",
+      "poolMember": false,
+      "seed": "#F4D311"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-093",
+      "poolMember": false,
+      "seed": "#9E85E5"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-094",
+      "poolMember": false,
+      "seed": "#1B5D7A"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-095",
+      "poolMember": false,
+      "seed": "#6CE864"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-096",
+      "poolMember": false,
+      "seed": "#D9C28B"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-097",
+      "poolMember": false,
+      "seed": "#DE1F5C"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-098",
+      "poolMember": false,
+      "seed": "#25B06A"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-099",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-100",
+      "poolMember": false,
+      "seed": "#EE8422"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-101",
+      "poolMember": false,
+      "seed": "#1630C6"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-102",
+      "poolMember": false,
+      "seed": "#48F9A8"
+    },
+    {
+      "bucket": "App",
+      "fieldSeed": null,
+      "id": "mock-103",
+      "poolMember": false,
+      "seed": "#E1B263"
+    },
+    {
+      "bucket": "Folder",
+      "fieldSeed": null,
+      "id": "mock-104",
+      "poolMember": false,
+      "seed": "#5CA2D4"
+    },
+    {
+      "bucket": "Folder",
+      "fieldSeed": null,
+      "id": "mock-105",
+      "poolMember": false,
+      "seed": "#D5855D"
+    },
+    {
+      "bucket": "Folder",
+      "fieldSeed": null,
+      "id": "mock-106",
+      "poolMember": false,
+      "seed": "#D3B55B"
+    },
+    {
+      "bucket": "Folder",
+      "fieldSeed": null,
+      "id": "mock-107",
+      "poolMember": false,
+      "seed": "#D3AF5B"
+    },
+    {
+      "bucket": "Folder",
+      "fieldSeed": null,
+      "id": "mock-108",
+      "poolMember": false,
+      "seed": "#D5B15E"
+    },
+    {
+      "bucket": "Folder",
+      "fieldSeed": null,
+      "id": "mock-109",
+      "poolMember": false,
+      "seed": "#5EA4D6"
+    },
+    {
+      "bucket": "Folder",
+      "fieldSeed": null,
+      "id": "mock-110",
+      "poolMember": false,
+      "seed": "#D5B75E"
+    },
+    {
+      "bucket": "Folder",
+      "fieldSeed": null,
+      "id": "mock-111",
+      "poolMember": false,
+      "seed": "#D4B05C"
+    },
+    {
+      "bucket": "Folder",
+      "fieldSeed": null,
+      "id": "mock-112",
+      "poolMember": false,
+      "seed": "#D3AF5B"
+    },
+    {
+      "bucket": "Folder",
+      "fieldSeed": null,
+      "id": "mock-113",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "File",
+      "fieldSeed": null,
+      "id": "mock-114",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "File",
+      "fieldSeed": null,
+      "id": "mock-115",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "File",
+      "fieldSeed": null,
+      "id": "mock-116",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "File",
+      "fieldSeed": null,
+      "id": "mock-117",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "File",
+      "fieldSeed": null,
+      "id": "mock-118",
+      "poolMember": false,
+      "seed": null
+    },
+    {
+      "bucket": "File",
+      "fieldSeed": null,
+      "id": "mock-119",
+      "poolMember": false,
+      "seed": null
+    }
+  ],
+  "look": "ascast",
+  "set": "b6f151b9c7aa68bed9f9b3538e94c64e8dc2bef08bbbacac4d1577c44222e202",
+  "typeOverrides": {
+    "File": {
+      "patch": {
+        "plateColor": "#E9E2D4",
+        "shape": "Tile"
+      },
+      "source": "custom"
+    },
+    "Folder": {
+      "patch": {
+        "plateColor": null,
+        "plateFallback": "white",
+        "shape": "Folder"
+      },
+      "source": "custom"
+    },
+    "System": {
+      "patch": {
+        "plateColor": "#EDEAE4",
+        "shape": "Circle",
+        "subject": "BlackWhite"
+      },
+      "source": "custom"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "fullSetItems": 120,
+  "machine": {
+    "arch": "arm64",
+    "bun": "1.3.11",
+    "cores": 8,
+    "cpu": "Apple M2",
+    "memGB": 16,
+    "platform": "darwin"
+  },
+  "medianMs": {
+    "256px": 579.23,
+    "48px": 34.03
+  },
+  "note": "Informational only — EXCLUDED from --verify. Median of 5 warm single-threaded full-set renders."
+}

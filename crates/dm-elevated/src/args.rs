@@ -109,4 +109,46 @@ mod tests {
             other => panic!("unexpected {other:?}"),
         }
     }
+
+    #[test]
+    fn verb_matching_is_case_insensitive_and_trimmed() {
+        assert_eq!(parse(&argv(&["  VERSION "])), Command::Version);
+        assert_eq!(parse(&argv(&["Restore-Overlay"])), Command::RestoreOverlay);
+    }
+
+    #[test]
+    fn injection_style_verbs_are_rejected_as_unknown() {
+        // The verb is the whole first arg — no shell, no chaining. These are NOT whitelisted.
+        for evil in ["apply-overlay && calc.exe", "restore-overlay; rm -rf /", "../../evil", "apply-overlay --file x"] {
+            assert!(matches!(parse(&argv(&[evil])), Command::Unknown(_)), "{evil} must be Unknown");
+        }
+    }
+
+    #[test]
+    fn trailing_option_flag_without_a_value_is_ignored() {
+        // `--file` as the very last token has no value → None (oracle scans 1..len-1).
+        let cmd = parse(&argv(&["apply-overlay", "--style", "transparent", "--file"]));
+        assert_eq!(cmd, Command::ApplyOverlay { style: Style::Transparent, file: None });
+        // `--style` with no value → falls back to the default.
+        let cmd2 = parse(&argv(&["apply-overlay", "--style"]));
+        assert_eq!(cmd2, Command::ApplyOverlay { style: Style::Refined, file: None });
+    }
+
+    #[test]
+    fn first_matching_option_wins() {
+        let cmd = parse(&argv(&["apply-overlay", "--file", "first.ico", "--file", "second.ico"]));
+        match cmd {
+            Command::ApplyOverlay { file: Some(f), .. } => assert_eq!(f, "first.ico"),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn style_whitelist_is_case_insensitive_but_closed() {
+        assert_eq!(Style::parse("CUSTOM"), Some(Style::Custom));
+        assert_eq!(Style::parse("  Transparent "), Some(Style::Transparent));
+        for bogus in ["", "custom;drop", "reg", "REFINED_MARK", "../x"] {
+            assert_eq!(Style::parse(bogus), None, "{bogus} must not parse");
+        }
+    }
 }

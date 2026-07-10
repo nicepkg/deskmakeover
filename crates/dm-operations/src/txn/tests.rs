@@ -9,11 +9,16 @@ use std::rc::Rc;
 use dm_domain::{Fingerprint, ItemId, ItemKind, ItemTarget, OwnedFields};
 
 use super::driver::{ApplyRequest, TxnDriver};
-use super::fakes::{styled_bytes, FakePlatform, RecordingJournal, World};
+use super::fakes::{
+    styled_bytes, FailingAssetStore, FailingJournal, FakePlatform, RecordingJournal, World,
+};
 use super::journal::{JournalRecord, VecJournal};
 use super::recovery::recover;
-use crate::ledger::store::{LedgerStore, MemLedgerStore};
+use crate::error::{OperationError, Result};
+use crate::ledger::entry::LedgerEntry;
+use crate::ledger::store::{JsonLedgerStore, LedgerStore, MemLedgerStore};
 use crate::ledger::TxnState;
+use dm_domain::ItemId as DomainItemId;
 
 fn target(name: &str) -> ItemTarget {
     ItemTarget::new(ItemId::from_raw(name), ItemKind::Shortcut, format!("C:/Desktop/{name}.lnk"))
@@ -395,4 +400,245 @@ fn assert_recovers_consistently(
             );
         }
     }
+}
+
+// ---- Failure-branch coverage: one test per driver/recovery transition that can fail ----
+
+/// A ledger whose `upsert` always fails (simulates the commit→ledger write dying).
+struct FailingLedger;
+impl LedgerStore for FailingLedger {
+    fn upsert(&mut self, _entry: LedgerEntry) -> Result<()> {
+        Err(OperationError::Io("injected ledger upsert failure".into()))
+    }
+    fn get(&self, _item: &DomainItemId) -> Result<Option<LedgerEntry>> {
+        Ok(None)
+    }
+    fn all(&self) -> Result<Vec<LedgerEntry>> {
+        Ok(Vec::new())
+    }
+    fn remove(&mut self, _item: &DomainItemId) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn read_error_during_preflight_skips_item_as_conflict() {
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let req = request(&a, &world, "hashA");
+    world.borrow_mut().fail_read(&a.path); // reader errors on the CAS read
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let out = driver.apply(1, vec![req], &mut journal, &mut ledger).unwrap();
+    assert_eq!(out.conflicts, vec![ItemId::from_raw("A")]);
+    assert!(journal.records().is_empty()); // nothing entered the transaction
+}
+
+#[test]
+fn anchor_capture_error_during_preflight_skips_item() {
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    plat.error_capture(&a.path);
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+    assert_eq!(out.conflicts, vec![ItemId::from_raw("A")]);
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
+}
+
+#[test]
+fn corrupt_ledger_during_preflight_skips_item_not_overwrites() {
+    // A corrupt active ledger must fail closed at prepare time: the item is skipped, never
+    // styled (which could strand the only path back).
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ledger.json");
+    std::fs::write(&path, b"{ not json").unwrap();
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = JsonLedgerStore::new(&path);
+
+    let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+    assert_eq!(out.conflicts, vec![ItemId::from_raw("A")]);
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // untouched
+}
+
+#[test]
+fn asset_write_failure_rolls_back_before_any_mutation() {
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let assets = FailingAssetStore;
+    let driver = TxnDriver::new(&plat, &plat, &assets); // asset store fails
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+    assert!(out.error.is_some());
+    assert!(out.committed.is_empty());
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // no mutation happened
+    assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
+fn noop_apply_fails_verification_and_rolls_back() {
+    // An apply that "succeeds" but changes nothing must be caught by verify (new == original)
+    // and rolled back, never committed.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    world.borrow_mut().noop_apply(&a.path);
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+    assert!(out.error.is_some());
+    assert!(out.committed.is_empty());
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
+    assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
+fn journal_failure_after_mutation_still_rolls_back_to_original() {
+    // Fail the ItemApplied append (call 4: TxnBegin, ItemPrepared, AssetWritten, ItemApplied).
+    // The desktop mutation already happened; rollback must still walk it back exactly.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = FailingJournal::fail_on_call(4);
+    let mut ledger = MemLedgerStore::new();
+
+    let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+    assert!(out.error.is_some());
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // rolled back exactly
+    assert!(ledger.all().unwrap().is_empty());
+    // The failed ItemApplied was never recorded, but the rollback records were.
+    assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::TxnRolledBack { .. })));
+}
+
+#[test]
+fn journal_failure_before_mutation_aborts_without_touching_the_desktop() {
+    // Fail the ItemPrepared append (call 2). Nothing has mutated; apply propagates the error and
+    // the desktop + ledger stay pristine.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = FailingJournal::fail_on_call(2);
+    let mut ledger = MemLedgerStore::new();
+
+    let result = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger);
+    assert!(matches!(result, Err(OperationError::Journal(_))));
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
+    assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
+fn ledger_upsert_failure_at_commit_surfaces_but_recovery_reconciles() {
+    // The mutation + TxnCommitted are durable; only the ledger write dies. apply returns Err, and
+    // recovery rebuilds the entry from the journal (the commit→upsert gap is closed).
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut failing = FailingLedger;
+
+    let result = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut failing);
+    assert!(result.is_err());
+    // Desktop is styled (committed) and the journal recorded the commit.
+    assert_eq!(world.borrow().get(&a.path).unwrap(), styled_bytes("hashA"));
+    assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::TxnCommitted { .. })));
+
+    let mut fresh = MemLedgerStore::new();
+    let rec = recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
+    assert_eq!(rec.reconciled, vec![ItemId::from_raw("A")]);
+}
+
+#[test]
+fn empty_batch_and_all_conflicts_write_no_journal() {
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut ledger = MemLedgerStore::new();
+
+    // Empty request list → empty outcome, no transaction started.
+    let mut j1 = VecJournal::new();
+    let out = driver.apply(1, vec![], &mut j1, &mut ledger).unwrap();
+    assert_eq!(out, super::driver::ApplyOutcome::default());
+    assert!(j1.records().is_empty());
+
+    // A batch where the only item conflicts → still no TxnBegin.
+    let req = request(&a, &world, "hashA");
+    world.borrow_mut().put(&a.path, b"changed");
+    let mut j2 = VecJournal::new();
+    let out2 = driver.apply(2, vec![req], &mut j2, &mut ledger).unwrap();
+    assert_eq!(out2.conflicts, vec![ItemId::from_raw("A")]);
+    assert!(j2.records().is_empty());
+}
+
+#[test]
+fn recovery_of_a_rolled_back_txn_is_a_clean_noop() {
+    // Produce a fully-rolled-back transaction, then recover from its journal: nothing to do.
+    let world = World::shared();
+    let a = target("A");
+    let b = target("B");
+    seed(&world, &a, b"orig-A");
+    seed(&world, &b, b"orig-B");
+    world.borrow_mut().fail_apply(&b.path);
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    driver
+        .apply(1, vec![request(&a, &world, "hashA"), request(&b, &world, "hashB")], &mut journal, &mut ledger)
+        .unwrap();
+    assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::TxnRolledBack { .. })));
+
+    let mut fresh = MemLedgerStore::new();
+    let rec = recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
+    assert_eq!(rec.clean_txns, 1);
+    assert!(rec.aborted.is_empty() && rec.reconciled.is_empty());
+}
+
+#[test]
+fn recovery_propagates_a_restore_failure_so_it_can_retry() {
+    // An incomplete transaction whose restore fails must surface an error (the next startup
+    // retries), not silently claim success.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    // Truncate a successful apply's journal to just before commit → an incomplete transaction.
+    let mut recording = RecordingJournal::new(world.clone());
+    let mut ledger = MemLedgerStore::new();
+    driver.apply(1, vec![request(&a, &world, "hashA")], &mut recording, &mut ledger).unwrap();
+    let records: Vec<JournalRecord> =
+        recording.records().iter().filter(|r| !matches!(r, JournalRecord::TxnCommitted { .. } | JournalRecord::ItemVerified { .. })).cloned().collect();
+
+    world.borrow_mut().fail_restore(&a.path);
+    let mut fresh = MemLedgerStore::new();
+    let result = recover(&records, &plat, &plat, &mut fresh);
+    assert!(result.is_err());
 }

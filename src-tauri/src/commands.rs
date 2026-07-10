@@ -32,3 +32,25 @@ pub fn diagnostics_ping(message: String) -> DiagnosticsPing {
         message,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // settings_get/set require Tauri-managed `State`, so their happy/error paths are covered by
+    // the `SettingsStore` tests in `dm-operations`; only the state-free `diagnostics_ping` is a
+    // pure unit here.
+    #[test]
+    fn diagnostics_ping_echoes_the_message_and_reports_healthy() {
+        let ping = diagnostics_ping("hello".to_string());
+        assert!(ping.ok);
+        assert_eq!(ping.message, "hello");
+        assert_eq!(ping.version, env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn diagnostics_ping_preserves_empty_and_unicode_messages() {
+        assert_eq!(diagnostics_ping(String::new()).message, "");
+        assert_eq!(diagnostics_ping("日本語 🌸".to_string()).message, "日本語 🌸");
+    }
+}

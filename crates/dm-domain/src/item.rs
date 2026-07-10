@@ -208,4 +208,79 @@ mod tests {
         item.state = ItemState::Error;
         assert!(!item.can_style());
     }
+
+    #[test]
+    fn item_id_is_deterministic_for_unicode_and_very_long_paths() {
+        let unicode = r"C:\Users\李明\桌面\日本語 📁.lnk";
+        assert_eq!(ItemId::from_source_path("filesystem", unicode), ItemId::from_source_path("filesystem", unicode));
+        // A pathological 4k path must still produce a fixed 16-hex-char id.
+        let long = format!(r"C:\{}\x.lnk", "a".repeat(4000));
+        let id = ItemId::from_source_path("filesystem", &long);
+        assert_eq!(id.as_str().len(), 16);
+        // Different source namespaces never collide for the same path.
+        assert_ne!(
+            ItemId::from_source_path("filesystem", unicode),
+            ItemId::from_source_path("shell", unicode)
+        );
+    }
+
+    #[test]
+    fn item_target_and_icon_ref_round_trip() {
+        let target = ItemTarget::new(ItemId::from_raw("abc"), ItemKind::Folder, r"C:\D\Reports");
+        let back: ItemTarget =
+            serde_json::from_str(&serde_json::to_string(&target).unwrap()).unwrap();
+        assert_eq!(target, back);
+
+        for kind in [
+            IconSourceKind::File,
+            IconSourceKind::ExecutableResource,
+            IconSourceKind::UrlShortcut,
+            IconSourceKind::AppxAsset,
+            IconSourceKind::SystemIcon,
+            IconSourceKind::Fallback,
+        ] {
+            let icon = IconRef { kind, location: "x.ico".into(), index: -3 };
+            let back: IconRef = serde_json::from_str(&serde_json::to_string(&icon).unwrap()).unwrap();
+            assert_eq!(icon, back);
+        }
+    }
+
+    #[test]
+    fn can_style_covers_every_kind_at_ready() {
+        let styleable =
+            [ItemKind::Shortcut, ItemKind::UrlShortcut, ItemKind::Folder, ItemKind::RegularFile, ItemKind::RecycleBin];
+        let not_styleable = [ItemKind::AppxShortcut, ItemKind::System, ItemKind::Unsupported];
+        for kind in styleable {
+            assert!(mk(kind, ItemState::Ready).can_style(), "{kind:?} should style when ready");
+        }
+        for kind in not_styleable {
+            assert!(!mk(kind, ItemState::Ready).can_style(), "{kind:?} must not style");
+        }
+        // Even a styleable kind cannot style outside the Ready state.
+        for state in [ItemState::PreviewOnly, ItemState::RequiresConsent, ItemState::Unsupported, ItemState::Error] {
+            assert!(!mk(ItemKind::Shortcut, state).can_style());
+        }
+    }
+
+    #[test]
+    fn is_shortcut_is_only_lnk_and_url() {
+        assert!(ItemKind::Shortcut.is_shortcut());
+        assert!(ItemKind::UrlShortcut.is_shortcut());
+        for kind in [ItemKind::Folder, ItemKind::RegularFile, ItemKind::RecycleBin, ItemKind::AppxShortcut, ItemKind::System] {
+            assert!(!kind.is_shortcut(), "{kind:?} is not a shortcut");
+        }
+    }
+
+    fn mk(kind: ItemKind, state: ItemState) -> DesktopItem {
+        DesktopItem {
+            id: ItemId::from_raw("id"),
+            name: "n".into(),
+            path: "p".into(),
+            kind,
+            icon: None,
+            state,
+            requires_explicit_consent: false,
+            status_message: None,
+        }
+    }
 }

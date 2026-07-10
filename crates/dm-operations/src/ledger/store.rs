@@ -225,4 +225,28 @@ mod tests {
         assert!(matches!(store.all(), Err(OperationError::CorruptLedger)));
         assert!(matches!(store.get(&ItemId::from_raw("a")), Err(OperationError::CorruptLedger)));
     }
+
+    #[test]
+    fn removing_a_missing_item_is_a_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = JsonLedgerStore::new(dir.path().join("ledger.json"));
+        store.upsert(sample("a", 1)).unwrap();
+        store.remove(&ItemId::from_raw("does-not-exist")).unwrap();
+        assert_eq!(store.all().unwrap().len(), 1);
+        store.remove(&ItemId::from_raw("a")).unwrap();
+        assert!(store.all().unwrap().is_empty());
+    }
+
+    #[test]
+    fn mem_store_next_version_tracks_the_max() {
+        let mut store = MemLedgerStore::new();
+        assert_eq!(store.next_version().unwrap(), 1);
+        store.upsert(sample("a", 4)).unwrap();
+        store.upsert(sample("b", 2)).unwrap();
+        assert_eq!(store.next_version().unwrap(), 5);
+        // get + remove round-trip.
+        assert!(store.get(&ItemId::from_raw("a")).unwrap().is_some());
+        store.remove(&ItemId::from_raw("a")).unwrap();
+        assert!(store.get(&ItemId::from_raw("a")).unwrap().is_none());
+    }
 }

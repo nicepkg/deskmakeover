@@ -12,8 +12,8 @@ use dm_domain::{
     PortResult, RestoreAnchor,
 };
 
-use crate::error::Result;
-use crate::txn::journal::{JournalRecord, JournalSink};
+use crate::error::{OperationError, Result};
+use crate::txn::journal::{JournalRecord, JournalSink, VecJournal};
 
 /// The deterministic "styled" bytes an apply writes for a given asset hash — models the icon
 /// location swap changing the item's file bytes.
@@ -29,6 +29,11 @@ pub struct World {
     apply_fails: HashSet<String>,
     /// Paths whose `restore` must fail (simulates a rollback that cannot complete).
     restore_fails: HashSet<String>,
+    /// Paths whose `read_fingerprint` must fail with a non-NotFound error.
+    read_fails: HashSet<String>,
+    /// Paths whose `apply` succeeds but leaves the bytes unchanged (simulates a mutation that
+    /// silently did nothing → the driver's verify step must catch it).
+    noop_apply: HashSet<String>,
 }
 
 impl World {
@@ -52,6 +57,14 @@ impl World {
         self.restore_fails.insert(path.to_string());
     }
 
+    pub fn fail_read(&mut self, path: &str) {
+        self.read_fails.insert(path.to_string());
+    }
+
+    pub fn noop_apply(&mut self, path: &str) {
+        self.noop_apply.insert(path.to_string());
+    }
+
     /// Clears injected apply/restore faults (simulates a transient condition clearing before a
     /// recovery retry).
     pub fn clear_faults(&mut self) {
@@ -72,22 +85,37 @@ impl World {
 #[derive(Clone)]
 pub struct FakePlatform {
     world: Rc<RefCell<World>>,
-    /// Paths whose anchor capture should fail (simulates `restore.captureError`).
+    /// Paths whose anchor capture yields a `CaptureFailed` anchor (simulates `restore.captureError`).
     capture_fails: Rc<RefCell<HashSet<String>>>,
+    /// Paths whose anchor capture returns a hard `Err`.
+    capture_errors: Rc<RefCell<HashSet<String>>>,
 }
 
 impl FakePlatform {
     pub fn new(world: Rc<RefCell<World>>) -> Self {
-        Self { world, capture_fails: Rc::new(RefCell::new(HashSet::new())) }
+        Self {
+            world,
+            capture_fails: Rc::new(RefCell::new(HashSet::new())),
+            capture_errors: Rc::new(RefCell::new(HashSet::new())),
+        }
     }
 
+    /// The anchor capture returns a `CaptureFailed` anchor (no restore material — skipped).
     pub fn fail_capture(&self, path: &str) {
         self.capture_fails.borrow_mut().insert(path.to_string());
+    }
+
+    /// The anchor capture returns a hard `Err` (e.g. an I/O failure while reading the original).
+    pub fn error_capture(&self, path: &str) {
+        self.capture_errors.borrow_mut().insert(path.to_string());
     }
 }
 
 impl ItemStateReader for FakePlatform {
     fn read_fingerprint(&self, target: &ItemTarget) -> PortResult<Fingerprint> {
+        if self.world.borrow().read_fails.contains(&target.path) {
+            return Err(PortError::Io(format!("read failed for {}", target.path)));
+        }
         match self.world.borrow().get(&target.path) {
             Some(bytes) => Ok(Fingerprint::of_bytes(&bytes)),
             None => Err(PortError::NotFound(target.path.clone())),
@@ -95,6 +123,9 @@ impl ItemStateReader for FakePlatform {
     }
 
     fn capture_anchor(&self, target: &ItemTarget) -> PortResult<RestoreAnchor> {
+        if self.capture_errors.borrow().contains(&target.path) {
+            return Err(PortError::Io(format!("anchor capture failed for {}", target.path)));
+        }
         if self.capture_fails.borrow().contains(&target.path) {
             return Ok(RestoreAnchor::CaptureFailed { reason: "locked".into() });
         }
@@ -110,6 +141,9 @@ impl IconApplier for FakePlatform {
         let mut world = self.world.borrow_mut();
         if world.apply_fails.contains(&target.path) {
             return Err(PortError::Com(format!("apply failed for {}", target.path)));
+        }
+        if world.noop_apply.contains(&target.path) {
+            return Ok(()); // "succeeds" but changes nothing → verify must catch it
         }
         world.put(&target.path, &styled_bytes(&asset.hash));
         Ok(())
@@ -175,5 +209,52 @@ impl JournalSink for RecordingJournal {
 
     fn read_all(&self) -> Result<Vec<JournalRecord>> {
         Ok(self.records.clone())
+    }
+}
+
+/// A journal that fails its `fail_at`-th append (1-based) but records everything before it, so a
+/// journal-write failure at any point in the durable pipeline can be injected.
+pub struct FailingJournal {
+    inner: VecJournal,
+    fail_at: usize,
+    calls: usize,
+}
+
+impl FailingJournal {
+    /// Fail on the `n`-th append call (1-based); use a large `n` to never fail.
+    pub fn fail_on_call(n: usize) -> Self {
+        Self { inner: VecJournal::new(), fail_at: n, calls: 0 }
+    }
+
+    pub fn records(&self) -> &[JournalRecord] {
+        self.inner.records()
+    }
+}
+
+impl JournalSink for FailingJournal {
+    fn append(&mut self, record: &JournalRecord) -> Result<()> {
+        self.calls += 1;
+        if self.calls == self.fail_at {
+            return Err(OperationError::Journal("injected journal append failure".into()));
+        }
+        self.inner.append(record)
+    }
+
+    fn read_all(&self) -> Result<Vec<JournalRecord>> {
+        self.inner.read_all()
+    }
+}
+
+/// An asset store whose `put` always fails (simulates a full disk / permission error while
+/// materializing the generated ICO).
+pub struct FailingAssetStore;
+
+impl AssetStore for FailingAssetStore {
+    fn put(&self, _hash: &str, _bytes: &[u8]) -> PortResult<AssetRef> {
+        Err(PortError::Io("injected asset write failure".into()))
+    }
+
+    fn gc(&self, _live: &[String]) -> PortResult<()> {
+        Ok(())
     }
 }

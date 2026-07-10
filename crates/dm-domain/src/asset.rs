@@ -44,3 +44,23 @@ impl OwnedFields {
         Self::default()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owned_fields_default_is_icon_only() {
+        assert_eq!(OwnedFields::default(), OwnedFields::icon_only());
+        assert!(OwnedFields::default().icon_location);
+    }
+
+    #[test]
+    fn asset_ref_round_trips_and_equates_by_value() {
+        let a = AssetRef::new("abc-def", r"C:\gen\abc-def.ico");
+        assert_eq!(a, AssetRef::new("abc-def", r"C:\gen\abc-def.ico"));
+        assert_ne!(a, AssetRef::new("other", r"C:\gen\abc-def.ico"));
+        let back: AssetRef = serde_json::from_str(&serde_json::to_string(&a).unwrap()).unwrap();
+        assert_eq!(a, back);
+    }
+}

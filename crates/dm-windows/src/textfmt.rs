@@ -104,6 +104,39 @@ mod tests {
     }
 
     #[test]
+    fn value_with_equals_and_query_string_is_preserved() {
+        // A URL value containing `=` must survive intact (only the FIRST `=` splits key/value).
+        let mut l = lines("[InternetShortcut]\nURL=https://x?a=1&b=2\nIconFile=old.ico");
+        internet_shortcut_upsert(&mut l, "IconFile", "styled.ico").unwrap();
+        assert!(l.contains(&"URL=https://x?a=1&b=2".to_string()));
+        assert!(l.contains(&"IconFile=styled.ico".to_string()));
+    }
+
+    #[test]
+    fn empty_section_inserts_at_end() {
+        let mut l = lines("[InternetShortcut]");
+        internet_shortcut_upsert(&mut l, "IconFile", "a.ico").unwrap();
+        assert_eq!(l, vec!["[InternetShortcut]".to_string(), "IconFile=a.ico".to_string()]);
+    }
+
+    #[test]
+    fn first_internet_shortcut_section_wins() {
+        // A malformed file with two sections: the upsert targets the first, not the decoy.
+        let mut l = lines("[InternetShortcut]\nURL=https://a\n[InternetShortcut]\nURL=https://b");
+        internet_shortcut_upsert(&mut l, "IconFile", "a.ico").unwrap();
+        // Inserted inside the first section (before the second header at index 2).
+        assert_eq!(l[2], "IconFile=a.ico");
+    }
+
+    #[test]
+    fn desktop_ini_preserves_special_chars_in_icon_path() {
+        let content = desktop_ini_content(r"C:\图标\my icon,v2.ico");
+        assert!(content.contains(r"IconResource=C:\图标\my icon,v2.ico,0"));
+        assert!(content.ends_with("ConfirmFileOp=0\r\n"));
+        assert!(content.contains("\r\n")); // CRLF line endings
+    }
+
+    #[test]
     fn desktop_ini_content_matches_oracle_shape() {
         assert_eq!(
             desktop_ini_content(r"C:\gen\folder.ico"),

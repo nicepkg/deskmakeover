@@ -170,4 +170,42 @@ mod tests {
         let back: RestoreAnchor = serde_json::from_str(&serde_json::to_string(&anchor).unwrap()).unwrap();
         assert_eq!(anchor, back);
     }
+
+    #[test]
+    fn empty_file_bytes_anchor_round_trips() {
+        // A 0-byte original (e.g. an empty `.url`) is a valid anchor, not an error.
+        let anchor = RestoreAnchor::FileBytes { bytes: Vec::new() };
+        assert!(anchor.has_material());
+        let back: RestoreAnchor = serde_json::from_str(&serde_json::to_string(&anchor).unwrap()).unwrap();
+        assert_eq!(anchor, back);
+    }
+
+    #[test]
+    fn folder_anchor_round_trips_with_and_without_desktop_ini() {
+        let with = RestoreAnchor::Folder {
+            attributes: 0x10,
+            desktop_ini: Some(DesktopIniAnchor { content: b"[.ShellClassInfo]\r\n".to_vec(), attributes: 0x6 }),
+        };
+        let without = RestoreAnchor::Folder { attributes: 0x10, desktop_ini: None };
+        for anchor in [with, without] {
+            assert!(anchor.has_material());
+            let back: RestoreAnchor =
+                serde_json::from_str(&serde_json::to_string(&anchor).unwrap()).unwrap();
+            assert_eq!(anchor, back);
+        }
+    }
+
+    #[test]
+    fn has_material_is_true_for_every_real_variant() {
+        let variants = [
+            RestoreAnchor::FileBytes { bytes: b"x".to_vec() },
+            RestoreAnchor::Folder { attributes: 0, desktop_ini: None },
+            RestoreAnchor::RegularFile(WrapperAnchor { file_attributes: 0, wrapper_existed: false, wrapper_content: None }),
+            RestoreAnchor::RecycleBin(RecycleBinAnchor { key_existed: false, default: None, empty: None, full: None }),
+        ];
+        for v in variants {
+            assert!(v.has_material(), "{v:?} should carry restore material");
+        }
+        assert!(!RestoreAnchor::CaptureFailed { reason: "locked".into() }.has_material());
+    }
 }

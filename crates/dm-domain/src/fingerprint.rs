@@ -100,4 +100,33 @@ mod tests {
         assert!(Fingerprint::from_hex("nope").is_none());
         assert!(serde_json::from_str::<Fingerprint>("\"zz\"").is_err());
     }
+
+    #[test]
+    fn empty_input_has_a_stable_nonzero_fingerprint() {
+        // An empty file (0 bytes) must still fingerprint deterministically — it is a legitimate
+        // CAS state, not an error.
+        let a = Fingerprint::of_bytes(b"");
+        let b = Fingerprint::of_bytes(b"");
+        assert_eq!(a, b);
+        assert_ne!(a, Fingerprint::of_bytes(b"x"));
+        // sha256("") is well-known; confirm the hex is the canonical value.
+        assert_eq!(a.to_hex(), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    }
+
+    #[test]
+    fn of_parts_distinguishes_empty_part_from_absent_part() {
+        // Length-prefixed framing: [] (no parts) must differ from [""] (one empty part).
+        assert_ne!(Fingerprint::of_parts(&[]), Fingerprint::of_parts(&[b""]));
+        // Two empty parts differ from one empty part.
+        assert_ne!(Fingerprint::of_parts(&[b""]), Fingerprint::of_parts(&[b"", b""]));
+    }
+
+    #[test]
+    fn from_hex_length_boundaries() {
+        let valid = Fingerprint::of_bytes(b"x").to_hex();
+        assert!(Fingerprint::from_hex(&valid).is_some());
+        assert!(Fingerprint::from_hex(&valid[..63]).is_none()); // 63 chars
+        assert!(Fingerprint::from_hex(&format!("{valid}0")).is_none()); // 65 chars
+        assert!(Fingerprint::from_hex("").is_none());
+    }
 }

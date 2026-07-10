@@ -193,4 +193,33 @@ mod tests {
         assert_eq!(j.records().len(), 2);
         assert_eq!(j.records()[0].txn(), 7);
     }
+
+    #[test]
+    fn corrupt_journal_line_is_an_error_not_a_silent_drop() {
+        // A torn/garbage line must fail read_all loudly — recovery cannot be trusted to a journal
+        // it can only partially parse.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("txn.log");
+        let mut j = FileJournal::new(&path);
+        j.append(&begin(1)).unwrap();
+        // Append a garbage line directly.
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        f.write_all(b"{ this is not a record }\n").unwrap();
+        drop(f);
+        assert!(matches!(j.read_all(), Err(OperationError::Journal(_))));
+    }
+
+    #[test]
+    fn blank_lines_in_the_journal_are_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("txn.log");
+        let mut j = FileJournal::new(&path);
+        j.append(&begin(1)).unwrap();
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        f.write_all(b"\n\n").unwrap();
+        drop(f);
+        assert_eq!(j.read_all().unwrap().len(), 1);
+    }
 }

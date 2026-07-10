@@ -105,4 +105,108 @@ mod tests {
         assert_eq!(dto.language, Language::System);
         assert!(!dto.keep_new_icons_styled);
     }
+
+    #[test]
+    fn every_theme_variant_serializes_to_its_ts_literal() {
+        for (variant, literal) in
+            [(Theme::System, "\"System\""), (Theme::Dark, "\"Dark\""), (Theme::Light, "\"Light\"")]
+        {
+            assert_eq!(serde_json::to_string(&variant).unwrap(), literal);
+            let back: Theme = serde_json::from_str(literal).unwrap();
+            assert_eq!(back, variant);
+        }
+    }
+
+    #[test]
+    fn every_language_variant_round_trips() {
+        for (variant, literal) in [
+            (Language::System, "\"System\""),
+            (Language::ZhHans, "\"zh-Hans\""),
+            (Language::En, "\"en\""),
+        ] {
+            assert_eq!(serde_json::to_string(&variant).unwrap(), literal);
+            assert_eq!(serde_json::from_str::<Language>(literal).unwrap(), variant);
+        }
+    }
+
+    #[test]
+    fn default_dto_is_conservative() {
+        let d = SettingsDto::default();
+        assert_eq!(d.theme, Theme::System);
+        assert_eq!(d.language, Language::System);
+        assert!(!d.keep_new_icons_styled); // resident auto-format OFF by default (ADR-0020)
+        assert!(!d.wallpaper_coach_shown);
+    }
+
+    #[test]
+    fn full_dto_round_trips_field_by_field() {
+        let dto = SettingsDto {
+            theme: Theme::Light,
+            language: Language::ZhHans,
+            keep_new_icons_styled: true,
+            wallpaper_coach_shown: true,
+        };
+        let back: SettingsDto =
+            serde_json::from_str(&serde_json::to_string(&dto).unwrap()).unwrap();
+        assert_eq!(dto, back);
+    }
+
+    #[test]
+    fn patch_applies_every_field() {
+        let mut dto = SettingsDto::default();
+        let patch = SettingsPatch {
+            theme: Some(Theme::Dark),
+            language: Some(Language::En),
+            keep_new_icons_styled: Some(true),
+            wallpaper_coach_shown: Some(true),
+        };
+        dto.apply(&patch);
+        assert_eq!(dto.theme, Theme::Dark);
+        assert_eq!(dto.language, Language::En);
+        assert!(dto.keep_new_icons_styled);
+        assert!(dto.wallpaper_coach_shown);
+    }
+
+    #[test]
+    fn empty_patch_is_a_noop() {
+        let original = SettingsDto {
+            theme: Theme::Dark,
+            language: Language::En,
+            keep_new_icons_styled: true,
+            wallpaper_coach_shown: true,
+        };
+        let mut dto = original.clone();
+        dto.apply(&SettingsPatch::default());
+        assert_eq!(dto, original);
+    }
+
+    #[test]
+    fn absent_and_explicit_null_both_decode_to_none() {
+        // Partial<SettingsDto>: a missing key and an explicit null must both mean "leave alone".
+        let from_missing: SettingsPatch = serde_json::from_str("{}").unwrap();
+        let from_null: SettingsPatch = serde_json::from_str("{\"theme\":null,\"language\":null}").unwrap();
+        assert_eq!(from_missing, SettingsPatch::default());
+        assert_eq!(from_null.theme, None);
+        assert_eq!(from_null.language, None);
+    }
+
+    #[test]
+    fn dto_and_patch_tolerate_unknown_fields() {
+        // Forward-compat: a newer frontend sending an extra key must not break the decode.
+        let dto: SettingsDto = serde_json::from_str(
+            r#"{"theme":"Dark","language":"en","keepNewIconsStyled":true,"wallpaperCoachShown":false,"futureFlag":1}"#,
+        )
+        .unwrap();
+        assert_eq!(dto.theme, Theme::Dark);
+        let patch: SettingsPatch =
+            serde_json::from_str(r#"{"theme":"Light","somethingNew":true}"#).unwrap();
+        assert_eq!(patch.theme, Some(Theme::Light));
+        assert_eq!(patch.language, None);
+    }
+
+    #[test]
+    fn invalid_enum_literal_is_rejected() {
+        assert!(serde_json::from_str::<Theme>("\"Neon\"").is_err());
+        assert!(serde_json::from_str::<Language>("\"fr\"").is_err());
+    }
 }

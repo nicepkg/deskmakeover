@@ -86,3 +86,15 @@ fn settings_db_path<R: tauri::Runtime>(
     std::fs::create_dir_all(&dir)?;
     Ok(dir.join("settings.sqlite3"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bindings_path_points_at_the_committed_ts_file() {
+        let p = bindings_path();
+        assert!(p.ends_with("generated.ts"), "got {}", p.display());
+        assert!(p.to_string_lossy().contains("bridge"));
+    }
+}

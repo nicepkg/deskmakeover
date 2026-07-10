@@ -107,4 +107,45 @@ mod tests {
         assert_eq!(parse_icon_location(r"C:\a,b\icon.ico"), (r"C:\a,b\icon.ico".into(), 0));
         assert_eq!(parse_icon_location(r"C:\a,b\lib.dll,7"), (r"C:\a,b\lib.dll".into(), 7));
     }
+
+    #[test]
+    fn multi_dot_and_boundary_extensions() {
+        assert_eq!(classify_entry("archive.tar.gz", false), ItemKind::RegularFile); // ext = gz
+        assert_eq!(classify_entry("My.App.lnk", false), ItemKind::Shortcut); // last segment wins
+        // A leading-dot dotfile has no extension → loose file, never a shortcut.
+        assert_eq!(classify_entry(".lnk", false), ItemKind::RegularFile);
+        // A trailing dot is not an extension.
+        assert_eq!(classify_entry("report.", false), ItemKind::RegularFile);
+    }
+
+    #[test]
+    fn classify_reads_only_the_name_it_is_given_not_separators() {
+        // classify does not interpret path separators or `..` — path safety is the scanner's job
+        // (it only enumerates inside SHGetKnownFolderPath roots). A traversal-looking *name* is
+        // still classified purely by its extension.
+        assert_eq!(classify_entry("..lnk", false), ItemKind::Shortcut);
+        assert_eq!(classify_entry("..", true), ItemKind::Folder);
+    }
+
+    #[test]
+    fn ignored_entry_matches_only_the_exact_marker() {
+        assert!(is_ignored_entry("desktop.ini"));
+        assert!(!is_ignored_entry("mydesktop.ini"));
+        assert!(!is_ignored_entry("desktop.ini.bak"));
+    }
+
+    #[test]
+    fn display_name_keeps_inner_dots_for_shortcuts() {
+        assert_eq!(display_name("My.App.lnk", ItemKind::Shortcut), "My.App");
+        assert_eq!(display_name("archive.tar.gz", ItemKind::RegularFile), "archive.tar.gz");
+    }
+
+    #[test]
+    fn parse_icon_location_edge_inputs() {
+        assert_eq!(parse_icon_location(""), (String::new(), 0));
+        assert_eq!(parse_icon_location("shell32.dll"), ("shell32.dll".into(), 0));
+        assert_eq!(parse_icon_location("  \"spaced path.ico\"  "), ("spaced path.ico".into(), 0));
+        // A trailing non-integer after the comma is part of the path, not an index.
+        assert_eq!(parse_icon_location("a.dll,notanumber"), ("a.dll,notanumber".into(), 0));
+    }
 }

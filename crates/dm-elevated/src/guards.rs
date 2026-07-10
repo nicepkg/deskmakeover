@@ -60,4 +60,34 @@ mod tests {
         assert!(validate_ico(MAX_ICO_BYTES + 1, &ico_header()).is_err());
         assert!(validate_ico(MAX_ICO_BYTES, &ico_header()).is_ok());
     }
+
+    #[test]
+    fn reserved_bytes_must_be_zero() {
+        // A spoofed header with non-zero reserved bytes is not a real ICONDIR.
+        assert!(!is_ico_header(&[1, 0, 1, 0, 1, 0]));
+        assert!(!is_ico_header(&[0, 1, 1, 0, 1, 0]));
+    }
+
+    #[test]
+    fn type_field_must_be_exactly_icon() {
+        // type=1 icon ok; type=2 cursor and other spoofs rejected.
+        assert!(is_ico_header(&[0, 0, 1, 0, 1, 0]));
+        assert!(!is_ico_header(&[0, 0, 2, 0, 1, 0]));
+        assert!(!is_ico_header(&[0, 0, 0, 0, 1, 0]));
+        assert!(!is_ico_header(&[0, 0, 1, 1, 1, 0])); // high byte of type set
+    }
+
+    #[test]
+    fn count_high_byte_still_counts_as_present() {
+        // count is a little-endian u16; a value in the high byte (e.g. 256) is still ≥ 1.
+        assert!(is_ico_header(&[0, 0, 1, 0, 0, 1]));
+    }
+
+    #[test]
+    fn extra_bytes_after_the_header_are_ignored() {
+        let mut buf = vec![0, 0, 1, 0, 1, 0];
+        buf.extend_from_slice(b"the rest of a real ico file ...");
+        assert!(is_ico_header(&buf));
+        assert!(validate_ico(2048, &buf).is_ok());
+    }
 }

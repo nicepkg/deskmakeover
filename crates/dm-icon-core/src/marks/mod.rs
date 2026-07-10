@@ -4,7 +4,7 @@
 
 mod styles;
 
-use std::cell::RefCell;
+use std::sync::RwLock;
 
 use crate::analysis::ContentBounds;
 use crate::config::{IconShape, MarkStyle};
@@ -181,19 +181,22 @@ pub fn draw_arrow_glyph(
 const ARROW_PLATE: Rgba = Rgba { r: 244, g: 244, b: 241, a: 245 };
 const ARROW_GLYPH: Rgba = Rgba { r: 46, g: 50, b: 56, a: 255 };
 
-thread_local! {
-    // The GENUINE Win11 shortcut-arrow badge (owner-extracted). Mirrors the TS
-    // module global `nativeArrow`; the runner sets it once at boot.
-    static NATIVE_ARROW: RefCell<Option<Raster>> = const { RefCell::new(None) };
-}
+// The GENUINE Win11 shortcut-arrow badge (owner-extracted). Mirrors the TS
+// module global `nativeArrow`; the runner sets it once at boot. This is a
+// process-global (not thread-local): every render thread in the M6 worker pool
+// must see the same raster the runner installed. A thread-local silently drops
+// off-thread renders to the DRAWN fallback, which breaks native↔wasm byte-parity.
+// Read-mostly (one clone per shortcut render, writes only at boot), so RwLock
+// over Mutex — worker threads read concurrently.
+static NATIVE_ARROW: RwLock<Option<Raster>> = RwLock::new(None);
 
 /// marks.ts `setNativeArrowRaster`.
 pub fn set_native_arrow_raster(raster: Option<Raster>) {
-    NATIVE_ARROW.with(|a| *a.borrow_mut() = raster);
+    *NATIVE_ARROW.write().unwrap() = raster;
 }
 
 fn native_arrow() -> Option<Raster> {
-    NATIVE_ARROW.with(|a| a.borrow().clone())
+    NATIVE_ARROW.read().unwrap().clone()
 }
 
 /// 经典箭头 — the real system badge when available, else the drawn fallback
@@ -260,5 +263,87 @@ pub fn resolve_mark(style: MarkStyle) -> &'static dyn Mark {
         MarkStyle::Arc => &styles::ARC_MARK,
         MarkStyle::Fold => &styles::FOLD_MARK,
         MarkStyle::Ring => &styles::RING_MARK,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+
+    /// A sentinel arrow badge — solid opaque magenta. The DRAWN fallback only
+    /// paints ARROW_PLATE / ARROW_GLYPH, so any magenta pixel in the output is
+    /// proof the native raster path (not the fallback) was taken.
+    const SENTINEL: Rgba = Rgba { r: 255, g: 0, b: 255, a: 255 };
+
+    fn sentinel_arrow() -> Raster {
+        let mut r = Raster::new(32, 32);
+        for p in r.data.chunks_exact_mut(4) {
+            p.copy_from_slice(&[SENTINEL.r, SENTINEL.g, SENTINEL.b, SENTINEL.a]);
+        }
+        r
+    }
+
+    fn sentinel_pixels(target: &Raster) -> usize {
+        target
+            .data
+            .chunks_exact(4)
+            .filter(|p| p == &[SENTINEL.r, SENTINEL.g, SENTINEL.b, SENTINEL.a])
+            .count()
+    }
+
+    fn render_arrow(size: usize) -> Raster {
+        let mut t = Raster::new(size, size);
+        draw_classic_arrow(&mut t, size);
+        t
+    }
+
+    /// P2-7 regression: the native arrow raster is installed on one thread and
+    /// must be visible to a *different* render thread. With the old
+    /// `thread_local!` storage the spawned thread saw `None` and silently fell
+    /// back to the DRAWN arrow, breaking native↔wasm byte-parity the moment the
+    /// M6 worker pool renders off the setter's thread. This is the exact failure.
+    ///
+    /// Both phases live in one `#[test]` because they both mutate the process
+    /// global `NATIVE_ARROW`; splitting them would let the harness run them
+    /// concurrently and race the global. Sequential ownership = deterministic.
+    #[test]
+    fn native_arrow_visible_across_render_threads() {
+        const SIZE: usize = 64;
+
+        // --- Phase 1: native raster installed on this thread ---
+        set_native_arrow_raster(Some(sentinel_arrow()));
+
+        // Render on the setter's thread (baseline native render).
+        let main_render = render_arrow(SIZE);
+        // Render on a *spawned* thread — the case the thread_local silently broke.
+        let off_render = thread::spawn(|| render_arrow(SIZE)).join().unwrap();
+
+        // The off-thread render must have used the native raster, not the fallback.
+        assert!(
+            sentinel_pixels(&off_render) > 0,
+            "off-thread render fell back to the DRAWN arrow — native raster not visible across threads"
+        );
+        // And it must be byte-identical to the setter-thread render: same raster,
+        // same bytes, on every worker thread (the byte-parity worker-pool invariant).
+        assert_eq!(
+            off_render.data, main_render.data,
+            "off-thread render diverged from the setter-thread render"
+        );
+
+        // --- Phase 2: negative control — fallback still reachable when unset ---
+        // Guards against Phase 1 passing for the wrong reason (e.g. both paths
+        // producing the sentinel). Also restores the global for other tests.
+        set_native_arrow_raster(None);
+        let fallback = render_arrow(SIZE);
+        assert_eq!(
+            sentinel_pixels(&fallback),
+            0,
+            "no native raster installed, yet the sentinel colour appeared"
+        );
+        assert!(
+            fallback.data.chunks_exact(4).any(|p| p[3] > 0),
+            "drawn fallback painted nothing"
+        );
     }
 }

@@ -228,9 +228,17 @@ fn reconcile_committed(
             // driver's ordering, but skip defensively rather than fabricate an entry.
             continue;
         };
+        // Skip an already-reconciled row ONLY when it matches the journal in full — including the
+        // paired empty ref. A legacy row committed before empty_asset existed loads as `None`; if we
+        // skipped it on the fingerprint alone, the exact empty ref the journal carries would never be
+        // persisted and would then be checkpointed away, orphaning the empty ICO (new-P1, wave-2R).
         let already = ledger
             .get(id)?
-            .map(|e| e.state.is_committed() && e.last_applied_fingerprint == new_fp)
+            .map(|e| {
+                e.state.is_committed()
+                    && e.last_applied_fingerprint == new_fp
+                    && e.empty_asset == rec.empty_asset
+            })
             .unwrap_or(false);
         if already {
             continue;

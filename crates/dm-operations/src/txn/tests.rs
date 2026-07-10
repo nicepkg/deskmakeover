@@ -849,6 +849,74 @@ fn the_paired_empty_asset_is_persisted_in_the_ledger_and_survives_recovery() {
 }
 
 #[test]
+fn same_style_reapply_recovery_backfills_a_missing_empty_ref() {
+    // New-P1 (wave-2R): a legacy committed row loaded with empty_asset:None must NOT block recovery
+    // from persisting the exact empty ref the journal carries. reconcile_committed used to skip any
+    // committed row whose fingerprint matched, so the exact reference was lost then checkpointed
+    // away — orphaning the empty ICO.
+    let bin =
+        ItemTarget::new(ItemId::from_raw("RB"), ItemKind::RecycleBin, "HKCU/RecycleBin/DefaultIcon");
+    let orig_fp = Fingerprint::of_bytes(b"orig-RB");
+    let styled_fp = Fingerprint::of_bytes(b"styled-RB");
+    let anchor = dm_domain::RestoreAnchor::FileBytes { bytes: b"orig-RB".to_vec() };
+    let asset = dm_domain::AssetRef::new("hashRB", "assets/hashRB.ico");
+    let exact_empty = dm_domain::AssetRef::new("hashRB-empty", "assets/hashRB-empty.ico");
+
+    // A committed journal for the SAME styled state, carrying the exact empty ref.
+    let records = vec![
+        JournalRecord::TxnBegin { txn: 5, items: vec![bin.id.clone()] },
+        JournalRecord::ItemPrepared {
+            txn: 5,
+            item: bin.id.clone(),
+            target: bin.clone(),
+            anchor: anchor.clone(),
+            original_fingerprint: orig_fp,
+            expected_fingerprint: orig_fp,
+            asset_hash: "hashRB".into(),
+            owned: OwnedFields::icon_only(),
+            pinned_seed: None,
+        },
+        JournalRecord::AssetWritten {
+            txn: 5,
+            item: bin.id.clone(),
+            asset: asset.clone(),
+            empty: Some(exact_empty.clone()),
+        },
+        JournalRecord::ItemApplied { txn: 5, item: bin.id.clone(), new_fingerprint: styled_fp },
+        JournalRecord::ItemVerified { txn: 5, item: bin.id.clone() },
+        JournalRecord::TxnCommitted { txn: 5 },
+    ];
+
+    // A legacy ledger already holding the committed row, but WITHOUT the empty ref.
+    let world = World::shared();
+    let plat = FakePlatform::new(world.clone());
+    let mut ledger = MemLedgerStore::new();
+    ledger
+        .upsert(LedgerEntry {
+            item: bin.id.clone(),
+            target: bin.clone(),
+            original_fingerprint: orig_fp,
+            original_anchor: anchor.clone(),
+            last_applied_fingerprint: styled_fp,
+            owned: OwnedFields::icon_only(),
+            asset: asset.clone(),
+            empty_asset: None, // legacy row: written before empty_asset existed
+            state: TxnState::Committed,
+            pinned_seed: None,
+            version: 1,
+        })
+        .unwrap();
+
+    recover(&records, &plat, &plat, &mut ledger).unwrap();
+
+    let entry = ledger.get(&bin.id).unwrap().unwrap();
+    assert_eq!(
+        entry.empty_asset.expect("recovery must backfill the exact empty ref onto a legacy row").path,
+        exact_empty.path
+    );
+}
+
+#[test]
 fn the_fake_applier_does_not_ignore_the_paired_empty_asset() {
     // New-P3: the fake applier used to ignore assets.empty, styling identically whether or not a
     // paired empty was supplied — an unfaithful model of the P2-1 "reference the EXACT empty asset"

@@ -2,11 +2,12 @@
 //! anchor. Ported from `DeskMakeover.Shell/RestoreMetadataCollector.cs` (per-kind capture) and the
 //! `SequenceEqual` preflight (`DesktopIconApplyOperations.cs`).
 //!
-//! * file kinds (`.lnk`/`.url`/loose file): fingerprint = SHA-256 of the bytes; anchor = the bytes;
-//! * folder: fingerprint = SHA-256 of `desktop.ini` bytes + folder attributes; anchor = both;
-//! * Recycle Bin: fingerprint + anchor = the per-user `DefaultIcon` registry values.
+//! The **fingerprint** covers only the icon reference the writer sets (the styleable surface),
+//! derivable from the asset so the applier's `expected` needs no self-re-read (P1-1) and an
+//! unrelated byte/attribute is not a false conflict (P2-2). The **anchor** still captures the full
+//! original state needed for an exact restore.
 //!
-//! [WINDOWS-VERIFY] runtime (filesystem/registry semantics).
+//! [WINDOWS-VERIFY] runtime (filesystem/registry/COM semantics).
 
 use std::path::Path;
 
@@ -16,7 +17,9 @@ use dm_domain::{
 };
 
 use crate::apply::{file_wrapper, recyclebin};
-use crate::shell::attrs;
+use crate::fingerprint_surface::{self as fp, SurfaceState};
+use crate::shell::{attrs, shell_link};
+use crate::textfmt;
 
 /// Reads fingerprints and anchors across all item kinds.
 pub struct WindowsStateReader;
@@ -24,40 +27,47 @@ pub struct WindowsStateReader;
 impl ItemStateReader for WindowsStateReader {
     fn read_fingerprint(&self, target: &ItemTarget) -> PortResult<Fingerprint> {
         match target.kind {
-            // `.lnk`/`.url` apply rewrites the file's own bytes, so the file bytes ARE the surface.
-            ItemKind::Shortcut | ItemKind::UrlShortcut => {
-                Ok(Fingerprint::of_bytes(&read_bytes(&target.path)?))
+            // The surface is the icon LOCATION the writer sets (path + index), read straight from
+            // the live `.lnk`. A missing shortcut is NotFound (a deleted item is skipped, not read
+            // as an empty surface).
+            ItemKind::Shortcut => {
+                require_exists(&target.path)?;
+                let (path, index) = shell_link::read_icon_location(&target.path)?.unwrap_or_default();
+                Ok(SurfaceState::IconRef { path, index }.fingerprint())
             }
-            // A loose file is styled by a sibling wrapper `.lnk` + hiding the original; the file's
-            // own bytes are never touched. Fingerprint what apply actually changes — the wrapper's
-            // presence/bytes and the original's attribute bits — so styled ≠ unstyled and the item
-            // can commit (P1-10). A missing original still errors NotFound (via `attrs::get`), so a
-            // deleted file is skipped, not misread as an unchanged surface.
-            ItemKind::RegularFile => {
-                let wrapper = file_wrapper::wrapper_path(&target.path);
-                let wrapper_bytes = match std::fs::read(&wrapper) {
-                    Ok(bytes) => Some(bytes),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-                    Err(e) => return Err(PortError::Io(e.to_string())),
-                };
-                let file_attributes = attrs::get(&target.path)?;
-                Ok(crate::fingerprint_surface::regular_file(
-                    wrapper_bytes.as_deref(),
-                    file_attributes,
-                ))
+            // `.url`: the `[InternetShortcut]` `IconFile`/`IconIndex`.
+            ItemKind::UrlShortcut => {
+                let (path, index) =
+                    textfmt::parse_internet_shortcut_icon(&read_text(&target.path)?).unwrap_or_default();
+                Ok(SurfaceState::IconRef { path, index }.fingerprint())
             }
+            // Folder: the `desktop.ini` `IconResource` path/index (BOM-tolerant parse).
             ItemKind::Folder => {
-                let ini = ini_bytes(&target.path);
-                let folder_attrs = attrs::get(&target.path)?;
-                Ok(Fingerprint::of_parts(&[&ini, &folder_attrs.to_le_bytes()]))
+                require_dir(&target.path)?;
+                let (path, index) = textfmt::parse_desktop_ini_icon(&ini_bytes(&target.path)).unwrap_or_default();
+                Ok(SurfaceState::IconRef { path, index }.fingerprint())
             }
+            // Loose file: the companion wrapper's icon location + ONLY the owned attribute bits
+            // (Hidden|System). The file's own bytes are never touched by apply, so they are not the
+            // surface (P1-10); unrelated bits (ARCHIVE, offline) are masked off (P2-2). A missing
+            // original is NotFound via `attrs::get`, so a deleted file is skipped.
+            ItemKind::RegularFile => {
+                let owned_attr_bits = attrs::get(&target.path)? & fp::OWNED_ATTR_BITS;
+                let wrapper = file_wrapper::wrapper_path(&target.path);
+                let wrapper_icon = if Path::new(&wrapper).exists() {
+                    shell_link::read_icon_location(&wrapper)?
+                } else {
+                    None
+                };
+                Ok(SurfaceState::RegularFile { wrapper_icon, owned_attr_bits }.fingerprint())
+            }
+            // Recycle Bin: the empty + full icon paths the per-user `DefaultIcon` values point at
+            // (stripping the trailing `,index`), so the surface matches the paired assets.
             ItemKind::RecycleBin => {
                 let a = recyclebin::read_current();
-                Ok(Fingerprint::of_parts(&[
-                    a.default.as_ref().map(|v| v.raw.as_bytes()).unwrap_or_default(),
-                    a.empty.as_ref().map(|v| v.raw.as_bytes()).unwrap_or_default(),
-                    a.full.as_ref().map(|v| v.raw.as_bytes()).unwrap_or_default(),
-                ]))
+                let empty = a.empty.as_ref().map(|v| strip_icon_index(&v.raw)).unwrap_or_default().to_string();
+                let full = a.full.as_ref().map(|v| strip_icon_index(&v.raw)).unwrap_or_default().to_string();
+                Ok(SurfaceState::RecycleBin { empty, full }.fingerprint())
             }
             other => Err(PortError::Unsupported(format!("fingerprint for {other:?}"))),
         }
@@ -117,5 +127,42 @@ fn read_bytes(path: &str) -> PortResult<Vec<u8>> {
             Err(PortError::NotFound(path.to_string()))
         }
         Err(e) => Err(PortError::Io(e.to_string())),
+    }
+}
+
+fn read_text(path: &str) -> PortResult<String> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Err(PortError::NotFound(path.to_string()))
+        }
+        Err(e) => Err(PortError::Io(e.to_string())),
+    }
+}
+
+/// Fails with `NotFound` when a shortcut path is gone, so a deleted item is skipped rather than
+/// surfacing as a COM load error (which the driver would treat as a real infrastructure failure).
+fn require_exists(path: &str) -> PortResult<()> {
+    if Path::new(path).exists() {
+        Ok(())
+    } else {
+        Err(PortError::NotFound(path.to_string()))
+    }
+}
+
+fn require_dir(path: &str) -> PortResult<()> {
+    if Path::new(path).is_dir() {
+        Ok(())
+    } else {
+        Err(PortError::NotFound(path.to_string()))
+    }
+}
+
+/// Strips the trailing `,index` from a `DefaultIcon` registry value (`C:\x.ico,0` → `C:\x.ico`),
+/// splitting on the LAST comma so icon paths containing commas survive.
+fn strip_icon_index(value: &str) -> &str {
+    match value.rfind(',') {
+        Some(comma) => &value[..comma],
+        None => value,
     }
 }

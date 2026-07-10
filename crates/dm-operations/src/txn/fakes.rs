@@ -8,8 +8,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use dm_domain::{
-    AssetRef, AssetStore, Fingerprint, IconApplier, ItemStateReader, ItemTarget, PortError,
-    PortResult, RestoreAnchor,
+    ApplyAssets, AssetRef, AssetStore, Fingerprint, IconApplier, ItemStateReader, ItemTarget,
+    PortError, PortResult, RestoreAnchor,
 };
 
 use crate::error::{OperationError, Result};
@@ -164,15 +164,16 @@ impl ItemStateReader for FakePlatform {
 }
 
 impl IconApplier for FakePlatform {
-    fn apply(&self, target: &ItemTarget, asset: &AssetRef) -> PortResult<Fingerprint> {
+    fn apply(&self, target: &ItemTarget, assets: &ApplyAssets) -> PortResult<Fingerprint> {
         let mut world = self.world.borrow_mut();
         if world.apply_fails.contains(&target.path) {
             return Err(PortError::Com(format!("apply failed for {}", target.path)));
         }
         // The fingerprint the applier PROMISES for this asset, derived from the asset itself and
-        // independent of whether the underlying write actually lands. The driver re-reads the live
-        // state and rejects the apply unless the two agree (P1-4).
-        let promised = Fingerprint::of_bytes(&styled_bytes(&asset.hash));
+        // independent of whether the underlying write actually lands — this is exactly the
+        // non-tautological derivation P1-1 requires of the real applier. The driver re-reads the
+        // live state and rejects the apply unless the two agree (P1-4).
+        let promised = Fingerprint::of_bytes(&styled_bytes(&assets.primary.hash));
         if world.noop_apply.contains(&target.path) {
             return Ok(promised); // "succeeds" but writes nothing → driver's re-read won't match
         }
@@ -181,7 +182,7 @@ impl IconApplier for FakePlatform {
             world.put(&target.path, &styled_bytes("stale-other-asset"));
             return Ok(promised);
         }
-        world.put(&target.path, &styled_bytes(&asset.hash));
+        world.put(&target.path, &styled_bytes(&assets.primary.hash));
         Ok(promised)
     }
 

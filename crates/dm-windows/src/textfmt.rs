@@ -33,9 +33,60 @@ pub fn internet_shortcut_upsert(lines: &mut Vec<String>, key: &str, value: &str)
     Ok(())
 }
 
+/// Reads the current `IconFile`/`IconIndex` back out of a `.url`'s `[InternetShortcut]` section
+/// — the icon reference the reader fingerprints so a read-back can be compared to the asset the
+/// applier was asked to point at (P1-1). Returns `None` when the section or key is absent.
+pub fn parse_internet_shortcut_icon(text: &str) -> Option<(String, i32)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| l.trim().eq_ignore_ascii_case(INTERNET_SHORTCUT_SECTION))?;
+    let mut icon_file: Option<String> = None;
+    let mut icon_index: i32 = 0;
+    for line in &lines[start + 1..] {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            break; // next section
+        }
+        if let Some(sep) = line.find('=') {
+            let key = line[..sep].trim();
+            let value = &line[sep + 1..];
+            if key.eq_ignore_ascii_case("IconFile") {
+                icon_file = Some(value.to_string());
+            } else if key.eq_ignore_ascii_case("IconIndex") {
+                icon_index = value.trim().parse().unwrap_or(0);
+            }
+        }
+    }
+    icon_file.map(|f| (f, icon_index))
+}
+
 /// The `desktop.ini` body pointing a folder at `icon_path` (oracle content, CRLF-terminated).
 pub fn desktop_ini_content(icon_path: &str) -> String {
     format!("[.ShellClassInfo]\r\nIconResource={icon_path},0\r\nConfirmFileOp=0\r\n")
+}
+
+/// Reads the `IconResource=path,index` back out of a `desktop.ini`'s bytes (BOM-tolerant) — the
+/// folder icon reference the reader fingerprints (P1-1). Returns `None` when absent.
+pub fn parse_desktop_ini_icon(bytes: &[u8]) -> Option<(String, i32)> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    for line in text.lines() {
+        if let Some(sep) = line.find('=') {
+            if line[..sep].trim().eq_ignore_ascii_case("IconResource") {
+                let value = line[sep + 1..].trim();
+                // Split the LAST comma into path,index (paths can contain commas).
+                return Some(match value.rfind(',') {
+                    Some(comma) => {
+                        let (path, idx) = value.split_at(comma);
+                        (path.to_string(), idx[1..].trim().parse().unwrap_or(0))
+                    }
+                    None => (value.to_string(), 0),
+                });
+            }
+        }
+    }
+    None
 }
 
 /// `desktop.ini` bytes with a leading UTF-8 BOM so non-ASCII icon paths are honoured.
@@ -147,5 +198,37 @@ mod tests {
     #[test]
     fn desktop_ini_bytes_lead_with_utf8_bom() {
         assert_eq!(&desktop_ini_bytes("x.ico")[..3], &[0xEF, 0xBB, 0xBF]);
+    }
+
+    #[test]
+    fn parse_internet_shortcut_icon_round_trips_the_writer() {
+        // What the writer upserts, the reader reads back — so a genuine apply's read-back matches
+        // the asset-derived expected (P1-1).
+        let mut l = lines("[InternetShortcut]\nURL=https://x?a=1&b=2");
+        internet_shortcut_upsert(&mut l, "IconFile", r"C:\gen\a.ico").unwrap();
+        internet_shortcut_upsert(&mut l, "IconIndex", "0").unwrap();
+        let text = l.join("\r\n");
+        assert_eq!(parse_internet_shortcut_icon(&text), Some((r"C:\gen\a.ico".to_string(), 0)));
+    }
+
+    #[test]
+    fn parse_internet_shortcut_icon_absent_is_none() {
+        assert_eq!(parse_internet_shortcut_icon("[InternetShortcut]\nURL=https://x"), None);
+        assert_eq!(parse_internet_shortcut_icon("URL=https://x"), None); // no section
+    }
+
+    #[test]
+    fn parse_desktop_ini_icon_round_trips_the_writer_with_bom_and_comma_paths() {
+        let bytes = desktop_ini_bytes(r"C:\图标\my icon,v2.ico");
+        // A path containing a comma must survive: only the LAST comma splits path,index.
+        assert_eq!(
+            parse_desktop_ini_icon(&bytes),
+            Some((r"C:\图标\my icon,v2.ico".to_string(), 0))
+        );
+    }
+
+    #[test]
+    fn parse_desktop_ini_icon_absent_is_none() {
+        assert_eq!(parse_desktop_ini_icon(b"[.ShellClassInfo]\r\nConfirmFileOp=0\r\n"), None);
     }
 }

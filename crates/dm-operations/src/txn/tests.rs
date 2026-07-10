@@ -660,6 +660,38 @@ fn recyclebin_apply_materializes_and_verifies_the_paired_empty_asset() {
 }
 
 #[test]
+fn recyclebin_request_without_empty_bytes_is_rejected_not_committed() {
+    // P1-2: a RecycleBin request with no empty_asset_bytes used to skip pairing entirely while the
+    // Windows applier still pointed the registry at a guessed empty path — committing a dangling
+    // empty icon. The driver must reject such a request, not commit it.
+    let world = World::shared();
+    let bin =
+        ItemTarget::new(ItemId::from_raw("RB"), ItemKind::RecycleBin, "HKCU/RecycleBin/DefaultIcon");
+    world.borrow_mut().put(&bin.path, b"orig-registry-state");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let current = Fingerprint::of_bytes(&world.borrow().get(&bin.path).unwrap());
+    let req = ApplyRequest {
+        target: bin.clone(),
+        expected_fingerprint: current,
+        owned: OwnedFields::icon_only(),
+        asset_hash: "hashRB".into(),
+        asset_bytes: b"full-ico".to_vec(),
+        empty_asset_bytes: None, // ← the defect: no paired empty supplied
+        pinned_seed: None,
+    };
+    let out = driver.apply(1, vec![req], &mut journal, &mut ledger).unwrap();
+
+    assert!(out.committed.is_empty(), "a Recycle Bin apply with no empty icon must not commit");
+    assert!(out.error.is_some());
+    assert_eq!(world.borrow().get(&bin.path).unwrap(), b"orig-registry-state"); // rolled back
+    assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
 fn journal_failure_after_mutation_still_rolls_back_to_original() {
     // Fail the ItemApplied append (call 4: TxnBegin, ItemPrepared, AssetWritten, ItemApplied).
     // The desktop mutation already happened; rollback must still walk it back exactly.

@@ -13,7 +13,7 @@ pub mod item;
 pub mod ports;
 pub mod restore;
 
-pub use asset::{AssetRef, OwnedFields};
+pub use asset::{ApplyAssets, AssetRef, OwnedFields};
 pub use error::{PortError, PortResult};
 pub use fingerprint::Fingerprint;
 pub use item::{DesktopItem, IconRef, IconSourceKind, ItemId, ItemKind, ItemState, ItemTarget};

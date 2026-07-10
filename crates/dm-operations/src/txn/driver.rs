@@ -11,8 +11,8 @@
 //!   re-captured from an already-styled desktop (no restore-first, ADR-0019).
 
 use dm_domain::{
-    AssetRef, Fingerprint, IconApplier, ItemId, ItemStateReader, ItemTarget, OwnedFields,
-    PortError,
+    ApplyAssets, AssetRef, Fingerprint, IconApplier, ItemId, ItemKind, ItemStateReader, ItemTarget,
+    OwnedFields, PortError,
 };
 
 use crate::error::{OperationError, Result};
@@ -253,21 +253,34 @@ impl<'p> TxnDriver<'p> {
         let asset = self.assets.put(&req.asset_hash, &req.asset_bytes)?;
         item.asset = asset.clone();
 
-        // A two-state item (the Recycle Bin) needs a paired empty ICO the mutation references by
-        // convention. Materialize AND verify it exists BEFORE the registry write, so we never
-        // point a live registry value at an asset that was only guessed and never written (P1-14).
-        if let Some(empty_bytes) = &req.empty_asset_bytes {
-            let empty = self.assets.put_empty_variant(&asset, empty_bytes)?;
-            if !self.assets.exists(&empty)? {
-                return Err(PortError::AssetMissing(empty.path).into());
+        // Build the exact asset set the applier will point the item at. A two-state item (the
+        // Recycle Bin) needs a paired empty ICO: materialize AND verify it exists, then hand its
+        // exact ref to the applier so the ref we verified is the ref it references — never a
+        // guessed path (P1-14/P2-1). A Recycle Bin request with NO empty bytes is rejected rather
+        // than silently committing a dangling empty icon (P1-2).
+        let assets = match &req.empty_asset_bytes {
+            Some(empty_bytes) => {
+                let empty = self.assets.put_empty_variant(&asset, empty_bytes)?;
+                if !self.assets.exists(&empty)? {
+                    return Err(PortError::AssetMissing(empty.path).into());
+                }
+                ApplyAssets::paired(asset.clone(), empty)
             }
-        }
+            None if req.target.kind == ItemKind::RecycleBin => {
+                return Err(PortError::AssetMissing(format!(
+                    "Recycle Bin item {} requires a paired empty icon; none supplied",
+                    req.target.id.as_str()
+                ))
+                .into());
+            }
+            None => ApplyAssets::single(asset.clone()),
+        };
 
         journal.append(&JournalRecord::AssetWritten { txn, item: req.target.id.clone(), asset: asset.clone() })?;
 
         // The external mutation (icon-location swap). The applier reports the fingerprint the
-        // styleable surface should now carry for THIS asset.
-        let expected_applied = self.applier.apply(&req.target, &asset)?;
+        // styleable surface should now carry — derived from the asset, independent of a re-read.
+        let expected_applied = self.applier.apply(&req.target, &assets)?;
         let new_fp = self.reader.read_fingerprint(&req.target)?;
         journal.append(&JournalRecord::ItemApplied { txn, item: req.target.id.clone(), new_fingerprint: new_fp })?;
 

@@ -6,7 +6,7 @@
 //! over a virtual desktop, which is what makes the whole state machine (including kill-point
 //! recovery) testable without Windows.
 
-use crate::asset::AssetRef;
+use crate::asset::{ApplyAssets, AssetRef};
 use crate::error::PortResult;
 use crate::fingerprint::Fingerprint;
 use crate::item::{DesktopItem, ItemTarget};
@@ -31,12 +31,14 @@ pub trait ItemStateReader {
 /// `FolderIconWriter`, `RegularFileWrapperWriter`, `RecycleBinIconWriter`) unified behind the
 /// journaled-operation contract (`IJournaledOperation.Apply`/`Rollback`).
 pub trait IconApplier {
-    /// Points `target` at `asset` (e.g. `IShellLink::SetIconLocation` + `IPersistFile::Save`) and
-    /// returns the fingerprint the item's styleable surface should now carry for THIS asset — the
-    /// achieved-state fingerprint the driver's verify compares the live re-read against (spec 07
-    /// §5). Returning the achieved fingerprint (not `()`) is what lets the driver confirm the apply
-    /// matched the *requested* asset, rather than merely observing "the state changed" (P1-4).
-    fn apply(&self, target: &ItemTarget, asset: &AssetRef) -> PortResult<Fingerprint>;
+    /// Points `target` at `assets` (e.g. `IShellLink::SetIconLocation` + `IPersistFile::Save`) and
+    /// returns the fingerprint the item's styleable surface SHOULD now carry — derived from the
+    /// asset the apply was asked to point at, INDEPENDENTLY of re-reading the just-written state.
+    /// The driver compares this against an independent read-back (spec 07 §5), so a COM write that
+    /// reports success but silently leaves the old icon is caught (P1-1/P1-4), not merely a "state
+    /// changed" check. The Recycle Bin's paired empty ref travels in [`ApplyAssets::empty`], so the
+    /// applier references the exact asset the driver materialized, never a guessed path (P2-1).
+    fn apply(&self, target: &ItemTarget, assets: &ApplyAssets) -> PortResult<Fingerprint>;
 
     /// Restores `target` to the captured original (e.g. replay the original `.lnk` bytes).
     fn restore(&self, target: &ItemTarget, anchor: &RestoreAnchor) -> PortResult<()>;

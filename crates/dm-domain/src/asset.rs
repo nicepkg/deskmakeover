@@ -22,6 +22,28 @@ impl AssetRef {
     }
 }
 
+/// The generated asset(s) an apply points an item at. Most kinds need only `primary`; the Recycle
+/// Bin also needs a paired `empty` icon (its two visual states). The driver materializes both and
+/// passes the exact refs here — the applier NEVER reconstructs a guessed path — so the ref the
+/// driver verified exists is the same ref the applier references (P2-1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplyAssets {
+    pub primary: AssetRef,
+    pub empty: Option<AssetRef>,
+}
+
+impl ApplyAssets {
+    /// A single-asset apply (every kind except the Recycle Bin).
+    pub fn single(primary: AssetRef) -> Self {
+        Self { primary, empty: None }
+    }
+
+    /// A two-state apply carrying the paired empty-state icon (the Recycle Bin).
+    pub fn paired(primary: AssetRef, empty: AssetRef) -> Self {
+        Self { primary, empty: Some(empty) }
+    }
+}
+
 /// Which fields of an item DeskMakeover owns after an apply (ADR-0020 §2 "owned fields").
 /// For icons the only owned field in v1 is the icon location; the struct is future-proofed so
 /// additional owned surfaces (e.g. a folder's `desktop.ini` sections) can be tracked without a

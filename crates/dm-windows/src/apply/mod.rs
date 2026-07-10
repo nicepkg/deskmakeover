@@ -12,12 +12,12 @@ pub(crate) mod recyclebin;
 use std::sync::Arc;
 
 use dm_domain::{
-    AssetRef, Fingerprint, IconApplier, ItemKind, ItemStateReader, ItemTarget, PortError,
-    PortResult, RestoreAnchor,
+    ApplyAssets, Fingerprint, IconApplier, ItemKind, ItemTarget, PortError, PortResult,
+    RestoreAnchor,
 };
 
 use crate::com::StaExecutor;
-use crate::state_reader::WindowsStateReader;
+use crate::fingerprint_surface as fp;
 
 /// Applies generated icons to desktop items and restores them from anchors (the full M4 matrix).
 pub struct WindowsIconApplier {
@@ -31,9 +31,9 @@ impl WindowsIconApplier {
 }
 
 impl IconApplier for WindowsIconApplier {
-    fn apply(&self, target: &ItemTarget, asset: &AssetRef) -> PortResult<Fingerprint> {
+    fn apply(&self, target: &ItemTarget, assets: &ApplyAssets) -> PortResult<Fingerprint> {
         let path = target.path.clone();
-        let icon = asset.path.clone();
+        let icon = assets.primary.path.clone();
         match target.kind {
             // COM writes run on the STA thread (outer `?` = thread-join error, inner `?` = the
             // write's own error).
@@ -42,15 +42,22 @@ impl IconApplier for WindowsIconApplier {
             // Filesystem / registry writes need no COM.
             ItemKind::UrlShortcut => url_shortcut::apply(&path, &icon, 0)?,
             ItemKind::Folder => folder::apply(&path, &icon)?,
-            // The Recycle Bin needs BOTH state icons; the driver has already materialized the
-            // paired empty ICO (`paired_empty(icon)`) and verified it exists before this call
-            // (P1-14), so the registry write can reference it safely.
-            ItemKind::RecycleBin => recyclebin::apply(&paired_empty(&icon), &icon)?,
+            // The Recycle Bin needs BOTH state icons; reference the EXACT empty ref the driver
+            // materialized and verified (P1-14/P2-1), never a locally reconstructed path.
+            ItemKind::RecycleBin => {
+                let empty = assets.empty.as_ref().ok_or_else(|| {
+                    PortError::AssetMissing(format!("Recycle Bin apply needs a paired empty icon for {}", target.path))
+                })?;
+                recyclebin::apply(&empty.path, &icon)?
+            }
             other => return Err(PortError::Unsupported(format!("apply for {other:?}"))),
         };
-        // Report the achieved styleable-surface fingerprint for THIS asset so the driver can
-        // confirm the apply matched the request (P1-4). [WINDOWS-VERIFY] runtime.
-        WindowsStateReader.read_fingerprint(target)
+        // The expected styleable-surface fingerprint, derived from the ASSET — not a re-read of the
+        // just-written state. Built via the SAME host-tested surface logic the reader uses, so the
+        // driver's independent read-back can confirm the write matched the request; a COM write
+        // that reports success yet leaves the old icon is caught (P1-1). [WINDOWS-VERIFY].
+        let empty = assets.empty.as_ref().map(|e| e.path.as_str());
+        Ok(fp::expected_after_apply(target.kind, &assets.primary.path, empty).fingerprint())
     }
 
     fn restore(&self, target: &ItemTarget, anchor: &RestoreAnchor) -> PortResult<()> {
@@ -69,10 +76,3 @@ impl IconApplier for WindowsIconApplier {
     }
 }
 
-/// The paired empty-state ICO path for a Recycle Bin full-state asset (`x.ico` → `x-empty.ico`).
-fn paired_empty(full_ico: &str) -> String {
-    match full_ico.strip_suffix(".ico") {
-        Some(stem) => format!("{stem}-empty.ico"),
-        None => format!("{full_ico}-empty"),
-    }
-}

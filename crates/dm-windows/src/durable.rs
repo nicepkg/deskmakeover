@@ -32,24 +32,58 @@ pub fn write_atomic(path: &str, bytes: &[u8]) -> PortResult<()> {
 }
 
 fn write_then_rename(tmp: &Path, target: &Path, bytes: &[u8]) -> PortResult<()> {
-    if let Some(parent) = target.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(io)?;
-        }
-    }
+    // The caller guarantees the target's parent exists (the writers check `is_dir`/`is_file`
+    // first). We deliberately do NOT create it: writing into a directory the user has deleted must
+    // fail loudly (so rollback recovery kicks in), never silently resurrect the tree (P2-4).
     {
         let mut file = fs::File::create(tmp).map_err(io)?;
         file.write_all(bytes).map_err(io)?;
-        // Durability before the rename that publishes the bytes. FlushFileBuffers on Windows.
+        // Durability before the publish. FlushFileBuffers on Windows.
         file.sync_all().map_err(io)?;
     }
-    fs::rename(tmp, target).map_err(io)?;
+    publish(tmp, target)?;
     // fsync the directory so the rename itself survives a crash (POSIX). Best-effort where a
     // directory can't be opened as a file.
     if let Ok(handle) = fs::File::open(target_dir(target)) {
         let _ = handle.sync_all();
     }
     Ok(())
+}
+
+/// Atomically publishes `tmp` over `target`, preserving state a plain rename would destroy.
+///
+/// On Windows, when `target` already exists, `ReplaceFileW` carries the target's security
+/// descriptor (DACL), alternate data streams (e.g. `Zone.Identifier`), and compression/encryption
+/// attributes onto the replacement — `MoveFileEx(REPLACE_EXISTING)` would silently drop them, and
+/// the restore anchors capture only main-stream bytes, so that loss is unrecoverable (P2-4). A
+/// fresh target (nothing to preserve) is a plain rename. `[WINDOWS-VERIFY]` the ReplaceFileW path.
+#[cfg(windows)]
+fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
+    use windows::core::HSTRING;
+    use windows::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_IGNORE_MERGE_ERRORS};
+
+    if target.exists() {
+        // SAFETY: both paths are valid UTF-16; no buffers are retained past the call.
+        unsafe {
+            ReplaceFileW(
+                &HSTRING::from(target.as_os_str()),
+                &HSTRING::from(tmp.as_os_str()),
+                windows::core::PCWSTR::null(),
+                REPLACEFILE_IGNORE_MERGE_ERRORS,
+                None,
+                None,
+            )
+        }
+        .map_err(|e| PortError::Io(e.to_string()))
+    } else {
+        fs::rename(tmp, target).map_err(io)
+    }
+}
+
+/// POSIX publish: `rename(2)` is the atomic primitive (no ADS/DACL to preserve).
+#[cfg(not(windows))]
+fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
+    fs::rename(tmp, target).map_err(io)
 }
 
 /// A process-unique sibling temp path in the target's own directory, so the rename is
@@ -123,11 +157,21 @@ mod tests {
     }
 
     #[test]
-    fn creates_missing_parent_directories() {
+    fn a_missing_parent_directory_fails_and_is_not_resurrected() {
+        // P2-4: writing into a directory the user deleted must fail loudly, NOT recreate the tree.
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("nested/sub/file.lnk");
-        write_atomic(&path.to_string_lossy(), b"x").unwrap();
-        assert_eq!(fs::read(&path).unwrap(), b"x");
+        let missing = dir.path().join("deleted-by-user");
+        let path = missing.join("file.lnk");
+        let result = write_atomic(&path.to_string_lossy(), b"x");
+        assert!(result.is_err(), "must not create a directory the caller says exists");
+        assert!(!missing.exists(), "the deleted directory tree must NOT be resurrected");
+        // No temp straggler in the (existing) grandparent either.
+        let stragglers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(stragglers.is_empty(), "a failed write left temp files: {stragglers:?}");
     }
 
     #[test]

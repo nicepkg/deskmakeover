@@ -43,6 +43,41 @@ export interface RenderOpts {
   fieldSeed?: string | null
   kindBucket?: 'App' | 'Folder' | 'File' | 'System' | null
 }
+
+/** The top-level composition lane renderTile/composeTile actually executed. */
+export type ComposeLane =
+  | 'original' // showOriginal peek/keep
+  | 'empty' // empty-canvas guard (renders nothing)
+  | 'derived-field' // 满彩 derived lane (composeField); see fieldLane for the branch
+  | 'layered-mono' // LAYERED Mono (Flat or custom plate)
+  | 'passthrough-none' // 原始外形 (shape None) free-form
+  | 'passthrough-match' // silhouette already matches the target shape
+  | 'plate-detect' // detected own plate → composeFromPlate
+  | 'bare-white' // transparent-edge bare logo → white/plate fill
+  | 'inscribe-white' // pinched shape, opaque art → inscribe on white
+  | 'stretch' // dense full-bleed fallback → stretch to card
+
+/** The sub-branch inside composeField (only when lane === 'derived-field'). */
+export type ComposeFieldLane =
+  | 'full-square' // a filled standard square → clip only
+  | 'user-plate-board' // 背景色 override on an own-board / opaque source
+  | 'user-plate-bare' // 背景色 override on bare art → fill + dock shadow
+  | 'own-board' // own background expands unchanged
+  | 'derived-bare-shadow' // derived themed plate + silhouette dock shadow
+  | 'derived-plate' // derived themed plate → composeFromPlate
+
+/**
+ * Read-only diagnostics sink (ADR-0019 oracle correction, additive): when
+ * passed to renderTile, it records WHICH lane executed — a value the returned
+ * Raster cannot expose. Pixel behaviour is untouched; every write is guarded so
+ * an absent sink allocates nothing. The M5 stage-level differential reads this
+ * to pin a classification break to a single branch.
+ */
+export interface ComposeDiagnostics {
+  lane: ComposeLane
+  fieldLane?: ComposeFieldLane
+  passThrough: boolean
+}
 /** Shapes whose usable area sits far under the square: full-bleed content
  *  spills past the pinched edges (owner call 2026-07-09: Diamond/Flower
  *  "中间主体快溢出来了"), so artwork is inscribed via maxScaleInside exactly
@@ -109,6 +144,7 @@ export function renderTile(
   showOriginal: boolean,
   size: number,
   opts?: RenderOpts,
+  diag?: ComposeDiagnostics,
 ): Raster {
   if (size <= 0) throw new RangeError('size must be positive')
   const tint = hexToInt(config.tint)
@@ -117,6 +153,10 @@ export function renderTile(
     // One arrow ratio everywhere (owner-approved): originals and styled tiles
     // agree. The web fallback arrow sizes itself from the tile (C# fallback
     // parity); the host's real overlay frame arrives with the Windows batch.
+    if (diag) {
+      diag.lane = 'original'
+      diag.passThrough = true
+    }
     const original = buildOriginalCard(artwork, size)
     if (isShortcut) drawClassicArrow(original, size)
     return original
@@ -148,7 +188,8 @@ export function renderTile(
     mark.carveCard(cardMask, geometryCtx)
   }
 
-  const { tile, passThrough } = composeTile(artwork, size, pad, cardSize, shape, config, tint, opts)
+  const { tile, passThrough } = composeTile(artwork, size, pad, cardSize, shape, config, tint, opts, diag)
+  if (diag) diag.passThrough = passThrough
 
   if (!passThrough || carves) applyCoverage(tile, cardMask)
 
@@ -224,12 +265,14 @@ function composeTile(
   config: ConfigDto,
   tint: number,
   opts?: RenderOpts,
+  diag?: ComposeDiagnostics,
 ): ComposeResult {
   const content = makeRaster(size)
 
   // A canvas with no visible pixels must render NOTHING.
   const contentB = analysis.contentBounds(artwork)
   if (analysis.solidBounds(artwork) === null && boundsW(contentB) <= 1 && boundsH(contentB) <= 1) {
+    if (diag) diag.lane = 'empty'
     return { tile: content, passThrough: true }
   }
 
@@ -243,7 +286,8 @@ function composeTile(
   // still separates (owner disposition A, 2026-07-10). Only 本色 (white
   // fallback) takes the classic faithful pipeline.
   if (config.subject === 'Original' && config.plateFallback !== 'white' && shape !== 'None') {
-    composeField(artwork, content, size, pad, cardSize, shape, config, opts)
+    if (diag) diag.lane = 'derived-field'
+    composeField(artwork, content, size, pad, cardSize, shape, config, opts, diag)
     return { tile: content, passThrough: false }
   }
 
@@ -264,6 +308,7 @@ function composeTile(
   if (config.subject === 'Mono' && shape !== 'None' && (config.monoStyle === 'Flat' || plateOverride)) {
     const layer = monoSubjectLayer(artwork, config.monoStyle === 'Flat' ? tint : null)
     if (layer) {
+      if (diag) diag.lane = 'layered-mono'
       if (config.monoStyle !== 'Flat') monoMapAdaptive(layer, tint)
       const fill = plateOverride ?? monoRamp(1, tint)
       fillRegion(content, size, pad, cardSize, fill.r, fill.g, fill.b)
@@ -274,11 +319,13 @@ function composeTile(
 
   if (shape === 'None') {
     // 原始外形: the icon keeps its own silhouette — normalized, no plate, no clip.
+    if (diag) diag.lane = 'passthrough-none'
     const free = analysis.contentBounds(artwork)
     const [fw, fh] = fit(boundsW(free), boundsH(free), cardSize)
     drawScaled(artwork, free, content, size, pad + Math.trunc((cardSize - fw) / 2), pad + Math.trunc((cardSize - fh) / 2), fw, fh)
     passThrough = true
   } else if (analysis.matchesShape(artwork, shape) && analysis.solidBounds(artwork) !== null) {
+    if (diag) diag.lane = 'passthrough-match'
     const solid = analysis.solidBounds(artwork)!
     const [w, h] = fit(boundsW(solid), boundsH(solid), cardSize)
     drawScaled(artwork, solid, content, size, pad + Math.trunc((cardSize - w) / 2), pad + Math.trunc((cardSize - h) / 2), w, h)
@@ -292,18 +339,22 @@ function composeTile(
     // finds a plate. Runs upstream of colour + filter, so both inherit the fix.
     const bg = analysis.tryDetectBackground(artwork) ?? segmentSubject(artwork).field ?? null
     if (bg) {
+      if (diag) diag.lane = 'plate-detect'
       composeFromPlate(artwork, content, size, pad, cardSize, shape, plate ?? bg)
     } else if (analysis.hasTransparentEdges(artwork)) {
       // Bare / irregular logo, genuinely no plate: white tile + centred content.
+      if (diag) diag.lane = 'bare-white'
       const fill = plate ?? WHITE
       fillRegion(content, size, pad, cardSize, fill.r, fill.g, fill.b)
       drawCentred(artwork, analysis.contentBounds(artwork), content, size, pad, cardSize, contentBox(shape, cardSize))
     } else if (INSCRIBE_SHAPES.has(shape)) {
       // Opaque icon, no readable background: inscribe on white, never crop.
+      if (diag) diag.lane = 'inscribe-white'
       const fill = plate ?? WHITE
       fillRegion(content, size, pad, cardSize, fill.r, fill.g, fill.b)
       inscribeContent(artwork, content, size, pad, cardSize, shape)
     } else {
+      if (diag) diag.lane = 'stretch'
       drawScaled(
         artwork,
         { left: 0, top: 0, right: artwork.width, bottom: artwork.height },
@@ -357,6 +408,7 @@ function composeField(
   shape: IconShape,
   config: ConfigDto,
   opts?: RenderOpts,
+  diag?: ComposeDiagnostics,
 ): void {
   const band = config.plateBand
   const box = fieldContentBox(shape, cardSize)
@@ -367,6 +419,7 @@ function composeField(
 
   // Step 1: a filled standard square is already a complete tile — clip only.
   if (profile.kind === 'fullSquare') {
+    if (diag) diag.fieldLane = 'full-square'
     drawScaled(
       artwork,
       { left: 0, top: 0, right: artwork.width, bottom: artwork.height },
@@ -380,9 +433,11 @@ function composeField(
   const userPlate = config.plateColor ? fromRgbInt(hexToInt(config.plateColor)) : null
   if (userPlate) {
     if (profile.kind === 'ownBoard' || !profile.transparentEdges) {
+      if (diag) diag.fieldLane = 'user-plate-board'
       composeFromPlate(artwork, content, size, pad, cardSize, shape, userPlate, box)
       return
     }
+    if (diag) diag.fieldLane = 'user-plate-bare'
     fillRegion(content, size, pad, cardSize, userPlate.r, userPlate.g, userPlate.b)
     drawBareWithShadow(artwork, content, size, pad, cardSize, box, userPlate, 'dock')
     return
@@ -391,6 +446,7 @@ function composeField(
   // Step 2 (owner final rule: 「本身自带背景，就使用其自带的背景颜色，不要
   // 改动」): the own background expands UNCHANGED to fill the target shape.
   if (profile.kind === 'ownBoard' && profile.background) {
+    if (diag) diag.fieldLane = 'own-board'
     composeFromPlate(artwork, content, size, pad, cardSize, shape, profile.background, box)
     return
   }
@@ -410,9 +466,11 @@ function composeField(
   // OPPOSES the plate; own-board icons never get one — that background is
   // theirs.
   if (profile.transparentEdges) {
+    if (diag) diag.fieldLane = 'derived-bare-shadow'
     drawBareWithShadow(artwork, content, size, pad, cardSize, box, plate, 'dock')
     return
   }
+  if (diag) diag.fieldLane = 'derived-plate'
   composeFromPlate(artwork, content, size, pad, cardSize, shape, plate, box)
 }
 

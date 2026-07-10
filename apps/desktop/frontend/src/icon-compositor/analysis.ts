@@ -125,7 +125,7 @@ function tryShapeBackground(c: Raster): Rgba | null {
 /** Diagonal inset from each content-bounds corner to the first fully-solid
  *  pixel. Squares, rounded squares and circles give four near-equal insets;
  *  a fold/notch on one corner breaks the symmetry. */
-function cornersSymmetric(c: Raster, b: ContentBounds, minDim: number): boolean {
+export function cornersSymmetric(c: Raster, b: ContentBounds, minDim: number): boolean {
   const walk = (sx: number, sy: number, dx: number, dy: number): number => {
     const limit = Math.ceil(minDim / 2)
     for (let k = 0; k < limit; k++) {

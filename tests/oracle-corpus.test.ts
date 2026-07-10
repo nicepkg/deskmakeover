@@ -7,15 +7,18 @@ import { setNativeArrowRaster } from '../src/icon-compositor/marks'
 // assertions in icon-compositor.test.ts regardless of run order.
 afterAll(() => setNativeArrowRaster(null))
 
-// CI smoke for the frozen-compositor parity oracle (ADR-0019 M0b). Re-renders a
+// Smoke test for the frozen-compositor parity oracle (ADR-0019 M0b). Re-renders a
 // deterministic sample of the committed goldens (by sorted path hash) and
 // deep-compares the sampled stage dumps + the whole-set hash, catching BOTH
 // accidental compositor drift and a stale/edited golden. The full sweep
-// (`bun scripts/capture-oracle.ts --verify`, ~1152 cells) is the manual /
-// CI-nightly command documented in testdata/icons/README.md.
+// (`bun scripts/capture-oracle.ts --verify`, 1487 cells) is the manual command
+// documented in testdata/icons/README.md.
 
 describe('oracle corpus', () => {
+  // The sampled zlib decode + re-render can exceed bun's 5s default under
+  // concurrent CPU load (e.g. a parallel cargo build); a generous cap keeps the
+  // smoke test from flaking without masking a real regression.
   test('verify --sample 12 matches the committed goldens', () => {
     expect(verify(12)).toBe(0)
-  })
+  }, 30_000)
 })

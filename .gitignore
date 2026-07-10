@@ -9,6 +9,9 @@ publish/
 # Rust (Cargo workspace — ADR-0019)
 target/
 
+# Tauri build-time generated ACL schemas (regenerated on every build)
+apps/desktop/src-tauri/gen/
+
 # Local SDK/tooling
 .dotnet/
 .tools/

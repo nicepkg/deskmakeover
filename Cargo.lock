@@ -939,6 +939,7 @@ dependencies = [
 name = "dm-elevated"
 version = "0.0.0"
 dependencies = [
+ "dm-icon-codec",
  "windows",
  "winreg",
 ]

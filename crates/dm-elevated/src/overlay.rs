@@ -39,14 +39,13 @@ pub fn restore() -> Result<(), String> {
 
 #[cfg(windows)]
 mod windows_impl {
-    use std::io::Read;
     use std::path::PathBuf;
 
     use winreg::enums::HKEY_LOCAL_MACHINE;
     use winreg::RegKey;
 
     use crate::args::Style;
-    use crate::guards::validate_ico;
+    use crate::guards::{check_size, validate_ico};
 
     const SHELL_ICONS_KEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons";
     const OVERLAY_VALUE: &str = "29";
@@ -100,6 +99,11 @@ mod windows_impl {
 
     /// Validates the rendered ICO and copies it into ProgramData, returning the ProgramData path.
     ///
+    /// The size cap is checked against metadata FIRST (never read an over-cap caller file), then
+    /// the bounded bytes are read once and validated structurally by the codec's `parse` (the one
+    /// truth source). The exact validated bytes are what gets written to ProgramData — no second
+    /// read of `src`, so the file can't change between validation and copy.
+    ///
     /// NOTE (blind-write divergence): the oracle generated the built-in refined/transparent ICOs
     /// in-process (`OverlayBadgeIconFactory`). Here EVERY style's ICO arrives as a validated
     /// `--file` from the client, which owns the icon core. The LPE guard (validate + copy into
@@ -109,11 +113,11 @@ mod windows_impl {
         let src = source_file
             .ok_or_else(|| format!("--file (a rendered .ico) is required for the {} overlay", style.as_str()))?;
         let meta = std::fs::metadata(src).map_err(io)?;
-        let mut header = [0u8; 6];
-        let read = std::fs::File::open(src).map_err(io)?.read(&mut header).map_err(io)?;
-        validate_ico(meta.len(), &header[..read])?;
+        check_size(meta.len())?; // reject an over-cap file before reading it
+        let bytes = std::fs::read(src).map_err(io)?; // now bounded ≤ MAX_ICO_BYTES
+        validate_ico(&bytes)?; // structural validation via dm_icon_codec::parse
         let dst = data_dir().join(format!("{}-overlay.ico", style.as_str()));
-        std::fs::copy(src, &dst).map_err(io)?;
+        std::fs::write(&dst, &bytes).map_err(io)?;
         Ok(dst)
     }
 

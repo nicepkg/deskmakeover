@@ -1,93 +1,156 @@
-//! Pure LPE guards for the overlay ICO. Ported from `OverlayCommands.IsIco` + the size cap.
-//! The registry NEVER points at a caller-supplied path (ADR-0021 §4): the helper validates the
-//! ICO and copies it into `%ProgramData%` first. These checks are the validation half.
+//! LPE guards for the overlay ICO (ADR-0021 §4). Two independent concerns:
+//!
+//! * a cheap **resource** pre-check ([`check_size`]) — reject an empty or over-cap file BEFORE
+//!   its bytes are read, so an untrusted caller path can never make the elevated helper slurp an
+//!   arbitrarily large file into memory. The cap is helper policy, not a container property, so
+//!   it lives here rather than in the codec;
+//! * full **structural** validation ([`validate_ico`]) — delegated to the single codec truth
+//!   source `dm_icon_codec::parse` (M5.11), the same reader the transaction driver bakes with.
+//!
+//! Together they guarantee the registry only ever points at a validated, DeskMakeover-owned
+//! `%ProgramData%` copy — never a caller-supplied path.
+
+use dm_icon_codec::parse;
 
 /// The custom overlay ICO size cap (oracle: `MaxCustomIcoBytes`).
 pub const MAX_ICO_BYTES: u64 = 5 * 1024 * 1024;
 
-/// Checks the ICONDIR magic: reserved = 0, type = 1 (icon), count ≥ 1 (oracle `IsIco`).
-pub fn is_ico_header(header: &[u8]) -> bool {
-    header.len() >= 6
-        && header[0] == 0
-        && header[1] == 0
-        && header[2] == 1
-        && header[3] == 0
-        && (header[4] > 0 || header[5] > 0)
-}
-
-/// Validates an overlay ICO before it is trusted: non-empty, within the size cap, and a real
-/// icon container. Applied to every style (built-in and custom) so the registry only ever points
-/// at a validated, DeskMakeover-owned `%ProgramData%` copy.
-pub fn validate_ico(size_bytes: u64, header: &[u8]) -> Result<(), String> {
+/// Resource pre-check on the file's declared size, run against `fs::metadata` BEFORE the bytes
+/// are read: rejects an empty file and anything past [`MAX_ICO_BYTES`]. Bounding the read is the
+/// point — structural validation ([`validate_ico`]) then works on an in-memory buffer that can
+/// never exceed the cap.
+pub fn check_size(size_bytes: u64) -> Result<(), String> {
     if size_bytes == 0 {
         return Err("overlay ico is empty".to_string());
     }
     if size_bytes > MAX_ICO_BYTES {
         return Err(format!("overlay ico size {size_bytes} exceeds the {MAX_ICO_BYTES}-byte cap"));
     }
-    if !is_ico_header(header) {
-        return Err("overlay file is not a valid .ico (bad ICONDIR)".to_string());
-    }
     Ok(())
+}
+
+/// Full structural validation of the overlay ICO, delegated to `dm_icon_codec::parse` — the
+/// single truth source that also gates the baked-asset corpus. It checks the ICONDIR magic
+/// (reserved = 0, type = 1, count ≥ 1) AND every deeper invariant: tightly packed monotonic
+/// offsets, each `bytesInRes` equal to the exact DIB size, and per-frame `BITMAPINFOHEADER`
+/// sanity. That makes it strictly stronger than a 6-byte magic peek — a file with a valid
+/// ICONDIR but a truncated or tampered body is now rejected, closing a spoof the old check missed.
+pub fn validate_ico(bytes: &[u8]) -> Result<(), String> {
+    parse(bytes).map(|_| ()).map_err(|e| format!("overlay file is not a valid .ico: {e}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dm_icon_codec::{write_ico, Raster};
 
-    fn ico_header() -> [u8; 6] {
-        [0, 0, 1, 0, 1, 0] // reserved=0, type=1, count=1
+    /// A real, structurally valid multi-size ICO built through the codec (no hand-maintained
+    /// golden). Corruption tests mutate a clone of this to prove `validate_ico` rejects forgeries.
+    fn valid_ico() -> Vec<u8> {
+        let frame = |size: usize, r: u8, g: u8, b: u8| {
+            let mut raster = Raster::new(size, size);
+            for px in raster.data.chunks_exact_mut(4) {
+                px[0] = r;
+                px[1] = g;
+                px[2] = b;
+                px[3] = 255;
+            }
+            raster
+        };
+        write_ico(&[frame(16, 10, 20, 30), frame(32, 40, 50, 60)])
     }
 
     #[test]
-    fn accepts_a_valid_icondir() {
-        assert!(is_ico_header(&ico_header()));
-        assert!(validate_ico(1024, &ico_header()).is_ok());
+    fn check_size_accepts_a_normal_file() {
+        assert!(check_size(1024).is_ok());
+        assert!(check_size(MAX_ICO_BYTES).is_ok());
     }
 
     #[test]
-    fn rejects_non_ico_headers() {
-        assert!(!is_ico_header(&[0x89, b'P', b'N', b'G', 0, 0])); // PNG
-        assert!(!is_ico_header(&[0, 0, 2, 0, 1, 0])); // type=2 (cursor), not icon
-        assert!(!is_ico_header(&[0, 0, 1, 0, 0, 0])); // count=0
-        assert!(!is_ico_header(&[0, 0])); // too short
-        assert!(validate_ico(1024, &[0x89, b'P', b'N', b'G']).is_err());
+    fn check_size_rejects_empty_and_oversized() {
+        assert!(check_size(0).is_err());
+        assert!(check_size(MAX_ICO_BYTES + 1).is_err());
     }
 
     #[test]
-    fn rejects_empty_and_oversized() {
-        assert!(validate_ico(0, &ico_header()).is_err());
-        assert!(validate_ico(MAX_ICO_BYTES + 1, &ico_header()).is_err());
-        assert!(validate_ico(MAX_ICO_BYTES, &ico_header()).is_ok());
+    fn validate_ico_accepts_a_real_multi_size_icon() {
+        assert!(validate_ico(&valid_ico()).is_ok());
     }
 
     #[test]
-    fn reserved_bytes_must_be_zero() {
-        // A spoofed header with non-zero reserved bytes is not a real ICONDIR.
-        assert!(!is_ico_header(&[1, 0, 1, 0, 1, 0]));
-        assert!(!is_ico_header(&[0, 1, 1, 0, 1, 0]));
+    fn validate_ico_rejects_a_png_masquerading_as_an_icon() {
+        // PNG magic — reserved u16 is non-zero, so it is not an ICONDIR.
+        assert!(validate_ico(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]).is_err());
     }
 
     #[test]
-    fn type_field_must_be_exactly_icon() {
-        // type=1 icon ok; type=2 cursor and other spoofs rejected.
-        assert!(is_ico_header(&[0, 0, 1, 0, 1, 0]));
-        assert!(!is_ico_header(&[0, 0, 2, 0, 1, 0]));
-        assert!(!is_ico_header(&[0, 0, 0, 0, 1, 0]));
-        assert!(!is_ico_header(&[0, 0, 1, 1, 1, 0])); // high byte of type set
+    fn validate_ico_rejects_a_cursor_type_spoof() {
+        // type = 2 is a .cur, not an icon (oracle `IsIco` rejects it; parse agrees).
+        let mut bytes = valid_ico();
+        bytes[2] = 2;
+        assert!(validate_ico(&bytes).is_err());
     }
 
     #[test]
-    fn count_high_byte_still_counts_as_present() {
-        // count is a little-endian u16; a value in the high byte (e.g. 256) is still ≥ 1.
-        assert!(is_ico_header(&[0, 0, 1, 0, 0, 1]));
+    fn validate_ico_rejects_a_nonzero_reserved_field() {
+        // A spoofed ICONDIR with a non-zero reserved word is not a real icon container.
+        let mut bytes = valid_ico();
+        bytes[0] = 1;
+        assert!(validate_ico(&bytes).is_err());
+        let mut bytes = valid_ico();
+        bytes[1] = 1;
+        assert!(validate_ico(&bytes).is_err());
     }
 
     #[test]
-    fn extra_bytes_after_the_header_are_ignored() {
-        let mut buf = vec![0, 0, 1, 0, 1, 0];
-        buf.extend_from_slice(b"the rest of a real ico file ...");
-        assert!(is_ico_header(&buf));
-        assert!(validate_ico(2048, &buf).is_ok());
+    fn validate_ico_rejects_a_high_byte_type_spoof() {
+        // type stored as a little-endian u16; a value in the high byte (0x0100 = 256) is not 1.
+        let mut bytes = valid_ico();
+        bytes[3] = 1;
+        assert!(validate_ico(&bytes).is_err());
+    }
+
+    #[test]
+    fn validate_ico_rejects_a_zero_image_count() {
+        let mut bytes = valid_ico();
+        bytes[4] = 0;
+        bytes[5] = 0;
+        assert!(validate_ico(&bytes).is_err());
+    }
+
+    #[test]
+    fn validate_ico_rejects_a_truncated_icondir() {
+        assert!(validate_ico(&[0, 0, 1, 0]).is_err()); // fewer than 6 bytes
+        assert!(validate_ico(&[]).is_err());
+    }
+
+    // ── Structural forgeries the old 6-byte magic peek accepted but `parse` catches ──
+    // These are the concrete security win of converging on the codec: a payload with a
+    // perfectly valid ICONDIR header yet a dishonest body no longer reaches the registry.
+
+    #[test]
+    fn validate_ico_rejects_a_valid_header_with_a_truncated_body() {
+        // Keep the ICONDIR + directory entries, drop the DIB payload the entry promises.
+        let mut bytes = valid_ico();
+        bytes.truncate(6 + 16 * 2); // dir_end for a 2-image ICO; no frame data follows
+        assert!(validate_ico(&bytes).is_err());
+    }
+
+    #[test]
+    fn validate_ico_rejects_a_tampered_image_offset() {
+        // Point the first frame's offset somewhere other than the packed position.
+        let mut bytes = valid_ico();
+        let off = 6 + 12; // ICONDIRENTRY[0].imageOffset (u32 at entry byte 12)
+        bytes[off] = bytes[off].wrapping_add(4);
+        assert!(validate_ico(&bytes).is_err());
+    }
+
+    #[test]
+    fn validate_ico_rejects_a_lied_bytes_in_res() {
+        // Inflate the first frame's declared payload size past its true DIB size.
+        let mut bytes = valid_ico();
+        let field = 6 + 8; // ICONDIRENTRY[0].bytesInRes (u32 at entry byte 8)
+        bytes[field] = bytes[field].wrapping_add(1);
+        assert!(validate_ico(&bytes).is_err());
     }
 }

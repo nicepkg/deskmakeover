@@ -14,6 +14,11 @@ name = "dm-elevated"
 path = "src/main.rs"
 
 [dependencies]
+# Structural ICO validation has ONE truth source: the codec's `parse` (M5.11). The elevated
+# helper never re-implements the ICONDIR check — it consumes the codec's public API so an
+# overlay payload is validated by exactly the same reader the transaction driver bakes with.
+# Pure Rust (dm-icon-core→libm, sha2), so the host msvc cross-check stays clean.
+dm-icon-codec = { path = "../dm-icon-codec" }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

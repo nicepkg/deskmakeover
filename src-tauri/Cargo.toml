@@ -12,11 +12,7 @@ default-run = "deskmakeover-desktop"
 name = "deskmakeover_desktop_lib"
 crate-type = ["lib"]
 
-# The binding-export tool. Kept out of `src/bin/` because the repo .gitignore
-# ignores every `bin/` directory (a .NET rule).
-[[bin]]
-name = "gen-bindings"
-path = "src/gen_bindings.rs"
+# The `gen-bindings` binary is auto-discovered from `src/bin/gen-bindings.rs`.
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

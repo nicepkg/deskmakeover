@@ -7,10 +7,6 @@ dist/
 dist-ssr/
 coverage/
 *.local
-# Real-icon dev-fixture SSoT (extracted MS/brand assets — NEVER ship, never
-# commit to THIS repo; it is its own nested git repo for durability, and the
-# vite closeBundle hook strips it from dist/)
-public/real-icons/
 
 # ── Tauri (build-time generated ACL schemas, regenerated every build) ──
 src-tauri/gen/

@@ -7,9 +7,9 @@ import tailwindcss from '@tailwindcss/vite'
 // Tauri sets TAURI_DEV_HOST when debugging on a physical device (mobile, later).
 const host = process.env.TAURI_DEV_HOST
 
-// public/real-icons/ is the gitignored dev-fixture SSoT (extracted Microsoft/
-// brand art — LICENSE GATE: never ships). Vite copies public/ wholesale into
-// dist/, so strip it from every build output.
+// public/real-icons/ is the committed dev-fixture SSoT (extracted Microsoft/
+// brand art — ADR-0015 D9 amendment: may live in the repo, must NEVER ship).
+// Vite copies public/ wholesale into dist/, so strip it from every build.
 const stripRealIcons = (): Plugin => ({
   name: 'strip-real-icons',
   closeBundle() {

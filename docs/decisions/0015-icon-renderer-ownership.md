@@ -65,6 +65,15 @@ MIT sources only. Extracted Windows icons, Segoe fonts, brand marks: local
 dev-reference only, never in git. The win11 simulator repos are structure-reference
 (code Apache-2.0/CC0), asset-forbidden.
 
+> **D9 Amendment (2026-07-11, owner override).** The harvested real-icon pack
+> (`public/real-icons/`) and the parity corpus derived from it ARE committed to
+> this repo — the owner explicitly accepted the licensing exposure to get one
+> simple truth source (real icons everywhere; the synthetic pack retired). The
+> "never SHIPPED" half of D9 stands: release artifacts must not bundle the pack
+> (vite strips `dist/real-icons`; installer packaging must not re-add it), and
+> the repo-goes-public release gate now carries an owner sign-off item for the
+> MS/brand assets sitting in git history.
+
 **D10 — Five-material unification approved as direction.** Icon styles gain the
 wallpaper's material vocabulary (磨砂/柔光/实色/悬浮/描边) as the FIRST TS-only
 style batch after migration; 柔光 takes the curated slot of the weakest filter

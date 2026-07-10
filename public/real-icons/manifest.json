@@ -1,0 +1,872 @@
+[
+  {
+    "file": "apps/app-alarm.png",
+    "id": "real-app-alarm",
+    "kind": "Shortcut",
+    "label": "闹钟和时钟",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-board.png",
+    "id": "real-app-board",
+    "kind": "Shortcut",
+    "label": "白板",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-buyme.png",
+    "id": "real-app-buyme",
+    "kind": "Shortcut",
+    "label": "buyme",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-calculator.png",
+    "id": "real-app-calculator",
+    "kind": "Shortcut",
+    "label": "计算器",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-calendar.png",
+    "id": "real-app-calendar",
+    "kind": "Shortcut",
+    "label": "日历",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-camera.png",
+    "id": "real-app-camera",
+    "kind": "Shortcut",
+    "label": "相机",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-code.png",
+    "id": "real-app-code",
+    "kind": "Shortcut",
+    "label": "Visual Studio Code",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-cortana.png",
+    "id": "real-app-cortana",
+    "kind": "AppxShortcut",
+    "label": "Cortana",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-defender.png",
+    "id": "real-app-defender",
+    "kind": "Shortcut",
+    "label": "Windows 安全中心",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-discord.png",
+    "id": "real-app-discord",
+    "kind": "Shortcut",
+    "label": "Discord",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-edge.png",
+    "id": "real-app-edge",
+    "kind": "Shortcut",
+    "label": "Microsoft Edge",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-excel.png",
+    "id": "real-app-excel",
+    "kind": "Shortcut",
+    "label": "Excel",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-explorer.png",
+    "id": "real-app-explorer",
+    "kind": "Shortcut",
+    "label": "文件资源管理器",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-feedback.png",
+    "id": "real-app-feedback",
+    "kind": "AppxShortcut",
+    "label": "反馈中枢",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-getstarted.png",
+    "id": "real-app-getstarted",
+    "kind": "AppxShortcut",
+    "label": "使用技巧",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-github.png",
+    "id": "real-app-github",
+    "kind": "Shortcut",
+    "label": "GitHub Desktop",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-groove.png",
+    "id": "real-app-groove",
+    "kind": "Shortcut",
+    "label": "Groove 音乐",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-help.png",
+    "id": "real-app-help",
+    "kind": "Shortcut",
+    "label": "help",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-home.png",
+    "id": "real-app-home",
+    "kind": "Shortcut",
+    "label": "home",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-mail.png",
+    "id": "real-app-mail",
+    "kind": "Shortcut",
+    "label": "邮件",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-maps.png",
+    "id": "real-app-maps",
+    "kind": "AppxShortcut",
+    "label": "地图",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-minecraft.png",
+    "id": "real-app-minecraft",
+    "kind": "Shortcut",
+    "label": "Minecraft",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-movies.png",
+    "id": "real-app-movies",
+    "kind": "Shortcut",
+    "label": "movies",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-msoffice.png",
+    "id": "real-app-msoffice",
+    "kind": "Shortcut",
+    "label": "msoffice",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-narrator.png",
+    "id": "real-app-narrator",
+    "kind": "Shortcut",
+    "label": "narrator",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-news.png",
+    "id": "real-app-news",
+    "kind": "AppxShortcut",
+    "label": "资讯",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-notepad.png",
+    "id": "real-app-notepad",
+    "kind": "Shortcut",
+    "label": "记事本",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-notes.png",
+    "id": "real-app-notes",
+    "kind": "Shortcut",
+    "label": "notes",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-oneDrive.png",
+    "id": "real-app-oneDrive",
+    "kind": "Shortcut",
+    "label": "oneDrive",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-onenote.png",
+    "id": "real-app-onenote",
+    "kind": "Shortcut",
+    "label": "OneNote",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-outlook.png",
+    "id": "real-app-outlook",
+    "kind": "Shortcut",
+    "label": "Outlook",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-paint.png",
+    "id": "real-app-paint",
+    "kind": "Shortcut",
+    "label": "画图",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-people.png",
+    "id": "real-app-people",
+    "kind": "AppxShortcut",
+    "label": "人脉",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-photos.png",
+    "id": "real-app-photos",
+    "kind": "Shortcut",
+    "label": "照片",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-pinterest.png",
+    "id": "real-app-pinterest",
+    "kind": "Shortcut",
+    "label": "Pinterest",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-powerpoint.png",
+    "id": "real-app-powerpoint",
+    "kind": "Shortcut",
+    "label": "PowerPoint",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-search.png",
+    "id": "real-app-search",
+    "kind": "Shortcut",
+    "label": "search",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-security.png",
+    "id": "real-app-security",
+    "kind": "Shortcut",
+    "label": "security",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-settings.png",
+    "id": "real-app-settings",
+    "kind": "Shortcut",
+    "label": "设置",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-share.png",
+    "id": "real-app-share",
+    "kind": "Shortcut",
+    "label": "share",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-skype.png",
+    "id": "real-app-skype",
+    "kind": "Shortcut",
+    "label": "skype",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-snip.png",
+    "id": "real-app-snip",
+    "kind": "Shortcut",
+    "label": "snip",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-soltaire.png",
+    "id": "real-app-soltaire",
+    "kind": "Shortcut",
+    "label": "soltaire",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-spotify.png",
+    "id": "real-app-spotify",
+    "kind": "Shortcut",
+    "label": "Spotify",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-store.png",
+    "id": "real-app-store",
+    "kind": "AppxShortcut",
+    "label": "Microsoft Store",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-taskmanager.png",
+    "id": "real-app-taskmanager",
+    "kind": "Shortcut",
+    "label": "taskmanager",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-teams.png",
+    "id": "real-app-teams",
+    "kind": "Shortcut",
+    "label": "teams",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-terminal.png",
+    "id": "real-app-terminal",
+    "kind": "Shortcut",
+    "label": "终端",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-tips.png",
+    "id": "real-app-tips",
+    "kind": "Shortcut",
+    "label": "tips",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-todo.png",
+    "id": "real-app-todo",
+    "kind": "Shortcut",
+    "label": "todo",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-twitter.png",
+    "id": "real-app-twitter",
+    "kind": "Shortcut",
+    "label": "Twitter",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-unescape.png",
+    "id": "real-app-unescape",
+    "kind": "Shortcut",
+    "label": "unescape",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-voice.png",
+    "id": "real-app-voice",
+    "kind": "Shortcut",
+    "label": "voice",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-weather.png",
+    "id": "real-app-weather",
+    "kind": "Shortcut",
+    "label": "weather",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-widget.png",
+    "id": "real-app-widget",
+    "kind": "Shortcut",
+    "label": "widget",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-winWord.png",
+    "id": "real-app-winWord",
+    "kind": "Shortcut",
+    "label": "winWord",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-xbox.png",
+    "id": "real-app-xbox",
+    "kind": "Shortcut",
+    "label": "xbox",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-yammer.png",
+    "id": "real-app-yammer",
+    "kind": "Shortcut",
+    "label": "yammer",
+    "extraSources": []
+  },
+  {
+    "file": "apps/app-yphone.png",
+    "id": "real-app-yphone",
+    "kind": "Shortcut",
+    "label": "yphone",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-106.png",
+    "id": "real-win-106",
+    "kind": "RegularFile",
+    "label": "产品截图.png",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1077.png",
+    "id": "real-win-1077",
+    "kind": "RegularFile",
+    "label": "主打歌demo.mp3",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1085.png",
+    "id": "real-win-1085",
+    "kind": "RegularFile",
+    "label": "海报终稿.jpg",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1093.png",
+    "id": "real-win-1093",
+    "kind": "RegularFile",
+    "label": "发布会回放.mp4",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1101.png",
+    "id": "real-win-1101",
+    "kind": "RegularFile",
+    "label": "播客节目.m4a",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-114.png",
+    "id": "real-win-114",
+    "kind": "RegularFile",
+    "label": "录音备忘.mp3",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-122.png",
+    "id": "real-win-122",
+    "kind": "RegularFile",
+    "label": "宣传片素材.mp4",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1278.png",
+    "id": "real-win-1278",
+    "kind": "RegularFile",
+    "label": "合同_副本.docx",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1294.png",
+    "id": "real-win-1294",
+    "kind": "RegularFile",
+    "label": "入职清单.docx",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-130.png",
+    "id": "real-win-130",
+    "kind": "RegularFile",
+    "label": "合同定稿.docx",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1569.png",
+    "id": "real-win-1569",
+    "kind": "RegularFile",
+    "label": "公司资料.docx",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1577.png",
+    "id": "real-win-1577",
+    "kind": "RegularFile",
+    "label": "设计稿.png",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1593.png",
+    "id": "real-win-1593",
+    "kind": "RegularFile",
+    "label": "击杀集锦.mp4",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1669.png",
+    "id": "real-win-1669",
+    "kind": "RegularFile",
+    "label": "铃声剪辑.mp3",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-1693.png",
+    "id": "real-win-1693",
+    "kind": "RegularFile",
+    "label": "系统镜像.iso",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-170.png",
+    "id": "real-win-170",
+    "kind": "RegularFile",
+    "label": "季度汇报.pptx",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-2000.png",
+    "id": "real-win-2000",
+    "kind": "RegularFile",
+    "label": "数据备份_0630",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-3.png",
+    "id": "real-win-3",
+    "kind": "RegularFile",
+    "label": "新建文本文档.txt",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-67.png",
+    "id": "real-win-67",
+    "kind": "RegularFile",
+    "label": "项目计划.docx",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-805.png",
+    "id": "real-win-805",
+    "kind": "RegularFile",
+    "label": "年度总结草稿.docx",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-893.png",
+    "id": "real-win-893",
+    "kind": "RegularFile",
+    "label": "会议纪要_0708.txt",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-90.png",
+    "id": "real-win-90",
+    "kind": "RegularFile",
+    "label": "待办事项.txt",
+    "extraSources": []
+  },
+  {
+    "file": "files/win-98.png",
+    "id": "real-win-98",
+    "kind": "RegularFile",
+    "label": "未读邮件.eml",
+    "extraSources": []
+  },
+  {
+    "file": "folders/win-50.png",
+    "id": "real-win-50",
+    "kind": "Folder",
+    "label": "归档",
+    "extraSources": []
+  },
+  {
+    "file": "folders/win-58.png",
+    "id": "real-win-58",
+    "kind": "Folder",
+    "label": "资源",
+    "extraSources": []
+  },
+  {
+    "file": "folders/win-desk.png",
+    "id": "real-win-desk",
+    "kind": "Folder",
+    "label": "桌面",
+    "extraSources": []
+  },
+  {
+    "file": "folders/win-docs.png",
+    "id": "real-win-docs",
+    "kind": "Folder",
+    "label": "文档",
+    "extraSources": []
+  },
+  {
+    "file": "folders/win-down.png",
+    "id": "real-win-down",
+    "kind": "Folder",
+    "label": "下载",
+    "extraSources": []
+  },
+  {
+    "file": "folders/win-folder.png",
+    "id": "real-win-folder",
+    "kind": "Folder",
+    "label": "新建文件夹",
+    "extraSources": []
+  },
+  {
+    "file": "folders/win-folder3d.png",
+    "id": "real-win-folder3d",
+    "kind": "Folder",
+    "label": "3D 对象",
+    "extraSources": []
+  },
+  {
+    "file": "folders/win-music.png",
+    "id": "real-win-music",
+    "kind": "Folder",
+    "label": "音乐",
+    "extraSources": []
+  },
+  {
+    "file": "folders/win-pics.png",
+    "id": "real-win-pics",
+    "kind": "Folder",
+    "label": "图片",
+    "extraSources": []
+  },
+  {
+    "file": "folders/win-vid.png",
+    "id": "real-win-vid",
+    "kind": "Folder",
+    "label": "视频",
+    "extraSources": []
+  },
+  {
+    "file": "windows/p11-control_panel.webp",
+    "id": "real-p11-control_panel",
+    "kind": "SystemIcon",
+    "label": "控制面板",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1154.png",
+    "id": "real-win-1154",
+    "kind": "Shortcut",
+    "label": "相机导入",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1247.png",
+    "id": "real-win-1247",
+    "kind": "Shortcut",
+    "label": "显示设置",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1286.png",
+    "id": "real-win-1286",
+    "kind": "Shortcut",
+    "label": "截图工具",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1437.png",
+    "id": "real-win-1437",
+    "kind": "Shortcut",
+    "label": "搜索",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1479.png",
+    "id": "real-win-1479",
+    "kind": "Shortcut",
+    "label": "屏幕键盘",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1585.png",
+    "id": "real-win-1585",
+    "kind": "Shortcut",
+    "label": "音乐库",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1609.png",
+    "id": "real-win-1609",
+    "kind": "Shortcut",
+    "label": "共享文件",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1677.png",
+    "id": "real-win-1677",
+    "kind": "Shortcut",
+    "label": "已禁用项",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1736.png",
+    "id": "real-win-1736",
+    "kind": "Shortcut",
+    "label": "固定便签",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-175.png",
+    "id": "real-win-175",
+    "kind": "Shortcut",
+    "label": "Internet",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1780.png",
+    "id": "real-win-1780",
+    "kind": "Shortcut",
+    "label": "剪贴板历史",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1788.png",
+    "id": "real-win-1788",
+    "kind": "Shortcut",
+    "label": "命令提示符",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-183.png",
+    "id": "real-win-183",
+    "kind": "Shortcut",
+    "label": "网络位置",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-1836.png",
+    "id": "real-win-1836",
+    "kind": "Shortcut",
+    "label": "窗口布局",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-199.png",
+    "id": "real-win-199",
+    "kind": "Shortcut",
+    "label": "打印机",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-255.png",
+    "id": "real-win-255",
+    "kind": "Shortcut",
+    "label": "帮助文档",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-797.png",
+    "id": "real-win-797",
+    "kind": "Shortcut",
+    "label": "卸载工具",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-837.png",
+    "id": "real-win-837",
+    "kind": "Shortcut",
+    "label": "页面设置",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-877.png",
+    "id": "real-win-877",
+    "kind": "Shortcut",
+    "label": "快速启动",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-bin.png",
+    "id": "real-win-bin",
+    "kind": "RecycleBin",
+    "label": "回收站",
+    "extraSources": [
+      "windows/win-bin-empty.png"
+    ]
+  },
+  {
+    "file": "windows/win-info.png",
+    "id": "real-win-info",
+    "kind": "Shortcut",
+    "label": "info",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-net.png",
+    "id": "real-win-net",
+    "kind": "Shortcut",
+    "label": "net",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-onedrive.png",
+    "id": "real-win-onedrive",
+    "kind": "Shortcut",
+    "label": "OneDrive",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-pinned.png",
+    "id": "real-win-pinned",
+    "kind": "Shortcut",
+    "label": "pinned",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-shield.png",
+    "id": "real-win-shield",
+    "kind": "Shortcut",
+    "label": "Windows 安全中心",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-store.png",
+    "id": "real-win-store",
+    "kind": "Shortcut",
+    "label": "Microsoft Store",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-themes.png",
+    "id": "real-win-themes",
+    "kind": "Shortcut",
+    "label": "themes",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-thispc.png",
+    "id": "real-win-thispc",
+    "kind": "SystemIcon",
+    "label": "此电脑",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-user.png",
+    "id": "real-win-user",
+    "kind": "SystemIcon",
+    "label": "用户文件",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-viewinfo.png",
+    "id": "real-win-viewinfo",
+    "kind": "Shortcut",
+    "label": "viewinfo",
+    "extraSources": []
+  },
+  {
+    "file": "windows/win-viewlarge.png",
+    "id": "real-win-viewlarge",
+    "kind": "Shortcut",
+    "label": "viewlarge",
+    "extraSources": []
+  }
+]

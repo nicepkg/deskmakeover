@@ -15,11 +15,12 @@
 // subfolder, label from the filename stem (or the label books / overrides.json
 // below). Harvesting MERGES: it never deletes files it did not produce.
 //
-// ⚠ LICENSE GATE: harvested images include extracted Microsoft system icons
-// and third-party brand icons. LOCAL DEV FIXTURES ONLY — the directory is
-// gitignored from the app repo, stripped from dist/ by the vite closeBundle
-// hook, and must NEVER ship in a release or enter the app repo's history. The shipped app mirrors the user's real desktop and needs no
-// bundled icons (ADR-0015 D9).
+// ⚠ LICENSING (ADR-0015 D9 + 2026-07-11 owner-override amendment): the pack
+// contains extracted Microsoft system icons and third-party brand icons. It IS
+// committed to the repo (owner call — one simple truth source), but it must
+// NEVER ship in a release artifact: vite's closeBundle hook strips
+// dist/real-icons, and the shipped app mirrors the user's real desktop and
+// needs no bundled icons.
 //
 // Usage:
 //   node scripts/dev/fetch-real-icons.mjs             harvest + rebuild manifest
@@ -314,7 +315,7 @@ function main() {
   const manifest = buildManifest()
   const kinds = manifest.reduce((m, e) => ((m[e.kind] = (m[e.kind] ?? 0) + 1), m), {})
   console.log(`real-icons: ${manifest.length} icons ->`, kinds)
-  console.log(`SSoT: ${OUT} (gitignored — dev fixtures only, never ship)`)
+  console.log(`SSoT: ${OUT} (committed; stripped from release artifacts — ADR-0015 D9 amendment)`)
   if (!SCAN_ONLY && !KEEP_CACHE && existsSync(CACHE)) {
     rmSync(CACHE, { recursive: true, force: true })
     console.log(`cache ${CACHE} removed (re-clones on the next harvest; --keep-cache to keep)`)

@@ -18,6 +18,6 @@ pub use error::{OperationError, Result};
 pub use ledger::{JsonLedgerStore, LedgerEntry, LedgerStore, MemLedgerStore, TxnState};
 pub use settings_store::SettingsStore;
 pub use txn::{
-    recover, ApplyOutcome, ApplyRequest, FileJournal, JournalRecord, JournalSink, RecoveryOutcome,
-    TxnDriver, VecJournal,
+    recover, recover_from_journal, ApplyOutcome, ApplyRequest, FileJournal, JournalRecord,
+    JournalSink, RecoveryOutcome, TxnDriver, VecJournal,
 };

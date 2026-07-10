@@ -19,7 +19,7 @@ use dm_domain::{IconApplier, ItemStateReader, ItemTarget, RestoreAnchor};
 use crate::error::Result;
 use crate::ledger::entry::{LedgerEntry, TxnState};
 use crate::ledger::store::LedgerStore;
-use crate::txn::journal::JournalRecord;
+use crate::txn::journal::{JournalRecord, JournalSink};
 
 /// What recovery did.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -51,6 +51,21 @@ struct TxnRecovery {
     /// Items in first-seen order.
     order: Vec<dm_domain::ItemId>,
     items: HashMap<String, ItemRecovery>,
+}
+
+/// Startup entry point: read the journal, then [`recover`] over it. This is the call the
+/// composition root makes before exposing any mutation command — a crash mid-transaction is
+/// driven to a consistent terminal state first. A missing/empty journal is a clean no-op; a torn
+/// journal tail is tolerated by the reader, while mid-file corruption surfaces as an error so
+/// startup fails closed rather than on a partially-parsed log.
+pub fn recover_from_journal(
+    journal: &dyn JournalSink,
+    reader: &dyn ItemStateReader,
+    applier: &dyn IconApplier,
+    ledger: &mut dyn LedgerStore,
+) -> Result<RecoveryOutcome> {
+    let records = journal.read_all()?;
+    recover(&records, reader, applier, ledger)
 }
 
 /// Replays `records` and reconciles the desktop + ledger. Idempotent: running it twice is a

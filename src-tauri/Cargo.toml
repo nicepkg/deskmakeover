@@ -35,3 +35,8 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"
 tauri-plugin-window-state = "2"
+
+# The Windows platform adapters — needed only to drive crash recovery at startup (ADR-0019).
+# Windows-only, so the host build carries no dm-windows COM dependency.
+[target.'cfg(windows)'.dependencies]
+dm-windows = { path = "../crates/dm-windows" }

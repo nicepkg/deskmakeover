@@ -6,7 +6,7 @@ pub mod recovery;
 
 pub use driver::{ApplyOutcome, ApplyRequest, TxnDriver};
 pub use journal::{FileJournal, JournalRecord, JournalSink, VecJournal};
-pub use recovery::{recover, RecoveryOutcome};
+pub use recovery::{recover, recover_from_journal, RecoveryOutcome};
 
 #[cfg(test)]
 mod fakes;

@@ -13,7 +13,7 @@ use super::fakes::{
     styled_bytes, FailingAssetStore, FailingJournal, FakePlatform, RecordingJournal, World,
 };
 use super::journal::{JournalRecord, VecJournal};
-use super::recovery::recover;
+use super::recovery::{recover, recover_from_journal};
 use crate::error::{OperationError, Result};
 use crate::ledger::entry::LedgerEntry;
 use crate::ledger::store::{JsonLedgerStore, LedgerStore, MemLedgerStore};
@@ -618,6 +618,41 @@ fn recovery_of_a_rolled_back_txn_is_a_clean_noop() {
     let mut fresh = MemLedgerStore::new();
     let rec = recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
     assert_eq!(rec.clean_txns, 1);
+    assert!(rec.aborted.is_empty() && rec.reconciled.is_empty());
+}
+
+#[test]
+fn recover_from_journal_reads_the_log_then_recovers() {
+    // The startup entry point: instead of handing recover() a record slice, it reads the journal
+    // itself and recovers. Same rolled-back scenario as above, driven through that seam.
+    let world = World::shared();
+    let a = target("A");
+    let b = target("B");
+    seed(&world, &a, b"orig-A");
+    seed(&world, &b, b"orig-B");
+    world.borrow_mut().fail_apply(&b.path);
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    driver
+        .apply(1, vec![request(&a, &world, "hashA"), request(&b, &world, "hashB")], &mut journal, &mut ledger)
+        .unwrap();
+
+    let mut fresh = MemLedgerStore::new();
+    let rec = recover_from_journal(&journal, &plat, &plat, &mut fresh).unwrap();
+    assert_eq!(rec.clean_txns, 1);
+}
+
+#[test]
+fn recover_from_an_empty_journal_is_a_clean_noop() {
+    // A fresh install (no journal records) recovers to nothing — the startup path must not error.
+    let world = World::shared();
+    let plat = FakePlatform::new(world);
+    let journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    let rec = recover_from_journal(&journal, &plat, &plat, &mut ledger).unwrap();
+    assert_eq!(rec.clean_txns, 0);
     assert!(rec.aborted.is_empty() && rec.reconciled.is_empty());
 }
 

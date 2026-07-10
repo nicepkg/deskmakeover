@@ -68,7 +68,15 @@ pub fn run() {
 
             specta.mount_events(app);
 
-            let db_path = settings_db_path(app)?;
+            // Crash recovery MUST run before any mutation command is reachable (ADR-0019): a
+            // transaction interrupted by a previous crash is driven to a consistent terminal state
+            // first. This happens during setup, before the settings store is managed and before the
+            // window is interactive; a recovery error aborts startup (fail closed).
+            let data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&data_dir)?;
+            run_startup_recovery(&data_dir)?;
+
+            let db_path = data_dir.join(SETTINGS_DB_FILE);
             let store = SettingsStore::open(&db_path)?;
             app.manage(AppState { settings: store });
             log::info!("settings store ready at {}", db_path.display());
@@ -78,13 +86,52 @@ pub fn run() {
         .expect("error while running DeskMakeover");
 }
 
-/// Resolve (and create) the settings database path under the OS app-data dir.
-fn settings_db_path<R: tauri::Runtime>(
-    app: &tauri::App<R>,
-) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let dir = app.path().app_data_dir()?;
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join("settings.sqlite3"))
+/// The settings database file name under the OS app-data dir.
+const SETTINGS_DB_FILE: &str = "settings.sqlite3";
+
+/// The crash-recovery inputs under the app-data dir: the write-ahead journal and the active
+/// ledger the transaction machinery persists.
+fn recovery_paths(data_dir: &Path) -> (PathBuf, PathBuf) {
+    (data_dir.join("txn.log"), data_dir.join("ledger.json"))
+}
+
+/// Drive crash recovery to a consistent terminal state before any mutation command is reachable
+/// (ADR-0019). On Windows it wires the real platform adapters and replays the journal; on a dev
+/// host there is no desktop to recover, so it is a logged no-op. Fail-closed: any error propagates
+/// out of `setup` and aborts startup rather than exposing a half-recovered desktop.
+///
+/// [WINDOWS-VERIFY] the Windows branch cannot be msvc-cross-checked from the host (this crate pulls
+/// tauri + rusqlite C deps), so the adapter wiring is verified on the owner's Windows box.
+fn run_startup_recovery(data_dir: &Path) -> Result<(), String> {
+    let (journal_path, ledger_path) = recovery_paths(data_dir);
+    #[cfg(windows)]
+    {
+        use std::sync::Arc;
+
+        use dm_operations::{recover_from_journal, FileJournal, JsonLedgerStore};
+        use dm_windows::{StaExecutor, WindowsIconApplier, WindowsStateReader};
+
+        // A one-shot STA executor for the recovery pass; the resident apply/scan stack owns its own.
+        let exec = Arc::new(StaExecutor::spawn().map_err(|e| e.to_string())?);
+        let applier = WindowsIconApplier::new(exec);
+        let reader = WindowsStateReader;
+        let journal = FileJournal::new(&journal_path);
+        let mut ledger = JsonLedgerStore::new(&ledger_path);
+        let outcome =
+            recover_from_journal(&journal, &reader, &applier, &mut ledger).map_err(|e| e.to_string())?;
+        log::info!(
+            "startup recovery: {} aborted, {} reconciled, {} clean txns",
+            outcome.aborted.len(),
+            outcome.reconciled.len(),
+            outcome.clean_txns
+        );
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (&journal_path, &ledger_path);
+        log::info!("startup recovery skipped: no desktop platform adapters on this host");
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -96,5 +143,22 @@ mod tests {
         let p = bindings_path();
         assert!(p.ends_with("generated.ts"), "got {}", p.display());
         assert!(p.to_string_lossy().contains("bridge"));
+    }
+
+    #[test]
+    fn recovery_reads_the_journal_and_ledger_from_the_app_data_dir() {
+        let (journal, ledger) = recovery_paths(Path::new("/data/DeskMakeover"));
+        assert!(journal.ends_with("txn.log"));
+        assert!(ledger.ends_with("ledger.json"));
+        // Both must sit under the passed app-data dir, never a caller-relative path.
+        assert!(journal.starts_with("/data/DeskMakeover"));
+        assert!(ledger.starts_with("/data/DeskMakeover"));
+    }
+
+    #[test]
+    fn startup_recovery_is_a_clean_noop_on_the_dev_host() {
+        // On non-Windows there is no desktop to recover; the seam must succeed so startup proceeds.
+        let dir = std::env::temp_dir();
+        assert!(run_startup_recovery(&dir).is_ok());
     }
 }

@@ -825,6 +825,7 @@ version = "0.0.0"
 dependencies = [
  "dm-contracts",
  "dm-operations",
+ "dm-windows",
  "log",
  "serde",
  "serde_json",

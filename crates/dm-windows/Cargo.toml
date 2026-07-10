@@ -12,6 +12,8 @@ publish.workspace = true
 dm-domain = { path = "../dm-domain" }
 
 [target.'cfg(windows)'.dependencies]
+# Per-user Recycle Bin DefaultIcon values (HKCU) — pure-Rust registry, no C build.
+winreg = "0.55"
 windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_System_Com",

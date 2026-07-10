@@ -1,41 +1,94 @@
-//! The filesystem-backed [`ItemStateReader`] for file items (`.lnk`/`.url`/loose files).
+//! The [`ItemStateReader`] for every desktop item kind: the CAS fingerprint and the exact-restore
+//! anchor. Ported from `DeskMakeover.Shell/RestoreMetadataCollector.cs` (per-kind capture) and the
+//! `SequenceEqual` preflight (`DesktopIconApplyOperations.cs`).
 //!
-//! The CAS fingerprint is `SHA-256` over the whole file (mirroring the oracle's `SequenceEqual`
-//! preflight), and the restore anchor is the file's original bytes (oracle:
-//! `RestoreMetadataCollector.CaptureShortcut`/`CaptureUrlShortcut`). Folder / Recycle-Bin /
-//! system state (attributes + registry) is captured by the M4 adapters, not here.
+//! * file kinds (`.lnk`/`.url`/loose file): fingerprint = SHA-256 of the bytes; anchor = the bytes;
+//! * folder: fingerprint = SHA-256 of `desktop.ini` bytes + folder attributes; anchor = both;
+//! * Recycle Bin: fingerprint + anchor = the per-user `DefaultIcon` registry values.
+//!
+//! [WINDOWS-VERIFY] runtime (filesystem/registry semantics).
+
+use std::path::Path;
 
 use dm_domain::{
-    Fingerprint, ItemKind, ItemStateReader, ItemTarget, PortError, PortResult, RestoreAnchor,
+    DesktopIniAnchor, Fingerprint, ItemKind, ItemStateReader, ItemTarget, PortError, PortResult,
+    RestoreAnchor, WrapperAnchor,
 };
 
-/// Reads fingerprints and anchors for file-backed items via plain filesystem I/O (no COM).
-pub struct FsStateReader;
+use crate::apply::{file_wrapper, recyclebin};
+use crate::shell::attrs;
 
-impl ItemStateReader for FsStateReader {
-    /// [WINDOWS-VERIFY] runtime (path semantics).
+/// Reads fingerprints and anchors across all item kinds.
+pub struct WindowsStateReader;
+
+impl ItemStateReader for WindowsStateReader {
     fn read_fingerprint(&self, target: &ItemTarget) -> PortResult<Fingerprint> {
         match target.kind {
             ItemKind::Shortcut | ItemKind::UrlShortcut | ItemKind::RegularFile => {
                 Ok(Fingerprint::of_bytes(&read_bytes(&target.path)?))
             }
-            other => Err(PortError::Unsupported(format!(
-                "fingerprint for {other:?} is captured by the M4 adapter"
-            ))),
+            ItemKind::Folder => {
+                let ini = ini_bytes(&target.path);
+                let folder_attrs = attrs::get(&target.path)?;
+                Ok(Fingerprint::of_parts(&[&ini, &folder_attrs.to_le_bytes()]))
+            }
+            ItemKind::RecycleBin => {
+                let a = recyclebin::read_current();
+                Ok(Fingerprint::of_parts(&[
+                    a.default.as_ref().map(|v| v.raw.as_bytes()).unwrap_or_default(),
+                    a.empty.as_ref().map(|v| v.raw.as_bytes()).unwrap_or_default(),
+                    a.full.as_ref().map(|v| v.raw.as_bytes()).unwrap_or_default(),
+                ]))
+            }
+            other => Err(PortError::Unsupported(format!("fingerprint for {other:?}"))),
         }
     }
 
-    /// [WINDOWS-VERIFY] runtime.
     fn capture_anchor(&self, target: &ItemTarget) -> PortResult<RestoreAnchor> {
         match target.kind {
             ItemKind::Shortcut | ItemKind::UrlShortcut => {
                 Ok(RestoreAnchor::FileBytes { bytes: read_bytes(&target.path)? })
             }
-            other => Err(PortError::Unsupported(format!(
-                "anchor for {other:?} is captured by the M4 adapter"
-            ))),
+            ItemKind::Folder => Ok(capture_folder(&target.path)?),
+            ItemKind::RegularFile => Ok(capture_file(&target.path)?),
+            ItemKind::RecycleBin => Ok(RestoreAnchor::RecycleBin(recyclebin::read_current())),
+            other => Err(PortError::Unsupported(format!("anchor for {other:?}"))),
         }
     }
+}
+
+fn capture_folder(folder_path: &str) -> PortResult<RestoreAnchor> {
+    let attributes = attrs::get(folder_path)?;
+    let ini = Path::new(folder_path).join("desktop.ini");
+    let desktop_ini = if ini.exists() {
+        let content = std::fs::read(&ini).map_err(|e| PortError::Io(e.to_string()))?;
+        let ini_attrs = attrs::get(&ini.to_string_lossy())?;
+        Some(DesktopIniAnchor { content, attributes: ini_attrs })
+    } else {
+        None
+    };
+    Ok(RestoreAnchor::Folder { attributes, desktop_ini })
+}
+
+fn capture_file(file_path: &str) -> PortResult<RestoreAnchor> {
+    let file_attributes = attrs::get(file_path)?;
+    // Capture the wrapper if a same-named `.lnk` already exists (our apply would overwrite it).
+    let wrapper = file_wrapper::wrapper_path(file_path);
+    let wrapper_existed = Path::new(&wrapper).exists();
+    let wrapper_content = if wrapper_existed {
+        Some(std::fs::read(&wrapper).map_err(|e| PortError::Io(e.to_string()))?)
+    } else {
+        None
+    };
+    Ok(RestoreAnchor::RegularFile(WrapperAnchor {
+        file_attributes,
+        wrapper_existed,
+        wrapper_content,
+    }))
+}
+
+fn ini_bytes(folder_path: &str) -> Vec<u8> {
+    std::fs::read(Path::new(folder_path).join("desktop.ini")).unwrap_or_default()
 }
 
 fn read_bytes(path: &str) -> PortResult<Vec<u8>> {

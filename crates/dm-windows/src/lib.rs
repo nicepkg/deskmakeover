@@ -14,6 +14,7 @@
 //! [`classify`], which compiles and is unit-tested on the host.
 
 pub mod classify;
+pub mod textfmt;
 
 #[cfg(windows)]
 pub mod apply;
@@ -27,6 +28,10 @@ mod refresh;
 pub mod shell;
 #[cfg(windows)]
 mod state_reader;
+#[cfg(windows)]
+pub mod wallpaper;
+#[cfg(windows)]
+pub mod watcher;
 
 #[cfg(windows)]
 pub use apply::WindowsIconApplier;
@@ -39,4 +44,6 @@ pub use refresh::WindowsExplorerRefresher;
 #[cfg(windows)]
 pub use shell::WindowsScanner;
 #[cfg(windows)]
-pub use state_reader::FsStateReader;
+pub use state_reader::WindowsStateReader;
+#[cfg(windows)]
+pub use wallpaper::WindowsWallpaper;

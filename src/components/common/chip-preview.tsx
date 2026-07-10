@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import type { ReactNode } from 'react'
 import type { IconKindBucket, IconShape, MarkStyle } from '@/bridge/types'
-import winNativeArrow from '@/assets/win-native-arrow.png'
+const winNativeArrow = '/win-native-arrow.png'
 import { clipPathFor } from '@/lib/shape-paths'
 import { cn } from '@/lib/utils'
 

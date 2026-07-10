@@ -4,7 +4,7 @@ import { useApp } from '@/stores/app'
 import { useT } from '@/lib/i18n'
 import { DevMenu } from '@/components/shell/dev-menu'
 import { KeymapLegend } from '@/components/shell/keymap-legend'
-import appIcon from '@/assets/app-icon.svg'
+const appIcon = '/app-icon.svg'
 
 // 46px custom titlebar (spec 02, ADR-0012): logo 24 + name 13/600 + a quiet `?`
 // keymap affordance — no version chip pre-release. The whole band is a drag region;

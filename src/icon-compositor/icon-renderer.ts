@@ -2,7 +2,7 @@
 // no fixes except oracle corrections. Deleted after M6 certification.
 
 import type { ConfigDto } from '@/bridge/types'
-import winNativeArrow from '@/assets/win-native-arrow.png'
+const winNativeArrow = '/win-native-arrow.png' // public/ asset SSoT (owner order 2026-07-11)
 import type { Raster } from './raster'
 import { makeRaster } from './raster'
 import type { RenderOpts } from './compose'

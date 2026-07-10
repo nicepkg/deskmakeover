@@ -1,5 +1,5 @@
 import * as React from 'react'
-import appIcon from '@/assets/app-icon.svg'
+const appIcon = '/app-icon.svg'
 import { buildReport, copyText, issueUrl, mailtoUrl, supportEmail } from '@/lib/diagnostics'
 import { logError } from '@/lib/error-log'
 import { call } from '@/bridge/client'

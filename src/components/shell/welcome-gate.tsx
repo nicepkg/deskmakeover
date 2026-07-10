@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import appIcon from '@/assets/app-icon.svg'
+const appIcon = '/app-icon.svg'
 import { WinArrowGlyph } from '@/components/common/chip-preview'
 import { useApp } from '@/stores/app'
 import { format, useI18n, useT } from '@/lib/i18n'

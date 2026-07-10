@@ -33,7 +33,7 @@ mkdirSync(join(OUT, 'expected'), { recursive: true })
 mkdirSync(join(OUT, 'sources'), { recursive: true })
 
 // The genuine Win11 shortcut-arrow badge, exactly as the worker loads it.
-const arrowBytes = readFileSync(join(REPO_ROOT, 'src/assets/win-native-arrow.png'))
+const arrowBytes = readFileSync(join(REPO_ROOT, 'public/win-native-arrow.png'))
 const arrow = decodePng(new Uint8Array(arrowBytes))
 setNativeArrowRaster(arrow)
 writeFileSync(join(OUT, 'arrow.rgba'), Buffer.from(arrow.data.buffer, arrow.data.byteOffset, arrow.data.byteLength))

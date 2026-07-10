@@ -75,6 +75,36 @@ pub trait JournalSink {
 
     /// Reads every record in append order.
     fn read_all(&self) -> Result<Vec<JournalRecord>>;
+
+    /// Atomically retains only the records whose transaction is in `active_txns`, dropping the
+    /// rest (P2-5 checkpoint). Passing an empty slice truncates the journal to nothing. A
+    /// checkpoint after a clean commit — when no transaction is in-flight — empties the journal
+    /// because committed state then lives in the ledger and recovery no longer needs the history.
+    /// The default is a no-op, for in-memory test doubles that need not model truncation.
+    fn checkpoint(&mut self, active_txns: &[u64]) -> Result<()> {
+        let _ = active_txns;
+        Ok(())
+    }
+}
+
+/// The transactions in `records` with NO terminal record (`TxnCommitted` / `TxnRolledBack`) — the
+/// still-in-flight set a checkpoint must retain, in first-seen order. Committed and rolled-back
+/// transactions are safe to drop: their state is durable in the ledger or already restored.
+pub fn active_txns(records: &[JournalRecord]) -> Vec<u64> {
+    use std::collections::BTreeSet;
+    let mut terminal = BTreeSet::new();
+    let mut seen = BTreeSet::new();
+    let mut order = Vec::new();
+    for record in records {
+        let txn = record.txn();
+        if seen.insert(txn) {
+            order.push(txn);
+        }
+        if matches!(record, JournalRecord::TxnCommitted { .. } | JournalRecord::TxnRolledBack { .. }) {
+            terminal.insert(txn);
+        }
+    }
+    order.into_iter().filter(|txn| !terminal.contains(txn)).collect()
 }
 
 /// A JSON-lines file journal: each `append` writes one line and `fsync`s it.
@@ -132,6 +162,37 @@ impl JournalSink for FileJournal {
         }
         Ok(records)
     }
+
+    fn checkpoint(&mut self, active_txns: &[u64]) -> Result<()> {
+        let kept: Vec<JournalRecord> =
+            self.read_all()?.into_iter().filter(|r| active_txns.contains(&r.txn())).collect();
+        if kept.is_empty() {
+            // Truncate: a missing journal reads as empty, so removing the file is the empty state.
+            return match fs::remove_file(&self.path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(OperationError::Io(e.to_string())),
+            };
+        }
+        // Atomically rewrite the retained records: temp file + fsync + rename. A crash before the
+        // rename leaves the old (complete) journal for recovery; after it, the retained set — either
+        // way the durable state is consistent.
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let tmp = self.path.with_extension("log.tmp");
+        {
+            let mut file = fs::File::create(&tmp)?;
+            for record in &kept {
+                let mut line = serde_json::to_vec(record)?;
+                line.push(b'\n');
+                file.write_all(&line)?;
+            }
+            file.sync_all()?;
+        }
+        fs::rename(&tmp, &self.path)?;
+        Ok(())
+    }
 }
 
 /// An in-memory journal for tests. It models "what has been durably written so far", so a
@@ -160,6 +221,11 @@ impl JournalSink for VecJournal {
 
     fn read_all(&self) -> Result<Vec<JournalRecord>> {
         Ok(self.records.clone())
+    }
+
+    fn checkpoint(&mut self, active_txns: &[u64]) -> Result<()> {
+        self.records.retain(|r| active_txns.contains(&r.txn()));
+        Ok(())
     }
 }
 
@@ -267,5 +333,56 @@ mod tests {
         f.write_all(b"\n\n").unwrap();
         drop(f);
         assert_eq!(j.read_all().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn active_txns_excludes_committed_and_rolled_back() {
+        let records = vec![
+            begin(1),
+            JournalRecord::TxnCommitted { txn: 1 },
+            begin(2),
+            JournalRecord::TxnRolledBack { txn: 2 },
+            begin(3), // in-flight — no terminal record
+        ];
+        assert_eq!(active_txns(&records), vec![3]);
+        assert!(active_txns(&[begin(1), JournalRecord::TxnCommitted { txn: 1 }]).is_empty());
+    }
+
+    #[test]
+    fn checkpoint_to_no_active_txns_truncates_the_file_journal() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut j = FileJournal::new(dir.path().join("txn.log"));
+        j.append(&begin(1)).unwrap();
+        j.append(&JournalRecord::TxnCommitted { txn: 1 }).unwrap();
+        j.checkpoint(&[]).unwrap();
+        assert!(j.read_all().unwrap().is_empty());
+        // A reopen sees the truncation (durable).
+        let reopened = FileJournal::new(dir.path().join("txn.log"));
+        assert!(reopened.read_all().unwrap().is_empty());
+    }
+
+    #[test]
+    fn checkpoint_retains_only_the_in_flight_transaction() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut j = FileJournal::new(dir.path().join("txn.log"));
+        j.append(&begin(1)).unwrap();
+        j.append(&JournalRecord::TxnCommitted { txn: 1 }).unwrap();
+        j.append(&begin(2)).unwrap(); // txn 2 crashed in-flight (no terminal)
+        j.checkpoint(&active_txns(&j.read_all().unwrap())).unwrap();
+        let kept = j.read_all().unwrap();
+        assert_eq!(kept.len(), 1);
+        assert!(kept.iter().all(|r| r.txn() == 2));
+    }
+
+    #[test]
+    fn vec_journal_checkpoint_retains_the_active_set() {
+        let mut j = VecJournal::new();
+        j.append(&begin(1)).unwrap();
+        j.append(&JournalRecord::TxnCommitted { txn: 1 }).unwrap();
+        j.append(&begin(2)).unwrap();
+        j.checkpoint(&active_txns(&j.records().to_vec())).unwrap();
+        assert!(j.records().iter().all(|r| r.txn() == 2));
+        j.checkpoint(&[]).unwrap();
+        assert!(j.records().is_empty());
     }
 }

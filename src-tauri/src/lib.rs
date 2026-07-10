@@ -115,10 +115,10 @@ fn run_startup_recovery(data_dir: &Path) -> Result<(), String> {
         let exec = Arc::new(StaExecutor::spawn().map_err(|e| e.to_string())?);
         let applier = WindowsIconApplier::new(exec);
         let reader = WindowsStateReader;
-        let journal = FileJournal::new(&journal_path);
+        let mut journal = FileJournal::new(&journal_path);
         let mut ledger = JsonLedgerStore::new(&ledger_path);
         let outcome =
-            recover_from_journal(&journal, &reader, &applier, &mut ledger).map_err(|e| e.to_string())?;
+            recover_from_journal(&mut journal, &reader, &applier, &mut ledger).map_err(|e| e.to_string())?;
         log::info!(
             "startup recovery: {} aborted, {} reconciled, {} clean txns",
             outcome.aborted.len(),

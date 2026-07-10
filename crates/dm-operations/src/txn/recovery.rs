@@ -59,13 +59,19 @@ struct TxnRecovery {
 /// journal tail is tolerated by the reader, while mid-file corruption surfaces as an error so
 /// startup fails closed rather than on a partially-parsed log.
 pub fn recover_from_journal(
-    journal: &dyn JournalSink,
+    journal: &mut dyn JournalSink,
     reader: &dyn ItemStateReader,
     applier: &dyn IconApplier,
     ledger: &mut dyn LedgerStore,
 ) -> Result<RecoveryOutcome> {
     let records = journal.read_all()?;
-    recover(&records, reader, applier, ledger)
+    let outcome = recover(&records, reader, applier, ledger)?;
+    // Every transaction in the journal is now reconciled into the ledger / desktop, so the history
+    // is no longer needed — truncate it so the next recovery replays nothing (P2-5 checkpoint).
+    // Best-effort: a failed truncation just leaves the reconciled records for the next
+    // (idempotent) recovery, so it must not fail an otherwise-successful recovery pass.
+    let _ = journal.checkpoint(&[]);
+    Ok(outcome)
 }
 
 /// Replays `records` and reconciles the desktop + ledger. Idempotent: running it twice is a

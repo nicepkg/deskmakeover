@@ -166,6 +166,35 @@ x86_64-pc-windows-msvc` green. The full-workspace msvc check stays blocked only 
 9. **Stubs to implement on Windows**: `shell/layout.rs` (IFolderView2 `GetItemPosition` /
    SysListView32 positions) and `watcher.rs` (`ReadDirectoryChangesW` hints, M7).
 
+**Blind-audit follow-ups (2026-07-11, independent Windows reviewer over `7dc82c1`).** Reading-
+detectable hardening scheduled as blind fixes; each carries a live-box verification. Codenamed
+by the finding they close:
+10. **ProgramData LPE (P1):** from a *standard* account pre-create `C:\ProgramData\DeskMakeover`
+    as a directory junction + plant a symlinked `{style}-overlay.ico` and a poisoned
+    `overlay-state.txt`; run elevated apply+restore; confirm the helper refuses the reparse point
+    and rejects attacker-seeded state (no arbitrary admin write, no HKLM poison).
+11. **STA message pump (P2):** drive `IDesktopWallpaper` (and, once wired, IFolderView2) through
+    `StaExecutor` while the thread idles on `recv`; confirm no hang; message loop added if any
+    interface marshals.
+12. **Ledger sharing violation (P2):** hold `ledger.json` open (indexer/AV/backup) during a commit;
+    confirm the rename succeeds via `ReplaceFileW`/retry rather than failing the apply.
+13. **Journal directory-entry durability (P2):** power-cut right after the first `ItemPrepared`
+    append; confirm the journal file + its NTFS directory entry survive for recovery.
+14. **Torn-tail recovery (P2):** truncate the journal mid-final-line; confirm recovery tolerates a
+    single trailing partial line (post-fix) instead of hard-failing.
+15. **`--file` TOCTOU/reparse (P2):** pass a symlinked/oversized `--file`; confirm the size cap
+    holds through a single handle.
+16. **Reparse-point styling (P3):** desktop folder = junction, file = symlink; confirm styling
+    refuses or is fully reversible without mutating the target's attributes.
+17. **Long paths (P3):** desktop item with a full path >260 chars — confirm `IPersistFile::Load`,
+    `GetFileAttributesW`, and `desktop.ini` writes succeed (verbatim `\\?\`) or skip cleanly.
+18. **Non-Unicode item name (P3):** desktop file with an unpaired-surrogate name — confirm it is
+    skipped-and-warned, not silently mis-addressed.
+19. **Wallpaper solid-colour/slideshow restore (P2):** start from a solid colour and from a
+    slideshow, apply then restore; confirm the original returns, not a leftover DeskMakeover image.
+20. **Recovery wiring:** confirm `dm_operations::recover()` runs at Tauri startup before any apply
+    surface is exposed (today `src-tauri/src/lib.rs` only opens the settings store).
+
 **Cross-crate need for the icon-core agent** `[icon-core-need]`: content-addressed ICO assembly
 (`dm-icon-codec::write_ico(frames) -> bytes` + content hash) for the ledger `AssetRef`; the
 transparent/refined overlay ICOs the overlay client passes to `dm-elevated`; and the paired

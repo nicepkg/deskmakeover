@@ -84,6 +84,16 @@ committed synthetic pack is 120 sources).
 deterministic); CI smoke `tests/oracle-corpus.test.ts`. This is the TS side of the M5
 tri-target differential.
 
+**M1 Spike 4 DONE (tri-target pixel slice — the one M1 spike that runs on Mac)** —
+Circle + white plate + subject blit + dock shadow over 120 sources × {256,512} = 240
+cells: **native↔wasm 240/240 byte-identical, TS↔Rust 0 diff bytes of 157.3M**
+(byte-equal; gate was SSIM≥0.995). `crates/dm-icon-core` slice modules + plain-ABI
+`dm-icon-wasm` + `xtask spike4-*`; one command `bun tests/icon-parity/spike4/run.ts`.
+Determinism intel (M5 checklist seed): JSC pow vs libm pow = 1 ulp apart on 34/256
+decode-LUT entries → TS↔Rust byte parity is EMPIRICAL (full-corpus differential remains
+the certification gate); wasm↔native parity is structural. Details in the migration
+plan §M1. Remaining M1 spikes (1/2/3/5) are Windows-bound.
+
 **In flight / next (web):**
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all
    designer PASS): seven coordinate-bookmark presets (spectrum default ·

@@ -4,4 +4,9 @@ edition.workspace = true
 version.workspace = true
 publish.workspace = true
 
+[lib]
+# cdylib → the .wasm artifact; rlib keeps `cargo test` on the host target.
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
+dm-icon-core = { path = "../dm-icon-core" }

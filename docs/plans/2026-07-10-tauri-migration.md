@@ -56,6 +56,25 @@ sources: TS vs wasm vs native) · kill-injected `.lnk` transaction with CAS conf
 **Exit**: all five pass, or the failing one is escalated to the owner with a
 re-priced alternative before proceeding.
 
+**Spike 4 DONE (tri-target pixel slice, Mac).** Slice = Circle + fixed white
+plate + subject blit + dock silhouette shadow, 120 sources × {256, 512} = 240
+cells (118 area-averaged / 122 supersampled — both drawScaled lanes). Result:
+**native↔wasm 240/240 byte-identical; TS↔Rust 0 diff bytes / 157,286,400**
+(byte-equal, exceeding the SSIM≥0.995 gate). Rust side: `dm-icon-core`
+{js_math, raster, shapes, color, analysis, sampling, slice} (libm-only, real
+M5 module layout) + plain-`extern "C"` wasm adapter (wasm32-unknown-unknown,
+no wasm-bindgen, run under Bun's WebAssembly — recorded choice) + `xtask
+spike4-native/spike4-compare`. One command: `bun
+tests/icon-parity/spike4/run.ts`. Key intel for M5: JSC `Math.pow` vs
+`libm::pow` differ by 1 ulp on 34/256 sRGB decode-LUT entries (measured by the
+fixture probes; never surfaced in pixel bytes here) — TS↔Rust byte-equality is
+NOT guaranteed by construction near rounding boundaries, so the full-corpus
+differential stays the certification gate; wasm↔native equality IS structural
+(same libm bits). JS-semantics helpers that made bytes match: `js_round`
+(ties → +∞, and NOT `floor(x+0.5)`), `Uint8ClampedArray` ties-to-even at
+non-integer stores, f32-store/f64-accumulate in the shadow `boxBlurInPlace`,
+`Math.trunc/ceil` mirrors in the area-average sampler.
+
 ## M2 — Tauri foundation (Mac-first, ~2d)
 `apps/desktop/src-tauri`: host the React app; mock bridge rides Tauri commands
 (browser mock loop stays intact); generated TS bindings from `dm-contracts`;

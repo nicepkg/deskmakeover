@@ -154,15 +154,15 @@ export function MusicDiscIcon() {
   )
 }
 
-/** The pinned row, in the owner's mockup order. `realSrc` names the REAL
- *  extracted icon inside the dev fixture pack (/mock-icons-real/); the drawn
- *  node is only the fallback when the fixtures have not been fetched. */
+/** The pinned row, in the owner's mockup order. `realSrc` is the pack-relative
+ *  path of the REAL extracted icon inside the committed SSoT (/real-icons/);
+ *  the drawn node is only the fallback when the pack is missing. */
 export const TASKBAR_PINNED: { key: string; realSrc: string; node: React.ReactNode }[] = [
-  { key: 'start', realSrc: 'app-home.png', node: <FlagIcon /> },
-  { key: 'search', realSrc: 'app-search.png', node: <SearchIcon /> },
-  { key: 'settings', realSrc: 'app-settings.png', node: <GearIcon /> },
-  { key: 'explorer', realSrc: 'win-folder.png', node: <FolderIcon /> },
-  { key: 'browser', realSrc: 'app-edge.png', node: <BrowserOrbIcon /> },
-  { key: 'store', realSrc: 'app-store.png', node: <StoreIcon /> },
-  { key: 'music', realSrc: 'app-spotify.png', node: <MusicDiscIcon /> },
+  { key: 'start', realSrc: 'apps/app-home.png', node: <FlagIcon /> },
+  { key: 'search', realSrc: 'apps/app-search.png', node: <SearchIcon /> },
+  { key: 'settings', realSrc: 'apps/app-settings.png', node: <GearIcon /> },
+  { key: 'explorer', realSrc: 'folders/win-folder.png', node: <FolderIcon /> },
+  { key: 'browser', realSrc: 'apps/app-edge.png', node: <BrowserOrbIcon /> },
+  { key: 'store', realSrc: 'apps/app-store.png', node: <StoreIcon /> },
+  { key: 'music', realSrc: 'apps/app-spotify.png', node: <MusicDiscIcon /> },
 ]

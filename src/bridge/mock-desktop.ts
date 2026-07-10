@@ -101,9 +101,9 @@ const SCENARIO_ITEMS: Record<Exclude<MockScenario, 'messy'>, { id: string; label
 }
 
 const SCENARIO_WALLPAPER: Record<MockScenario, string[]> = {
-  messy: ['/mock-icons-real/wallpaper-default.jpg'],
-  office: ['/mock-icons-real/wallpaper-office.jpg', '/mock-icons-real/wallpaper-default.jpg'],
-  gamer: ['/mock-icons-real/wallpaper-gamer.jpg', '/mock-icons-real/wallpaper-dark.jpg'],
+  messy: ['/real-icons/wallpapers/wallpaper-default.jpg'],
+  office: ['/real-icons/wallpapers/wallpaper-office.jpg', '/real-icons/wallpapers/wallpaper-default.jpg'],
+  gamer: ['/real-icons/wallpapers/wallpaper-gamer.jpg', '/real-icons/wallpapers/wallpaper-dark.jpg'],
 }
 
 let realWallUrl: string | null = null
@@ -115,7 +115,7 @@ export function probeRealWallpaper(): Promise<void> {
     const scenario = currentScenario()
     const dark = document.documentElement.classList.contains('dark')
     const candidates = [...SCENARIO_WALLPAPER[scenario]]
-    if (scenario === 'messy' && dark) candidates.unshift('/mock-icons-real/wallpaper-dark.jpg')
+    if (scenario === 'messy' && dark) candidates.unshift('/real-icons/wallpapers/wallpaper-dark.jpg')
     for (const candidate of candidates) {
       const head = await fetch(candidate, { method: 'HEAD' }).catch(() => null)
       if (head?.ok) {

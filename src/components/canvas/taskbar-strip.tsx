@@ -29,7 +29,7 @@ function PinnedIcon({ src, fallback }: { src: string; fallback: React.ReactNode 
   if (failed) return <>{fallback}</>
   return (
     <img
-      src={`/mock-icons-real/${src}`}
+      src={`/real-icons/${src}`}
       alt=""
       width={26}
       height={26}

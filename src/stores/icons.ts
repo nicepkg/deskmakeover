@@ -52,6 +52,9 @@ interface IconsState {
   applyProgress: { done: number; total: number } | null
   canUndo: boolean
   canRedo: boolean
+  /** In-flight guard for the elevated overlay restore (single-flight; a slow
+   *  UAC round-trip must not allow a duplicate restore or clobber newer edits). */
+  overlayRestoring: boolean
 
   scan: () => Promise<void>
   rescan: () => Promise<void>
@@ -387,11 +390,23 @@ export const useIcons = create<IconsState>((set, get) => {
     applyProgress: null,
     canUndo: false,
     canRedo: false,
+    overlayRestoring: false,
 
     scan: async () => {
       if (get().loaded) return
       set({ loaded: true })
-      adoptScan(await call('icons.scan'))
+      // A failed scan must be RETRYABLE and must not strand consumers: `state`
+      // stays null (→ Settings shows the "checking" status, never a false
+      // "Windows default"), and `loaded` resets so a later trigger re-scans
+      // (mirrors the boot() handshake). Previously the await was uncaught, so a
+      // scan failure left loaded=true + state=null forever (review P2-2).
+      try {
+        adoptScan(await call('icons.scan'))
+      } catch (err) {
+        console.error('icons.scan failed', err)
+        set({ loaded: false })
+        return
+      }
       // The first paint is gated by `ready` (loadSources): the desktop stays
       // veiled until EVERY tile has landed, so there is never a wallpaper-with-
       // blank-icons window. That first reveal (once per launch) sweeps the coral
@@ -610,18 +625,31 @@ export const useIcons = create<IconsState>((set, get) => {
       }
     },
 
-    // 恢复系统箭头 (Settings): flips the arrow overlay back to native, keeping
-    // the icon look. No bake, no wave — the status text flips and a toast
-    // confirms (the change is machine-wide, outside the mirror).
+    // 恢复系统箭头 (Settings): moves the arrow overlay only, keeping the icon
+    // look. Single-flight (a slow UAC round-trip must not double-fire), merges
+    // only the overlay delta (never clobbers newer config edits with a stale
+    // DTO), and reports a restore-specific failure — not "apply failed".
     restoreOverlay: async () => {
       const s = get()
-      if (!s.state) return
+      if (!s.state || s.overlayRestoring) return
+      set({ overlayRestoring: true })
       try {
         const result = await call('icons.restoreOverlay')
-        set({ state: result.state })
+        const cur = get().state
+        if (cur) {
+          set({
+            state: {
+              ...cur,
+              arrowOverlay: result.state.arrowOverlay,
+              activeUserProfiles: result.state.activeUserProfiles,
+            },
+          })
+        }
         toastOf(result)
       } catch {
-        useToasts.getState().show(t('Toast_ApplyFailed'), 'warn')
+        useToasts.getState().show(t('Toast_RestoreArrowFailed'), 'warn')
+      } finally {
+        set({ overlayRestoring: false })
       }
     },
 

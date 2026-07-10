@@ -12,6 +12,7 @@ import type {
 } from './types'
 import { DEFAULT_KIND_POLICY } from '@/lib/kind-policy'
 import { typeOverridesEqual } from '@/lib/type-config'
+import { overlayRestoreResult, type OverlayOutcome } from '@/lib/arrow-overlay'
 
 // Browser-only fake desktop DATA source (icons contract v2, spec 06 §2/§5):
 // the canvas wallpaper scene, the REAL icon pack (public/real-icons/, the
@@ -52,6 +53,17 @@ export const USER_PROFILES_KEY = 'dm.dev.userProfiles'
 function activeUserProfiles(): number {
   const v = Number(localStorage.getItem(USER_PROFILES_KEY))
   return Number.isFinite(v) && v >= 1 ? Math.floor(v) : 1
+}
+
+// [M6-WIRE] The real dm-elevated RestoreOverlay verb resolves to Applied |
+// Declined | Failed (dm-domain ports.rs OverlayOutcome). In the browser loop a
+// dev knob injects the outcome so the declined/failed paths are exercisable;
+// the real host reports the observed outcome. Default: a confirmed restore.
+export const RESTORE_OUTCOME_KEY = 'dm.dev.restoreOutcome'
+
+function restoreOutcome(): OverlayOutcome {
+  const v = localStorage.getItem(RESTORE_OUTCOME_KEY)
+  return v === 'declined' || v === 'failed' ? v : 'applied'
 }
 
 /** Curated item sets (real-pack ids) + video-credible label overrides. */
@@ -526,11 +538,16 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
       // Full restore lifts the overlay too (icons AND arrow back to native).
       session.arrowOverlay = 'native'
       return { state: state(), toast: null, ok: true } satisfies IconsOpResultDto
-    case 'icons.restoreOverlay':
-      // [M6-WIRE] Keep-beautification restore: only the native arrow returns;
-      // the icon look (applied/history/config) is untouched.
-      session.arrowOverlay = 'native'
-      return { state: state(), toast: { key: 'Toast_ArrowRestored', arg: null }, ok: true } satisfies IconsOpResultDto
+    case 'icons.restoreOverlay': {
+      // [M6-WIRE] Keep-beautification restore: only the arrow overlay moves; the
+      // icon look (applied/history/config) is untouched. Faithful to the real
+      // Applied|Declined|Failed contract — a confirmed restore flips to native,
+      // a declined/failed one leaves the arrow hidden so the entry stays for a
+      // retry, and the OBSERVED post-op state (not the outcome) is authoritative.
+      const res = overlayRestoreResult(restoreOutcome())
+      session.arrowOverlay = res.arrowOverlay
+      return { state: state(), toast: { key: res.toastKey, arg: null }, ok: res.ok } satisfies IconsOpResultDto
+    }
     case 'icons.exportCompare':
       return { state: state(), toast: null, ok: true } satisfies IconsOpResultDto
     default:

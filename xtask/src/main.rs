@@ -29,11 +29,109 @@ fn main() -> ExitCode {
     match args.as_slice() {
         [cmd, dir] if cmd == "spike4-native" => spike4_native(Path::new(dir)),
         [cmd, dir] if cmd == "spike4-compare" => spike4_compare(Path::new(dir)),
+        [cmd, dir] if cmd == "m5-shape-masks" => m5_shape_masks(Path::new(dir)),
         _ => {
-            eprintln!("usage: xtask spike4-native <dir> | spike4-compare <dir>");
+            eprintln!(
+                "usage: xtask spike4-native <dir> | spike4-compare <dir> | m5-shape-masks <dir>"
+            );
             ExitCode::from(2)
         }
     }
+}
+
+// ---- M5 module-2 gate: shape-mask bit parity -------------------------------
+
+fn parse_shape(name: &str) -> IconShape {
+    match name {
+        "Apple" => IconShape::Apple,
+        "Circle" => IconShape::Circle,
+        "Samsung" => IconShape::Samsung,
+        "None" => IconShape::None,
+        "Bookmark" => IconShape::Bookmark,
+        "Lemon" => IconShape::Lemon,
+        "Tile" => IconShape::Tile,
+        "Teardrop" => IconShape::Teardrop,
+        "Diamond" => IconShape::Diamond,
+        "Flower" => IconShape::Flower,
+        "Pebble" => IconShape::Pebble,
+        "Folder" => IconShape::Folder,
+        other => panic!("unknown shape {other}"),
+    }
+}
+
+/// Compare the Rust `shape_mask` against the TS-dumped Float64Array masks
+/// (`<dir>/shapes/<shape>-<size>-<shapeSize>-<ox>-<oy>.f64`) bit-for-bit.
+fn m5_shape_masks(dir: &Path) -> ExitCode {
+    let shapes = dir.join("shapes");
+    let mut files: Vec<PathBuf> = fs::read_dir(&shapes)
+        .unwrap_or_else(|e| panic!("read {}: {e} — run tests/icon-parity/m5/shape-masks.ts", shapes.display()))
+        .filter_map(|e| {
+            let p = e.ok()?.path();
+            (p.extension().is_some_and(|x| x == "f64")).then_some(p)
+        })
+        .collect();
+    files.sort();
+
+    let mut cells = 0usize;
+    let mut equal = 0usize;
+    let mut total_diff_bits = 0u64;
+    let mut failures: Vec<String> = Vec::new();
+    for path in &files {
+        let stem = path.file_stem().unwrap().to_str().unwrap();
+        let f: Vec<&str> = stem.split('-').collect();
+        let shape = parse_shape(f[0]);
+        let size: usize = f[1].parse().unwrap();
+        let shape_size: usize = f[2].parse().unwrap();
+        let ox: i32 = f[3].parse().unwrap();
+        let oy: i32 = f[4].parse().unwrap();
+
+        let bytes = fs::read(path).unwrap();
+        assert_eq!(bytes.len(), size * size * 8, "{} wrong length", path.display());
+        let ts: Vec<f64> = bytes
+            .chunks_exact(8)
+            .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+            .collect();
+        let rust = shape_mask(shape, size, shape_size, ox, oy);
+
+        cells += 1;
+        let mut cell_ok = true;
+        let mut first: Option<usize> = None;
+        for (i, (&a, &b)) in ts.iter().zip(rust.iter()).enumerate() {
+            if a.to_bits() != b.to_bits() {
+                cell_ok = false;
+                total_diff_bits += 1;
+                if first.is_none() {
+                    first = Some(i);
+                }
+            }
+        }
+        if cell_ok {
+            equal += 1;
+        } else {
+            let i = first.unwrap();
+            failures.push(format!(
+                "{stem}: {} diff cells, first at index {i} ({},{}) TS={} Rust={}",
+                total_diff_bits.min(size as u64 * size as u64),
+                i % size,
+                i / size,
+                ts[i],
+                rust[i],
+            ));
+        }
+    }
+
+    println!("== M5 shape-mask parity ==");
+    println!("mask cases: {cells}   bit-identical: {equal}/{cells}");
+    if equal == cells {
+        println!("RESULT: PASS — every catalog shape's mask is bit-identical to the TS oracle");
+        return ExitCode::SUCCESS;
+    }
+    println!("total differing f64 cells: {total_diff_bits}");
+    println!("RESULT: FAIL");
+    for f in failures.iter().take(20) {
+        println!("  {f}");
+    }
+    ExitCode::FAILURE
 }
 
 fn source_ids(dir: &Path) -> Vec<String> {

@@ -34,6 +34,10 @@ pub struct World {
     /// Paths whose `apply` succeeds but leaves the bytes unchanged (simulates a mutation that
     /// silently did nothing → the driver's verify step must catch it).
     noop_apply: HashSet<String>,
+    /// Paths whose `apply` "succeeds" but lands a DIFFERENT asset than requested — it promises the
+    /// requested asset's fingerprint yet writes some other state (models an O→A→B no-op-on-reapply
+    /// or a stale writer). The driver's verify must reject it (P1-4).
+    wrong_write: HashSet<String>,
 }
 
 impl World {
@@ -63,6 +67,12 @@ impl World {
 
     pub fn noop_apply(&mut self, path: &str) {
         self.noop_apply.insert(path.to_string());
+    }
+
+    /// Marks a path whose `apply` writes a different asset than requested while still promising the
+    /// requested asset's fingerprint (the driver's verify must catch the mismatch).
+    pub fn wrong_write(&mut self, path: &str) {
+        self.wrong_write.insert(path.to_string());
     }
 
     /// Clears injected apply/restore faults (simulates a transient condition clearing before a
@@ -137,16 +147,25 @@ impl ItemStateReader for FakePlatform {
 }
 
 impl IconApplier for FakePlatform {
-    fn apply(&self, target: &ItemTarget, asset: &AssetRef) -> PortResult<()> {
+    fn apply(&self, target: &ItemTarget, asset: &AssetRef) -> PortResult<Fingerprint> {
         let mut world = self.world.borrow_mut();
         if world.apply_fails.contains(&target.path) {
             return Err(PortError::Com(format!("apply failed for {}", target.path)));
         }
+        // The fingerprint the applier PROMISES for this asset, derived from the asset itself and
+        // independent of whether the underlying write actually lands. The driver re-reads the live
+        // state and rejects the apply unless the two agree (P1-4).
+        let promised = Fingerprint::of_bytes(&styled_bytes(&asset.hash));
         if world.noop_apply.contains(&target.path) {
-            return Ok(()); // "succeeds" but changes nothing → verify must catch it
+            return Ok(promised); // "succeeds" but writes nothing → driver's re-read won't match
+        }
+        if world.wrong_write.contains(&target.path) {
+            // Lands a different asset than requested while still promising the requested one.
+            world.put(&target.path, &styled_bytes("stale-other-asset"));
+            return Ok(promised);
         }
         world.put(&target.path, &styled_bytes(&asset.hash));
-        Ok(())
+        Ok(promised)
     }
 
     fn restore(&self, target: &ItemTarget, anchor: &RestoreAnchor) -> PortResult<()> {

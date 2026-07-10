@@ -31,8 +31,12 @@ pub trait ItemStateReader {
 /// `FolderIconWriter`, `RegularFileWrapperWriter`, `RecycleBinIconWriter`) unified behind the
 /// journaled-operation contract (`IJournaledOperation.Apply`/`Rollback`).
 pub trait IconApplier {
-    /// Points `target` at `asset` (e.g. `IShellLink::SetIconLocation` + `IPersistFile::Save`).
-    fn apply(&self, target: &ItemTarget, asset: &AssetRef) -> PortResult<()>;
+    /// Points `target` at `asset` (e.g. `IShellLink::SetIconLocation` + `IPersistFile::Save`) and
+    /// returns the fingerprint the item's styleable surface should now carry for THIS asset — the
+    /// achieved-state fingerprint the driver's verify compares the live re-read against (spec 07
+    /// §5). Returning the achieved fingerprint (not `()`) is what lets the driver confirm the apply
+    /// matched the *requested* asset, rather than merely observing "the state changed" (P1-4).
+    fn apply(&self, target: &ItemTarget, asset: &AssetRef) -> PortResult<Fingerprint>;
 
     /// Restores `target` to the captured original (e.g. replay the original `.lnk` bytes).
     fn restore(&self, target: &ItemTarget, anchor: &RestoreAnchor) -> PortResult<()>;

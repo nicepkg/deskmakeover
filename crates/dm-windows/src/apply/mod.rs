@@ -11,9 +11,13 @@ pub(crate) mod recyclebin;
 
 use std::sync::Arc;
 
-use dm_domain::{AssetRef, IconApplier, ItemKind, ItemTarget, PortError, PortResult, RestoreAnchor};
+use dm_domain::{
+    AssetRef, Fingerprint, IconApplier, ItemKind, ItemStateReader, ItemTarget, PortError,
+    PortResult, RestoreAnchor,
+};
 
 use crate::com::StaExecutor;
+use crate::state_reader::WindowsStateReader;
 
 /// Applies generated icons to desktop items and restores them from anchors (the full M4 matrix).
 pub struct WindowsIconApplier {
@@ -27,21 +31,26 @@ impl WindowsIconApplier {
 }
 
 impl IconApplier for WindowsIconApplier {
-    fn apply(&self, target: &ItemTarget, asset: &AssetRef) -> PortResult<()> {
+    fn apply(&self, target: &ItemTarget, asset: &AssetRef) -> PortResult<Fingerprint> {
         let path = target.path.clone();
         let icon = asset.path.clone();
         match target.kind {
-            // COM writes run on the STA thread.
-            ItemKind::Shortcut => self.exec.run(move || shortcut::apply(&path, &icon))?,
-            ItemKind::RegularFile => self.exec.run(move || file_wrapper::apply(&path, &icon))?,
+            // COM writes run on the STA thread (outer `?` = thread-join error, inner `?` = the
+            // write's own error).
+            ItemKind::Shortcut => self.exec.run(move || shortcut::apply(&path, &icon))??,
+            ItemKind::RegularFile => self.exec.run(move || file_wrapper::apply(&path, &icon))??,
             // Filesystem / registry writes need no COM.
-            ItemKind::UrlShortcut => url_shortcut::apply(&path, &icon, 0),
-            ItemKind::Folder => folder::apply(&path, &icon),
-            // The Recycle Bin needs BOTH state icons; the asset hash addresses a paired empty ICO
-            // (`<asset>-empty.ico`) the caller renders alongside the full one.
-            ItemKind::RecycleBin => recyclebin::apply(&paired_empty(&icon), &icon),
-            other => Err(PortError::Unsupported(format!("apply for {other:?}"))),
-        }
+            ItemKind::UrlShortcut => url_shortcut::apply(&path, &icon, 0)?,
+            ItemKind::Folder => folder::apply(&path, &icon)?,
+            // The Recycle Bin needs BOTH state icons; the driver has already materialized the
+            // paired empty ICO (`paired_empty(icon)`) and verified it exists before this call
+            // (P1-14), so the registry write can reference it safely.
+            ItemKind::RecycleBin => recyclebin::apply(&paired_empty(&icon), &icon)?,
+            other => return Err(PortError::Unsupported(format!("apply for {other:?}"))),
+        };
+        // Report the achieved styleable-surface fingerprint for THIS asset so the driver can
+        // confirm the apply matched the request (P1-4). [WINDOWS-VERIFY] runtime.
+        WindowsStateReader.read_fingerprint(target)
     }
 
     fn restore(&self, target: &ItemTarget, anchor: &RestoreAnchor) -> PortResult<()> {

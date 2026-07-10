@@ -216,15 +216,23 @@ impl<'p> TxnDriver<'p> {
         item.asset = asset.clone();
         journal.append(&JournalRecord::AssetWritten { txn, item: req.target.id.clone(), asset: asset.clone() })?;
 
-        // The external mutation (icon-location swap).
-        self.applier.apply(&req.target, &asset)?;
+        // The external mutation (icon-location swap). The applier reports the fingerprint the
+        // styleable surface should now carry for THIS asset.
+        let expected_applied = self.applier.apply(&req.target, &asset)?;
         let new_fp = self.reader.read_fingerprint(&req.target)?;
         journal.append(&JournalRecord::ItemApplied { txn, item: req.target.id.clone(), new_fingerprint: new_fp })?;
 
-        // Verify: the state must have actually changed and must have settled (stable re-read).
+        // Verify: the live state must have settled (stable re-read) AND must MATCH the asset the
+        // apply was asked to establish — not merely differ from the original (P1-4). A writer that
+        // no-ops on re-apply (or lands a stale asset) leaves a state that "changed" from the true
+        // original yet does not match the request; committing it would poison the ledger with an
+        // asset the desktop never actually shows.
         let verify_fp = self.reader.read_fingerprint(&req.target)?;
-        if verify_fp != new_fp || new_fp == item.original_fingerprint {
-            return Err(PortError::Com("applied state did not settle or did not change".into()).into());
+        if verify_fp != new_fp || new_fp != expected_applied {
+            return Err(PortError::Com(
+                "applied state did not settle or did not match the requested asset".into(),
+            )
+            .into());
         }
         journal.append(&JournalRecord::ItemVerified { txn, item: req.target.id.clone() })?;
         item.new_fingerprint = Some(new_fp);

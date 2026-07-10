@@ -513,6 +513,30 @@ fn noop_apply_fails_verification_and_rolls_back() {
 }
 
 #[test]
+fn apply_that_lands_a_different_asset_than_requested_does_not_commit() {
+    // P1-4: verify must check "matches the requested asset", not merely "changed from original".
+    // A writer that lands a stale/other asset leaves a state that differs from the true original
+    // (so the old `new_fp == original` guard passed) yet does NOT match the asset the driver was
+    // asked to apply — committing it would poison the ledger with an asset the desktop never shows.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    world.borrow_mut().wrong_write(&a.path); // apply lands a different asset than hashA
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+
+    // The mismatch is caught: nothing commits, the batch fails, and the item is walked back.
+    assert!(out.committed.is_empty(), "a stale/wrong-asset apply must never commit");
+    assert!(out.error.is_some());
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // rolled back to the true original
+    assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
 fn journal_failure_after_mutation_still_rolls_back_to_original() {
     // Fail the ItemApplied append (call 4: TxnBegin, ItemPrepared, AssetWritten, ItemApplied).
     // The desktop mutation already happened; rollback must still walk it back exactly.

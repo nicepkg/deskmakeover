@@ -142,11 +142,11 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
     main-thread relaxation → `RenderOpts.fieldSeed` on renders AND bakes).
     Preset lineup: 默认(满彩) · 极简白 · 安静(柔彩, per-icon hue — replaces the
     single-hue wallpaper-tone) · 原彩保真 (the only home of the white
-    fallback); Candy left the preset row, 玻璃 rework to rim highlight owed
-    (plan T7). Still owed: kind colour families + in-container affordances +
-    `kindShapes` opt-in toggle (T5), the 满彩 swatch on the colour-axis row +
-    band depth segmented (T6 UI), tail-only letter badge (T8), and the
-    ΔE-separability corpus test wired to the committed mock manifest (D4).
+    fallback); Candy left the preset row; 玻璃 rim rework SHIPPED (T7). The
+    kindShapes boolean toggle was built (T5) and then SUPERSEDED by the
+    per-type distinction system (§6.5, ADR-0017); kind colour families and
+    the letter badge were built and owner-rejected (deleted). Still owed:
+    the ΔE-separability corpus test wired to the committed mock manifest (D4).
     Engine facts: memoized whole-canvas `dominantColor`, pale contrast-target
     lane, glyph box 36/256 (~72%), full-bleed 0.82.
 
@@ -257,6 +257,50 @@ the earlier collapsed-fold and toggle-wall designs were rejected by the owner
 `kindPolicy.File` — **default TRUE** (owner decision 2026-07-10: ordinary files
 participate by default; reversibility + the one-click bucket opt-out replace the
 old opt-in consent flag).
+
+## 6.5 Per-type distinction system (ADR-0017, owner-disposed 2026-07-10)
+
+The Beautified-types area grows into a TYPE DISTINCTION SYSTEM — per-type
+styling bounded by a findability envelope. Normative decisions in ADR-0017;
+contract facts here:
+
+- **Type space**: the 4 buckets × shortcut as an orthogonal modifier.
+  MECHANISM semantics (owner override): every shortcut kind (`Shortcut`,
+  `UrlShortcut`, `AppxShortcut`) buckets to App regardless of target; bare
+  `.exe` files join the App bucket (host classifies by extension at F8; the
+  dev mock flags fixtures now). App's user-facing label becomes 程序.
+  `isShortcut` includes `AppxShortcut` (bug fix — UWP shortcuts must wear
+  the mark).
+- **Config model**: `ConfigDto.kindShapes` is DELETED. `IconsStateDto` (not
+  ConfigDto) carries `typeOverrides: Partial<Record<Bucket, {source:
+  'global' | 'custom'; patch?: TypePatch}>>` where `TypePatch ⊂ {shape,
+  colorMode ∈ {Field, Mono, BlackWhite}, tint, fieldBand, plateColor}`.
+  `resolveTypeConfig(bucket)` = pure merge; it feeds preview, styleKey
+  (hash of the RESOLVED config) and bake identically. Filter and Original
+  stay global-only; the beautify switch (kindPolicy) is unchanged and lives
+  in the same UI rows.
+- **Bounded plate colour**: per-type `plateColor` picks from ≤6 curated
+  low-saturation swatches; a fixed-plate type EXITS the hue-spread pool.
+  The pool filters to icons whose resolved colorMode is Field and whose
+  type has no fixed plate.
+- **Factory default (the saliency ladder)**: App=Apple squircle+Field ·
+  Folder=Bookmark+Field · File=Tile+Field · System=Circle+**Mono** ·
+  shortcut mark ON. Shape carries the type split; System demotes to quiet
+  grayscale; Field keeps per-icon identity.
+- **Panel**: the Shape section's One-shape/By-type segmented is REMOVED;
+  the type area is an accordion (one row per bucket: summary chip 名称·形
+  状·显著性 + custom badge; expand-to-edit reusing the global controls;
+  跟随全局|自定义 + reset; one open at a time). HARD REQUIREMENT: an
+  expanded type row scope-highlights that type's icons on the canvas and
+  dims the rest. Shortcut controls stay a dedicated area: mark style/colour
+  + 「快捷方式统一形状」 toggle (default OFF; overrides type shapes for
+  shortcuts only, badge unchanged; type Shape sections show a ghost note
+  while active).
+- **Composition invariant**: `style = resolve(bucket) + badge(isShortcut)`
+  — the shortcut layer never supplies base shape/colour except via the
+  explicit uniform-shape toggle.
+- **v2 parking lot** (recorded, not built): per-type hue BIAS over Field
+  derivation · copy-once from another type · live follow-type chains.
 
 ## 7. Background auto-format contract (direction approved, build later)
 

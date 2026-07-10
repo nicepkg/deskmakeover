@@ -138,3 +138,35 @@ One disposable `.lnk`, end to end. All COM; `[WINDOWS-VERIFY]` runtime.
 Restore-first whole-desktop reapply (replaced by per-item CAS) · resident reconciler/consent
 ladder (M7) · pixel/ICO internals (icon-core) · `src/`, `src-tauri/`, `dm-icon-core` edits ·
 Windows runtime verification (owner's box).
+
+## Delivered (2026-07-11)
+
+Commits (all on `main`): plan `85c784e` · Phase B `ce2fa11` · Phase C `8b078c7` ·
+Phase D `e7210ff` · Phase E `67462b7`.
+
+**Gates.** `cargo check --workspace` (Mac) green; `cargo test` for the four owned crates green —
+**55 tests** (dm-domain 12, dm-operations 24, dm-windows 12, dm-elevated 7), including the
+kill-point recovery battery; `cargo check -p dm-domain -p dm-windows -p dm-elevated --target
+x86_64-pc-windows-msvc` green. The full-workspace msvc check stays blocked only by the pre-existing
+`libsqlite3-sys` C cross-compile (see the blocker section) — resolved on the Windows box or via
+`cargo-xwin`.
+
+**[WINDOWS-VERIFY] checklist for the owner's box** (batches with the M1 spikes 1/2/5):
+1. STA actor: `StaExecutor` enters STA, runs a shell-COM job, `CoUninitialize` on the same thread.
+2. Known folders: `SHGetKnownFolderPath` returns the user + public desktop roots.
+3. Scan: enumerate + classify a real desktop; `IShellLinkW::GetIconLocation` reads shortcut icons.
+4. `.lnk` apply/restore: `SetIconLocation`+`Save`; byte-replay restore; CAS conflict on external edit.
+5. `.url` / folder / file-wrapper / Recycle-Bin apply + restore (attrs, `desktop.ini`, `DefaultIcon`
+   REG_SZ/REG_EXPAND_SZ fidelity).
+6. Kill-point battery on a real desktop (process death around each ledger transition → exact restore).
+7. Elevated overlay: `dm-elevated apply-overlay/restore-overlay` writes/restores HKLM `Shell Icons\29`;
+   `WindowsOverlayControl` `runas` roundtrip; UAC-cancel → `Declined`; requireAdministrator manifest
+   embedded at packaging.
+8. Wallpaper: `IDesktopWallpaper` capture/set/restore across monitors.
+9. **Stubs to implement on Windows**: `shell/layout.rs` (IFolderView2 `GetItemPosition` /
+   SysListView32 positions) and `watcher.rs` (`ReadDirectoryChangesW` hints, M7).
+
+**Cross-crate need for the icon-core agent** `[icon-core-need]`: content-addressed ICO assembly
+(`dm-icon-codec::write_ico(frames) -> bytes` + content hash) for the ledger `AssetRef`; the
+transparent/refined overlay ICOs the overlay client passes to `dm-elevated`; and the paired
+`<asset>-empty.ico` for the Recycle Bin. The txn driver treats every asset as an opaque `AssetRef`.

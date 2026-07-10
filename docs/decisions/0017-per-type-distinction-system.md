@@ -73,7 +73,7 @@ Zero-config resolution of both historical complaints:
 | App/程序 (incl. all shortcuts + exe) | Apple squircle | Field (Vivid) — brand colours pop |
 | Folder | Bookmark | Field |
 | File | Tile | Field |
-| System | Circle | **Mono — demoted to quiet grayscale** |
+| System | Circle | **BlackWhite — demoted to quiet grayscale** (Mono is a tinted ramp; grayscale is what recedes) |
 | shortcut modifier | — | mark badge ON (replaces native arrow) |
 
 Shape carries the type split (no colour noise); System demotion mutes the

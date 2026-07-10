@@ -284,7 +284,7 @@ contract facts here:
   The pool filters to icons whose resolved colorMode is Field and whose
   type has no fixed plate.
 - **Factory default (the saliency ladder)**: App=Apple squircle+Field ·
-  Folder=Bookmark+Field · File=Tile+Field · System=Circle+**Mono** ·
+  Folder=Bookmark+Field · File=Tile+Field · System=Circle+**BlackWhite** ·
   shortcut mark ON. Shape carries the type split; System demotes to quiet
   grayscale; Field keeps per-icon identity.
 - **Panel**: the Shape section's One-shape/By-type segmented is REMOVED;

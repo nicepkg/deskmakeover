@@ -110,6 +110,9 @@ pub struct FakePlatform {
     capture_errors: Rc<RefCell<HashSet<String>>>,
     /// Asset paths the store has materialized (so `exists` can confirm a paired asset was written).
     materialized: Rc<RefCell<HashSet<String>>>,
+    /// When set, `put_empty_variant` returns a ref but does NOT materialize it — a store that
+    /// "succeeds" yet leaves the asset absent, so the driver's existence check must catch it.
+    empty_variant_vanishes: Rc<RefCell<bool>>,
 }
 
 impl FakePlatform {
@@ -119,12 +122,19 @@ impl FakePlatform {
             capture_fails: Rc::new(RefCell::new(HashSet::new())),
             capture_errors: Rc::new(RefCell::new(HashSet::new())),
             materialized: Rc::new(RefCell::new(HashSet::new())),
+            empty_variant_vanishes: Rc::new(RefCell::new(false)),
         }
     }
 
     /// Whether the store has materialized an asset at `path` (for test assertions).
     pub fn asset_exists(&self, path: &str) -> bool {
         self.materialized.borrow().contains(path)
+    }
+
+    /// Makes `put_empty_variant` report success while leaving the asset unmaterialized, so the
+    /// driver's existence check is the only thing standing between it and a dangling registry ref.
+    pub fn make_empty_variant_vanish(&self) {
+        *self.empty_variant_vanishes.borrow_mut() = true;
     }
 
     /// The anchor capture returns a `CaptureFailed` anchor (no restore material — skipped).
@@ -213,7 +223,9 @@ impl AssetStore for FakePlatform {
 
     fn put_empty_variant(&self, primary: &AssetRef, _bytes: &[u8]) -> PortResult<AssetRef> {
         let path = paired_empty_path(&primary.path);
-        self.materialized.borrow_mut().insert(path.clone());
+        if !*self.empty_variant_vanishes.borrow() {
+            self.materialized.borrow_mut().insert(path.clone());
+        }
         Ok(AssetRef::new(format!("{}-empty", primary.hash), path))
     }
 

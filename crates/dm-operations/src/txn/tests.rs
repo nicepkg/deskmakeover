@@ -667,6 +667,39 @@ fn recyclebin_apply_materializes_and_verifies_the_paired_empty_asset() {
 }
 
 #[test]
+fn recyclebin_apply_fails_when_the_paired_empty_asset_does_not_materialize() {
+    // P3-2: the driver's existence check must be load-bearing. With a store that reports
+    // put_empty_variant success but leaves the asset absent, the driver must refuse to commit —
+    // removing the `exists` guard would let it commit a dangling registry reference.
+    let world = World::shared();
+    let bin =
+        ItemTarget::new(ItemId::from_raw("RB"), ItemKind::RecycleBin, "HKCU/RecycleBin/DefaultIcon");
+    world.borrow_mut().put(&bin.path, b"orig-registry-state");
+    let plat = FakePlatform::new(world.clone());
+    plat.make_empty_variant_vanish(); // materialize "succeeds" but the asset never exists
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let current = Fingerprint::of_bytes(&world.borrow().get(&bin.path).unwrap());
+    let req = ApplyRequest {
+        target: bin.clone(),
+        expected_fingerprint: current,
+        owned: OwnedFields::icon_only(),
+        asset_hash: "hashRB".into(),
+        asset_bytes: b"full-ico".to_vec(),
+        empty_asset_bytes: Some(b"empty-ico".to_vec()),
+        pinned_seed: None,
+    };
+    let out = driver.apply(1, vec![req], &mut journal, &mut ledger).unwrap();
+
+    assert!(out.committed.is_empty(), "must not commit when the paired empty asset is absent");
+    assert!(out.error.is_some());
+    assert_eq!(world.borrow().get(&bin.path).unwrap(), b"orig-registry-state"); // rolled back
+    assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
 fn recyclebin_request_without_empty_bytes_is_rejected_not_committed() {
     // P1-2: a RecycleBin request with no empty_asset_bytes used to skip pairing entirely while the
     // Windows applier still pointed the registry at a guessed empty path — committing a dangling

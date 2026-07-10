@@ -39,39 +39,36 @@ pub fn restore() -> Result<(), String> {
 
 #[cfg(windows)]
 mod windows_impl {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use winreg::enums::HKEY_LOCAL_MACHINE;
     use winreg::RegKey;
 
     use crate::args::Style;
     use crate::guards::{check_size, validate_ico};
+    use crate::secure_dir::secure_data_dir;
 
     const SHELL_ICONS_KEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons";
     const OVERLAY_VALUE: &str = "29";
     const ABSENT_MARKER: &str = "__absent__";
-
-    fn data_dir() -> PathBuf {
-        let base = std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".to_string());
-        PathBuf::from(base).join("DeskMakeover")
-    }
-
-    fn state_path() -> PathBuf {
-        data_dir().join("overlay-state.txt")
-    }
+    const STATE_FILE: &str = "overlay-state.txt";
 
     pub fn apply(style: Style, source_file: Option<&str>) -> Result<(), String> {
-        std::fs::create_dir_all(data_dir()).map_err(io)?;
-        let ico = materialize_ico(style, source_file)?;
+        // The data dir is resolved from a known folder and proven admin-owned + non-reparse with a
+        // restrictive DACL before we trust anything inside it (P1 LPE fix — see secure_dir).
+        let dir = secure_data_dir()?;
+        let ico = materialize_ico(&dir, style, source_file)?;
 
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
         let key = hklm.create_subkey(SHELL_ICONS_KEY).map_err(io)?.0;
 
-        // Snapshot the pre-DeskMakeover value exactly once (oracle: write state only when absent).
-        if !state_path().exists() {
+        // Snapshot the pre-DeskMakeover value exactly once. The state file lives in the hardened,
+        // admin-only data dir, so a standard user cannot pre-plant it to defeat this guard.
+        let state = dir.join(STATE_FILE);
+        if !state.exists() {
             let original: String =
                 key.get_value(OVERLAY_VALUE).unwrap_or_else(|_| ABSENT_MARKER.to_string());
-            std::fs::write(state_path(), original).map_err(io)?;
+            std::fs::write(&state, original).map_err(io)?;
         }
 
         // Point the registry at the ProgramData copy — NEVER the caller path (LPE guard).
@@ -81,10 +78,12 @@ mod windows_impl {
     }
 
     pub fn restore() -> Result<(), String> {
-        if !state_path().exists() {
+        let dir = secure_data_dir()?;
+        let state = dir.join(STATE_FILE);
+        if !state.exists() {
             return Ok(()); // untouched — nothing to restore
         }
-        let original = std::fs::read_to_string(state_path()).map_err(io)?;
+        let original = std::fs::read_to_string(&state).map_err(io)?;
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
         let key = hklm.create_subkey(SHELL_ICONS_KEY).map_err(io)?.0;
         if original == ABSENT_MARKER {
@@ -92,12 +91,12 @@ mod windows_impl {
         } else {
             key.set_value(OVERLAY_VALUE, &original).map_err(io)?;
         }
-        std::fs::remove_file(state_path()).map_err(io)?;
+        std::fs::remove_file(&state).map_err(io)?;
         notify_shell();
         Ok(())
     }
 
-    /// Validates the rendered ICO and copies it into ProgramData, returning the ProgramData path.
+    /// Validates the rendered ICO and copies it into the hardened data `dir`, returning its path.
     ///
     /// The size cap is checked against metadata FIRST (never read an over-cap caller file), then
     /// the bounded bytes are read once and validated structurally by the codec's `parse` (the one
@@ -109,14 +108,14 @@ mod windows_impl {
     /// `--file` from the client, which owns the icon core. The LPE guard (validate + copy into
     /// ProgramData) is applied uniformly. [icon-core-need] the client renders the
     /// transparent/refined overlay ICOs. [WINDOWS-VERIFY] registry + refresh behaviour.
-    fn materialize_ico(style: Style, source_file: Option<&str>) -> Result<PathBuf, String> {
+    fn materialize_ico(dir: &Path, style: Style, source_file: Option<&str>) -> Result<PathBuf, String> {
         let src = source_file
             .ok_or_else(|| format!("--file (a rendered .ico) is required for the {} overlay", style.as_str()))?;
         let meta = std::fs::metadata(src).map_err(io)?;
         check_size(meta.len())?; // reject an over-cap file before reading it
         let bytes = std::fs::read(src).map_err(io)?; // now bounded ≤ MAX_ICO_BYTES
         validate_ico(&bytes)?; // structural validation via dm_icon_codec::parse
-        let dst = data_dir().join(format!("{}-overlay.ico", style.as_str()));
+        let dst = dir.join(format!("{}-overlay.ico", style.as_str()));
         std::fs::write(&dst, &bytes).map_err(io)?;
         Ok(dst)
     }

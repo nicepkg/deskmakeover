@@ -13,6 +13,7 @@
 mod args;
 mod guards;
 mod overlay;
+mod secure_dir;
 
 use std::process::ExitCode;
 

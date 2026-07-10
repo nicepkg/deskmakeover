@@ -36,6 +36,19 @@ bun test                    # web unit tests (currently 297, incl. banned-colour
 bun run lint                # oxlint
 ```
 
+```bash
+# --- desktop shell (Tauri 2 + Rust) — macOS-buildable, repo/apps/desktop (ADR-0019 M2) ---
+bun install                 # first time — installs @tauri-apps/cli here
+bun run tauri:dev           # launch the REAL app (mock desktop) on macOS — see §3.5
+bun run gen:bindings        # regenerate frontend/src/bridge/generated.ts from the Rust commands
+bun run check:bindings      # drift guard — fails if generated.ts is stale (CI gate)
+```
+```bash
+# --- Rust workspace — repo root, needs ~/.cargo/bin on PATH ---
+cargo check --workspace                        # compile gate (all dm-* crates + the Tauri host)
+cargo test -p dm-contracts -p dm-operations    # contract + settings-store units
+```
+
 ```powershell
 # --- C# engine/host — WINDOWS ONLY, MUST use the repo-local SDK (see §1) ---
 .\.dotnet\dotnet.exe build
@@ -179,6 +192,55 @@ cd apps\desktop\frontend ; bun run build
 
 `bun` for everything JS. E2E uses a raw CDP client (no Playwright, no Node). If you find
 yourself typing `npm`/`node`, stop.
+
+### 3.5 Mode D — Tauri host (the ADR-0019 replatform loop, macOS-buildable)
+
+The Tauri 2 shell (`apps/desktop/src-tauri`) hosts the SAME React app as Mode A. It is
+the successor to the WebView2/WPF host (Modes B/C) and, unlike them, builds and runs on
+**macOS** today. As of M2 only settings persistence + the frameless titlebar's window
+controls are wired to Rust; every other bridge verb still hits the mock, so the desktop
+window shows the full mock desktop exactly like the browser loop.
+
+```bash
+cd apps/desktop
+bun install                 # once — @tauri-apps/cli
+bun run tauri:dev           # compiles the Rust host, starts Vite (:5173), opens the window
+```
+
+- **`tauri:dev` runs from `apps/desktop`.** It merges `src-tauri/tauri.dev.conf.json` over
+  the base config. That merge relaxes the CSP for Vite HMR (inline+eval scripts, a
+  `ws://localhost` socket); the base `tauri.conf.json` keeps the **strict production CSP**
+  (Tauri hashes the app's own inline scripts at build time, so prod needs no `unsafe-*`).
+  Run bare `bun run tauri` (`tauri dev`/`tauri build`) to exercise the strict CSP.
+- **First compile is slow** (~1–2 min, full Rust dep tree); later runs are cached.
+- **Window**: frameless (`decorations:false`) to match the Win11-style web titlebar, min
+  1024×700. The titlebar's minimize/maximize/close drive the real window; on macOS drag
+  the window by the titlebar (`data-tauri-drag-region`). Position/size persist across runs
+  (`tauri-plugin-window-state`); a second launch focuses the existing window
+  (`tauri-plugin-single-instance`, registered first).
+- **Settings persist for real** in rusqlite under the OS app-data dir
+  (`~/Library/Application Support/com.xiaominglab.deskmakeover/settings.sqlite3` on macOS).
+  Toggle theme/language in 设置 and relaunch — the choice sticks (mock resets each load).
+- **`bun run dev` (Mode A) is unchanged** — the Tauri bridge only activates inside a Tauri
+  WebView (`window.__TAURI_INTERNALS__`); a plain browser always uses the mock.
+
+#### Contracts → TypeScript bindings (DRY law, ADR-0019)
+
+The bridge DTOs for this slice are Rust types in `crates/dm-contracts` (`SettingsDto`,
+`SettingsPatch`, `DiagnosticsPing`). `tauri-specta` turns the `#[specta::specta]` command
+surface into `frontend/src/bridge/generated.ts` — one command list feeds BOTH the runtime
+`invoke` handler and the TS export, so arg/return/error shapes cannot drift (the reason
+ts-rs was not chosen: it would need a hand-kept parallel command wrapper — the schema-1/4
+split ADR-0019 bans).
+
+```bash
+cd apps/desktop
+bun run gen:bindings        # writes generated.ts (do NOT hand-edit that file)
+bun run check:bindings      # cargo test that fails if generated.ts is out of date
+```
+
+The rest of bridge schema 4 still lives in `frontend/src/bridge/types.ts`; later phases
+migrate it into `dm-contracts`.
 
 ---
 

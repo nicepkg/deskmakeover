@@ -64,6 +64,14 @@ pointer: what is TRUE now, what is in flight, what comes next.
 `scripts/dev/generate-mock-icons.mjs`).
 
 **In flight / next (web):**
+-1a. **Two-axis T1/T2 SHIPPED at `26aa3db`** — model+engine+bridges live on
+   subject×plate (smoke: 124 icons byte-identical look, presets match, 0
+   errors). Spec FINAL (本色 = plate stop (null,'white'), faithful/minimal
+   collapse fixed). NEXT: T3 panel two-row rebuild (主体行+底板行 + 本色
+   chip + QuadPlateGlyph + kill dual-tab popover + accordion plate 本色 +
+   i18n Subject_/Plate_ keys) + T4 (migration-table tests, screenshots,
+   designer §6 four-way distinguishability acceptance) per
+   docs/plans/2026-07-10-two-axis-colour.md.
 -1. **TWO-AXIS COLOUR RESHAPE — OWNER-APPROVED (2026-07-10), spec being
    written to `docs/product/two-axis-colour-spec.md` by the chief-designer
    seat.** Panel 3/3 convergence: dissolve `colorMode` into 主体 (subject:

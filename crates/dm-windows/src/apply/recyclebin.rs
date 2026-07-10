@@ -16,15 +16,25 @@ const REG_EXPAND_SZ_KIND: u32 = 2;
 
 /// Reads the current effective `DefaultIcon` state (the restore anchor). Prefers the per-user
 /// override; falls back to the machine CLSID; else records "no key".
-pub fn read_current() -> RecycleBinAnchor {
+///
+/// A registry key/value that does NOT exist is a benign absence (`None`/`key_existed:false`); any
+/// OTHER error (access denied, a corrupt hive) PROPAGATES as `Io` rather than collapsing to "no
+/// key" (P2-#3) — a `read_current` that silently reported absence for an unreadable key would let
+/// the restore anchor forget the user's real state. [WINDOWS-VERIFY] runtime.
+pub fn read_current() -> PortResult<RecycleBinAnchor> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    if let Ok(key) = hkcu.open_subkey(USER_KEY) {
-        return state_from(&key, true);
+    match hkcu.open_subkey(USER_KEY) {
+        Ok(key) => return state_from(&key, true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {} // fall through to the machine key
+        Err(e) => return Err(PortError::Io(format!("open HKCU recycle-bin DefaultIcon: {e}"))),
     }
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
     match hkcr.open_subkey(MACHINE_KEY) {
         Ok(key) => state_from(&key, false),
-        Err(_) => RecycleBinAnchor { key_existed: false, default: None, empty: None, full: None },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Ok(RecycleBinAnchor { key_existed: false, default: None, empty: None, full: None })
+        }
+        Err(e) => Err(PortError::Io(format!("open machine recycle-bin DefaultIcon: {e}"))),
     }
 }
 
@@ -53,19 +63,25 @@ pub fn restore(anchor: &RecycleBinAnchor) -> PortResult<()> {
     Ok(())
 }
 
-fn state_from(key: &RegKey, key_existed: bool) -> RecycleBinAnchor {
-    RecycleBinAnchor {
+fn state_from(key: &RegKey, key_existed: bool) -> PortResult<RecycleBinAnchor> {
+    Ok(RecycleBinAnchor {
         key_existed,
-        default: read_value(key, ""),
-        empty: read_value(key, "empty"),
-        full: read_value(key, "full"),
-    }
+        default: read_value(key, "")?,
+        empty: read_value(key, "empty")?,
+        full: read_value(key, "full")?,
+    })
 }
 
-fn read_value(key: &RegKey, name: &str) -> Option<RegistryValue> {
-    let raw = key.get_raw_value(name).ok()?;
-    let text = decode_wide(&raw.bytes);
-    Some(RegistryValue { raw: text, kind: reg_type_num(&raw.vtype) })
+/// A missing value is a benign `None`; any other read error propagates (P2-#3).
+fn read_value(key: &RegKey, name: &str) -> PortResult<Option<RegistryValue>> {
+    match key.get_raw_value(name) {
+        Ok(raw) => {
+            let text = decode_wide(&raw.bytes);
+            Ok(Some(RegistryValue { raw: text, kind: reg_type_num(&raw.vtype) }))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(PortError::Io(format!("read recycle-bin value {name:?}: {e}"))),
+    }
 }
 
 fn write_or_delete(key: &RegKey, name: &str, value: Option<&RegistryValue>) -> PortResult<()> {

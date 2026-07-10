@@ -100,7 +100,7 @@ impl ItemStateReader for WindowsStateReader {
             // each parsed into (path, index) so the surface matches the paired assets AND a wrong
             // index or a stale `default` is caught (P1-#1).
             ItemKind::RecycleBin => {
-                let a = recyclebin::read_current();
+                let a = recyclebin::read_current()?;
                 let default = a.default.as_ref().map(|v| parse_icon_ref(&v.raw)).unwrap_or_default();
                 let empty = a.empty.as_ref().map(|v| parse_icon_ref(&v.raw)).unwrap_or_default();
                 let full = a.full.as_ref().map(|v| parse_icon_ref(&v.raw)).unwrap_or_default();
@@ -117,7 +117,7 @@ impl ItemStateReader for WindowsStateReader {
             }
             ItemKind::Folder => Ok(capture_folder(&target.path)?),
             ItemKind::RegularFile => Ok(capture_file(&target.path)?),
-            ItemKind::RecycleBin => Ok(RestoreAnchor::RecycleBin(recyclebin::read_current())),
+            ItemKind::RecycleBin => Ok(RestoreAnchor::RecycleBin(recyclebin::read_current()?)),
             other => Err(PortError::Unsupported(format!("anchor for {other:?}"))),
         }
     }
@@ -126,7 +126,10 @@ impl ItemStateReader for WindowsStateReader {
 fn capture_folder(folder_path: &str) -> PortResult<RestoreAnchor> {
     let attributes = attrs::get(folder_path)?;
     let ini = Path::new(folder_path).join("desktop.ini");
-    let desktop_ini = if ini.exists() {
+    // `try_exists` propagates a metadata error (e.g. access denied) instead of `exists`, which
+    // reports `false` on any failure — so a present-but-unreadable `desktop.ini` is never captured
+    // as "absent" and then wrongly removed on restore (P2-#3).
+    let desktop_ini = if ini.try_exists().map_err(|e| PortError::Io(e.to_string()))? {
         let content = std::fs::read(&ini).map_err(|e| PortError::Io(e.to_string()))?;
         let ini_attrs = attrs::get(&ini.to_string_lossy())?;
         Some(DesktopIniAnchor { content, attributes: ini_attrs })
@@ -139,8 +142,12 @@ fn capture_folder(folder_path: &str) -> PortResult<RestoreAnchor> {
 fn capture_file(file_path: &str) -> PortResult<RestoreAnchor> {
     let file_attributes = attrs::get(file_path)?;
     // Capture the wrapper if a same-named `.lnk` already exists (our apply would overwrite it).
+    // `try_exists` propagates a metadata error rather than reporting `false`: an existing-but-
+    // unreadable wrapper recorded as `wrapper_existed:false` would be irreversibly DELETED on
+    // restore (the "not existed → remove it" branch). Fail closed instead (P2-#3).
     let wrapper = file_wrapper::wrapper_path(file_path);
-    let wrapper_existed = Path::new(&wrapper).exists();
+    let wrapper_existed =
+        Path::new(&wrapper).try_exists().map_err(|e| PortError::Io(e.to_string()))?;
     let wrapper_content = if wrapper_existed {
         Some(std::fs::read(&wrapper).map_err(|e| PortError::Io(e.to_string()))?)
     } else {

@@ -153,3 +153,71 @@ OUT-OF-SCOPE by design: P1-11 (manual undo/restore txn — post-M6 UI), P1-13 (P
 ladder — M7), P2-10 (mock routing — resolved by the M6 cutover itself). OVER-RATED residuals not
 listed above (P1-2 REG-kind fidelity, P2-1 style-arg reject, P2-3 M7 concurrency, P2-6 M6 ABI, P2-8
 exotic path fidelity, P2-9 REG-type fidelity) are logged for their owning milestone, not this wave.
+
+## Round 3 (wave-2R, 2026-07-11): Codex re-review fixes
+
+The wave-2 diff was re-reviewed by Codex (FAIL: 5 fixed / 7 still-open / 6 new). The lead triaged the
+survivors into three buckets. All host-testable logic fixes ship a red→green regression test;
+pure-Windows-runtime proof is frozen into the [WINDOWS-VERIFY] ledger below rather than looped on
+Codex forever.
+
+**Bucket A — host-testable logic bugs (fixed + real-variant red→green):**
+- `dc3c5e1` P1-#5 + new-P1 — `FileJournal::append` classifies every failure as `OperationError::Journal`
+  so a real journal outage reaches the driver's `abandon` path (not a rollback onto a torn log); the
+  driver's rollback is resilient (never `?`-aborts the LIFO restore, stops journaling once the log
+  tears); recovery suppresses an incomplete/abandoned txn's restore for any item a strictly-later
+  committed txn owns (`abandon` is now a write fence — the abandon-then-retry hole is closed).
+- `1ded42c` new-P1 — the state reader routes its `.lnk` COM reads through the shared `StaExecutor`
+  (was calling `IShellLinkW` off-apartment); composition root shares one executor.
+
+**Bucket B — structure correct-by-construction (runtime proof → [WINDOWS-VERIFY]):**
+- `e1d561e` P1-#1 — the styleable surface now covers folder `READONLY`, the wrapper target/working-dir,
+  and the Recycle Bin `default` value + icon indices, so a partial writer is caught (host tests pin the
+  derivation/dispatch/attr-masking; new `shell_link::read_wrapper_identity`).
+- `77c4b44` P1-#3 + P2-#4 — POSIX parent-dir fsync propagates; `ReplaceFileW` uses
+  `REPLACEFILE_WRITE_THROUGH` (durability barrier) and drops `REPLACEFILE_IGNORE_MERGE_ERRORS` (ACL/
+  metadata merge failures surface); hard-link identity documented as an accepted limitation.
+- `4259ece` P2-#3 — `attrs::get` keys off `GetLastError`, the Recycle Bin registry reads return
+  `Result` and propagate non-NotFound errors, anchor capture uses `try_exists` — an existing-but-
+  unreadable item is never recorded as absent (which would irreversibly delete it on restore).
+- `bbffad7` P2-#1 + new-P3 — the driver re-checks the paired empty asset exists AFTER the apply
+  (narrowing the dangling-ref window); the fake applier folds in `assets.empty` (no longer ignored).
+- `15de596` new-P3 — a failed `IPersistFile::Save` cleans up its temp sibling instead of stranding it.
+
+**Bucket C — recorded / cheap structural now:**
+- `6949a7a` new-P1 — the paired empty asset is persisted in `LedgerEntry` + the `AssetWritten` journal
+  record (both `#[serde(default)]`), so a future GC keeps the exact empty ref instead of orphaning it.
+- `f275347` P1-12 — `AppxShortcut` is wired end-to-end through the Shortcut mechanism (it IS a `.lnk`);
+  `System` returns an honest labelled `[WINDOWS-VERIFY]`-pending error instead of the generic
+  `Unsupported`; the apply/read matches are exhaustive over `ItemKind`.
+- **new-P2 (txn-id reservation race) → deferred to M7.** `from_journal` + read-max/append is not
+  atomic, so two concurrent allocators/handles could both issue id 1; commit + rollback would then
+  trip the both-terminal fail-closed guard and brick startup. Codex itself confirmed serialized
+  execution is safe and post-checkpoint reuse is harmless (old groups are gone, ledger entries carry
+  no txn id), so this only bites the **M7 resident** with concurrent apply. M7 must give the allocator
+  an atomic reserve (single owner + `&mut`, or a lock) before it drives concurrent transactions.
+
+## [WINDOWS-VERIFY] frozen ledger (wave-2R)
+
+Pure Windows-runtime items that cannot be closed on the Mac host — code-verified via the msvc
+cross-check + host derivation tests, runtime behaviour to be confirmed on the owner's Windows box.
+Frozen here; NOT re-looped on Codex.
+
+1. **STA routing (A3)** — the reader's `.lnk` reads run on the correct STA apartment at runtime.
+2. **Surface reads (B4/P1-#1)** — whether Explorer honours folder `READONLY` / the wrapper
+   target+working-dir / the Recycle Bin indices; `read_wrapper_identity`'s `GetPath`/
+   `GetWorkingDirectory`/`GetIconLocation` values on a real `.lnk`.
+3. **Durability (B5/P1-#3)** — `ReplaceFileW(REPLACEFILE_WRITE_THROUGH)` write-through on NTFS; the
+   Windows directory-fsync is a documented no-op (durability delegated to ReplaceFileW).
+4. **Merge / hard-link (B6/P2-#4)** — ACL/metadata merge failures surface without
+   `IGNORE_MERGE_ERRORS`; hard-link identity loss is an accepted limitation (desktop items are not
+   hard-linked).
+5. **Adapter error codes (B7/P2-#3)** — `GetLastError` file/path-not-found vs. real errors;
+   registry `ErrorKind::NotFound` vs. access errors; `try_exists` metadata-error behaviour.
+6. **Dangling-empty residual (B8/P2-#1)** — a paired empty deleted strictly AFTER the post-apply
+   re-check is unclosable without the applier re-validating at write time.
+7. **COM Save→flush→Replace coverage (P3-#3, new-P3)** — the per-writer Save/finalize/temp-cleanup
+   path cannot be exercised on the host without substantial COM injection.
+8. **System DefaultIcon (C12/P1-12)** — the HKCU CLSID `DefaultIcon` writer + reader + discovery for
+   `ItemKind::System` are a Windows-scoped follow-up; apply/read currently return a labelled pending
+   error (never a silent mis-reject).

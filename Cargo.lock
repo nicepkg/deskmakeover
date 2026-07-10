@@ -949,6 +949,7 @@ name = "dm-icon-codec"
 version = "0.0.0"
 dependencies = [
  "dm-icon-core",
+ "libm",
  "sha2",
 ]
 

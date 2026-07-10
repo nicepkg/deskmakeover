@@ -1,9 +1,10 @@
 import * as React from 'react'
 import type { ReactNode } from 'react'
-import { Bug, ClipboardCopy, Download, FolderOpen, ImageDown, Mail, MessageSquare, ScrollText, Tv } from 'lucide-react'
+import { Bug, ClipboardCopy, Download, FolderOpen, ImageDown, Mail, MessageSquare, RotateCcw, ScrollText, Tv } from 'lucide-react'
 import { call } from '@/bridge/client'
 const appIcon = '/app-icon.svg'
 import { InspectorCard } from '@/components/common/inspector'
+import { ConfirmSheet } from '@/components/common/ceremony'
 import { Segmented } from '@/components/common/segmented'
 import { ToggleSwitch } from '@/components/common/toggle-switch'
 import { useApp } from '@/stores/app'
@@ -45,6 +46,12 @@ export function SettingsPage() {
   const info = useApp((s) => s.info)
   const settings = useApp((s) => s.settings)
   const updateSettings = useApp((s) => s.updateSettings)
+  // Native shortcut-arrow state (panel record 2026-07-11): the status text here
+  // is the authority. 'hidden' = the overlay is active (apply happened), so the
+  // 恢复系统箭头 action is offered; 'native' = nothing to restore.
+  const arrowOverlay = useIcons((s) => s.state?.arrowOverlay ?? 'native')
+  const arrowHidden = arrowOverlay === 'hidden'
+  const [arrowRestoreOpen, setArrowRestoreOpen] = React.useState(false)
 
   if (!settings || !info) return null
 
@@ -141,6 +148,27 @@ export function SettingsPage() {
                   ]}
                 />
               </Row>
+              {/* 快捷方式箭头 (panel record 2026-07-11): the canonical home of the
+                  keep-beautification arrow restore. Status text is the authority;
+                  the action shows ONLY while the overlay is active — there is
+                  nothing to restore when the arrow is already native. */}
+              <Row
+                label={t('Settings_ArrowRestore')}
+                desc={
+                  <>
+                    {arrowHidden ? t('Settings_ArrowStatusHidden') : t('Settings_ArrowStatusNative')}
+                    {arrowHidden && (
+                      <span className="mt-0.5 block text-t3/70">{t('Settings_ArrowConstraint')}</span>
+                    )}
+                  </>
+                }
+              >
+                {arrowHidden && (
+                  <ActionButton icon={<RotateCcw size={12} />} onClick={() => setArrowRestoreOpen(true)}>
+                    {t('Settings_ArrowRestoreAction')}
+                  </ActionButton>
+                )}
+              </Row>
               {/* Auto-beautify new icons is HIDDEN until it actually works (owner call
                   2026-07-10): the toggle promised "new icons styled when the app opens" but
                   NOTHING consumes `keepNewIconsStyled` — no watcher, no catch-up pass. Showing
@@ -207,12 +235,28 @@ export function SettingsPage() {
       </div>
 
       <ChangelogDialog open={logOpen} onOpenChange={setLogOpen} />
+
+      {/* Restore ceremony (spec 06 §3.7 real-desktop crossing; not destructive-red):
+          keeps shapes/colours, only brings the native arrow back — the honest body
+          names that beautified icons get the system arrow too. */}
+      <ConfirmSheet
+        open={arrowRestoreOpen}
+        title={t('ArrowRestore_Title')}
+        body={t('ArrowRestore_Body')}
+        confirmLabel={t('ArrowRestore_Confirm')}
+        cancelLabel={t('ArrowRestore_Cancel')}
+        onConfirm={() => {
+          setArrowRestoreOpen(false)
+          void useIcons.getState().restoreOverlay()
+        }}
+        onCancel={() => setArrowRestoreOpen(false)}
+      />
     </div>
   )
 }
 
 /** One settings row: label(+desc) left, the control right — macOS inset-list grammar. */
-function Row({ label, desc, children }: { label: string; desc?: string; children: ReactNode }) {
+function Row({ label, desc, children }: { label: string; desc?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex min-h-[54px] items-center justify-between gap-6 px-5 py-3">
       <div className="min-w-0">

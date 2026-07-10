@@ -571,6 +571,15 @@ export function IconsPanel() {
                 },
               ]}
             />
+            {/* Native-arrow contextual hint (owner ruling, panel record
+                2026-07-11): while the system arrow is still active (pre-first-
+                apply, and again after a restore) explain that marks are drawn
+                and the native arrow hides on apply. It disappears once the
+                overlay is active, so it never nags. Quiet ghost-note grammar —
+                no card, no background, no badge (panel height is precious). */}
+            {state.arrowOverlay === 'native' && (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-t3">{t('Mark_ArrowHint')}</p>
+            )}
           </PropertyRow>
 
           {/* Uniform shortcut shape (ADR-0017 D5; control spec 2026-07-10):
@@ -711,6 +720,7 @@ export function IconsPanel() {
       <ConsentSheet
         open={consentOpen}
         count={state.styleableCount}
+        multiUser={state.activeUserProfiles > 1}
         onAgree={() => {
           localStorage.setItem('dm.consent.icons', '1')
           setConsentOpen(false)
@@ -738,7 +748,9 @@ export function IconsPanel() {
         }}
         onCancel={() => setArrowGateOpen(false)}
       />
-      <DoneCard open={doneOpen} onClose={() => setDoneOpen(false)} />
+      {/* DoneCard reinforcement (panel record 2026-07-11): apply hid the native
+          arrow — say so, and point at the Settings restore. */}
+      <DoneCard open={doneOpen} note={t('DoneArrow')} onClose={() => setDoneOpen(false)} />
     </aside>
   )
 }

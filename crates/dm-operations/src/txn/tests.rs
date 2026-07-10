@@ -606,6 +606,59 @@ fn journal_failure_after_mutation_still_rolls_back_to_original() {
 }
 
 #[test]
+fn prepare_append_failure_mid_batch_rolls_back_already_mutated_items() {
+    // P1-5: item A applies fully, then the ItemPrepared append for item B fails. A is already
+    // mutated on the desktop, so the append failure must roll A back — not strand it with no
+    // ledger entry and no terminal record.
+    // Call order for two items: 1 TxnBegin, 2 ItemPrepared(A), 3 AssetWritten(A), 4 ItemApplied(A),
+    // 5 ItemVerified(A), 6 ItemPrepared(B) ← fail here.
+    let world = World::shared();
+    let a = target("A");
+    let b = target("B");
+    seed(&world, &a, b"orig-A");
+    seed(&world, &b, b"orig-B");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = FailingJournal::fail_on_call(6);
+    let mut ledger = MemLedgerStore::new();
+
+    let out = driver
+        .apply(1, vec![request(&a, &world, "hashA"), request(&b, &world, "hashB")], &mut journal, &mut ledger)
+        .unwrap();
+
+    assert!(out.error.is_some());
+    assert!(out.committed.is_empty());
+    // A was mutated then walked back; B never mutated. The ledger holds nothing.
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
+    assert_eq!(world.borrow().get(&b.path).unwrap(), b"orig-B");
+    assert!(ledger.all().unwrap().is_empty());
+    assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::ItemRolledBack { .. })));
+}
+
+#[test]
+fn commit_append_failure_rolls_back_every_applied_item() {
+    // P1-5: all items apply + verify, but the TxnCommitted append fails. Every applied item is on
+    // the desktop with no terminal record — they must all roll back, not linger as residue.
+    // Single-item call order: 1 TxnBegin, 2 ItemPrepared, 3 AssetWritten, 4 ItemApplied,
+    // 5 ItemVerified, 6 TxnCommitted ← fail here.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = FailingJournal::fail_on_call(6);
+    let mut ledger = MemLedgerStore::new();
+
+    let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+
+    assert!(out.error.is_some());
+    assert!(out.committed.is_empty());
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // rolled back exactly
+    assert!(ledger.all().unwrap().is_empty());
+    assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::TxnRolledBack { .. })));
+}
+
+#[test]
 fn journal_failure_before_mutation_aborts_without_touching_the_desktop() {
     // Fail the ItemPrepared append (call 2). Nothing has mutated; apply propagates the error and
     // the desktop + ledger stay pristine.

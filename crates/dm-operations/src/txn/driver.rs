@@ -127,7 +127,7 @@ impl<'p> TxnDriver<'p> {
         let mut applied: Vec<Prepared> = Vec::new();
         for (req, anchor, original_fp, expected) in proceeding {
             // Anchor journaled + flushed BEFORE any mutation (codex B4).
-            journal.append(&JournalRecord::ItemPrepared {
+            if let Err(e) = journal.append(&JournalRecord::ItemPrepared {
                 txn,
                 item: req.target.id.clone(),
                 target: req.target.clone(),
@@ -137,7 +137,16 @@ impl<'p> TxnDriver<'p> {
                 asset_hash: req.asset_hash.clone(),
                 owned: req.owned,
                 pinned_seed: req.pinned_seed,
-            })?;
+            }) {
+                // A journal append failure between items must not strand ALREADY-mutated items on
+                // the desktop (P1-5). If earlier items in this batch mutated, roll them back;
+                // otherwise nothing has been touched, so propagate the error with a pristine
+                // desktop.
+                if applied.is_empty() {
+                    return Err(e);
+                }
+                return self.rollback(txn, applied, journal, ledger, format!("journal append failed: {e}"));
+            }
             // From here the item is a rollback candidate (a mutation might start below).
             applied.push(Prepared {
                 target: req.target.clone(),
@@ -156,8 +165,12 @@ impl<'p> TxnDriver<'p> {
             }
         }
 
-        // All items applied + verified → commit and record the ledger.
-        journal.append(&JournalRecord::TxnCommitted { txn })?;
+        // All items applied + verified → commit and record the ledger. If the commit record itself
+        // cannot be flushed, every applied item is still on the desktop with no terminal record —
+        // roll them all back rather than leaving mutated residue (P1-5).
+        if let Err(e) = journal.append(&JournalRecord::TxnCommitted { txn }) {
+            return self.rollback(txn, applied, journal, ledger, format!("commit journal append failed: {e}"));
+        }
         for item in &applied {
             let version = ledger.next_version()?;
             let new_fp = item.new_fingerprint.expect("committed item has a verified fingerprint");

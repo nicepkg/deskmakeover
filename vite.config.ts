@@ -1,14 +1,25 @@
+import { rmSync } from 'node:fs'
 import path from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 // Tauri sets TAURI_DEV_HOST when debugging on a physical device (mobile, later).
 const host = process.env.TAURI_DEV_HOST
 
+// public/real-icons/ is the gitignored dev-fixture SSoT (extracted Microsoft/
+// brand art — LICENSE GATE: never ships). Vite copies public/ wholesale into
+// dist/, so strip it from every build output.
+const stripRealIcons = (): Plugin => ({
+  name: 'strip-real-icons',
+  closeBundle() {
+    rmSync(path.resolve(import.meta.dirname, 'dist/real-icons'), { recursive: true, force: true })
+  },
+})
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), stripRealIcons()],
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),

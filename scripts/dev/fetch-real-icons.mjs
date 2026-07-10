@@ -1,27 +1,54 @@
-// Fetch REAL icons for the dev mock desktop (owner order 2026-07-09).
+// Harvest REAL icons into the single source of truth: public/real-icons/
+// (owner orders 2026-07-09 + 2026-07-11: public/ is THE asset truth root).
 //
-// Harvests genuine icon assets from two open-source Win11 simulator repos
-// (blueedgetechno/win11React, piyushsuthar/windows-11-web) into
-// public/mock-icons-real/ + manifest.json.
+// public/real-icons/ is THE one place for genuine icon fixtures, organized
+// by type so the same icon never lives in two folders:
+//   windows/     extracted Windows-native icons (imageres/shell32: This PC,
+//                Recycle Bin, tools, CLSID-style system items)
+//   folders/     system + plain folder icons (Documents, Downloads, ...)
+//   apps/        first/third-party app icons (Edge, Discord, VS Code, ...)
+//   files/       file-type icons (.txt/.docx/.mp3/...)
+//   wallpapers/  real Win11 wallpapers (not icons; excluded from the manifest)
 //
-// ⚠ LICENSE GATE: the harvested images include extracted Microsoft system
-// icons and third-party brand icons. They are LOCAL DEV FIXTURES ONLY —
-// the output directory is gitignored and must NEVER ship in a release or
-// enter the repo. The shipped app mirrors the user's real desktop and needs
-// no bundled icons (ADR-0015 D9).
+// The owner adds icons by DROPPING files into a subfolder — `--scan` (or any
+// run) rebuilds manifest.json from the directory tree: kind comes from the
+// subfolder, label from the filename stem (or the label books / overrides.json
+// below). Harvesting MERGES: it never deletes files it did not produce.
 //
-// Usage: node scripts/dev/fetch-real-icons.mjs [repoCacheDir]
-//   repoCacheDir: a dir that contains (or will receive) the two clones.
-//   Defaults to .cache/win11sim under the repo root.
+// ⚠ LICENSE GATE: harvested images include extracted Microsoft system icons
+// and third-party brand icons. LOCAL DEV FIXTURES ONLY — the directory is
+// gitignored from the app repo, stripped from dist/ by the vite closeBundle
+// hook, and must NEVER ship in a release or enter the app repo's history. The shipped app mirrors the user's real desktop and needs no
+// bundled icons (ADR-0015 D9).
+//
+// Usage:
+//   node scripts/dev/fetch-real-icons.mjs             harvest + rebuild manifest
+//   node scripts/dev/fetch-real-icons.mjs --scan      rebuild manifest only
+//   node scripts/dev/fetch-real-icons.mjs --keep-cache  keep .cache/win11sim
+//     (default: the 37 MB clone cache is deleted after a successful harvest;
+//      the next harvest re-clones on demand)
 
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const OUT = join(ROOT, 'public', 'mock-icons-real')
-const CACHE = process.argv[2] ?? join(ROOT, '.cache', 'win11sim')
+const OUT = join(ROOT, 'public', 'real-icons')
+const CACHE = join(ROOT, '.cache', 'win11sim')
+const SCAN_ONLY = process.argv.includes('--scan')
+const KEEP_CACHE = process.argv.includes('--keep-cache')
+
+const SUBDIRS = ['windows', 'folders', 'apps', 'files', 'wallpapers']
+
+// kind default per subfolder; explicit entries below refine (SystemIcon,
+// AppxShortcut, RecycleBin are always explicit — they carry special behavior).
+const SUBDIR_KIND = {
+  windows: 'Shortcut',
+  folders: 'Folder',
+  apps: 'Shortcut',
+  files: 'RegularFile',
+}
 
 const REPOS = [
   { name: 'win11React', url: 'https://github.com/blueedgetechno/win11React.git' },
@@ -43,9 +70,8 @@ function ensureRepo({ name, url }) {
 // win11React icon/win/*.png — extracted imageres/shell32 resources. Named
 // files get their real shell labels; numbered file-type icons become files.
 const WIN_LABELS = {
-  thispc: ['此电脑', 'RecycleBinNo'], // kind override marker unused; see below
+  thispc: '此电脑',
   bin: '回收站',
-  'bin-em': null, // second recycle-bin state — folded into the bin entry
   folder: '新建文件夹',
   folder3d: '3D 对象',
   docs: '文档',
@@ -103,7 +129,6 @@ const APP_LABELS = {
   yourphone: '手机连接',
 }
 
-
 // Numbered imageres icons, identified by eye from the contact sheet
 // (2026-07-09): every label MUST match the art — a PDF name on a printer icon
 // is exactly the confusion the owner banned. kind: doc-like art = RegularFile,
@@ -155,47 +180,53 @@ const NUM_ICONS = {
   2000: { label: '数据备份_0630', kind: 'RegularFile' },
 }
 
-function main() {
-  const [w11react, w11web] = REPOS.map(ensureRepo)
-  rmSync(OUT, { recursive: true, force: true })
-  mkdirSync(OUT, { recursive: true })
+// Explicit kind/label refinements for HARVESTED files, keyed by subfolder path.
+// Owner-added files needing the same refinement go in overrides.json (merged
+// on top of this book at scan time, same shape).
+const REFINEMENTS = {
+  // This PC / Network / User Files / Control Panel style via the per-user
+  // CLSID DefaultIcon mechanism (owner prototype truth) — STYLEABLE; the C#
+  // writers are a Windows-batch addition.
+  'windows/win-thispc.png': { kind: 'SystemIcon' },
+  'windows/win-network.png': { kind: 'SystemIcon' },
+  'windows/win-user.png': { kind: 'SystemIcon' },
+  'windows/p11-control_panel.webp': { kind: 'SystemIcon', label: '控制面板' },
+  // Recycle Bin ships TWO sources: full + empty.
+  'windows/win-bin.png': { kind: 'RecycleBin', extraSources: ['windows/win-bin-empty.png'] },
+  // UWP on a real desktop — the un-editable path exercised with REAL art.
+  'apps/app-store.png': { kind: 'AppxShortcut' },
+  'apps/app-getstarted.png': { kind: 'AppxShortcut' },
+  'apps/app-feedback.png': { kind: 'AppxShortcut' },
+  'apps/app-cortana.png': { kind: 'AppxShortcut' },
+  'apps/app-news.png': { kind: 'AppxShortcut' },
+  'apps/app-people.png': { kind: 'AppxShortcut' },
+  'apps/app-maps.png': { kind: 'AppxShortcut' },
+}
 
-  const manifest = []
-  const used = new Set()
-  const add = (srcPath, file, kind, label, extraSources = []) => {
-    if (used.has(file)) return
-    used.add(file)
-    cpSync(srcPath, join(OUT, file))
-    manifest.push({ file, id: `real-${file.replace(/\.[a-z]+$/, '')}`, kind, label, extraSources })
+// ---- harvest (merge-only: overwrites its own outputs, never deletes) ----
+
+function harvest() {
+  const [w11react, w11web] = REPOS.map(ensureRepo)
+  for (const d of SUBDIRS) mkdirSync(join(OUT, d), { recursive: true })
+  const put = (srcPath, sub, file, label) => {
+    cpSync(srcPath, join(OUT, sub, file))
+    if (label !== undefined) labelBook[`${sub}/${file}`] = label
   }
 
-  // 1) System icons (256px, extracted originals) — win11React icon/win/
+  // 1) Windows-native set (256px extracted originals) — win11React icon/win/
   const winDir = join(w11react, 'public', 'img', 'icon', 'win')
   for (const f of readdirSync(winDir).filter((f) => f.endsWith('.png'))) {
     const base = f.replace('.png', '')
     if (base.endsWith('-sm')) continue // small variants — 256 set only
-    if (base === 'bin-em') continue // folded into the bin entry below
-    if (base === 'bin') {
-      // Recycle Bin ships TWO sources: full (bin) + empty (bin-em).
-      cpSync(join(winDir, 'bin-em.png'), join(OUT, 'win-bin-empty.png'))
-      add(join(winDir, f), 'win-bin.png', 'RecycleBin', '回收站', ['win-bin-empty.png'])
+    if (base === 'bin-em') {
+      put(join(winDir, f), 'windows', 'win-bin-empty.png')
       continue
     }
-    const label = WIN_LABELS[base]
-    const isFolder = /folder|docs|down|music|pics|vid|desk/.test(base)
     const num = /^\d+$/.test(base) ? NUM_ICONS[base] : null
-    add(
-      join(winDir, f),
-      `win-${f}`,
-      // This PC / Network / User Files style via the SAME per-user CLSID
-      // DefaultIcon mechanism as the Recycle Bin (owner prototype truth) —
-      // STYLEABLE; the C# writers are a Windows-batch addition.
-      base === 'thispc' || base === 'network' || base === 'user' ? 'SystemIcon'
-        : num ? num.kind
-        : isFolder ? 'Folder'
-        : 'Shortcut',
-      num ? num.label : typeof label === 'string' ? label : base,
-    )
+    const isFolder = num ? num.kind === 'Folder' : /folder|docs|down|music|pics|vid|desk/.test(base)
+    const isFile = num?.kind === 'RegularFile'
+    const sub = isFolder ? 'folders' : isFile ? 'files' : 'windows'
+    put(join(winDir, f), sub, `win-${f}`, num ? num.label : WIN_LABELS[base] ?? base)
   }
 
   // 2) Real app icons — win11React icon/*.png (64px; small real .lnk icons
@@ -204,43 +235,90 @@ function main() {
   for (const f of readdirSync(appDir).filter((f) => f.endsWith('.png'))) {
     const base = f.replace('.png', '')
     if (base === 'bin0' || base === 'bin1') continue
-    const label = APP_LABELS[base] ?? base
-    // Store & friends are UWP on a real desktop — mark a few AppxShortcut so
-    // the un-editable path gets exercised with REAL art.
-    const uwp = ['store', 'getstarted', 'feedback', 'cortana', 'news', 'people', 'maps'].includes(base)
-    add(join(appDir, f), `app-${f}`, uwp ? 'AppxShortcut' : 'Shortcut', label)
+    put(join(appDir, f), 'apps', `app-${f}`, APP_LABELS[base] ?? base)
   }
 
   // 3) piyushsuthar desktop set — ONLY Control Panel survives (this_pc and
-  //    recyclebin duplicate the better 256px win11React art; the「旧」suffix
-  //    the dupes forced looked terrible — owner call 2026-07-09).
-  const deskDir = join(w11web, 'src', 'assets', 'icons', 'Desktop')
-  const cp = join(deskDir, 'control_panel.webp')
-  if (existsSync(cp)) add(cp, 'p11-control_panel.webp', 'SystemIcon', '控制面板')
+  //    recyclebin duplicate the better 256px win11React art — owner call
+  //    2026-07-09).
+  const cp = join(w11web, 'src', 'assets', 'icons', 'Desktop', 'control_panel.webp')
+  if (existsSync(cp)) put(cp, 'windows', 'p11-control_panel.webp')
 
   // 4) Real Win11 default wallpapers (owner order: the dev fallback wallpaper
-  //    must be the REAL default, not a drawn scene). Light + dark Bloom.
+  //    must be the REAL default, not a drawn scene). Light + dark Bloom;
+  //    gamer = ThemeA neon arc, office = ThemeC lake morning, B/D spares.
   const wallDir = join(w11react, 'public', 'img', 'wallpaper')
   for (const [src, out] of [
     [join('default', 'img0.jpg'), 'wallpaper-default.jpg'],
     [join('dark', 'img0.jpg'), 'wallpaper-dark.jpg'],
-    // Scenario wallpapers (dev menu): gamer = ThemeA neon arc, office = ThemeC
-    // lake morning; ThemeB/D ride along as spares for future scenarios.
     [join('ThemeA', 'img0.jpg'), 'wallpaper-gamer.jpg'],
     [join('ThemeC', 'img0.jpg'), 'wallpaper-office.jpg'],
     [join('ThemeB', 'img0.jpg'), 'wallpaper-spare-b.jpg'],
     [join('ThemeD', 'img0.jpg'), 'wallpaper-spare-d.jpg'],
   ]) {
     const p = join(wallDir, src)
-    if (existsSync(p)) cpSync(p, join(OUT, out))
+    if (existsSync(p)) cpSync(p, join(OUT, 'wallpapers', out))
+  }
+}
+
+// ---- manifest: rebuilt by SCANNING the tree (owner-added files included) ----
+
+// Harvest-known labels, persisted so --scan runs keep them without re-harvest.
+const LABEL_BOOK_PATH = join(OUT, 'labels.json')
+const labelBook = existsSync(LABEL_BOOK_PATH)
+  ? JSON.parse(readFileSync(LABEL_BOOK_PATH, 'utf8'))
+  : {}
+
+function buildManifest() {
+  const overridesPath = join(OUT, 'overrides.json')
+  const overrides = existsSync(overridesPath)
+    ? JSON.parse(readFileSync(overridesPath, 'utf8'))
+    : {}
+  const refine = (rel) => ({ ...REFINEMENTS[rel], ...overrides[rel] })
+
+  // files referenced as extraSources never get their own manifest entry
+  const consumed = new Set()
+  for (const book of [REFINEMENTS, overrides]) {
+    for (const entry of Object.values(book)) {
+      for (const extra of entry.extraSources ?? []) consumed.add(extra)
+    }
   }
 
+  const manifest = []
+  for (const sub of SUBDIRS) {
+    if (sub === 'wallpapers') continue // not desktop icons
+    const dir = join(OUT, sub)
+    if (!existsSync(dir)) continue
+    for (const f of readdirSync(dir).filter((f) => /\.(png|webp|jpg|jpeg|ico|bmp)$/i.test(f))) {
+      const rel = `${sub}/${f}`
+      if (consumed.has(rel)) continue
+      const r = refine(rel)
+      const stem = f.replace(/\.[a-z]+$/i, '')
+      manifest.push({
+        file: rel,
+        id: `real-${stem}`,
+        kind: r.kind ?? SUBDIR_KIND[sub],
+        label: r.label ?? labelBook[rel] ?? stem,
+        extraSources: r.extraSources ?? [],
+      })
+    }
+  }
   manifest.sort((a, b) => a.file.localeCompare(b.file))
   writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2))
-  const total = manifest.length
+  writeFileSync(LABEL_BOOK_PATH, JSON.stringify(labelBook, null, 2))
+  return manifest
+}
+
+function main() {
+  if (!SCAN_ONLY) harvest()
+  const manifest = buildManifest()
   const kinds = manifest.reduce((m, e) => ((m[e.kind] = (m[e.kind] ?? 0) + 1), m), {})
-  console.log(`mock-icons-real: ${total} icons ->`, kinds)
-  console.log(`output: ${OUT} (gitignored — dev fixtures only, never ship)`)
+  console.log(`real-icons: ${manifest.length} icons ->`, kinds)
+  console.log(`SSoT: ${OUT} (gitignored — dev fixtures only, never ship)`)
+  if (!SCAN_ONLY && !KEEP_CACHE && existsSync(CACHE)) {
+    rmSync(CACHE, { recursive: true, force: true })
+    console.log(`cache ${CACHE} removed (re-clones on the next harvest; --keep-cache to keep)`)
+  }
 }
 
 main()

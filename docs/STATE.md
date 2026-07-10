@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-10 (ADR-0017 type distinction system v1 built — factory ladder in designer acceptance)
+updated: 2026-07-10 (owner approved the subject×plate two-axis colour reshape — spec in flight; ladder v2 + control grammar v3 shipped)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -64,6 +64,19 @@ pointer: what is TRUE now, what is in flight, what comes next.
 `scripts/dev/generate-mock-icons.mjs`).
 
 **In flight / next (web):**
+-1. **TWO-AXIS COLOUR RESHAPE — OWNER-APPROVED (2026-07-10), spec being
+   written to `docs/product/two-axis-colour-spec.md` by the chief-designer
+   seat.** Panel 3/3 convergence: dissolve `colorMode` into 主体 (subject:
+   原彩/黑白/单色) × 底板 (plate: 随图标-first/白/bounded swatches/wheel);
+   满彩 demotes from mode to the default preset coordinate; presets become
+   coordinate bookmarks; the word "mode" leaves the UI; plateColor's
+   per-mode semantics collapse to one plate value; Original's
+   plate-recolour gap dies structurally; net-new combos (BW×Auto etc.).
+   Deterministic old→new mapping = zero feature loss; schema 3→4 BEFORE F8
+   (translation layer VETOED by the UI seat). Naming law: 主体/底板, never
+   前景色/背景色. Guardrail: plate axis leads with 随图标 (anti "all apps
+   one colour"). Type rows keep the just-shipped chip grammar; per-type
+   rule becomes "types may only step DOWN".
 0. **ADR-0017 per-type distinction system — v1 BUILT (commit `7ba12cf`),
    designer acceptance of the factory ladder in flight.** Three-round
    adversarial panel (PM/UX/UI) + owner dispositions; docs: ADR-0017,

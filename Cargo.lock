@@ -995,6 +995,7 @@ name = "dm-windows"
 version = "0.0.0"
 dependencies = [
  "dm-domain",
+ "tempfile",
  "windows",
  "winreg",
 ]

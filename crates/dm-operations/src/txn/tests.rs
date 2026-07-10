@@ -424,7 +424,10 @@ impl LedgerStore for FailingLedger {
 }
 
 #[test]
-fn read_error_during_preflight_skips_item_as_conflict() {
+fn read_error_during_preflight_fails_the_batch() {
+    // P2-5: a non-NotFound reader error (COM/IO) is a real infrastructure failure, NOT a benign
+    // per-item conflict. It must fail the batch with `outcome.error` set, so the operator learns
+    // the restore path may be compromised — never a silent skip.
     let world = World::shared();
     let a = target("A");
     seed(&world, &a, b"orig-A");
@@ -436,8 +439,11 @@ fn read_error_during_preflight_skips_item_as_conflict() {
     let mut ledger = MemLedgerStore::new();
 
     let out = driver.apply(1, vec![req], &mut journal, &mut ledger).unwrap();
-    assert_eq!(out.conflicts, vec![ItemId::from_raw("A")]);
+    assert!(out.error.is_some(), "a real reader error must surface as a batch failure");
+    assert!(out.conflicts.is_empty(), "a real error is not a benign conflict");
+    assert!(out.committed.is_empty());
     assert!(journal.records().is_empty()); // nothing entered the transaction
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // untouched
 }
 
 #[test]
@@ -457,9 +463,10 @@ fn anchor_capture_error_during_preflight_skips_item() {
 }
 
 #[test]
-fn corrupt_ledger_during_preflight_skips_item_not_overwrites() {
-    // A corrupt active ledger must fail closed at prepare time: the item is skipped, never
-    // styled (which could strand the only path back).
+fn corrupt_ledger_during_preflight_fails_the_batch_not_overwrites() {
+    // A corrupt active ledger must fail CLOSED at prepare time: the item is never styled (which
+    // could strand the only path back), AND — per P2-5 — the failure surfaces as a batch error
+    // rather than a benign conflict that hides the compromised restore path.
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ledger.json");
     std::fs::write(&path, b"{ not json").unwrap();
@@ -472,8 +479,11 @@ fn corrupt_ledger_during_preflight_skips_item_not_overwrites() {
     let mut ledger = JsonLedgerStore::new(&path);
 
     let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
-    assert_eq!(out.conflicts, vec![ItemId::from_raw("A")]);
-    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // untouched
+    assert!(out.error.is_some(), "a corrupt ledger must surface as a batch failure");
+    assert!(out.conflicts.is_empty(), "a corrupt ledger is not a benign conflict");
+    assert!(out.committed.is_empty());
+    assert!(journal.records().is_empty()); // nothing entered the transaction
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // untouched, never styled
 }
 
 #[test]

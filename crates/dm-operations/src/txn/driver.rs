@@ -99,8 +99,18 @@ impl<'p> TxnDriver<'p> {
                 Ok(Some((anchor, original_fp, expected))) => {
                     proceeding.push((req, anchor, original_fp, expected))
                 }
+                // Benign, safe-to-skip: the item is gone, externally modified, or has no restore
+                // material. `prepare_item` returns `Ok(None)` for all of these.
                 Ok(None) => outcome.conflicts.push(req.target.id.clone()),
-                Err(_) => outcome.conflicts.push(req.target.id.clone()),
+                // A real infrastructure failure (a non-NotFound COM/IO error from the reader, or a
+                // corrupt/unreadable ledger) is NOT a benign per-item conflict. Misreporting it as
+                // one — with `outcome.error` left None — hides that the restore path may be
+                // compromised. Fail the whole batch instead; nothing has been journaled or mutated
+                // yet, so we abort cleanly with the error surfaced (P2-5).
+                Err(e) => {
+                    outcome.error = Some(format!("apply preflight failed: {e}"));
+                    return Ok(outcome);
+                }
             }
         }
 

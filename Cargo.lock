@@ -942,6 +942,9 @@ dependencies = [
 [[package]]
 name = "dm-icon-wasm"
 version = "0.0.0"
+dependencies = [
+ "dm-icon-core",
+]
 
 [[package]]
 name = "dm-operations"
@@ -5321,6 +5324,13 @@ dependencies = [
  "libc",
  "once_cell",
  "pkg-config",
+]
+
+[[package]]
+name = "xtask"
+version = "0.0.0"
+dependencies = [
+ "dm-icon-core",
 ]
 
 [[package]]

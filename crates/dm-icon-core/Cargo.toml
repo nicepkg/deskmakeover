@@ -1,0 +1,10 @@
+[package]
+name = "dm-icon-core"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Transcendentals route through libm on both wasm and native for bit-exactness
+# (ADR-0019); std math / FMA / SIMD are banned in the core.
+libm = "0.2"

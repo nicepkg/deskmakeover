@@ -6,6 +6,9 @@ coverage/
 artifacts/
 publish/
 
+# Rust (Cargo workspace — ADR-0019)
+target/
+
 # Local SDK/tooling
 .dotnet/
 .tools/

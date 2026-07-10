@@ -19,6 +19,7 @@ await mkdir(helperOutput, { recursive: true });
 
 // The visible UI is the web bundle (ADR-0011): build it first so the App publish
 // carries dist/** into <out>/web. Run this script with bun (bun-only toolchain).
+// NOTE: the .NET publish path is a FROZEN oracle (ADR-0019) — retired at M8.
 buildWeb();
 
 publish("src/DeskMakeover.App/DeskMakeover.App.csproj", appOutput);
@@ -29,7 +30,7 @@ publish("src/DeskMakeover.ElevatedHelper/DeskMakeover.ElevatedHelper.csproj", he
 console.log(`DeskMakeover publish complete: ${appOutput}`);
 
 function buildWeb() {
-  const webRoot = join(repositoryRoot, "src", "DeskMakeover.Web");
+  const webRoot = join(repositoryRoot, "apps", "desktop", "frontend");
   const result = spawnSync("bun", ["run", "build"], {
     cwd: webRoot,
     stdio: "inherit",

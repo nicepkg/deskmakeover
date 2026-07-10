@@ -1,0 +1,79 @@
+import { describe, expect, test } from 'bun:test'
+import type { ConfigDto, TypeOverrides } from '../src/bridge/types'
+import { resolveTypeConfig, typeHasFixedPlate, typeIsCustom, typeOverridesEqual } from '../src/lib/type-config'
+import { kindBucket } from '../src/lib/kind-policy'
+
+// The per-type resolve chain (ADR-0017 D2): pure merge, sparse overrides,
+// pool-exit predicate, preset-matching equality.
+
+const BASE: ConfigDto = {
+  shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal',
+  tint: '#FF6F5E', distinction: 'None', markStyle: 'Shadow', markColor: null,
+  plateColor: null, size: 'Mid', filter: 'None',
+}
+
+const LADDER: TypeOverrides = {
+  Folder: { source: 'custom', patch: { shape: 'Bookmark' } },
+  System: { source: 'custom', patch: { shape: 'Circle', subject: 'Mono' } },
+  File: { source: 'global' },
+}
+
+describe('resolveTypeConfig', () => {
+  test('followers and bucketless icons take the base untouched', () => {
+    expect(resolveTypeConfig(BASE, LADDER, 'App')).toBe(BASE) // no entry → base identity
+    expect(resolveTypeConfig(BASE, LADDER, 'File')).toBe(BASE) // explicit global → base
+    expect(resolveTypeConfig(BASE, LADDER, null)).toBe(BASE)
+    expect(resolveTypeConfig(BASE, undefined, 'Folder')).toBe(BASE)
+  })
+
+  test('custom patches merge sparsely over the base', () => {
+    const sys = resolveTypeConfig(BASE, LADDER, 'System')
+    expect(sys.shape).toBe('Circle')
+    expect(sys.subject).toBe('Mono')
+    expect(sys.tint).toBe(BASE.tint) // untouched keys inherit
+    expect(sys.filter).toBe(BASE.filter) // filter is not even patchable
+    const folder = resolveTypeConfig(BASE, LADDER, 'Folder')
+    expect(folder.shape).toBe('Bookmark')
+    expect(folder.subject).toBe('Original')
+  })
+
+  test('plateColor patch pins the plate and exits the hue-spread pool', () => {
+    const pinned: TypeOverrides = { File: { source: 'custom', patch: { plateColor: '#DDE6F2' } } }
+    expect(resolveTypeConfig(BASE, pinned, 'File').plateColor).toBe('#DDE6F2')
+    expect(typeHasFixedPlate(pinned, 'File')).toBe(true)
+    expect(typeHasFixedPlate(pinned, 'App')).toBe(false)
+    expect(typeHasFixedPlate(LADDER, 'System')).toBe(false) // demotion is not a pin
+    expect(typeHasFixedPlate(pinned, null)).toBe(false)
+  })
+
+  test('typeIsCustom: only live non-empty patches count', () => {
+    expect(typeIsCustom(LADDER, 'Folder')).toBe(true)
+    expect(typeIsCustom(LADDER, 'File')).toBe(false) // source global
+    expect(typeIsCustom(LADDER, 'App')).toBe(false) // absent
+    expect(typeIsCustom({ App: { source: 'custom', patch: {} } }, 'App')).toBe(false) // empty patch
+  })
+
+  test('typeOverridesEqual: ladder equality for preset matching', () => {
+    expect(typeOverridesEqual(LADDER, structuredClone(LADDER))).toBe(true)
+    // global-source and absent entries are the same thing.
+    expect(typeOverridesEqual({ File: { source: 'global' } }, {})).toBe(true)
+    expect(typeOverridesEqual(undefined, {})).toBe(true)
+    expect(typeOverridesEqual(LADDER, {})).toBe(false)
+    const other = structuredClone(LADDER)
+    other.System!.patch!.subject = 'BlackWhite'
+    expect(typeOverridesEqual(LADDER, other)).toBe(false)
+  })
+})
+
+describe('kindBucket (ADR-0017 taxonomy)', () => {
+  test('bare executables are PROGRAMS, never documents', () => {
+    expect(kindBucket('ExecutableFile')).toBe('App')
+    expect(kindBucket('RegularFile')).toBe('File')
+  })
+
+  test('mechanism semantics: every shortcut kind buckets to App', () => {
+    expect(kindBucket('Shortcut')).toBe('App')
+    expect(kindBucket('UrlShortcut')).toBe('App')
+    expect(kindBucket('AppxShortcut')).toBe('App')
+  })
+})

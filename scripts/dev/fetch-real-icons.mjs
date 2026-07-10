@@ -2,7 +2,7 @@
 //
 // Harvests genuine icon assets from two open-source Win11 simulator repos
 // (blueedgetechno/win11React, piyushsuthar/windows-11-web) into
-// src/DeskMakeover.Web/public/mock-icons-real/ + manifest.json.
+// apps/desktop/frontend/public/mock-icons-real/ + manifest.json.
 //
 // ⚠ LICENSE GATE: the harvested images include extracted Microsoft system
 // icons and third-party brand icons. They are LOCAL DEV FIXTURES ONLY —
@@ -20,7 +20,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const OUT = join(ROOT, 'src', 'DeskMakeover.Web', 'public', 'mock-icons-real')
+const OUT = join(ROOT, 'apps', 'desktop', 'frontend', 'public', 'mock-icons-real')
 const CACHE = process.argv[2] ?? join(ROOT, '.cache', 'win11sim')
 
 const REPOS = [

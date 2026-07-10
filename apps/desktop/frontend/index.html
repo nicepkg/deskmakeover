@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>桌面美颜</title>
+    <!-- Pre-hydration theme (spec 02 v3: follow the system, light-first). Runs
+         before first paint so neither theme ever flashes; boot() takes over with
+         the persisted preference right after. -->
+    <script>
+      document.documentElement.className =
+        window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    </script>
+    <!-- Bundled brand fonts (ADR-0013 D2): preload so document.fonts.ready resolves
+         before the first render (main.tsx gates on it — zero FOUT in the host). -->
+    <link rel="preload" href="/fonts/Inter-var-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/HarmonyOS_Sans_SC_Regular.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/fonts/HarmonyOS_Sans_SC_Medium.ttf" as="font" type="font/ttf" crossorigin />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

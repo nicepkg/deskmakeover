@@ -1,0 +1,722 @@
+[
+  {
+    "file": "icon-000.png",
+    "id": "mock-000",
+    "kind": "lnk",
+    "label": "HollowIDE"
+  },
+  {
+    "file": "icon-001.png",
+    "id": "mock-001",
+    "kind": "exe",
+    "label": "VoltMail"
+  },
+  {
+    "file": "icon-002.png",
+    "id": "mock-002",
+    "kind": "url",
+    "label": "内网门户"
+  },
+  {
+    "file": "icon-003.png",
+    "id": "mock-003",
+    "kind": "uwp",
+    "label": "家庭账本"
+  },
+  {
+    "file": "icon-004.png",
+    "id": "mock-004",
+    "kind": "bin",
+    "label": "回收站"
+  },
+  {
+    "file": "icon-005.png",
+    "id": "mock-005",
+    "kind": "lnk",
+    "label": "暗河终端"
+  },
+  {
+    "file": "icon-006.png",
+    "id": "mock-006",
+    "kind": "lnk",
+    "label": "蜂巢云盘_副本"
+  },
+  {
+    "file": "icon-007.png",
+    "id": "mock-007",
+    "kind": "lnk",
+    "label": "流沙同步"
+  },
+  {
+    "file": "icon-008.png",
+    "id": "mock-008",
+    "kind": "url",
+    "label": "内网门户"
+  },
+  {
+    "file": "icon-009.png",
+    "id": "mock-009",
+    "kind": "url",
+    "label": "工单平台"
+  },
+  {
+    "file": "icon-010.png",
+    "id": "mock-010",
+    "kind": "url",
+    "label": "知识库"
+  },
+  {
+    "file": "icon-011.png",
+    "id": "mock-011",
+    "kind": "exe",
+    "label": "PixelForge_v2"
+  },
+  {
+    "file": "icon-012.png",
+    "id": "mock-012",
+    "kind": "lnk",
+    "label": "本地相册 - 快捷方式"
+  },
+  {
+    "file": "icon-013.png",
+    "id": "mock-013",
+    "kind": "lnk",
+    "label": "云图相册"
+  },
+  {
+    "file": "icon-014.png",
+    "id": "mock-014",
+    "kind": "uwp",
+    "label": "暗河终端"
+  },
+  {
+    "file": "icon-015.png",
+    "id": "mock-015",
+    "kind": "exe",
+    "label": "DriftSync"
+  },
+  {
+    "file": "icon-016.png",
+    "id": "mock-016",
+    "kind": "lnk",
+    "label": "季度报表_v2"
+  },
+  {
+    "file": "icon-017.png",
+    "id": "mock-017",
+    "kind": "exe",
+    "label": "读书清单"
+  },
+  {
+    "file": "icon-018.png",
+    "id": "mock-018",
+    "kind": "lnk",
+    "label": "项目计划"
+  },
+  {
+    "file": "icon-019.png",
+    "id": "mock-019",
+    "kind": "lnk",
+    "label": "会议纪要"
+  },
+  {
+    "file": "icon-020.png",
+    "id": "mock-020",
+    "kind": "url",
+    "label": "打卡系统"
+  },
+  {
+    "file": "icon-021.png",
+    "id": "mock-021",
+    "kind": "exe",
+    "label": "OrbitPay"
+  },
+  {
+    "file": "icon-022.png",
+    "id": "mock-022",
+    "kind": "lnk",
+    "label": "朝霞画板"
+  },
+  {
+    "file": "icon-023.png",
+    "id": "mock-023",
+    "kind": "lnk",
+    "label": "本地相册"
+  },
+  {
+    "file": "icon-024.png",
+    "id": "mock-024",
+    "kind": "exe",
+    "label": "朝霞画板"
+  },
+  {
+    "file": "icon-025.png",
+    "id": "mock-025",
+    "kind": "uwp",
+    "label": "临时文件 (1)"
+  },
+  {
+    "file": "icon-026.png",
+    "id": "mock-026",
+    "kind": "lnk",
+    "label": "某某启动器"
+  },
+  {
+    "file": "icon-027.png",
+    "id": "mock-027",
+    "kind": "lnk",
+    "label": "折光剪辑"
+  },
+  {
+    "file": "icon-028.png",
+    "id": "mock-028",
+    "kind": "exe",
+    "label": "装机必备_副本"
+  },
+  {
+    "file": "icon-029.png",
+    "id": "mock-029",
+    "kind": "lnk",
+    "label": "项目计划"
+  },
+  {
+    "file": "icon-030.png",
+    "id": "mock-030",
+    "kind": "url",
+    "label": "知识库"
+  },
+  {
+    "file": "icon-031.png",
+    "id": "mock-031",
+    "kind": "exe",
+    "label": "PixelForge"
+  },
+  {
+    "file": "icon-032.png",
+    "id": "mock-032",
+    "kind": "exe",
+    "label": "朝霞画板"
+  },
+  {
+    "file": "icon-033.png",
+    "id": "mock-033",
+    "kind": "exe",
+    "label": "待办清单"
+  },
+  {
+    "file": "icon-034.png",
+    "id": "mock-034",
+    "kind": "exe",
+    "label": "NovaEdit"
+  },
+  {
+    "file": "icon-035.png",
+    "id": "mock-035",
+    "kind": "lnk",
+    "label": "会议纪要"
+  },
+  {
+    "file": "icon-036.png",
+    "id": "mock-036",
+    "kind": "uwp",
+    "label": "家庭账本"
+  },
+  {
+    "file": "icon-037.png",
+    "id": "mock-037",
+    "kind": "uwp",
+    "label": "朝霞画板"
+  },
+  {
+    "file": "icon-038.png",
+    "id": "mock-038",
+    "kind": "uwp",
+    "label": "MeteorPlay"
+  },
+  {
+    "file": "icon-039.png",
+    "id": "mock-039",
+    "kind": "exe",
+    "label": "DriftSync"
+  },
+  {
+    "file": "icon-040.png",
+    "id": "mock-040",
+    "kind": "lnk",
+    "label": "拾光日记"
+  },
+  {
+    "file": "icon-041.png",
+    "id": "mock-041",
+    "kind": "exe",
+    "label": "PixelForge_副本"
+  },
+  {
+    "file": "icon-042.png",
+    "id": "mock-042",
+    "kind": "url",
+    "label": "打卡系统"
+  },
+  {
+    "file": "icon-043.png",
+    "id": "mock-043",
+    "kind": "lnk",
+    "label": "FluxBoard"
+  },
+  {
+    "file": "icon-044.png",
+    "id": "mock-044",
+    "kind": "lnk",
+    "label": "HollowIDE"
+  },
+  {
+    "file": "icon-045.png",
+    "id": "mock-045",
+    "kind": "exe",
+    "label": "读书清单"
+  },
+  {
+    "file": "icon-046.png",
+    "id": "mock-046",
+    "kind": "exe",
+    "label": "临时文件"
+  },
+  {
+    "file": "icon-047.png",
+    "id": "mock-047",
+    "kind": "lnk",
+    "label": "EmberCast_v2"
+  },
+  {
+    "file": "icon-048.png",
+    "id": "mock-048",
+    "kind": "url",
+    "label": "监控大盘"
+  },
+  {
+    "file": "icon-049.png",
+    "id": "mock-049",
+    "kind": "uwp",
+    "label": "会议纪要_副本"
+  },
+  {
+    "file": "icon-050.png",
+    "id": "mock-050",
+    "kind": "url",
+    "label": "DevPortal"
+  },
+  {
+    "file": "icon-051.png",
+    "id": "mock-051",
+    "kind": "lnk",
+    "label": "家庭账本"
+  },
+  {
+    "file": "icon-052.png",
+    "id": "mock-052",
+    "kind": "url",
+    "label": "监控大盘"
+  },
+  {
+    "file": "icon-053.png",
+    "id": "mock-053",
+    "kind": "lnk",
+    "label": "NovaEdit"
+  },
+  {
+    "file": "icon-054.png",
+    "id": "mock-054",
+    "kind": "lnk",
+    "label": "TidalDraw_副本"
+  },
+  {
+    "file": "icon-055.png",
+    "id": "mock-055",
+    "kind": "url",
+    "label": "DevPortal"
+  },
+  {
+    "file": "icon-056.png",
+    "id": "mock-056",
+    "kind": "exe",
+    "label": "AuroraDB"
+  },
+  {
+    "file": "icon-057.png",
+    "id": "mock-057",
+    "kind": "uwp",
+    "label": "QuellNote"
+  },
+  {
+    "file": "icon-058.png",
+    "id": "mock-058",
+    "kind": "url",
+    "label": "DevPortal"
+  },
+  {
+    "file": "icon-059.png",
+    "id": "mock-059",
+    "kind": "uwp",
+    "label": "MeteorPlay"
+  },
+  {
+    "file": "icon-060.png",
+    "id": "mock-060",
+    "kind": "exe",
+    "label": "临时文件"
+  },
+  {
+    "file": "icon-061.png",
+    "id": "mock-061",
+    "kind": "url",
+    "label": "打卡系统"
+  },
+  {
+    "file": "icon-062.png",
+    "id": "mock-062",
+    "kind": "lnk",
+    "label": "读书清单"
+  },
+  {
+    "file": "icon-063.png",
+    "id": "mock-063",
+    "kind": "url",
+    "label": "打卡系统"
+  },
+  {
+    "file": "icon-064.png",
+    "id": "mock-064",
+    "kind": "exe",
+    "label": "OrbitPay"
+  },
+  {
+    "file": "icon-065.png",
+    "id": "mock-065",
+    "kind": "exe",
+    "label": "拾光日记 (1)"
+  },
+  {
+    "file": "icon-066.png",
+    "id": "mock-066",
+    "kind": "exe",
+    "label": "MeteorPlay"
+  },
+  {
+    "file": "icon-067.png",
+    "id": "mock-067",
+    "kind": "lnk",
+    "label": "工作文档_v2"
+  },
+  {
+    "file": "icon-068.png",
+    "id": "mock-068",
+    "kind": "lnk",
+    "label": "家庭账本"
+  },
+  {
+    "file": "icon-069.png",
+    "id": "mock-069",
+    "kind": "exe",
+    "label": "工作文档"
+  },
+  {
+    "file": "icon-070.png",
+    "id": "mock-070",
+    "kind": "url",
+    "label": "StatusPage"
+  },
+  {
+    "file": "icon-071.png",
+    "id": "mock-071",
+    "kind": "lnk",
+    "label": "暗河终端_副本"
+  },
+  {
+    "file": "icon-072.png",
+    "id": "mock-072",
+    "kind": "uwp",
+    "label": "FluxBoard"
+  },
+  {
+    "file": "icon-073.png",
+    "id": "mock-073",
+    "kind": "lnk",
+    "label": "报销单_v2"
+  },
+  {
+    "file": "icon-074.png",
+    "id": "mock-074",
+    "kind": "lnk",
+    "label": "项目计划 (1)"
+  },
+  {
+    "file": "icon-075.png",
+    "id": "mock-075",
+    "kind": "lnk",
+    "label": "MeteorPlay"
+  },
+  {
+    "file": "icon-076.png",
+    "id": "mock-076",
+    "kind": "lnk",
+    "label": "季度报表 (1)"
+  },
+  {
+    "file": "icon-077.png",
+    "id": "mock-077",
+    "kind": "exe",
+    "label": "潮汐音乐_副本"
+  },
+  {
+    "file": "icon-078.png",
+    "id": "mock-078",
+    "kind": "uwp",
+    "label": "季度报表"
+  },
+  {
+    "file": "icon-079.png",
+    "id": "mock-079",
+    "kind": "exe",
+    "label": "NovaEdit"
+  },
+  {
+    "file": "icon-080.png",
+    "id": "mock-080",
+    "kind": "lnk",
+    "label": "CinderTerm_副本"
+  },
+  {
+    "file": "icon-081.png",
+    "id": "mock-081",
+    "kind": "url",
+    "label": "工单平台"
+  },
+  {
+    "file": "icon-082.png",
+    "id": "mock-082",
+    "kind": "lnk",
+    "label": "ZephyrVPN - 快捷方式"
+  },
+  {
+    "file": "icon-083.png",
+    "id": "mock-083",
+    "kind": "lnk",
+    "label": "蜂巢云盘"
+  },
+  {
+    "file": "icon-084.png",
+    "id": "mock-084",
+    "kind": "url",
+    "label": "打卡系统"
+  },
+  {
+    "file": "icon-085.png",
+    "id": "mock-085",
+    "kind": "lnk",
+    "label": "读书清单 - 快捷方式"
+  },
+  {
+    "file": "icon-086.png",
+    "id": "mock-086",
+    "kind": "lnk",
+    "label": "AuroraDB"
+  },
+  {
+    "file": "icon-087.png",
+    "id": "mock-087",
+    "kind": "lnk",
+    "label": "VoltMail"
+  },
+  {
+    "file": "icon-088.png",
+    "id": "mock-088",
+    "kind": "lnk",
+    "label": "某某启动器"
+  },
+  {
+    "file": "icon-089.png",
+    "id": "mock-089",
+    "kind": "url",
+    "label": "工单平台"
+  },
+  {
+    "file": "icon-090.png",
+    "id": "mock-090",
+    "kind": "url",
+    "label": "监控大盘"
+  },
+  {
+    "file": "icon-091.png",
+    "id": "mock-091",
+    "kind": "url",
+    "label": "监控大盘"
+  },
+  {
+    "file": "icon-092.png",
+    "id": "mock-092",
+    "kind": "lnk",
+    "label": "待办清单"
+  },
+  {
+    "file": "icon-093.png",
+    "id": "mock-093",
+    "kind": "lnk",
+    "label": "折光剪辑_v2"
+  },
+  {
+    "file": "icon-094.png",
+    "id": "mock-094",
+    "kind": "lnk",
+    "label": "ZephyrVPN (1)"
+  },
+  {
+    "file": "icon-095.png",
+    "id": "mock-095",
+    "kind": "exe",
+    "label": "折光剪辑"
+  },
+  {
+    "file": "icon-096.png",
+    "id": "mock-096",
+    "kind": "uwp",
+    "label": "临时文件 (1)"
+  },
+  {
+    "file": "icon-097.png",
+    "id": "mock-097",
+    "kind": "uwp",
+    "label": "拾光日记 (1)"
+  },
+  {
+    "file": "icon-098.png",
+    "id": "mock-098",
+    "kind": "uwp",
+    "label": "HollowIDE"
+  },
+  {
+    "file": "icon-099.png",
+    "id": "mock-099",
+    "kind": "lnk",
+    "label": "微光邮箱"
+  },
+  {
+    "file": "icon-100.png",
+    "id": "mock-100",
+    "kind": "lnk",
+    "label": "HollowIDE"
+  },
+  {
+    "file": "icon-101.png",
+    "id": "mock-101",
+    "kind": "exe",
+    "label": "EmberCast"
+  },
+  {
+    "file": "icon-102.png",
+    "id": "mock-102",
+    "kind": "lnk",
+    "label": "TidalDraw"
+  },
+  {
+    "file": "icon-103.png",
+    "id": "mock-103",
+    "kind": "exe",
+    "label": "待办清单"
+  },
+  {
+    "file": "icon-104.png",
+    "id": "mock-104",
+    "kind": "folder",
+    "label": "素材库"
+  },
+  {
+    "file": "icon-105.png",
+    "id": "mock-105",
+    "kind": "folder",
+    "label": "家庭照片"
+  },
+  {
+    "file": "icon-106.png",
+    "id": "mock-106",
+    "kind": "folder",
+    "label": "工作"
+  },
+  {
+    "file": "icon-107.png",
+    "id": "mock-107",
+    "kind": "folder",
+    "label": "截图"
+  },
+  {
+    "file": "icon-108.png",
+    "id": "mock-108",
+    "kind": "folder",
+    "label": "node_modules"
+  },
+  {
+    "file": "icon-109.png",
+    "id": "mock-109",
+    "kind": "folder",
+    "label": "2024备份"
+  },
+  {
+    "file": "icon-110.png",
+    "id": "mock-110",
+    "kind": "folder",
+    "label": "Documents"
+  },
+  {
+    "file": "icon-111.png",
+    "id": "mock-111",
+    "kind": "folder",
+    "label": "Projects"
+  },
+  {
+    "file": "icon-112.png",
+    "id": "mock-112",
+    "kind": "folder",
+    "label": "家庭照片"
+  },
+  {
+    "file": "icon-113.png",
+    "id": "mock-113",
+    "kind": "folder",
+    "label": "家庭照片"
+  },
+  {
+    "file": "icon-114.png",
+    "id": "mock-114",
+    "kind": "file",
+    "label": "预算表_2024.xlsx"
+  },
+  {
+    "file": "icon-115.png",
+    "id": "mock-115",
+    "kind": "file",
+    "label": "合同_最终版.xlsx"
+  },
+  {
+    "file": "icon-116.png",
+    "id": "mock-116",
+    "kind": "file",
+    "label": "说明书.xlsx"
+  },
+  {
+    "file": "icon-117.png",
+    "id": "mock-117",
+    "kind": "file",
+    "label": "预算表_2024.pdf"
+  },
+  {
+    "file": "icon-118.png",
+    "id": "mock-118",
+    "kind": "file",
+    "label": "说明书.xlsx"
+  },
+  {
+    "file": "icon-119.png",
+    "id": "mock-119",
+    "kind": "file",
+    "label": "说明书.docx"
+  }
+]

@@ -1,0 +1,216 @@
+import { describe, expect, test } from 'bun:test'
+import { hexToOklch, oklchToHex, rgbToOklch } from '../src/compositor/oklch'
+import { buildSampleBuffer, resolveTone, sampleRegion, TONE_THRESHOLD } from '../src/compositor/sampling'
+import { ACCENT_PALETTE, resolveAccent, zonePaint } from '../src/compositor/material'
+import { titleFontPx, titleLayout } from '../src/compositor/title-chip'
+import { makeZone } from '../src/stores/wallpaper'
+
+// Pure-layer tests for the Adaptive Frost compositor (spec 04 §7 computed
+// acceptance): tone auto-selection, accent distinctness, outline→chip forcing,
+// chip ink contrast, overhang lane fallback.
+
+function flat(rgb: [number, number, number], w = 8, h = 8): Uint8ClampedArray {
+  const data = new Uint8ClampedArray(w * h * 4)
+  for (let i = 0; i < w * h; i++) {
+    data[i * 4] = rgb[0]
+    data[i * 4 + 1] = rgb[1]
+    data[i * 4 + 2] = rgb[2]
+    data[i * 4 + 3] = 255
+  }
+  return data
+}
+
+const CELL = 92
+
+describe('oklch conversions', () => {
+  test('roundtrips within 1/255 per channel', () => {
+    for (const hex of ['#FF6F5E', '#101217', '#F6F5F2', '#7FA678']) {
+      expect(oklchToHex(hexToOklch(hex))).toBe(hex)
+    }
+  })
+
+  test('white is L≈1, black is L≈0', () => {
+    expect(rgbToOklch(1, 1, 1).l).toBeCloseTo(1, 1)
+    expect(rgbToOklch(0, 0, 0).l).toBeCloseTo(0, 1)
+  })
+})
+
+describe('sampling + tone (spec 04 §4.1)', () => {
+  test('pale wallpaper region reads Light, dark reads Dark', () => {
+    const pale = buildSampleBuffer(flat([238, 233, 225]), 8, 8)
+    const dark = buildSampleBuffer(flat([28, 30, 38]), 8, 8)
+    expect(resolveTone('Auto', sampleRegion(pale, 0, 0, 1, 1), null)).toBe('Light')
+    expect(resolveTone('Auto', sampleRegion(dark, 0, 0, 1, 1), null)).toBe('Dark')
+  })
+
+  test('hysteresis: a borderline sample never strobes the previous tone', () => {
+    const border = { l: TONE_THRESHOLD + 0.01, c: 0.02, h: 60 }
+    expect(resolveTone('Auto', border, 'Dark')).toBe('Dark') // within the band → hold
+    expect(resolveTone('Auto', { ...border, l: TONE_THRESHOLD + 0.06 }, 'Dark')).toBe('Light')
+  })
+
+  test('explicit tone overrides sampling', () => {
+    const pale = sampleRegion(buildSampleBuffer(flat([240, 240, 240]), 8, 8), 0, 0, 1, 1)
+    expect(resolveTone('Dark', pale, null)).toBe('Dark')
+  })
+})
+
+describe('Adaptive Frost material (spec 04 §4.1)', () => {
+  const sample = { l: 0.7, c: 0.05, h: 70 }
+
+  test('accents auto-assign DISTINCT palette entries by zone order', () => {
+    const zones = [0, 1, 2, 3].map((i) => makeZone({ cellX: i, cellY: 0, cellsWide: 2, cellsTall: 2, title: 't' }))
+    const accents = zones.map((z, i) => resolveAccent(z, i))
+    expect(new Set(accents).size).toBe(4)
+  })
+
+  test('explicit accent wins over the palette', () => {
+    const z = makeZone({ cellX: 0, cellY: 0, cellsWide: 2, cellsTall: 2, title: 't', accent: '#C96F4A' })
+    expect(resolveAccent(z, 3)).toBe('#C96F4A')
+  })
+
+  test('Outline material: near-transparent fill + accent ring + forced chip + no blur', () => {
+    const z = makeZone({ cellX: 0, cellY: 0, cellsWide: 4, cellsTall: 4, title: 't', material: 'Outline' })
+    const p = zonePaint({ zone: z, index: 0, sample, tone: 'Light', cellHeight: CELL })
+    expect(p.fill.alpha).toBeLessThanOrEqual(0.05)
+    expect(p.outlineRing).not.toBeNull()
+    expect(p.chip.forced).toBe(true)
+    expect(p.blurSigma).toBe(0)
+  })
+
+  test('frost sigma follows the cell (σ = cell/6)', () => {
+    const z = makeZone({ cellX: 0, cellY: 0, cellsWide: 4, cellsTall: 4, title: 't' })
+    const p = zonePaint({ zone: z, index: 0, sample, tone: 'Light', cellHeight: CELL })
+    expect(p.blurSigma).toBeCloseTo(CELL / 6, 5)
+  })
+
+  test('blur-less tier trades blur for density (+0.12 alpha)', () => {
+    const z = makeZone({ cellX: 0, cellY: 0, cellsWide: 4, cellsTall: 4, title: 't' })
+    const base = zonePaint({ zone: z, index: 0, sample, tone: 'Light', cellHeight: CELL })
+    const flatTier = zonePaint({ zone: z, index: 0, sample, tone: 'Light', cellHeight: CELL, blurless: true })
+    expect(flatTier.blurSigma).toBe(0)
+    expect(flatTier.fill.alpha).toBeCloseTo(base.fill.alpha + 0.12, 5)
+  })
+
+  test('chip ink contrast ≥ 4.5:1 against the chip fill in BOTH tones (spec §7)', () => {
+    const z = makeZone({ cellX: 0, cellY: 0, cellsWide: 4, cellsTall: 4, title: 't' })
+    for (const tone of ['Light', 'Dark'] as const) {
+      const p = zonePaint({ zone: z, index: 0, sample, tone, cellHeight: CELL })
+      expect(wcagContrast(p.chip.ink.color, p.chip.fill.color)).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  test('corner radius clamps to 8..28', () => {
+    const z = makeZone({ cellX: 0, cellY: 0, cellsWide: 4, cellsTall: 4, title: 't', cornerRadius: 99 })
+    expect(zonePaint({ zone: z, index: 0, sample, tone: 'Light', cellHeight: CELL }).cornerRadius).toBe(28)
+  })
+})
+
+describe('title layout (spec 04 §4.2, four styles)', () => {
+  const rect = { left: 200, top: 300, width: 500, height: 400 }
+  const base = { zoneRect: rect, cellHeight: CELL, titleSize: 'M' as const, cornerRadius: 20, textWidth: 80 }
+
+  test('font size is clamp(cell×factor, 15, 22)', () => {
+    expect(titleFontPx('M', CELL)).toBe(Math.round(Math.min(22, Math.max(15, CELL * 0.2))))
+    expect(titleFontPx('S', 60)).toBe(15) // floor
+    expect(titleFontPx('L', 400)).toBe(22) // ceiling
+  })
+
+  test('Chip: overhang lane straddles the panel edge; no row reservation', () => {
+    const l = titleLayout({ ...base, style: 'Chip', clearanceAbove: CELL })
+    expect(l.overhang).toBe(true)
+    expect(l.reserveFirstRow).toBe(false)
+    expect(l.y).toBeLessThan(rect.top)
+    expect(l.y + l.height).toBeGreaterThan(rect.top)
+  })
+
+  test('Chip: in-panel fallback reserves row 1', () => {
+    const l = titleLayout({ ...base, style: 'Chip', clearanceAbove: 4 })
+    expect(l.overhang).toBe(false)
+    expect(l.reserveFirstRow).toBe(true)
+    expect(l.y).toBeGreaterThan(rect.top)
+  })
+
+  test('Chip width caps inside the zone', () => {
+    const l = titleLayout({ ...base, style: 'Chip', textWidth: 9999, clearanceAbove: CELL })
+    expect(l.width).toBeLessThanOrEqual(rect.width - 16)
+  })
+
+  test('Tab: rides the top edge with clearance; reserves row 1 when flush', () => {
+    const up = titleLayout({ ...base, style: 'Tab', clearanceAbove: CELL })
+    expect(up.overhang).toBe(true)
+    expect(up.y + up.height).toBeCloseTo(rect.top, 5) // tab bottom ON the edge
+    expect(up.reserveFirstRow).toBe(false)
+    const flush = titleLayout({ ...base, style: 'Tab', clearanceAbove: 2 })
+    expect(flush.overhang).toBe(false)
+    expect(flush.reserveFirstRow).toBe(true)
+    expect(flush.y).toBe(rect.top)
+  })
+
+  test('Bar: full width, in panel, ALWAYS reserves row 1', () => {
+    const l = titleLayout({ ...base, style: 'Bar', clearanceAbove: CELL })
+    expect(l.width).toBe(rect.width)
+    expect(l.overhang).toBe(false)
+    expect(l.reserveFirstRow).toBe(true)
+    expect(l.x).toBe(rect.left)
+  })
+})
+
+describe('material set (designer 2026-07-09)', () => {
+  const sample = { l: 0.7, c: 0.05, h: 70 }
+  const mk = (material) => makeZone({ cellX: 0, cellY: 0, cellsWide: 4, cellsTall: 4, title: 't', material })
+
+  test('Luminous: gradient + inner glow + frost', () => {
+    const p = zonePaint({ zone: mk('Luminous'), index: 0, sample, tone: 'Light', cellHeight: CELL })
+    expect(p.gradient).not.toBeNull()
+    expect(p.innerGlow).not.toBeNull()
+    expect(p.blurSigma).toBeGreaterThan(0)
+  })
+
+  test('Solid: opaque-ish, no frost, crisper highlight', () => {
+    const p = zonePaint({ zone: mk('Solid'), index: 0, sample, tone: 'Light', cellHeight: CELL })
+    expect(p.fill.alpha).toBeGreaterThanOrEqual(0.9)
+    expect(p.blurSigma).toBe(0)
+    expect(p.gradient).toBeNull()
+  })
+
+  test('Halo: feathered, no contour/highlight, accent-leaning hue', () => {
+    const p = zonePaint({ zone: mk('Halo'), index: 0, sample, tone: 'Light', cellHeight: CELL })
+    expect(p.featherSigma).toBeCloseTo(CELL * 0.45, 5)
+    expect(p.contour.alpha).toBe(0)
+    expect(p.highlight.alpha).toBe(0)
+  })
+
+  test('投影 finish only on real bodies (never Halo/Outline)', () => {
+    const on = zonePaint({ zone: { ...mk('Solid'), shadow: true }, index: 0, sample, tone: 'Light', cellHeight: CELL })
+    expect(on.shadow).not.toBeNull()
+    const halo = zonePaint({ zone: { ...mk('Halo'), shadow: true }, index: 0, sample, tone: 'Light', cellHeight: CELL })
+    expect(halo.shadow).toBeNull()
+    const outline = zonePaint({ zone: { ...mk('Outline'), shadow: true }, index: 0, sample, tone: 'Light', cellHeight: CELL })
+    expect(outline.shadow).toBeNull()
+  })
+})
+
+describe('accent palette hygiene', () => {
+  test('no accent lands in the banned blue/violet band', () => {
+    for (const hex of ACCENT_PALETTE) {
+      const { h, c } = hexToOklch(hex)
+      // OKLCH blue/violet territory ≈ hue 230..330 at visible chroma.
+      expect(c < 0.04 || h < 230 || h > 330).toBe(true)
+    }
+  })
+})
+
+/** WCAG 2.x relative-luminance contrast between two hexes. */
+function wcagContrast(a: string, b: string): number {
+  const lum = (hex: string) => {
+    const n = hex.replace('#', '')
+    const ch = (i: number) => {
+      const v = parseInt(n.slice(i, i + 2), 16) / 255
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+    }
+    return 0.2126 * ch(0) + 0.7152 * ch(2) + 0.0722 * ch(4)
+  }
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}

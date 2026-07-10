@@ -42,7 +42,7 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 ## Bridge state (the P0 reality)
 
-- Web bridge = **schema 4** (`src/DeskMakeover.Web/src/bridge/types.ts`,
+- Web bridge = **schema 4** (`apps/desktop/frontend/src/bridge/types.ts`,
   `BRIDGE_SCHEMA_VERSION = 4`, two-axis subject×plate); C# host = **schema 1**
   (`Contracts.cs`) and will NEVER be wired — the host is replaced by the Tauri/Rust
   stack (ADR-0019). Only the browser/mock loop runs today.
@@ -72,7 +72,7 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 **356 bun tests + `tsc -b` green**; browser visual-acceptance evidence
 `docs/plans/evidence/2026-07-icons-v2/` (01-75). The contract truth is
-`src/DeskMakeover.Web/src/bridge/types.ts` (bridge **schema 4**). Mock desktop = a full
+`apps/desktop/frontend/src/bridge/types.ts` (bridge **schema 4**). Mock desktop = a full
 ~120-icon fake desktop (`bridge/mock-desktop.ts` + `public/mock-icons/`, PNG pack from
 `scripts/dev/generate-mock-icons.mjs`).
 

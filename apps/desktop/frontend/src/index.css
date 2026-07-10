@@ -1,0 +1,387 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * DeskMakeover visual language v3 — "Premium Flat" (spec 02 v3, ADR-0013).
+ * Light-first: the light theme is the design first-citizen — a cool/true-white
+ * OKLCH neutral ramp (never warm taupe); dark derives from the same ramp logic.
+ * Flat with intent: base surfaces separate by luminance step + hairline; the one
+ * soft shadow tier belongs to floating surfaces only. Coral #FF6F5E is the only
+ * accent (blue/violet permanently banned); --coral-ink is its deeper register for
+ * large solids and accent-as-text on light. Type is the bundled Inter (Latin) +
+ * HarmonyOS Sans SC (CJK) pair — the mirror's OS-faithful surfaces are the one
+ * exception and keep the system stack (--font-os-mirror).
+ */
+
+/* ---- Bundled brand fonts (ADR-0013 D2) --------------------------------------
+   HarmonyOS Sans ships as UNMODIFIED TTFs — its license permits embed/bundle/
+   redistribute of unmodified copies only (no subsetting). Inter is OFL with no
+   reserved-font-name declaration, so a Latin subset keeps the name. block +
+   the main.tsx fonts.ready gate = zero FOUT (files come off local disk). */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-var-latin.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+  ascent-override: 90%;
+  descent-override: 22.5%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'HarmonyOS Sans SC';
+  src: url('/fonts/HarmonyOS_Sans_SC_Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'HarmonyOS Sans SC';
+  src: url('/fonts/HarmonyOS_Sans_SC_Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+
+@theme inline {
+    /* App chrome wears the bundled pair; rare glyphs/emoji fall through to the
+       system CJK stack (fallback chain, not full-coverage delusion). */
+    --font-sans: 'Inter', 'HarmonyOS Sans SC', 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', system-ui, sans-serif;
+    --font-heading: var(--font-sans);
+    /* OS-faithful surfaces ONLY: mirror tile labels + the decorative taskbar. */
+    --font-os-mirror: 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', system-ui, sans-serif;
+
+    /* Type ladder v3 — six steps, weights {400,500} only (spec 02 v3). */
+    --text-caption: 12px;
+    --text-caption--line-height: 1.4;
+    --text-body: 13px;
+    --text-body--line-height: 1.5;
+    --text-cardtitle: 15px;
+    --text-cardtitle--line-height: 1.4;
+    --text-section: 19px;
+    --text-section--line-height: 1.35;
+    --text-section--letter-spacing: -0.01em;
+    --text-display: 26px;
+    --text-display--line-height: 1.25;
+    --text-display--letter-spacing: -0.01em;
+
+    /* shadcn semantic contract */
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+
+    /* Radius scale (spec 02 v3): card 16 · control 10-12 · chip 9 */
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.6);
+
+    /* product tokens (spec 02 v3) */
+    --color-raised: var(--raised);
+    --color-raised-hov: var(--raised-hov);
+    --color-chip: var(--chip);
+    --color-t1: var(--t1);
+    --color-t2: var(--t2);
+    --color-t3: var(--t3);
+    --color-hair: var(--hair);
+    --color-hair-strong: var(--hair-strong);
+    --color-coral: var(--coral);
+    --color-coral-ink: var(--coral-ink);
+    --color-cta-ink: #FFF7F3;
+    --color-teal: #3FB6A8;
+    --color-teal-wash: rgba(63, 182, 168, 0.14);
+    /* opaque equivalent of the wash — for solid controls (owner law: buttons never translucent) */
+    --color-teal-solid: color-mix(in srgb, #3FB6A8 14%, var(--raised));
+    --color-amber: #E5A84B;
+    --color-amber-wash: rgba(229, 168, 75, 0.16);
+    --color-wash-chip: var(--wash-chip);
+    --color-wash-preset: var(--wash-preset);
+    --color-wash-rail: var(--wash-rail);
+
+    /* canvas stage + app-chrome glass */
+    --color-canvas-stage: var(--canvas-stage);
+    --color-glass: var(--glass);
+    --color-glass-ink: var(--glass-ink);
+    --color-glass-ring: var(--glass-ring);
+
+    /* elevation — flat with intent: base cards get NO shadow (luminance + hair);
+       elev-1 is a whisper for interactive lift, elev-2 the floating tier,
+       elev-cta the coral CTA glow (identity). */
+    --shadow-elev-1: var(--elev-1);
+    --shadow-elev-2: var(--elev-2);
+    --shadow-elev-cta: var(--elev-cta);
+}
+
+/* Light (design first-citizen — cool/true-white OKLCH ramp, hue ≈255 chroma ≤0.005) */
+:root,
+.light {
+    --bg: oklch(0.976 0.002 255);           /* ≈ #F7F7F9 cool near-white */
+    --raised: #FFFFFF;
+    --raised-hov: oklch(0.958 0.003 255);   /* one visible step below raised */
+    --chip: oklch(0.945 0.004 255);         /* cool light gray, zero warmth */
+    --t1: oklch(0.22 0.01 260);             /* near-black, cool */
+    --t2: oklch(0.45 0.012 260);            /* cool mid gray — never brown */
+    --t3: oklch(0.55 0.01 260);             /* quiet but still ≥4.5:1 on white */
+    --hair: rgba(18, 22, 34, 0.08);
+    --hair-strong: rgba(18, 22, 34, 0.14); /* card outlines that cross tinted areas */
+    --coral: #FF6F5E;
+    /* deeper, de-oranged register: large solids on white + accent-as-text.
+       58% is the contrast sweet spot: ≈4.2:1 white-on-fill, ≈4.4:1 as text on
+       white — still unmistakably coral, never brick. */
+    --coral-ink: color-mix(in srgb, #FF6F5E 58%, #8C1F10);
+
+    --canvas-stage: oklch(0.93 0.004 255);  /* neutral matte, never #000 */
+    --glass: color-mix(in srgb, #FFFFFF 84%, transparent);
+    --glass-ink: var(--t1);
+    --glass-ring: rgba(18, 22, 34, 0.08);
+
+    --elev-1: 0 1px 2px rgba(18, 22, 34, 0.05);
+    --elev-2: 0 2px 8px rgba(18, 22, 34, 0.07), 0 12px 32px -12px rgba(18, 22, 34, 0.16);
+    --elev-cta: 0 6px 18px color-mix(in srgb, var(--coral-ink) 30%, transparent);
+
+    --background: var(--bg);
+    --foreground: var(--t1);
+    --card: var(--raised);
+    --card-foreground: var(--t1);
+    --popover: var(--raised);
+    --popover-foreground: var(--t1);
+    --primary: var(--coral-ink);
+    --primary-foreground: #FFF7F3;
+    --secondary: var(--chip);
+    --secondary-foreground: var(--t1);
+    --muted: var(--chip);
+    --muted-foreground: var(--t2);
+    --accent: var(--raised-hov);
+    --accent-foreground: var(--t1);
+    --destructive: #E5484D;
+    --border: var(--hair);
+    --input: var(--hair);
+    --ring: var(--coral);
+    --radius: 0.625rem;
+
+    /* selection is never wash-only (spec 02 v3): wash + ink text + hairline border
+       at the component layer; these recipes provide the wash component. */
+    --wash-chip: color-mix(in srgb, var(--coral) 10%, var(--chip));
+    --wash-preset: color-mix(in srgb, var(--coral) 8%, var(--raised));
+    --wash-rail: color-mix(in srgb, var(--coral) 11%, var(--bg));
+}
+
+/* Dark — derived from the same ramp logic (deterministic lightness inversion,
+   then contrast re-verified). Coral unchanged; borders carry more definition. */
+.dark {
+    --bg: oklch(0.215 0.005 260);           /* ≈ #191A1D */
+    --raised: oklch(0.265 0.006 260);       /* a REAL luminance lift over bg */
+    --raised-hov: oklch(0.30 0.007 260);
+    --chip: oklch(0.245 0.005 260);
+    --t1: oklch(0.955 0.003 255);
+    --t2: oklch(0.72 0.008 260);
+    --t3: oklch(0.58 0.008 260);
+    --hair: rgba(255, 255, 255, 0.07);
+    --hair-strong: rgba(255, 255, 255, 0.13);
+    --coral: #FF6F5E;
+    --coral-ink: #FF6F5E;                    /* bright coral already reads ink on dark */
+
+    --canvas-stage: oklch(0.17 0.005 260);
+    --glass: color-mix(in srgb, var(--raised) 80%, transparent);
+    --glass-ink: var(--t1);
+    --glass-ring: rgba(255, 255, 255, 0.10);
+
+    --elev-1: 0 1px 2px rgba(0, 0, 0, 0.25);
+    --elev-2: 0 2px 8px rgba(0, 0, 0, 0.35), 0 16px 40px -12px rgba(0, 0, 0, 0.55);
+    --elev-cta: 0 6px 18px rgba(255, 111, 94, 0.30);
+
+    --background: var(--bg);
+    --foreground: var(--t1);
+    --card: var(--raised);
+    --card-foreground: var(--t1);
+    --popover: var(--raised);
+    --popover-foreground: var(--t1);
+    --primary: var(--coral);
+    --primary-foreground: #FFF7F3;
+    --secondary: var(--chip);
+    --secondary-foreground: var(--t1);
+    --muted: var(--chip);
+    --muted-foreground: var(--t2);
+    --accent: var(--raised-hov);
+    --accent-foreground: var(--t1);
+    --destructive: #E5484D;
+    --border: var(--hair);
+    --input: var(--hair);
+    --ring: var(--coral);
+    --radius: 0.625rem;
+
+    --wash-chip: color-mix(in srgb, var(--coral) 15%, var(--chip));
+    --wash-preset: color-mix(in srgb, var(--coral) 12%, var(--chip));
+    --wash-rail: color-mix(in srgb, var(--coral) 14%, var(--bg));
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    min-width: 0;
+  }
+
+  html {
+    @apply font-sans;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    overflow: hidden; /* app shell — surfaces scroll, the page never does */
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+    font-variant-numeric: tabular-nums;
+    /* WebView2 hardening: swipe-nav can leak through IsSwipeNavigationEnabled=false
+       (WebView2Feedback #4502) — kill rubber-band/overscroll at the CSS layer too. */
+    overscroll-behavior: none;
+  }
+
+  /* CJK: never tracked, never mid-word broken (titles set keep-all per-component).
+     Latin display/section tracking lives in the type ladder tokens. */
+  :lang(zh) {
+    letter-spacing: 0;
+  }
+
+  input,
+  textarea,
+  [contenteditable='true'] {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+  }
+
+  img {
+    -webkit-user-drag: none;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  /* macOS-style overlay scrollbars: the gutter is RESERVED (no layout jump when
+     content starts overflowing) and the thumb stays invisible until the surface
+     is hovered — present when needed, never part of the layout. */
+  /* Inspector-style narrow panes hide the scrollbar entirely (wheel/trackpad
+     still scroll); wide surfaces keep the quiet overlay thumb. */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 4px;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+  :hover::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--t3) 34%, transparent);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--t3) 60%, transparent);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/* Product slider — coral fill up to --dm-slider-fill, hairline remainder */
+.dm-slider {
+  appearance: none;
+  height: 16px;
+  background: transparent;
+}
+.dm-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--coral) var(--dm-slider-fill, 0%),
+    color-mix(in srgb, var(--t3) 30%, transparent) var(--dm-slider-fill, 0%)
+  );
+}
+.dm-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2.5px solid var(--coral);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s;
+}
+.dm-slider:not(:disabled)::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+}
+.dm-slider:focus-visible {
+  outline: none;
+}
+.dm-slider:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+
+/* Hue spectrum bar for the 调色盘 */
+.dm-hue {
+  appearance: none;
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(
+    to right,
+    #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%
+  );
+}
+.dm-hue::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 18px;
+  border-radius: 5px;
+  background: #fff;
+  border: 1.5px solid rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.dm-hue:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+
+/* Window drag regions (WebView2 non-client support, spec 05 §2) */
+.app-drag {
+  app-region: drag;
+  -webkit-app-region: drag;
+}
+.app-no-drag {
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}

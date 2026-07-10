@@ -26,7 +26,7 @@ The web UI runs on **any OS** with Bun; the C# engine/host needs **Windows**. Fu
 (three dev modes, the .NET-SDK gotcha, packaging): [docs/development.md](docs/development.md).
 
 ```bash
-# web UI (React SPA) — any OS, from src/DeskMakeover.Web — Bun only, never npm/node
+# web UI (React SPA) — any OS, from apps/desktop/frontend — Bun only, never npm/node
 bun install
 bun run dev        # browser + mock loop (the only working loop today; native host = F8)
 bun test           # 297 tests

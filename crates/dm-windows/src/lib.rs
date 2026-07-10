@@ -20,6 +20,8 @@ pub mod apply;
 #[cfg(windows)]
 pub mod com;
 #[cfg(windows)]
+mod overlay;
+#[cfg(windows)]
 mod refresh;
 #[cfg(windows)]
 pub mod shell;
@@ -30,6 +32,8 @@ mod state_reader;
 pub use apply::WindowsIconApplier;
 #[cfg(windows)]
 pub use com::StaExecutor;
+#[cfg(windows)]
+pub use overlay::WindowsOverlayControl;
 #[cfg(windows)]
 pub use refresh::WindowsExplorerRefresher;
 #[cfg(windows)]

@@ -1,0 +1,25 @@
+[package]
+name = "dm-elevated"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+# The single privileged binary (ADR-0019 Amendment 1): a `requireAdministrator` helper whose
+# ONLY verbs are the global shortcut-overlay apply/restore pair (ADR-0021). No arbitrary
+# commands. Blind-written on Mac; the requireAdministrator manifest is applied at packaging (M8)
+# via an external `.exe.manifest`, so this crate carries no resource-compiling build script and
+# stays msvc-check-clean on the host.
+[[bin]]
+name = "dm-elevated"
+path = "src/main.rs"
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+] }
+
+[dev-dependencies]

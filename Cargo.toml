@@ -9,6 +9,7 @@ members = [
     "crates/dm-icon-wasm",
     "crates/dm-operations",
     "crates/dm-windows",
+    "crates/dm-elevated",
     "crates/dm-resident",
     "crates/dm-test-support",
     "xtask",

@@ -936,6 +936,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dm-elevated"
+version = "0.0.0"
+dependencies = [
+ "windows",
+ "winreg",
+]
+
+[[package]]
 name = "dm-icon-codec"
 version = "0.0.0"
 

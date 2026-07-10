@@ -63,8 +63,10 @@ pub trait ExplorerRefresher {
 /// The privileged global shortcut-overlay verb pair (ADR-0021), invoked out-of-process via the
 /// elevated helper. The background process NEVER calls this (ADR-0020 §4).
 pub trait OverlayControl {
-    /// Applies the transparent/refined/custom overlay (one batched UAC).
-    fn apply(&self, style: OverlayStyle) -> PortResult<OverlayOutcome>;
+    /// Applies the overlay (one batched UAC). `ico_path` is the rendered overlay `.ico` (the
+    /// caller owns the icon core); the helper validates it and copies it into ProgramData before
+    /// the registry ever references it (LPE guard, ADR-0021 §4).
+    fn apply(&self, style: OverlayStyle, ico_path: &str) -> PortResult<OverlayOutcome>;
     /// Restores the exact original overlay registry state.
     fn restore(&self) -> PortResult<OverlayOutcome>;
 }

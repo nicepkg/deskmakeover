@@ -160,9 +160,27 @@ tighter than the SSIM gate above. Exactness intel: `x**2` ported as explicit `d*
 byte stores pre-rounded via js_math (the Uint8ClampedArray ties-to-even path never
 fires in practice — kept as defence). `slice.rs` absorbed into `compose/`.
 Remaining for M6: full render_tile wasm export + Config ABI serialization +
-wasm↔native CI. Follow-on M5.11 in flight: `dm-icon-codec` ICO writer + content
+wasm↔native CI. Follow-on M5.11: `dm-icon-codec` ICO writer + content
 hash from the C# IcoWriter oracle (serves the ledger's content-addressed AssetRef,
-ADR-0021 overlay ICOs, RecycleBin empty pair).
+ADR-0021 overlay ICOs, RecycleBin empty pair) — DONE, see below.
+
+**M5.11 + M5.12 DONE (2026-07-11, re-certified over the all-real corpus).**
+M5.11: `dm-icon-codec` ICO writer + content hash landed; dm-elevated overlay
+validation now delegates to `dm_icon_codec::parse` (TOCTOU closed). M5.12: the
+oracle corpus was recaptured over the committed real-icon pack
+(`public/real-icons/`, ADR-0015 D9 amendment — owner override 2026-07-11: the
+extracted Microsoft/brand pack lives IN the repo, is stripped from every build
+by the vite closeBundle hook, and the repo-goes-public gate carries an owner
+sign-off item). Corpus: 124 real sources — tier-A 124 + tier-B 1363 (29 sources
+× 47 cells, data-driven selection) + tier-C 7 sessions = **1487 cells, all
+byte-identical TS↔Rust (0/389,808,128 diff bytes), 8 lanes, 0 mismatches**;
+StageProfile 124/124 deep-equal, masks byte-equal; capture-twice deterministic;
+setHash `8a6c19ee69235d95`. The pack is 100% PNG (the one upstream .webp is
+normalized at harvest), so the always-on parity gate decodes pure PNG in-process
+and runs on any platform. bun-only sweep: `node:child_process` → `Bun.spawnSync`
+everywhere outside `legacy/`; `node:zlib` kept deliberately (Bun's native zlib —
+`Bun.inflateSync/deflateSync` are raw-deflate and cannot read/write PNG's
+RFC 1950 zlib streams; rationale documented at each import site).
 
 ## M6 — Dual-target cutover (single truth source, ~1-2d)
 Wire `dm-icon-wasm` into the existing Worker-pool adapter behind a dev comparison

@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-11 (replatform executing Mac-first: M2 + M3/M4 blind-write + M5 icon core DONE — M5 certified byte-exact vs the TS oracle; community-standard layout, .NET quarantined under legacy/)
+updated: 2026-07-11 (replatform executing Mac-first: M2 + M3/M4 blind-write + M5/M5.11/M5.12 DONE — icon core certified byte-exact over the all-real corpus (1487 cells, committed real-icon SSoT); community-standard layout, .NET quarantined under legacy/)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -105,16 +105,25 @@ plan's DONE blocks, this is the pointer):**
   bindings (`src/bridge/generated.ts`); rusqlite settings store; 359 bun tests.
 - **M3/M4 blind-write DONE:** dm-domain/dm-operations/dm-windows/dm-elevated —
   durable WAL transaction + incremental CAS ledger fully unit-tested on Mac
-  (55 tests incl. kill-point battery); COM adapters msvc-check clean in
-  isolation; runtime verification = [WINDOWS-VERIFY] checklist in
-  `docs/plans/2026-07-10-m34-windows-blind.md`, batched with M1 spikes.
-- **M5 DONE, CERTIFIED:** full TS pixel pipeline in `dm-icon-core` — one-command
-  cert `bun tests/icon-parity/m5/run.ts`: 1248/1248 corpus cells byte-identical
-  (0/327,155,712 diff bytes), masks 48/48, profiles 120/120, hue-spread 7/7.
-  TS compositor stays frozen until the M6 cutover deletes it.
-- **In flight:** M5.11 `dm-icon-codec` (ICO writer + content hash vs the C#
-  IcoWriter oracle). **Next:** M6 dual-target cutover (render_tile wasm export +
-  Config ABI + wasm↔native CI → flip preview to WASM → delete TS pixel modules).
+  (non-icon crates 59→125 tests after the coverage audit, incl. kill-point
+  battery); COM adapters msvc-check clean in isolation; runtime verification =
+  [WINDOWS-VERIFY] checklist in `docs/plans/2026-07-10-m34-windows-blind.md`,
+  batched with M1 spikes.
+- **M5 + M5.11 + M5.12 DONE, CERTIFIED over the all-real corpus:** full TS pixel
+  pipeline in `dm-icon-core` + `dm-icon-codec` ICO writer. Real-icon SSoT
+  `public/real-icons/` committed (ADR-0015 D9 amendment, owner override — never
+  ships: vite closeBundle strips it; taskbar/wallpaper fixtures repointed).
+  One-command cert `bun tests/icon-parity/m5/run.ts`: **1487/1487 corpus cells
+  byte-identical (0/389,808,128 diff bytes)** over 124 real sources, profiles
+  124/124, masks 48/48, hue-spread 7/7; setHash `8a6c19ee69235d95`; pack 100%
+  PNG, parity gate decodes in-process on any platform. bun-only sweep done
+  (`node:zlib` kept deliberately — Bun's native zlib; `Bun.*` variants are
+  raw-deflate and cannot read/write PNG streams).
+- **In flight:** icon-algorithm deep coverage on dm-icon-core/codec/wasm
+  (degenerate-input families, threshold pairs, property tests, malformed-ICO
+  rejection, wasm ABI smoke). **Next:** M6 dual-target cutover (render_tile wasm
+  export + Config ABI + wasm↔native CI → flip preview to WASM → delete TS pixel
+  modules).
   **Blocked on the owner's win11:** M1 spikes 1/2/5 (+3 needs him present),
   workspace-wide msvc check (rusqlite bundled C), all [WINDOWS-VERIFY] items.
 

@@ -40,6 +40,10 @@ export const zhHans: Record<keyof typeof en, string> = {
   "ArrowGate_Stare3": "行，你是真的爱它。", // PENDING-RESX
   "ArrowGate_Title": "你认真的？", // PENDING-RESX
   "ArrowGate_Wait": "{0} 秒后可确认", // PENDING-RESX
+  "ArrowRestore_Title": "恢复系统快捷方式箭头？", // PENDING-RESX (arrow-restore panel 2026-07-11)
+  "ArrowRestore_Body": "所有快捷方式会重新显示 Windows 自带的箭头，包括你在桌面美化过的图标。你的形状和配色不会改变。恢复时系统会弹出一次权限确认。", // PENDING-RESX
+  "ArrowRestore_Confirm": "恢复箭头", // PENDING-RESX
+  "ArrowRestore_Cancel": "取消", // PENDING-RESX
   "Axis_Color": "配色",
   "Axis_Dist": "快捷方式标识",
   "Axis_Filter": "滤镜",
@@ -100,6 +104,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Compare_Short": "对比",
   "ComingSoon": "即将推出", // PENDING-RESX (v3 filter roadmap slot)
   "ConsentAgree": "好，开始美化",
+  "ConsentArrow": "应用美化时，我们会隐藏 Windows 自带的快捷方式小箭头，改由 DeskMakeover 统一绘制，让图标更清爽。这项改动对整台电脑生效，也会影响桌面以外、以及本机其他账户的快捷方式；随时可以在设置里一键恢复。", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "ConsentCancel": "再想想",
   "ConsentNot": "不会发生：不删除、不移动、不修改你的任何文件",
   "ConsentTitle": "开始前，说清楚三件事",
@@ -115,6 +120,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Dist_Keep": "默认箭头", // PENDING-RESX: was 经典箭头 (owner: name the native artifact)
   "Dist_Mark": "美化标识",
   "Dist_None": "无标识",
+  "DoneArrow": "系统快捷方式箭头已隐藏，桌面更清爽了。想找回小箭头，到设置里可以一键恢复。", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "DoneHeadline": "✨ 好了，你的桌面焕然一新",
   "Done_GoOrganize": "去桌面整理",
   "Done_LastStep": "最后一步：把图标拖进分区，Windows 网格会自动对齐。",
@@ -237,6 +243,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "MarkColor_Auto": "自动",
   "MarkColor_Label": "标识配色",
   "Mark_Arc": "珐琅光弧",
+  "Mark_ArrowHint": "这些角标都是画上去的。应用后，系统自带的小箭头会隐藏，随时可以在设置里恢复。", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Mark_Halo": "光环",
   "Mark_Shadow": "投影",
   "Mark_Fold": "卷角",
@@ -377,6 +384,11 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Settings_AboutHelp": "关于与帮助",
   "Settings_Appearance": "外观",
   "Settings_AppearanceDesc": "默认跟随 Windows。只有想让应用单独呈现时再改。",
+  "Settings_ArrowRestore": "快捷方式箭头", // PENDING-RESX (arrow-restore panel 2026-07-11)
+  "Settings_ArrowStatusHidden": "当前：已隐藏，由 DeskMakeover 统一绘制", // PENDING-RESX
+  "Settings_ArrowStatusNative": "当前：Windows 默认", // PENDING-RESX
+  "Settings_ArrowRestoreAction": "恢复系统箭头", // PENDING-RESX
+  "Settings_ArrowConstraint": "系统限制只能整机切换。", // PENDING-RESX
   "Settings_Backup": "备份位置",
   "Settings_Badge": "区分快捷方式",
   "Settings_BadgeDesc": "默认给快捷方式加一道柔和的左下标记来区分；也可保留原箭头或完全去除",
@@ -455,6 +467,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Toast_Applied": "美化完成 · 已保存还原快照",
   "Toast_AppliedNoOverlay": "图标已美化 · 隐藏箭头一步已跳过（未授权）",
   "Toast_ApplyFailed": "美化未完成 · 桌面没有改动，一切安好",
+  "Toast_ArrowRestored": "已恢复系统箭头", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Toast_BackTo": "已回到：{0}",
   "Toast_CompareFailed": "对比图保存失败，请重试",
   "Toast_CompareSaved": "对比图已保存：{0}",

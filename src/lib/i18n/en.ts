@@ -38,6 +38,10 @@ export const en = {
   "ArrowGate_Stare3": "Fine. You really do love it.", // PENDING-RESX
   "ArrowGate_Title": "Seriously?", // PENDING-RESX
   "ArrowGate_Wait": "You can confirm in {0}s", // PENDING-RESX
+  "ArrowRestore_Title": "Restore the system shortcut arrow?", // PENDING-RESX (arrow-restore panel 2026-07-11)
+  "ArrowRestore_Body": "Every shortcut will show the default Windows arrow again, including the icons you beautified on the desktop. Your shapes and colours stay the same. Windows will ask for permission once when restoring.", // PENDING-RESX
+  "ArrowRestore_Confirm": "Restore arrow", // PENDING-RESX
+  "ArrowRestore_Cancel": "Cancel", // PENDING-RESX
   "Axis_Color": "Colour",
   "Axis_Dist": "Shortcut mark",
   "Axis_Filter": "Filter",
@@ -98,6 +102,7 @@ export const en = {
   "Compare_Short": "Compare",
   "ComingSoon": "Coming soon", // PENDING-RESX (v3 filter roadmap slot)
   "ConsentAgree": "OK, beautify",
+  "ConsentArrow": "When you apply a look, we hide the small shortcut arrow Windows adds and let DeskMakeover draw a cleaner one instead. This takes effect for the whole computer, so it also touches shortcuts outside the desktop and on other accounts on this PC; you can restore it any time in Settings with one click.", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "ConsentCancel": "Not yet",
   "ConsentNot": "What does not happen: no files are deleted, moved, or modified",
   "ConsentTitle": "Before we start, three plain facts",
@@ -113,6 +118,7 @@ export const en = {
   "Dist_Keep": "Default arrow", // PENDING-RESX: was "Classic arrow" (owner: name the native artifact)
   "Dist_Mark": "Beautified", // PENDING-RESX: was "Beautified mark" (v3 segmented width)
   "Dist_None": "None", // PENDING-RESX: was "No mark"
+  "DoneArrow": "The system shortcut arrow is now hidden and your desktop looks cleaner. To bring the small arrow back, one click in Settings restores it.", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "DoneHeadline": "✨ Done. Your desktop looks brand new",
   "Done_GoOrganize": "Organize my desktop", // PENDING-RESX
   "Done_LastStep": "Last step: drag your icons into the zones. The Windows grid lines them up.", // PENDING-RESX
@@ -235,6 +241,7 @@ export const en = {
   "MarkColor_Auto": "Auto",
   "MarkColor_Label": "Mark colour",
   "Mark_Arc": "Enamel arc",
+  "Mark_ArrowHint": "These badges are all drawn on. After you apply, the default Windows arrow is hidden; you can bring it back any time in Settings.", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Mark_Halo": "Halo",
   "Mark_Shadow": "Drop shadow",
   "Mark_Fold": "Dog-ear",
@@ -375,6 +382,11 @@ export const en = {
   "Settings_AboutHelp": "About and help",
   "Settings_Appearance": "Appearance",
   "Settings_AppearanceDesc": "Follow Windows by default. Override only when you want this app to look different.",
+  "Settings_ArrowRestore": "Shortcut arrow", // PENDING-RESX (arrow-restore panel 2026-07-11)
+  "Settings_ArrowStatusHidden": "Now: hidden, drawn by DeskMakeover", // PENDING-RESX
+  "Settings_ArrowStatusNative": "Now: Windows default", // PENDING-RESX
+  "Settings_ArrowRestoreAction": "Restore system arrow", // PENDING-RESX
+  "Settings_ArrowConstraint": "Windows only lets this switch for the whole machine.", // PENDING-RESX
   "Settings_Backup": "Backup location",
   "Settings_Badge": "Distinguish shortcuts",
   "Settings_BadgeDesc": "Shortcuts get a soft bottom-left mark by default; or keep the arrow / remove entirely",
@@ -453,6 +465,7 @@ export const en = {
   "Toast_Applied": "Done · restore snapshot saved",
   "Toast_AppliedNoOverlay": "Icons beautified · the arrow-hide step was skipped (no admin)",
   "Toast_ApplyFailed": "Couldn't apply · nothing changed, your desktop is safe",
+  "Toast_ArrowRestored": "System arrow restored", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Toast_BackTo": "Back to: {0}",
   "Toast_CompareFailed": "Couldn't save the comparison image; try again",
   "Toast_CompareSaved": "Comparison image saved: {0}",

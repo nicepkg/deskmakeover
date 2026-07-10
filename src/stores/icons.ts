@@ -76,6 +76,9 @@ interface IconsState {
   redo: () => void
   apply: () => Promise<boolean>
   restore: () => Promise<void>
+  /** Keep-beautification arrow restore (panel record 2026-07-11): brings the
+   *  native shortcut arrow back without undoing the icon look. */
+  restoreOverlay: () => Promise<void>
   stageVersion: (index: number) => void
   exportCompare: () => Promise<void>
   setComparing: (comparing: boolean) => void
@@ -603,6 +606,21 @@ export const useIcons = create<IconsState>((set, get) => {
       } catch {
         const cur = get()
         if (cur.state) set({ state: { ...cur.state, working: false } })
+        useToasts.getState().show(t('Toast_ApplyFailed'), 'warn')
+      }
+    },
+
+    // 恢复系统箭头 (Settings): flips the arrow overlay back to native, keeping
+    // the icon look. No bake, no wave — the status text flips and a toast
+    // confirms (the change is machine-wide, outside the mirror).
+    restoreOverlay: async () => {
+      const s = get()
+      if (!s.state) return
+      try {
+        const result = await call('icons.restoreOverlay')
+        set({ state: result.state })
+        toastOf(result)
+      } catch {
         useToasts.getState().show(t('Toast_ApplyFailed'), 'warn')
       }
     },

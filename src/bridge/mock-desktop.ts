@@ -44,6 +44,16 @@ export function currentScenario(): MockScenario {
   return v === 'office' || v === 'gamer' ? v : 'messy'
 }
 
+// [M6-WIRE] Active user-profile count is host truth on Windows; in the browser
+// loop it is a dev knob (localStorage + reload, like the scenario) so the
+// multi-user consent gate can be exercised. Default 1 (single user).
+export const USER_PROFILES_KEY = 'dm.dev.userProfiles'
+
+function activeUserProfiles(): number {
+  const v = Number(localStorage.getItem(USER_PROFILES_KEY))
+  return Number.isFinite(v) && v >= 1 ? Math.floor(v) : 1
+}
+
 /** Curated item sets (real-pack ids) + video-credible label overrides. */
 const SCENARIO_ITEMS: Record<Exclude<MockScenario, 'messy'>, { id: string; label?: string }[]> = {
   office: [
@@ -347,6 +357,9 @@ interface MockIconsSession {
   kindPolicy: KindPolicy
   revision: number
   bakePending: Map<string, string>
+  // [M6-WIRE] Machine-wide native-arrow state (ADR-0021). Apply installs the
+  // transparent overlay ('hidden'); both restores lift it ('native').
+  arrowOverlay: 'native' | 'hidden'
 }
 
 const session: MockIconsSession = {
@@ -361,6 +374,7 @@ const session: MockIconsSession = {
   kindPolicy: { ...DEFAULT_KIND_POLICY },
   revision: 0,
   bakePending: new Map(),
+  arrowOverlay: 'native',
 }
 
 function activePresetId(): string | null {
@@ -433,6 +447,8 @@ function state(): IconsStateDto {
     wallpaperUrl: mockWallpaperUrl(),
     kindPolicy: { ...session.kindPolicy },
     typeOverrides: structuredClone(session.typeOverrides),
+    arrowOverlay: session.arrowOverlay,
+    activeUserProfiles: activeUserProfiles(),
   }
 }
 
@@ -495,6 +511,9 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
       session.applied = true
       session.dirty = false
       session.working = false
+      // [M6-WIRE] Apply installs the global transparent overlay: the native
+      // Windows arrow is hidden machine-wide (ADR-0021).
+      session.arrowOverlay = 'hidden'
       session.history.unshift({ time: nowLabel(), label: p.label ?? '自定义', config: { ...p.config! }, typeOverrides: structuredClone(session.typeOverrides) })
       session.history = session.history.slice(0, 10)
       session.currentHistoryIndex = 0
@@ -504,7 +523,14 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
       session.applied = false
       session.dirty = false
       session.currentHistoryIndex = -1
+      // Full restore lifts the overlay too (icons AND arrow back to native).
+      session.arrowOverlay = 'native'
       return { state: state(), toast: null, ok: true } satisfies IconsOpResultDto
+    case 'icons.restoreOverlay':
+      // [M6-WIRE] Keep-beautification restore: only the native arrow returns;
+      // the icon look (applied/history/config) is untouched.
+      session.arrowOverlay = 'native'
+      return { state: state(), toast: { key: 'Toast_ArrowRestored', arg: null }, ok: true } satisfies IconsOpResultDto
     case 'icons.exportCompare':
       return { state: state(), toast: null, ok: true } satisfies IconsOpResultDto
     default:

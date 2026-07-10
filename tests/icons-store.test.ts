@@ -53,6 +53,8 @@ const state = (): IconsStateDto => ({
   },
   wallpaperUrl: null,
   kindPolicy: { ...DEFAULT_KIND_POLICY },
+  arrowOverlay: 'native',
+  activeUserProfiles: 1,
 })
 
 beforeEach(() => {

@@ -252,6 +252,19 @@ export interface IconsStateDto {
   kindPolicy: KindPolicy
   /** Per-type style overrides (ADR-0017) — the look's type ladder. */
   typeOverrides: TypeOverrides
+  /** [M6-WIRE] Native shortcut-arrow state (ADR-0021 machine-wide overlay).
+   *  'native' = Windows draws its own arrow (pre-first-apply, or after a
+   *  restore); 'hidden' = the global transparent overlay is installed and
+   *  DeskMakeover draws the mark. The Settings row status text is the authority
+   *  (panel record 2026-07-11 §5). Mock-only until the Tauri cutover batch wires
+   *  the elevated `dm-elevated RestoreOverlay` verb + host contract (schema bump
+   *  lands there). */
+  arrowOverlay: 'native' | 'hidden'
+  /** [M6-WIRE] Count of active user profiles on this machine. >1 makes the
+   *  first-run consent's machine-wide arrow disclosure non-skippable (owner
+   *  disposition 3). Mocked in the browser loop; the host reports the real count
+   *  in the Tauri cutover batch. */
+  activeUserProfiles: number
 }
 
 export interface ToastDto {
@@ -394,6 +407,12 @@ export interface BridgeMethods {
     result: IconsOpResultDto
   }
   'icons.restore': { params: void; result: IconsOpResultDto }
+  /** [M6-WIRE] Keep-beautification restore: brings the native shortcut arrow
+   *  back (arrowOverlay → 'native') WITHOUT undoing the icon look — shapes and
+   *  colours stay. Distinct from `icons.restore` (which undoes everything). The
+   *  real elevated verb is `dm-elevated RestoreOverlay` (exact byte restore),
+   *  wired in the Tauri cutover batch; mock-only here. */
+  'icons.restoreOverlay': { params: void; result: IconsOpResultDto }
   'icons.exportCompare': { params: void; result: IconsOpResultDto }
   'shell.minimize': { params: void; result: null }
   'shell.maximize': { params: void; result: null }

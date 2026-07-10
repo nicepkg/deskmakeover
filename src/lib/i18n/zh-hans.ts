@@ -387,6 +387,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Settings_ArrowRestore": "快捷方式箭头", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Settings_ArrowStatusHidden": "当前：已隐藏，由 DeskMakeover 统一绘制", // PENDING-RESX
   "Settings_ArrowStatusNative": "当前：Windows 默认", // PENDING-RESX
+  "Settings_ArrowStatusChecking": "正在读取桌面状态…", // PENDING-RESX (unknown until scan resolves)
+  "Settings_ArrowFaq": "小箭头不见了？", // PENDING-RESX (Help safety net → deep-links to the row)
   "Settings_ArrowRestoreAction": "恢复系统箭头", // PENDING-RESX
   "Settings_ArrowConstraint": "系统限制只能整机切换。", // PENDING-RESX
   "Settings_Backup": "备份位置",
@@ -468,6 +470,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Toast_AppliedNoOverlay": "图标已美化 · 隐藏箭头一步已跳过（未授权）",
   "Toast_ApplyFailed": "美化未完成 · 桌面没有改动，一切安好",
   "Toast_ArrowRestored": "已恢复系统箭头", // PENDING-RESX (arrow-restore panel 2026-07-11)
+  "Toast_ArrowRestoreDeclined": "已取消，小箭头保持隐藏", // PENDING-RESX (UAC declined)
+  "Toast_RestoreArrowFailed": "恢复箭头没成功，请稍后再试", // PENDING-RESX (restore-specific failure)
   "Toast_BackTo": "已回到：{0}",
   "Toast_CompareFailed": "对比图保存失败，请重试",
   "Toast_CompareSaved": "对比图已保存：{0}",

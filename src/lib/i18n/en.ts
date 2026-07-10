@@ -385,6 +385,8 @@ export const en = {
   "Settings_ArrowRestore": "Shortcut arrow", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Settings_ArrowStatusHidden": "Now: hidden, drawn by DeskMakeover", // PENDING-RESX
   "Settings_ArrowStatusNative": "Now: Windows default", // PENDING-RESX
+  "Settings_ArrowStatusChecking": "Checking desktop status…", // PENDING-RESX (unknown until scan resolves)
+  "Settings_ArrowFaq": "Where did the little arrow go?", // PENDING-RESX (Help safety net → deep-links to the row)
   "Settings_ArrowRestoreAction": "Restore system arrow", // PENDING-RESX
   "Settings_ArrowConstraint": "Windows only lets this switch for the whole machine.", // PENDING-RESX
   "Settings_Backup": "Backup location",
@@ -466,6 +468,8 @@ export const en = {
   "Toast_AppliedNoOverlay": "Icons beautified · the arrow-hide step was skipped (no admin)",
   "Toast_ApplyFailed": "Couldn't apply · nothing changed, your desktop is safe",
   "Toast_ArrowRestored": "System arrow restored", // PENDING-RESX (arrow-restore panel 2026-07-11)
+  "Toast_ArrowRestoreDeclined": "Cancelled; the little arrow stays hidden", // PENDING-RESX (UAC declined)
+  "Toast_RestoreArrowFailed": "Couldn't restore the arrow. Please try again.", // PENDING-RESX (restore-specific failure)
   "Toast_BackTo": "Back to: {0}",
   "Toast_CompareFailed": "Couldn't save the comparison image; try again",
   "Toast_CompareSaved": "Comparison image saved: {0}",

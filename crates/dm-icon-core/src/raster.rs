@@ -259,6 +259,98 @@ pub fn box_blur(src: &[f64], size: usize, radius: i32) -> Vec<f64> {
     o
 }
 
+/// `RasterOps.Shift` — offset an alpha field by (dx, dy) (raster.ts `shift`).
+pub fn shift(src: &[f64], size: usize, dx: i32, dy: i32) -> Vec<f64> {
+    let mut o = vec![0.0f64; size * size];
+    let n = size as i32;
+    for y in 0..size {
+        let sy = y as i32 - dy;
+        if sy < 0 || sy >= n {
+            continue;
+        }
+        for x in 0..size {
+            let sx = x as i32 - dx;
+            if sx >= 0 && sx < n {
+                o[y * size + x] = src[sy as usize * size + sx as usize];
+            }
+        }
+    }
+    o
+}
+
+/// `RasterOps.BackdropBlur` — blurred copy of the buffer's colour (raster.ts
+/// `backdropBlur`; the frosted Glass-seat backdrop). Assumes a square buffer.
+pub fn backdrop_blur(src: &Raster, radius: i32) -> Raster {
+    if radius < 1 {
+        return src.clone();
+    }
+    let size = src.width;
+    let n = size * size;
+    let mut chans: [Vec<f64>; 4] =
+        [vec![0.0; n], vec![0.0; n], vec![0.0; n], vec![0.0; n]];
+    for i in 0..n {
+        let i4 = i * 4;
+        chans[0][i] = src.data[i4] as f64;
+        chans[1][i] = src.data[i4 + 1] as f64;
+        chans[2][i] = src.data[i4 + 2] as f64;
+        chans[3][i] = src.data[i4 + 3] as f64;
+    }
+    let blurred: Vec<Vec<f64>> = chans.iter().map(|c| box_blur(c, size, radius)).collect();
+    let mut o = Raster::new(size, size);
+    for i in 0..n {
+        let i4 = i * 4;
+        o.data[i4] = clamp_byte(blurred[0][i]);
+        o.data[i4 + 1] = clamp_byte(blurred[1][i]);
+        o.data[i4 + 2] = clamp_byte(blurred[2][i]);
+        o.data[i4 + 3] = clamp_byte(blurred[3][i]);
+    }
+    o
+}
+
+/// raster.ts `smoothStep01`.
+pub fn smooth_step01(u: f64) -> f64 {
+    let u = clamp01(u);
+    u * u * (3.0 - 2.0 * u)
+}
+
+/// Distance from point (px,py) to segment a→b (raster.ts `distToSegment`).
+#[allow(clippy::too_many_arguments)]
+pub fn dist_to_segment(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
+    let vx = bx - ax;
+    let vy = by - ay;
+    let wx = px - ax;
+    let wy = py - ay;
+    let c1 = vx * wx + vy * wy;
+    let c2 = vx * vx + vy * vy;
+    let t = if c2 <= 0.0 { 0.0 } else { (c1 / c2).clamp(0.0, 1.0) };
+    let qx = px - (ax + t * vx);
+    let qy = py - (ay + t * vy);
+    libm::sqrt(qx * qx + qy * qy)
+}
+
+/// Point-in-triangle test via consistent edge signs (raster.ts `inTriangle`).
+#[allow(clippy::too_many_arguments)]
+pub fn in_triangle(
+    px: f64,
+    py: f64,
+    ax: f64,
+    ay: f64,
+    bx: f64,
+    by: f64,
+    cx: f64,
+    cy: f64,
+) -> bool {
+    let sign = |x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64| {
+        (x1 - x3) * (y2 - y3) - (x2 - x3) * (y1 - y3)
+    };
+    let d1 = sign(px, py, ax, ay, bx, by);
+    let d2 = sign(px, py, bx, by, cx, cy);
+    let d3 = sign(px, py, cx, cy, ax, ay);
+    let neg = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
+    let pos = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
+    !(neg && pos)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,5 +422,62 @@ mod tests {
         assert!(out.iter().all(|&v| (v - 0.25).abs() < 1e-12));
         let same = box_blur(&src, 16, 0);
         assert_eq!(same, src);
+    }
+
+    #[test]
+    fn from_and_hex_int_round_trip() {
+        assert_eq!(from_rgb_int(0xff6f5e), Rgba { r: 255, g: 111, b: 94, a: 255 });
+        assert_eq!(hex_to_int("#FF6F5E"), 0xff6f5e);
+        assert_eq!(hex_to_int("FFFFFF"), 0xffffff);
+        assert_eq!(rgba_of(0x18181c, 0.45), Rgba { r: 24, g: 24, b: 28, a: 115 });
+    }
+
+    #[test]
+    fn shift_moves_field_and_zeroes_edges() {
+        // 3×3 field with a single 1.0 at (1,1); shift by (+1,+1) → (2,2).
+        let mut src = vec![0.0f64; 9];
+        src[1 * 3 + 1] = 1.0;
+        let o = shift(&src, 3, 1, 1);
+        assert_eq!(o[2 * 3 + 2], 1.0);
+        assert_eq!(o[1 * 3 + 1], 0.0);
+        // Shifting off-canvas leaves zeros.
+        assert!(shift(&src, 3, 5, 0).iter().all(|&v| v == 0.0));
+    }
+
+    #[test]
+    fn backdrop_blur_short_circuit_and_uniform() {
+        let mut r = Raster::new(4, 4);
+        for i in 0..16 {
+            r.data[i * 4] = 40;
+            r.data[i * 4 + 1] = 80;
+            r.data[i * 4 + 2] = 120;
+            r.data[i * 4 + 3] = 200;
+        }
+        assert_eq!(backdrop_blur(&r, 0).data, r.data); // radius<1 clones
+        let b = backdrop_blur(&r, 1);
+        assert!(b.data.chunks(4).all(|p| p == [40, 80, 120, 200]));
+    }
+
+    #[test]
+    fn smooth_step01_endpoints_and_midpoint() {
+        assert_eq!(smooth_step01(-1.0), 0.0);
+        assert_eq!(smooth_step01(2.0), 1.0);
+        assert_eq!(smooth_step01(0.5), 0.5);
+    }
+
+    #[test]
+    fn dist_to_segment_projects_and_clamps() {
+        // Segment (0,0)→(10,0): a point above the middle projects to distance 3.
+        assert!((dist_to_segment(5.0, 3.0, 0.0, 0.0, 10.0, 0.0) - 3.0).abs() < 1e-12);
+        // Past the end → distance to the endpoint.
+        assert!((dist_to_segment(13.0, 0.0, 0.0, 0.0, 10.0, 0.0) - 3.0).abs() < 1e-12);
+        // Degenerate segment → distance to the point.
+        assert!((dist_to_segment(3.0, 4.0, 1.0, 1.0, 1.0, 1.0) - libm::sqrt(4.0 + 9.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn in_triangle_inside_and_outside() {
+        assert!(in_triangle(1.0, 1.0, 0.0, 0.0, 4.0, 0.0, 0.0, 4.0));
+        assert!(!in_triangle(3.0, 3.0, 0.0, 0.0, 4.0, 0.0, 0.0, 4.0));
     }
 }

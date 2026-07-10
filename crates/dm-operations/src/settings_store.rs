@@ -34,10 +34,10 @@ impl SettingsStore {
         Self::from_conn(Connection::open_in_memory()?)
     }
 
-    fn from_conn(conn: Connection) -> Result<Self> {
+    fn from_conn(mut conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", true)?;
-        migrate(&conn)?;
+        migrate(&mut conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -69,7 +69,7 @@ impl SettingsStore {
     }
 }
 
-fn migrate(conn: &Connection) -> Result<()> {
+fn migrate(conn: &mut Connection) -> Result<()> {
     let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if version > SCHEMA_VERSION {
         return Err(OperationError::SchemaTooNew {
@@ -77,9 +77,19 @@ fn migrate(conn: &Connection) -> Result<()> {
             expected: SCHEMA_VERSION,
         });
     }
+    if version == SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    // Run the whole migration — schema, seed row, and the `user_version` bump — as ONE
+    // transaction, so a crash can never commit a half-migrated database. Belt-and-suspenders,
+    // `CREATE TABLE IF NOT EXISTS` + `INSERT OR IGNORE` also recover a database a pre-fix crash
+    // already left torn (table present, `user_version` still 0): re-running is a no-op instead of
+    // a fatal "table already exists" that permanently bricked the file (P2-2).
+    let tx = conn.transaction()?;
     if version < 1 {
-        conn.execute_batch(
-            "CREATE TABLE app_settings (
+        tx.execute_batch(
+            "CREATE TABLE IF NOT EXISTS app_settings (
                  id                    INTEGER PRIMARY KEY CHECK (id = 1),
                  theme                 TEXT    NOT NULL,
                  language              TEXT    NOT NULL,
@@ -88,8 +98,8 @@ fn migrate(conn: &Connection) -> Result<()> {
              );",
         )?;
         let defaults = SettingsDto::default();
-        conn.execute(
-            "INSERT INTO app_settings
+        tx.execute(
+            "INSERT OR IGNORE INTO app_settings
                  (id, theme, language, keep_new_icons_styled, wallpaper_coach_shown)
              VALUES (1, ?1, ?2, ?3, ?4)",
             (
@@ -100,7 +110,8 @@ fn migrate(conn: &Connection) -> Result<()> {
             ),
         )?;
     }
-    conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -197,6 +208,35 @@ mod tests {
         let reopened = SettingsStore::open(&path).unwrap();
         assert_eq!(reopened.get().unwrap().language, Language::ZhHans);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn interrupted_migration_recovers_on_next_open() {
+        // P2-2: reproduce a crash mid-migration — the table was created but `user_version` was
+        // never bumped. The next open must recover, not fail with "table already exists" and
+        // permanently brick the database.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.sqlite3");
+        {
+            // A raw connection left in exactly the torn state: table present, user_version = 0.
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE app_settings (
+                     id                    INTEGER PRIMARY KEY CHECK (id = 1),
+                     theme                 TEXT    NOT NULL,
+                     language              TEXT    NOT NULL,
+                     keep_new_icons_styled INTEGER NOT NULL,
+                     wallpaper_coach_shown INTEGER NOT NULL
+                 );",
+            )
+            .unwrap();
+            let version: u32 =
+                conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+            assert_eq!(version, 0, "the crash was before the user_version bump");
+        }
+        // The next open must succeed and yield usable defaults, not brick on the existing table.
+        let store = SettingsStore::open(&path).unwrap();
+        assert_eq!(store.get().unwrap(), SettingsDto::default());
     }
 
     #[test]

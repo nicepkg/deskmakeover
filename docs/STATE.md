@@ -71,10 +71,11 @@ pointer: what is TRUE now, what is in flight, what comes next.
    brand library folders keep own plates) + colour-row 满彩 swatch + 鲜明/柔和 +
    统一外形/分类外形 toggle all live through preview AND bake. Owner 2026-07-10:
    kindShapes default stays UNIFORM (By-type one click away); T8 letter badge
-   CLOSED (subsumed by the File family plate). Owed tail: T7 glass rim rework ·
-   D4 corpus ΔE probe (browser harness — bun cannot decode PNGs; spread-level
-   maths already unit-tested) · T9 cross-vendor adversarial review · resx sweep
-   of new PENDING-RESX. Plan: `docs/plans/2026-07-10-icon-colour-field.md`.
+   CLOSED (subsumed by the File family plate). T7 glass rim SHIPPED
+   (designer PASS + lightness-inverse gloss guard — plates keep their pixels,
+   fresnel rim + counter-shade + top sheen only). Owed tail: D4 corpus ΔE probe
+   (browser harness — bun cannot decode PNGs; spread maths unit-tested) · T9
+   cross-vendor adversarial review · resx sweep of new PENDING-RESX. Plan: `docs/plans/2026-07-10-icon-colour-field.md`.
 2. Zone rebuild polish tail: equal-gap ticks (deferred, NOT accepted), rename-input polish,
    SwiftShader/`MAX_TEXTURE_SIZE` startup probe with reduced-res fallback, TS bake fixtures.
 3. Dark theme + zh locale full regression screenshots → `docs/plans/evidence/2026-07-v3/`.

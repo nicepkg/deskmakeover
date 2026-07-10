@@ -51,6 +51,18 @@ Dissolve `colorMode` into two orthogonal axes:
   frozen schema-1 legacy); 本色 = Original × White; old BW stored
   plateColor ACTIVATES; no extra per-type tint saturation cap in v1.
 
+## Amendment 1 — the faithful/minimal collapse (found in implementation dry-run)
+
+The spec's first preset table dropped 本色 and 极简白 onto the same
+coordinate (Original × #FFFFFF). Their real difference: 极简白 = fixed
+white OVERRIDES everything (own boards included); 本色 = own boards
+anchored 1:1, bare icons fall back WHITE. Ruling: `plateFallback:
+'derived' | 'white'` (meaningful only when plateColor is null) — 满彩 =
+(Original, null, derived); 本色 = (Original, null, white) and becomes the
+plate row's fifth stop (本色/Faithful chip: anchors-else-white). Bounded
+plate for types = chroma ceiling, not a fixed six (designer correction:
+the factory Folder gold #65470D is lawful authored plate).
+
 ## Engine mapping (implementation contract)
 
 `renderTile` branches on (subject, plateColor):

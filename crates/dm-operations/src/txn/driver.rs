@@ -232,7 +232,13 @@ impl<'p> TxnDriver<'p> {
             Some(e) => (e.original_anchor, e.original_fingerprint),
             None => match self.reader.capture_anchor(&req.target) {
                 Ok(a) => (a, current),
-                Err(_) => return Ok(None), // cannot capture a way back → skip
+                // The item vanished between the CAS read and the capture → benign skip.
+                Err(PortError::NotFound(_)) => return Ok(None),
+                // A real capture failure (locked file, COM/registry error) is an infrastructure
+                // problem, NOT a benign skip: propagate it so the batch fails and the operator
+                // learns the restore path may be compromised, rather than silently not styling
+                // (P2-3). A capture with no material returns `Ok(CaptureFailed)`, handled below.
+                Err(e) => return Err(e.into()),
             },
         };
         if !anchor.has_material() {

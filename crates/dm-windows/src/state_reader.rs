@@ -44,7 +44,9 @@ impl ItemStateReader for WindowsStateReader {
             // Folder: the `desktop.ini` `IconResource` path/index (BOM-tolerant parse).
             ItemKind::Folder => {
                 require_dir(&target.path)?;
-                let (path, index) = textfmt::parse_desktop_ini_icon(&ini_bytes(&target.path)).unwrap_or_default();
+                // An absent desktop.ini is an unstyled folder (empty surface); a present-but-
+                // unreadable one is a real error, not silently "unstyled" (P2-3).
+                let (path, index) = textfmt::parse_desktop_ini_icon(&read_desktop_ini(&target.path)?).unwrap_or_default();
                 Ok(SurfaceState::IconRef { path, index }.fingerprint())
             }
             // Loose file: the companion wrapper's icon location + ONLY the owned attribute bits
@@ -116,8 +118,14 @@ fn capture_file(file_path: &str) -> PortResult<RestoreAnchor> {
     }))
 }
 
-fn ini_bytes(folder_path: &str) -> Vec<u8> {
-    std::fs::read(Path::new(folder_path).join("desktop.ini")).unwrap_or_default()
+/// The `desktop.ini` bytes for a folder: absent ⇒ empty (an unstyled folder); a present-but-
+/// unreadable file ⇒ a propagated I/O error rather than a silent "unstyled" reading (P2-3).
+fn read_desktop_ini(folder_path: &str) -> PortResult<Vec<u8>> {
+    match std::fs::read(Path::new(folder_path).join("desktop.ini")) {
+        Ok(bytes) => Ok(bytes),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(PortError::Io(e.to_string())),
+    }
 }
 
 fn read_bytes(path: &str) -> PortResult<Vec<u8>> {

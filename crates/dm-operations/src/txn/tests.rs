@@ -448,7 +448,11 @@ fn read_error_during_preflight_fails_the_batch() {
 }
 
 #[test]
-fn anchor_capture_error_during_preflight_skips_item() {
+fn anchor_capture_error_during_preflight_fails_the_batch() {
+    // P2-3: a hard capture failure (locked file / COM / registry error) is a real infrastructure
+    // problem, not a benign skip. It must fail the batch with error set, so the compromised
+    // restore path is surfaced rather than silently not styling. (A capture with NO material still
+    // skips — see capture_failed_item_is_skipped.)
     let world = World::shared();
     let a = target("A");
     seed(&world, &a, b"orig-A");
@@ -459,8 +463,11 @@ fn anchor_capture_error_during_preflight_skips_item() {
     let mut ledger = MemLedgerStore::new();
 
     let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
-    assert_eq!(out.conflicts, vec![ItemId::from_raw("A")]);
-    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
+    assert!(out.error.is_some(), "a hard capture error must surface as a batch failure");
+    assert!(out.conflicts.is_empty(), "a hard capture error is not a benign conflict");
+    assert!(out.committed.is_empty());
+    assert!(journal.records().is_empty());
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // untouched, never styled
 }
 
 #[test]

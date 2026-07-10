@@ -103,11 +103,10 @@ iwr https://dot.net/v1/dotnet-install.ps1 -OutFile $env:TEMP\dotnet-install.ps1
 ```
 DeskMakeover/
 ├─ src/                             # the visible UI — React 19 + Tailwind 4 + shadcn + Motion (Bun); the web app the Tauri shell hosts (ADR-0019 + Amendment 1)
-├─ public/                          # web static assets (fonts, committed mock-icon pack)
+├─ public/                          # THE asset truth root: fonts, app icon, arrow badge, real-icons/ SSoT (gitignored)
 ├─ index.html · vite.config.ts · tsconfig* · package.json · bun.lock   # web app root config
 ├─ src-tauri/                       # Tauri 2 + Rust composition root (ADR-0019 M2): window/tray/commands/capabilities/CSP
-├─ crates/                          # Rust workspace (dm-*): the port of the C# engine per ADR-0019
-├─ xtask/                           # workspace automation (binding + golden generation, packaging checks)
+├─ crates/                          # Rust workspace (dm-* libs + xtask automation): the port of the C# engine per ADR-0019
 ├─ scripts/                         # web dev tooling: mock-icon gen (dev/), oracle capture, spike4 slice
 ├─ tests/                           # bun unit tests + tests/icon-parity (Rust/TS parity harness)
 ├─ testdata/icons/                  # frozen-TS parity oracle corpus (ADR-0019 M0b)
@@ -156,7 +155,7 @@ bun run dev     # http://localhost:5173 (auto-increments) — from the repo root
 ```
 Uses the **mock bridge** (`src/bridge/mock.ts` + `src/bridge/mock-desktop.ts`) — NO C#
 host needed. **The mock renders the FULL app** (since v3): a fake desktop (wallpaper +
-a full ~120-icon pack from `public/mock-icons/`, config-reactive restyles, per-style
+the REAL icon pack from `public/real-icons/`, config-reactive restyles, per-style
 mark previews), both mirrors, all panels, settings, the welcome gate. The web now
 renders the real preview + bake pixels itself (CPU TS icons, Pixi wallpaper) — the mock
 only supplies the DATA (grid/items/source URLs); every interaction, layout, and motion
@@ -386,9 +385,17 @@ Notes:
 
 ## Real icon fixtures (dev only)
 
-`bun scripts/dev/fetch-real-icons.mjs` harvests REAL Windows system icons,
-app icons and the Win11 Bloom wallpapers from two open-source Win11 simulator
-clones into `public/mock-icons-real/` (gitignored — these
-are extracted Microsoft/brand assets: local fixtures only, NEVER shipped or
-committed). The mock bridge prefers this pack automatically; without it the
-committed synthetic pack is the fallback.
+`public/real-icons/` is the SINGLE SOURCE OF TRUTH for genuine icon fixtures
+(owner order 2026-07-11), subfoldered by type — `windows/` (native system),
+`folders/`, `apps/` (third-party), `files/`, `wallpapers/`. Add an icon by
+DROPPING it into the right subfolder, then run
+`node scripts/dev/fetch-real-icons.mjs --scan` to rebuild `manifest.json`
+(kind = subfolder, label = filename stem; refinements via `overrides.json`).
+A full `node scripts/dev/fetch-real-icons.mjs` re-harvests from the two win11
+simulator repos, MERGES (never deletes owner-added files) and drops the clone
+cache afterwards. The directory is gitignored from this repo (extracted
+Microsoft/brand assets — never shipped; the vite closeBundle hook strips it
+from dist/) but is its OWN nested git repo: commit there after adding icons.
+The mock desktop REQUIRES this pack — there is no synthetic fallback. The
+synthetic pack lives on ONLY as committed parity fixtures at
+`testdata/icons/source-pack/` (the oracle corpus is anchored to it).

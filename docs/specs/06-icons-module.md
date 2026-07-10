@@ -204,8 +204,9 @@ the icons and wallpaper canvases (one component).
   `scripts/dev/`) + hand-drawn Fluent-style neutral glyphs. Encumbered material
   (extracted Windows icons, brand marks) never enters git or any shipped artifact.
 - Target ~120 at 256px, stored as **PNG** (as built — the WebP plan was dropped;
-  120 files at HEAD) under `src/DeskMakeover.Web/public/mock-icons/` with a
-  generated `manifest.json` (id, kind, label).
+  120 files at HEAD) under `testdata/icons/source-pack/` (parity fixtures only
+  since 2026-07-11 — the mock desktop no longer uses them) with a generated
+  `manifest.json` (id, kind, label).
 - Distribution: 30% clean flat plates · 15% skeuomorphic/legacy (incl. PRE-BAKED
   rounded corners — the double-rounding trap) · 12% photo-fill · 10% badged (badges
   in ALL four corners) · 12% transparent-edge irregular logos · 8% letter tiles
@@ -219,13 +220,14 @@ the icons and wallpaper canvases (one component).
 - The mock bridge maps pack entries onto item kinds (lnk/exe/folder/file/url/bin/
   uwp). UWP stand-ins are STYLEABLE like every AppxShortcut (§6 correction);
   only genuinely `Unsupported` entries carry `styleable:false` + statusReason.
-- **Dev-only real fixtures** (owner call — the synthetic pack is too clean to expose
-  真实适配 bugs): `scripts/dev/fetch-real-icons.mjs` harvests genuine MS/brand icons
-  from the two win11 simulator clones into a **gitignored** `public/mock-icons-real/`
-  (+ scenario wallpapers, art-matched semantic labels). The mock bridge prefers the
-  real pack when present and falls back to the committed synthetic pack on a fresh
-  clone. Extracted assets NEVER enter git or any shipped artifact (D9). Developer
-  Options adds Messy/Office/Gamer scenario switches for demos.
+- **Real fixtures are the ONLY mock-desktop source** (owner orders 2026-07-09 +
+  2026-07-11 — the synthetic pack is too clean to expose 真实适配 bugs and is now
+  parity-fixture-only): `public/real-icons/` is the gitignored asset SSoT
+  (subfolders windows/folders/apps/files/wallpapers; own nested git repo;
+  harvest/scan via `scripts/dev/fetch-real-icons.mjs`). No synthetic fallback.
+  Extracted assets NEVER enter this repo or any shipped artifact (D9; vite
+  closeBundle strips dist/real-icons). Developer Options adds
+  Messy/Office/Gamer scenario switches for demos.
 
 ## 6. Item taxonomy the web receives
 

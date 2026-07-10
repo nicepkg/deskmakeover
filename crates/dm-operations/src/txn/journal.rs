@@ -135,6 +135,12 @@ impl FileJournal {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
+        // Fence a torn tail from a previously-crashed append (a fragment with no trailing newline)
+        // BEFORE writing: otherwise this record concatenates onto it, and the combined line — plus
+        // the next record — reads as mid-file corruption at startup even though `read_all` tolerated
+        // the fragment on its own (P1, wave-2R). Truncating back to the last newline boundary makes
+        // every appended record start on a clean line.
+        truncate_torn_tail(&self.path)?;
         let mut line = serde_json::to_vec(record)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         line.push(b'\n');
@@ -144,6 +150,37 @@ impl FileJournal {
         file.sync_all()?;
         Ok(())
     }
+}
+
+/// Removes a torn trailing fragment (bytes after the last newline) so the next append starts on a
+/// clean line. A file that is empty, missing, or already newline-terminated is left untouched — the
+/// common case costs only a single-byte tail read.
+fn truncate_torn_tail(path: &std::path::Path) -> std::io::Result<()> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = match fs::OpenOptions::new().read(true).write(true).open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    let len = file.metadata()?.len();
+    if len == 0 {
+        return Ok(());
+    }
+    // Fast path: a clean journal ends with a newline.
+    file.seek(SeekFrom::End(-1))?;
+    let mut last = [0u8; 1];
+    file.read_exact(&mut last)?;
+    if last[0] == b'\n' {
+        return Ok(());
+    }
+    // Torn fragment present: keep everything through the last newline (or nothing if there is none).
+    file.seek(SeekFrom::Start(0))?;
+    let mut buf = Vec::with_capacity(len as usize);
+    file.read_to_end(&mut buf)?;
+    let keep = buf.iter().rposition(|&b| b == b'\n').map(|pos| pos + 1).unwrap_or(0);
+    file.set_len(keep as u64)?;
+    file.sync_all()?;
+    Ok(())
 }
 
 impl JournalSink for FileJournal {
@@ -329,6 +366,33 @@ mod tests {
         // A later, well-formed record proves the garbage line is NOT the tail.
         j.append(&JournalRecord::TxnCommitted { txn: 1 }).unwrap();
         assert!(matches!(j.read_all(), Err(OperationError::Journal(_))));
+    }
+
+    #[test]
+    fn a_torn_tail_is_fenced_before_the_next_same_process_append() {
+        // P1 (wave-2R): read_all tolerates a torn final fragment, but a subsequent append must not
+        // concatenate a valid record onto it — the combined line, plus the record after it, would
+        // read as mid-file corruption at startup. The append path truncates the torn fragment first.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("txn.log");
+        let mut j = FileJournal::new(&path);
+        j.append(&begin(1)).unwrap();
+        // Simulate a crashed append: a partial line with no trailing newline.
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        f.write_all(b"{\"rec\":\"ItemApp").unwrap();
+        drop(f);
+        // read_all tolerates the torn tail on its own (drops it).
+        assert_eq!(j.read_all().unwrap().len(), 1);
+        // A same-process retry appends two more valid records...
+        j.append(&JournalRecord::TxnCommitted { txn: 1 }).unwrap();
+        j.append(&begin(2)).unwrap();
+        // ...and the whole journal is still parseable (the fragment was fenced, not concatenated).
+        let read = j.read_all().unwrap();
+        assert_eq!(read.len(), 3, "the torn fragment must be fenced so later appends stay parseable");
+        assert_eq!(read[0], begin(1));
+        assert_eq!(read[1], JournalRecord::TxnCommitted { txn: 1 });
+        assert_eq!(read[2], begin(2));
     }
 
     #[test]

@@ -946,6 +946,10 @@ dependencies = [
 [[package]]
 name = "dm-icon-codec"
 version = "0.0.0"
+dependencies = [
+ "dm-icon-core",
+ "sha2",
+]
 
 [[package]]
 name = "dm-icon-core"

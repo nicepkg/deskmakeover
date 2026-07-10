@@ -3,7 +3,7 @@
 //
 //   bun tests/icon-parity/m5/run.ts
 //
-// 1. cargo test (dm-icon-core unit/property tests)
+// 1. cargo test (dm-icon-core + dm-icon-codec unit/property tests)
 // 2. shape-mask bit parity  (module 2: geometry)
 // 3. profile + mask parity   (modules 4/5: analysis + segment + profile)
 // 4. hue-spread parity       (module 6)
@@ -29,7 +29,7 @@ function run(label: string, cmd: string, args: string[]): void {
   }
 }
 
-run('cargo test', 'cargo', ['test', '-p', 'dm-icon-core'])
+run('cargo test', 'cargo', ['test', '-p', 'dm-icon-core', '-p', 'dm-icon-codec'])
 
 run('shape-mask dump', 'bun', ['tests/icon-parity/m5/shape-masks.ts'])
 run('shape-mask compare', 'cargo', ['run', '--release', '-q', '-p', 'xtask', '--', 'm5-shape-masks', M5_DIR])

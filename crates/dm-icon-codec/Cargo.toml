@@ -5,3 +5,7 @@ version.workspace = true
 publish.workspace = true
 
 [dependencies]
+# The shared pixel primitive (`Raster`) and the certified linear-light resampler live in
+# the core; the codec never re-implements pixel math (DRY iron rule).
+dm-icon-core = { path = "../dm-icon-core" }
+sha2 = "0.10"

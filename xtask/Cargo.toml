@@ -6,3 +6,4 @@ publish.workspace = true
 
 [dependencies]
 dm-icon-core = { path = "../crates/dm-icon-core" }
+serde_json = "1"

@@ -15,8 +15,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use serde_json::{json, Value};
+
+use dm_icon_core::analysis::{
+    bounds_h, bounds_w, corners_symmetric, find_content_bounds, foreground_bounds, matches_shape,
+    max_scale_inside, solid_bounds, try_detect_background, visible_lightness_mean, ContentBounds,
+};
 use dm_icon_core::color::{field_shadow_tone, srgb_decode, srgb_encode};
-use dm_icon_core::raster::{shape_mask, Raster, WHITE};
+use dm_icon_core::js_math::js_round;
+use dm_icon_core::profile::{icon_profile, IconProfileKind};
+use dm_icon_core::raster::{shape_mask, Raster, Rgba, WHITE};
+use dm_icon_core::segment::segment_subject;
 use dm_icon_core::shapes::IconShape;
 use dm_icon_core::slice::render_slice_tile;
 
@@ -30,13 +39,188 @@ fn main() -> ExitCode {
         [cmd, dir] if cmd == "spike4-native" => spike4_native(Path::new(dir)),
         [cmd, dir] if cmd == "spike4-compare" => spike4_compare(Path::new(dir)),
         [cmd, dir] if cmd == "m5-shape-masks" => m5_shape_masks(Path::new(dir)),
+        [cmd, dir] if cmd == "m5-profiles" => m5_profiles(Path::new(dir)),
         _ => {
             eprintln!(
-                "usage: xtask spike4-native <dir> | spike4-compare <dir> | m5-shape-masks <dir>"
+                "usage: xtask spike4-native <dir> | spike4-compare <dir> | m5-shape-masks <dir> | m5-profiles <dir>"
             );
             ExitCode::from(2)
         }
     }
+}
+
+// ---- M5 modules 4+5 gate: StageProfile deep-equal + mask byte-equal ---------
+
+const CORPUS_SIZE: usize = 256;
+
+fn round6(n: f64) -> f64 {
+    js_round(n * 1e6) / 1e6
+}
+
+fn hex(c: Option<Rgba>) -> Value {
+    match c {
+        Some(c) => json!(format!("#{:02X}{:02X}{:02X}", c.r, c.g, c.b)),
+        None => Value::Null,
+    }
+}
+
+fn rect(b: Option<ContentBounds>) -> Value {
+    match b {
+        Some(b) => json!([b.left, b.top, b.right, b.bottom]),
+        None => Value::Null,
+    }
+}
+
+/// Recompute the `stage-dump.ts` StageProfile in Rust + the resolved subject mask.
+fn build_stage_profile(raster: &Raster) -> (Value, Vec<u8>) {
+    let profile = icon_profile(raster);
+    let content = find_content_bounds(raster);
+    let min_dim = bounds_w(content).min(bounds_h(content));
+    let bg = try_detect_background(raster);
+    let fg = bg.and_then(|b| foreground_bounds(raster, content, b, 48));
+    let canvas = raster.width * raster.height;
+    let mask = profile
+        .subject_mask
+        .clone()
+        .unwrap_or_else(|| segment_subject(raster).mask);
+    let mask_solid: usize = mask.iter().map(|&v| v as usize).sum();
+
+    let kind = match profile.kind {
+        IconProfileKind::FullSquare => "fullSquare",
+        IconProfileKind::OwnBoard => "ownBoard",
+        IconProfileKind::Bare => "bare",
+    };
+    let v = json!({
+        "kind": kind,
+        "transparentEdges": profile.transparent_edges,
+        "alphaBBox": rect(Some(content)),
+        "coverage": round6((bounds_w(content) * bounds_h(content)) as f64 / canvas as f64),
+        "solidBBox": rect(solid_bounds(raster)),
+        "ownBackground": hex(profile.background),
+        "ownBackgroundLightness": match profile.background_lightness {
+            Some(l) => json!(round6(l)),
+            None => Value::Null,
+        },
+        "anchorRect": rect(Some(content)),
+        "cornerSymmetric": corners_symmetric(raster, content, min_dim),
+        "rimColour": hex(profile.subject_rim_colour),
+        "rimLightness": round6(profile.subject_rim_lightness),
+        "subjectColour": hex(profile.subject_colour),
+        "subjectLightness": round6(profile.subject_lightness),
+        "foregroundBBox": rect(fg),
+        "visibleLightness": round6(visible_lightness_mean(raster)),
+        "matchesCircle": matches_shape(raster, IconShape::Circle),
+        "matchesApple": matches_shape(raster, IconShape::Apple),
+        "maxScaleCircle": round6(max_scale_inside(raster, content, IconShape::Circle)),
+        "seed": hex(profile.subject_rim_colour),
+        "maskCoverage": round6(mask_solid as f64 / canvas as f64),
+        "profileKeepsMask": profile.subject_mask.is_some(),
+    });
+    (v, mask)
+}
+
+/// Deep-equal with numeric nodes compared by f64 value (JSON emits integral
+/// rounded floats as ints — 1 vs 1.0 must still match). Returns the first diff.
+fn json_diff(a: &Value, b: &Value, path: &str) -> Option<String> {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => {
+            if x.as_f64() == y.as_f64() {
+                None
+            } else {
+                Some(format!("{path}: {x} != {y}"))
+            }
+        }
+        (Value::Object(x), Value::Object(y)) => {
+            for (k, xv) in x {
+                match y.get(k) {
+                    Some(yv) => {
+                        if let Some(d) = json_diff(xv, yv, &format!("{path}.{k}")) {
+                            return Some(d);
+                        }
+                    }
+                    None => return Some(format!("{path}.{k}: missing in committed")),
+                }
+            }
+            None
+        }
+        (Value::Array(x), Value::Array(y)) => {
+            if x.len() != y.len() {
+                return Some(format!("{path}: array len {} != {}", x.len(), y.len()));
+            }
+            for (i, (xv, yv)) in x.iter().zip(y).enumerate() {
+                if let Some(d) = json_diff(xv, yv, &format!("{path}[{i}]")) {
+                    return Some(d);
+                }
+            }
+            None
+        }
+        _ => {
+            if a == b {
+                None
+            } else {
+                Some(format!("{path}: {a} != {b}"))
+            }
+        }
+    }
+}
+
+fn m5_profiles(dir: &Path) -> ExitCode {
+    let base = dir.join("profiles");
+    let srcs = base.join("sources");
+    let corpus = Path::new("testdata/icons/sources/profiles");
+
+    let mut ids: Vec<String> = fs::read_dir(&srcs)
+        .unwrap_or_else(|e| panic!("read {}: {e} — run tests/icon-parity/m5/profiles.ts", srcs.display()))
+        .filter_map(|e| {
+            let name = e.ok()?.file_name().into_string().ok()?;
+            name.strip_suffix(".rgba").map(str::to_owned)
+        })
+        .collect();
+    ids.sort();
+
+    let mut json_ok = 0usize;
+    let mut mask_ok = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+    for id in &ids {
+        let data = read_rgba(&srcs.join(format!("{id}.rgba")), CORPUS_SIZE * CORPUS_SIZE * 4);
+        let raster = Raster { width: CORPUS_SIZE, height: CORPUS_SIZE, data };
+        let (mine, mask) = build_stage_profile(&raster);
+
+        let committed: Value = serde_json::from_slice(
+            &fs::read(corpus.join(format!("{id}.json")))
+                .unwrap_or_else(|e| panic!("read corpus {id}.json: {e}")),
+        )
+        .expect("parse committed profile");
+        match json_diff(&mine, &committed, id) {
+            None => json_ok += 1,
+            Some(d) => failures.push(format!("profile {d}")),
+        }
+
+        let mask_ref = fs::read(base.join(format!("masks/{id}.bin"))).expect("read mask.bin");
+        if mask_ref == mask {
+            mask_ok += 1;
+        } else {
+            let at = mask_ref.iter().zip(mask.iter()).position(|(a, b)| a != b);
+            failures.push(format!(
+                "mask {id}: differs (len {}/{}, first {:?})",
+                mask.len(),
+                mask_ref.len(),
+                at
+            ));
+        }
+    }
+
+    println!("== M5 profile + mask parity (analysis + segment + profile) ==");
+    println!("sources: {}   profile deep-equal: {}/{}   mask byte-equal: {}/{}", ids.len(), json_ok, ids.len(), mask_ok, ids.len());
+    if json_ok == ids.len() && mask_ok == ids.len() {
+        println!("RESULT: PASS — every StageProfile matches the committed corpus and every mask is byte-identical");
+        return ExitCode::SUCCESS;
+    }
+    println!("RESULT: FAIL");
+    for f in failures.iter().take(30) {
+        println!("  {f}");
+    }
+    ExitCode::FAILURE
 }
 
 // ---- M5 module-2 gate: shape-mask bit parity -------------------------------

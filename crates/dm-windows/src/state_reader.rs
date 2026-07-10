@@ -50,7 +50,9 @@ impl ItemStateReader for WindowsStateReader {
             // the live `.lnk` — a COM read, so it runs on the STA thread (outer `?` = thread-join
             // error, inner `?` = the read's own error). A missing shortcut is NotFound (a deleted
             // item is skipped, not read as an empty surface).
-            ItemKind::Shortcut => {
+            // A UWP shortcut's desktop entry is an ordinary `.lnk`, so it reads through the same
+            // IconRef surface as a Shortcut (spec 06 §6, P1-12).
+            ItemKind::Shortcut | ItemKind::AppxShortcut => {
                 require_exists(&target.path)?;
                 let p = target.path.clone();
                 let (path, index) =
@@ -106,19 +108,32 @@ impl ItemStateReader for WindowsStateReader {
                 let full = a.full.as_ref().map(|v| parse_icon_ref(&v.raw)).unwrap_or_default();
                 Ok(SurfaceState::RecycleBin { default, empty, full }.fingerprint())
             }
-            other => Err(PortError::Unsupported(format!("fingerprint for {other:?}"))),
+            // System is styleable per spec 06 §6 but its HKCU CLSID reader is a Windows-scoped
+            // follow-up — an honest labelled pending error, not the generic Unsupported (P1-12).
+            ItemKind::System => Err(PortError::Unsupported(
+                "[WINDOWS-VERIFY] System DefaultIcon read is not yet wired (HKCU CLSID reader pending)".into(),
+            )),
+            ItemKind::Unsupported => {
+                Err(PortError::Unsupported(format!("fingerprint for {:?}", target.kind)))
+            }
         }
     }
 
     fn capture_anchor(&self, target: &ItemTarget) -> PortResult<RestoreAnchor> {
         match target.kind {
-            ItemKind::Shortcut | ItemKind::UrlShortcut => {
+            // AppxShortcut is an ordinary `.lnk`: byte-replay restore like a Shortcut (P1-12).
+            ItemKind::Shortcut | ItemKind::UrlShortcut | ItemKind::AppxShortcut => {
                 Ok(RestoreAnchor::FileBytes { bytes: read_bytes(&target.path)? })
             }
             ItemKind::Folder => Ok(capture_folder(&target.path)?),
             ItemKind::RegularFile => Ok(capture_file(&target.path)?),
             ItemKind::RecycleBin => Ok(RestoreAnchor::RecycleBin(recyclebin::read_current()?)),
-            other => Err(PortError::Unsupported(format!("anchor for {other:?}"))),
+            ItemKind::System => Err(PortError::Unsupported(
+                "[WINDOWS-VERIFY] System DefaultIcon anchor is not yet wired (HKCU CLSID reader pending)".into(),
+            )),
+            ItemKind::Unsupported => {
+                Err(PortError::Unsupported(format!("anchor for {:?}", target.kind)))
+            }
         }
     }
 }

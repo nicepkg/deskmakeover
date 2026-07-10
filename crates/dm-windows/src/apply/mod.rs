@@ -36,8 +36,11 @@ impl IconApplier for WindowsIconApplier {
         let icon = assets.primary.path.clone();
         match target.kind {
             // COM writes run on the STA thread (outer `?` = thread-join error, inner `?` = the
-            // write's own error).
-            ItemKind::Shortcut => self.exec.run(move || shortcut::apply(&path, &icon))??,
+            // write's own error). A UWP shortcut's desktop entry is an ordinary `.lnk`, so it styles
+            // through the exact same mechanism as a Shortcut (spec 06 §6, P1-12).
+            ItemKind::Shortcut | ItemKind::AppxShortcut => {
+                self.exec.run(move || shortcut::apply(&path, &icon))??
+            }
             ItemKind::RegularFile => self.exec.run(move || file_wrapper::apply(&path, &icon))??,
             // Filesystem / registry writes need no COM.
             ItemKind::UrlShortcut => url_shortcut::apply(&path, &icon, 0)?,
@@ -50,7 +53,21 @@ impl IconApplier for WindowsIconApplier {
                 })?;
                 recyclebin::apply(&empty.path, &icon)?
             }
-            other => return Err(PortError::Unsupported(format!("apply for {other:?}"))),
+            // System virtual items (This PC / Network / User Files / Control Panel) style via the
+            // per-user CLSID `DefaultIcon` values (spec 06 §6). The classifier advertises them as
+            // styleable (P1-12), but the HKCU CLSID writer + their discovery are a Windows-scoped
+            // follow-up. Return an HONEST, labelled pending error — never the generic Unsupported or
+            // a panic — so a spec-compliant discovered System item is not silently mis-rejected.
+            // Tracked in the wave-2 [WINDOWS-VERIFY] ledger.
+            ItemKind::System => {
+                return Err(PortError::Unsupported(
+                    "[WINDOWS-VERIFY] System DefaultIcon styling is not yet wired (HKCU CLSID writer + discovery pending)".into(),
+                ))
+            }
+            // Only genuinely un-styleable (broken/unreadable) items remain.
+            ItemKind::Unsupported => {
+                return Err(PortError::Unsupported(format!("apply for {:?}", target.kind)))
+            }
         };
         // The expected styleable-surface fingerprint, derived from the ASSET (and the item's own
         // path, for the wrapper target/working-dir) — not a re-read of the just-written state. Built

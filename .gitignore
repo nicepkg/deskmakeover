@@ -1,22 +1,41 @@
-# Build outputs
-bin/
-obj/
-TestResults/
-coverage/
-artifacts/
-publish/
-
-# Rust (Cargo workspace — ADR-0019)
+# ── Rust / Cargo ──────────────────────────────────────────────
 target/
 
-# Tauri build-time generated ACL schemas (regenerated on every build)
-apps/desktop/src-tauri/gen/
+# ── Web (Bun + Vite) ──────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.local
+# Real-icon dev fixtures (extracted MS/brand assets — NEVER ship, never commit)
+public/mock-icons-real/
 
-# Local SDK/tooling
+# ── Tauri (build-time generated ACL schemas, regenerated every build) ──
+src-tauri/gen/
+
+# ── Legacy .NET tree (frozen oracle under legacy/, deleted at M8) ──
+# bin/ and obj/ are scoped to legacy/ ON PURPOSE: bare `bin/` / `obj/`
+# also match Rust `src/bin/`, silently dropping tracked Rust binaries.
+legacy/**/bin/
+legacy/**/obj/
+legacy/**/TestResults/
+legacy/**/artifacts/
+legacy/**/publish/
+# Verify.NET snapshot fixtures are committed — never ignore them.
+!legacy/**/Snapshots/**
+
+# ── Local SDK / tooling ───────────────────────────────────────
 .dotnet/
 .tools/
+.cache/
 
-# IDE/user files
+# ── Logs / generated app data ─────────────────────────────────
+logs/
+*.log
+/generated-icons/
+/snapshots/
+
+# ── IDE / user files ──────────────────────────────────────────
 .vs/
 .vscode/
 *.user
@@ -24,25 +43,10 @@ apps/desktop/src-tauri/gen/
 *.userosscache
 *.sln.docstates
 
-# Logs and generated app data
-logs/
-*.log
-/generated-icons/
-/snapshots/
-!src/**/Snapshots/**
-!tests/**/Snapshots/**
-
-# OS files
+# ── OS files ──────────────────────────────────────────────────
 Thumbs.db
 Desktop.ini
+.DS_Store
 
-# Web (Bun + Vite)
-node_modules/
-apps/desktop/frontend/dist/
-
-# Real-icon dev fixtures (extracted MS/brand assets — NEVER ship, never commit)
-apps/desktop/frontend/public/mock-icons-real/
-.cache/
-
-# Agent worktrees (git worktree add .worktrees/<task>)
+# ── Agent worktrees (git worktree add .worktrees/<task>) ──────
 .worktrees/

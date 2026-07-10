@@ -22,6 +22,7 @@ use dm_icon_core::analysis::{
     max_scale_inside, solid_bounds, try_detect_background, visible_lightness_mean, ContentBounds,
 };
 use dm_icon_core::color::{field_shadow_tone, srgb_decode, srgb_encode};
+use dm_icon_core::hue_spread::{compute_hue_spread, SpreadEntry};
 use dm_icon_core::js_math::js_round;
 use dm_icon_core::profile::{icon_profile, IconProfileKind};
 use dm_icon_core::raster::{shape_mask, Raster, Rgba, WHITE};
@@ -40,9 +41,10 @@ fn main() -> ExitCode {
         [cmd, dir] if cmd == "spike4-compare" => spike4_compare(Path::new(dir)),
         [cmd, dir] if cmd == "m5-shape-masks" => m5_shape_masks(Path::new(dir)),
         [cmd, dir] if cmd == "m5-profiles" => m5_profiles(Path::new(dir)),
+        [cmd, dir] if cmd == "m5-hue" => m5_hue(Path::new(dir)),
         _ => {
             eprintln!(
-                "usage: xtask spike4-native <dir> | spike4-compare <dir> | m5-shape-masks <dir> | m5-profiles <dir>"
+                "usage: xtask spike4-native <dir> | spike4-compare <dir> | m5-shape-masks <dir> | m5-profiles <dir> | m5-hue <dir>"
             );
             ExitCode::from(2)
         }
@@ -162,6 +164,74 @@ fn json_diff(a: &Value, b: &Value, path: &str) -> Option<String> {
             }
         }
     }
+}
+
+// ---- M5 module-6 gate: computeHueSpread parity -----------------------------
+
+fn m5_hue(dir: &Path) -> ExitCode {
+    let hue = dir.join("hue");
+    let mut files: Vec<PathBuf> = fs::read_dir(&hue)
+        .unwrap_or_else(|e| panic!("read {}: {e} — run tests/icon-parity/m5/hue-spread.ts", hue.display()))
+        .filter_map(|e| {
+            let p = e.ok()?.path();
+            (p.extension().is_some_and(|x| x == "json")).then_some(p)
+        })
+        .collect();
+    files.sort();
+
+    let mut ok = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+    for path in &files {
+        let preset = path.file_stem().unwrap().to_str().unwrap();
+        let v: Value = serde_json::from_slice(&fs::read(path).unwrap()).expect("parse hue json");
+        let entries: Vec<SpreadEntry> = v["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| SpreadEntry {
+                id: e["id"].as_str().unwrap().to_owned(),
+                art_key: e["artKey"].as_str().unwrap().to_owned(),
+                seed: e["seed"].as_str().map(str::to_owned),
+            })
+            .collect();
+        let expected = v["output"].as_object().unwrap();
+        let got = compute_hue_spread(&entries);
+
+        let mut diff: Option<String> = None;
+        if got.len() != expected.len() {
+            diff = Some(format!("size {} != {}", got.len(), expected.len()));
+        } else {
+            for (k, val) in &got {
+                match expected.get(k).and_then(|x| x.as_str()) {
+                    Some(ev) if ev == val => {}
+                    Some(ev) => {
+                        diff = Some(format!("{k}: {val} != {ev}"));
+                        break;
+                    }
+                    None => {
+                        diff = Some(format!("{k}: missing in expected"));
+                        break;
+                    }
+                }
+            }
+        }
+        match diff {
+            None => ok += 1,
+            Some(d) => failures.push(format!("{preset}: {d}")),
+        }
+    }
+
+    println!("== M5 hue-spread parity ==");
+    println!("presets: {}   id→hex map identical: {}/{}", files.len(), ok, files.len());
+    if ok == files.len() {
+        println!("RESULT: PASS — computeHueSpread is identical to the TS oracle on every preset");
+        return ExitCode::SUCCESS;
+    }
+    println!("RESULT: FAIL");
+    for f in failures.iter().take(20) {
+        println!("  {f}");
+    }
+    ExitCode::FAILURE
 }
 
 fn m5_profiles(dir: &Path) -> ExitCode {

@@ -20,6 +20,7 @@
 pub mod analysis;
 pub mod color;
 pub mod config;
+pub mod hue_spread;
 pub mod js_math;
 pub mod mono;
 pub mod profile;

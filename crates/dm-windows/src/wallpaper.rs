@@ -1,22 +1,52 @@
-//! Wallpaper get-source / apply / restore via `IDesktopWallpaper`, ported from
-//! `DeskMakeover.Shell/DesktopWallpaperInterop.cs`. Every call runs on the STA thread. Multi-
-//! monitor state is captured per device path so restore is byte-for-byte. [WINDOWS-VERIFY] runtime.
+//! Wallpaper capture / apply / restore via `IDesktopWallpaper`, ported from
+//! `DeskMakeover.Shell/DesktopWallpaperInterop.cs`. Every call runs on the STA thread.
+//!
+//! Restore is byte-level (P2-1): the snapshot records the global background COLOR and POSITION in
+//! addition to each monitor's image, so a solid-colour or repositioned desktop returns to exactly
+//! its prior state instead of leaving a residual DeskMakeover image. A present monitor showing the
+//! solid background is captured as `image: None` (distinct from a *detached* monitor, which is
+//! omitted from the snapshot entirely) and restored by re-applying the background colour and
+//! clearing our image.
+//!
+//! Slideshow is a documented limitation: a running slideshow is captured as `slideshow_active`
+//! plus each monitor's current frame and restored as static images; re-arming the rotation
+//! (`IDesktopWallpaper::SetSlideshow` with an `IShellItemArray`) is out of scope for this pass.
+//! [WINDOWS-VERIFY] runtime.
 
 use std::sync::Arc;
 
 use dm_domain::{PortError, PortResult};
 use windows::core::{HSTRING, PCWSTR};
+use windows::Win32::Foundation::COLORREF;
 use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPROC_SERVER};
-use windows::Win32::UI::Shell::{DesktopWallpaper, IDesktopWallpaper};
+use windows::Win32::UI::Shell::{
+    DesktopWallpaper, IDesktopWallpaper, DESKTOP_WALLPAPER_POSITION, DSS_SLIDESHOW,
+};
 
 use crate::com::StaExecutor;
 
-/// One monitor's wallpaper: its device path and the image currently shown (or `None` for a
-/// solid-colour / transient-slideshow monitor).
+/// One present monitor's wallpaper: its device path and the image it showed, or `None` when it
+/// showed the solid background colour (or a slideshow frame). A `None` monitor is restored by
+/// clearing our image so the restored background colour shows through. Detached monitors the
+/// engine still remembers are NOT represented here — they are omitted from the snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonitorWallpaper {
     pub monitor_id: String,
     pub image: Option<String>,
+}
+
+/// The full restore snapshot: the global background colour + position plus every present monitor's
+/// image. Byte-level restore needs the colour and position, not just the images (P2-1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WallpaperSnapshot {
+    /// `COLORREF` (`0x00BBGGRR`) background colour, shown wherever no image covers the desktop.
+    pub background_color: u32,
+    /// The desktop wallpaper position (fill/fit/stretch/tile/center/span) as its raw enum value.
+    pub position: i32,
+    /// Whether a slideshow was active at capture. Restore is best-effort static (see module note).
+    pub slideshow_active: bool,
+    /// Per present monitor; detached monitors are omitted.
+    pub monitors: Vec<MonitorWallpaper>,
 }
 
 /// The `IDesktopWallpaper` adapter.
@@ -29,8 +59,8 @@ impl WindowsWallpaper {
         Self { exec }
     }
 
-    /// Captures every monitor's current wallpaper (the restore snapshot).
-    pub fn capture(&self) -> PortResult<Vec<MonitorWallpaper>> {
+    /// Captures the full restore snapshot (background colour, position, per-monitor images).
+    pub fn capture(&self) -> PortResult<WallpaperSnapshot> {
         self.exec.run(capture_blocking)?
     }
 
@@ -39,8 +69,9 @@ impl WindowsWallpaper {
         self.exec.run(move || set_blocking(&monitor_id, &image_path))?
     }
 
-    /// Restores every captured monitor's wallpaper (skipping monitors that had no image).
-    pub fn restore(&self, snapshot: Vec<MonitorWallpaper>) -> PortResult<()> {
+    /// Restores the captured snapshot: global colour + position, then each monitor's image (or a
+    /// cleared image so the background colour shows for a solid-colour monitor).
+    pub fn restore(&self, snapshot: WallpaperSnapshot) -> PortResult<()> {
         self.exec.run(move || restore_blocking(&snapshot))?
     }
 }
@@ -50,30 +81,37 @@ fn create() -> PortResult<IDesktopWallpaper> {
     unsafe { CoCreateInstance(&DesktopWallpaper, None, CLSCTX_INPROC_SERVER) }.map_err(com)
 }
 
-fn capture_blocking() -> PortResult<Vec<MonitorWallpaper>> {
+fn capture_blocking() -> PortResult<WallpaperSnapshot> {
     let dw = create()?;
-    let mut monitors = Vec::new();
     // SAFETY: all COM calls confined to this STA thread; each PWSTR is freed with CoTaskMemFree.
     unsafe {
+        let background_color = dw.GetBackgroundColor().map_err(com)?.0;
+        let position = dw.GetPosition().map_err(com)?.0;
+        // A running slideshow reports DSS_SLIDESHOW; treat any other/failed status as not-a-slideshow.
+        let slideshow_active = matches!(dw.GetStatus(), Ok(s) if s.0 & DSS_SLIDESHOW.0 != 0);
+
         let count = dw.GetMonitorDevicePathCount().map_err(com)?;
+        let mut monitors = Vec::new();
         for i in 0..count {
             let id_pwstr = match dw.GetMonitorDevicePathAt(i) {
                 Ok(p) if !p.is_null() => p,
-                _ => continue, // detached monitor the engine still remembers
+                // A detached monitor the engine still remembers: omit it (no screen to restore),
+                // distinct from a present monitor showing a solid colour (captured as image: None).
+                _ => continue,
             };
-            // Free the buffer BEFORE propagating a decode error (matches read_wallpaper below):
-            // the `?` early-return would otherwise leak the PWSTR.
+            // Free the buffer before propagating a decode error (the ? would otherwise leak it).
             let id = id_pwstr.to_string();
             CoTaskMemFree(Some(id_pwstr.0 as *const core::ffi::c_void));
             let id = id.map_err(|e| PortError::Com(e.to_string()))?;
             let image = read_wallpaper(&dw, &id);
             monitors.push(MonitorWallpaper { monitor_id: id, image });
         }
+        Ok(WallpaperSnapshot { background_color, position, slideshow_active, monitors })
     }
-    Ok(monitors)
 }
 
-/// SAFETY: caller guarantees an STA thread; the returned PWSTR is freed here.
+/// SAFETY: caller guarantees an STA thread; the returned PWSTR is freed here. Returns `None` for a
+/// solid-colour desktop or transient slideshow state (GetWallpaper reports an empty path).
 unsafe fn read_wallpaper(dw: &IDesktopWallpaper, monitor_id: &str) -> Option<String> {
     let id = HSTRING::from(monitor_id);
     match dw.GetWallpaper(PCWSTR(id.as_ptr())) {
@@ -82,7 +120,7 @@ unsafe fn read_wallpaper(dw: &IDesktopWallpaper, monitor_id: &str) -> Option<Str
             CoTaskMemFree(Some(pwstr.0 as *const core::ffi::c_void));
             text.filter(|s| !s.is_empty())
         }
-        _ => None, // solid-colour desktop or transient slideshow state
+        _ => None,
     }
 }
 
@@ -94,14 +132,28 @@ fn set_blocking(monitor_id: &str, image_path: &str) -> PortResult<()> {
     unsafe { dw.SetWallpaper(PCWSTR(id.as_ptr()), PCWSTR(image.as_ptr())) }.map_err(com)
 }
 
-fn restore_blocking(snapshot: &[MonitorWallpaper]) -> PortResult<()> {
+fn restore_blocking(snapshot: &WallpaperSnapshot) -> PortResult<()> {
     let dw = create()?;
-    for monitor in snapshot {
-        if let Some(image) = &monitor.image {
+    // SAFETY: STA thread; HSTRING buffers outlive each call.
+    unsafe {
+        // Colour + position first, so a cleared (solid-colour) monitor shows the right colour.
+        dw.SetBackgroundColor(COLORREF(snapshot.background_color)).map_err(com)?;
+        dw.SetPosition(DESKTOP_WALLPAPER_POSITION(snapshot.position)).map_err(com)?;
+        for monitor in &snapshot.monitors {
             let id = HSTRING::from(monitor.monitor_id.as_str());
-            let img = HSTRING::from(image.as_str());
-            // SAFETY: STA thread; HSTRING buffers outlive the call.
-            unsafe { dw.SetWallpaper(PCWSTR(id.as_ptr()), PCWSTR(img.as_ptr())) }.map_err(com)?;
+            match &monitor.image {
+                Some(image) => {
+                    let img = HSTRING::from(image.as_str());
+                    dw.SetWallpaper(PCWSTR(id.as_ptr()), PCWSTR(img.as_ptr())).map_err(com)?;
+                }
+                None => {
+                    // Solid colour / slideshow frame at capture: clear our image so the restored
+                    // background colour shows through. Best-effort — exact clear semantics for an
+                    // empty path are [WINDOWS-VERIFY]; a rejected clear must not fail the restore.
+                    let empty = HSTRING::default();
+                    let _ = dw.SetWallpaper(PCWSTR(id.as_ptr()), PCWSTR(empty.as_ptr()));
+                }
+            }
         }
     }
     Ok(())

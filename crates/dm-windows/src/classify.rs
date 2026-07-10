@@ -45,6 +45,28 @@ pub fn parse_icon_location(raw: &str) -> (String, i32) {
     (trimmed.to_string(), 0)
 }
 
+/// Prefixes a drive-absolute path with the `\\?\` extended-length marker so `IPersistFile`
+/// (`Load`/`Save`) can address a `.lnk` whose full path exceeds `MAX_PATH` (260). The marker
+/// disables path normalisation, so it is applied ONLY to a plain `X:\...` path (the shape desktop
+/// items always have) with forward slashes folded to backslashes; an already-prefixed path or a
+/// UNC / non-drive path is passed through unchanged.
+pub fn extended_length_path(path: &str) -> String {
+    if path.starts_with(r"\\") {
+        // Already `\\?\`-prefixed or a UNC path — leave it alone.
+        return path.to_string();
+    }
+    if is_drive_absolute(path) {
+        return format!(r"\\?\{}", path.replace('/', "\\"));
+    }
+    path.to_string()
+}
+
+/// Whether `path` is a plain drive-absolute Windows path (`X:\...` or `X:/...`).
+fn is_drive_absolute(path: &str) -> bool {
+    let b = path.as_bytes();
+    b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/')
+}
+
 fn extension_lower(file_name: &str) -> Option<String> {
     let dot = file_name.rfind('.')?;
     // A leading dot (dotfile) or trailing dot is not an extension.
@@ -79,6 +101,17 @@ mod tests {
         assert!(is_ignored_entry("desktop.ini"));
         assert!(is_ignored_entry("Desktop.INI"));
         assert!(!is_ignored_entry("desktop.txt"));
+    }
+
+    #[test]
+    fn extended_length_path_prefixes_only_drive_absolute_paths() {
+        assert_eq!(extended_length_path(r"C:\Users\Jane\Desktop\App.lnk"), r"\\?\C:\Users\Jane\Desktop\App.lnk");
+        // Forward slashes are folded to backslashes so the marker's raw semantics hold.
+        assert_eq!(extended_length_path("C:/Users/Jane/App.lnk"), r"\\?\C:\Users\Jane\App.lnk");
+        // Already prefixed, UNC, and non-drive paths pass through untouched.
+        assert_eq!(extended_length_path(r"\\?\C:\x\App.lnk"), r"\\?\C:\x\App.lnk");
+        assert_eq!(extended_length_path(r"\\server\share\App.lnk"), r"\\server\share\App.lnk");
+        assert_eq!(extended_length_path("App.lnk"), "App.lnk");
     }
 
     #[test]

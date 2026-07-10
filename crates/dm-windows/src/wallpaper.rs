@@ -61,8 +61,11 @@ fn capture_blocking() -> PortResult<Vec<MonitorWallpaper>> {
                 Ok(p) if !p.is_null() => p,
                 _ => continue, // detached monitor the engine still remembers
             };
-            let id = id_pwstr.to_string().map_err(|e| PortError::Com(e.to_string()))?;
+            // Free the buffer BEFORE propagating a decode error (matches read_wallpaper below):
+            // the `?` early-return would otherwise leak the PWSTR.
+            let id = id_pwstr.to_string();
             CoTaskMemFree(Some(id_pwstr.0 as *const core::ffi::c_void));
+            let id = id.map_err(|e| PortError::Com(e.to_string()))?;
             let image = read_wallpaper(&dw, &id);
             monitors.push(MonitorWallpaper { monitor_id: id, image });
         }

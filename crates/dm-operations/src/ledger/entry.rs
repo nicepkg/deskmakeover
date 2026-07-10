@@ -29,24 +29,6 @@ pub enum TxnState {
 }
 
 impl TxnState {
-    /// The legal forward transitions of the state machine. Enforced by the driver so a bug
-    /// can't, say, mark an item `Committed` straight from `Prepared` without an apply.
-    pub fn can_advance_to(self, next: TxnState) -> bool {
-        use TxnState::*;
-        matches!(
-            (self, next),
-            (Prepared, AssetWritten)
-                | (AssetWritten, Applied)
-                | (Applied, Verified)
-                | (Verified, Committed)
-                // Roll-back is reachable from any pre-commit state (recovery can force it).
-                | (Prepared, RolledBack)
-                | (AssetWritten, RolledBack)
-                | (Applied, RolledBack)
-                | (Verified, RolledBack)
-        )
-    }
-
     /// Whether the item is in the live styled state.
     pub fn is_committed(self) -> bool {
         self == TxnState::Committed
@@ -98,27 +80,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn state_machine_only_allows_legal_forward_steps() {
+    fn terminal_and_committed_predicates() {
         use TxnState::*;
-        assert!(Prepared.can_advance_to(AssetWritten));
-        assert!(AssetWritten.can_advance_to(Applied));
-        assert!(Applied.can_advance_to(Verified));
-        assert!(Verified.can_advance_to(Committed));
-        // Illegal skips.
-        assert!(!Prepared.can_advance_to(Applied));
-        assert!(!Prepared.can_advance_to(Committed));
-        assert!(!AssetWritten.can_advance_to(Committed));
-        // Committed / RolledBack are terminal.
+        assert!(Committed.is_committed());
+        assert!(!Applied.is_committed());
+        // Only Committed and RolledBack are terminal.
         assert!(Committed.is_terminal());
         assert!(RolledBack.is_terminal());
-        assert!(!Committed.can_advance_to(RolledBack));
-    }
-
-    #[test]
-    fn rollback_reachable_from_every_pre_commit_state() {
-        use TxnState::*;
         for state in [Prepared, AssetWritten, Applied, Verified] {
-            assert!(state.can_advance_to(RolledBack), "{state:?} → RolledBack should be legal");
+            assert!(!state.is_terminal(), "{state:?} is not terminal");
         }
     }
 }

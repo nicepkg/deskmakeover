@@ -52,9 +52,20 @@ fn scan_blocking() -> PortResult<Vec<DesktopItem>> {
             if has_system_attribute(&path) {
                 continue;
             }
+            // A reparse point (symlink/junction) is not a safe styling target: writing desktop.ini
+            // or a .lnk through it would follow the link elsewhere. Skip it defensively.
+            if has_reparse_point(&path) {
+                continue;
+            }
             let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
             let kind = classify_entry(&file_name, is_dir);
-            let path_str = path.to_string_lossy().into_owned();
+            // Use the path only if it round-trips as UTF-8. to_string_lossy would substitute U+FFFD
+            // for invalid units and silently corrupt the item id and every downstream path read, so
+            // skip a non-representable entry instead.
+            let path_str = match path.to_str() {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
             items.push(DesktopItem {
                 id: ItemId::from_source_path("filesystem", &path_str),
                 name: display_name(&file_name, kind),
@@ -92,5 +103,15 @@ fn has_system_attribute(path: &Path) -> bool {
     const FILE_ATTRIBUTE_SYSTEM: u32 = 0x0000_0004;
     std::fs::metadata(path)
         .map(|m| m.file_attributes() & FILE_ATTRIBUTE_SYSTEM != 0)
+        .unwrap_or(false)
+}
+
+fn has_reparse_point(path: &Path) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    // symlink_metadata (lstat) does NOT follow the link, so the reparse flag is visible on the
+    // entry itself rather than resolving to the target's attributes.
+    std::fs::symlink_metadata(path)
+        .map(|m| m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
         .unwrap_or(false)
 }

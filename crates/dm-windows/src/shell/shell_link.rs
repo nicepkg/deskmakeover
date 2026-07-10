@@ -9,6 +9,8 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 
+use crate::classify::extended_length_path;
+
 const ICON_BUF: usize = 1024;
 
 /// Reads the `.lnk`'s explicit icon location `(path, index)`, or `None` when it has none.
@@ -20,7 +22,8 @@ pub fn read_icon_location(shortcut_path: &str) -> PortResult<Option<(String, i32
         let link: IShellLinkW =
             CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com)?;
         let file: IPersistFile = link.cast().map_err(com)?;
-        file.Load(&HSTRING::from(shortcut_path), STGM_READ).map_err(com)?;
+        let path = extended_length_path(shortcut_path);
+        file.Load(&HSTRING::from(path.as_str()), STGM_READ).map_err(com)?;
         let mut buf = [0u16; ICON_BUF];
         let mut index = 0i32;
         link.GetIconLocation(&mut buf, &mut index).map_err(com)?;
@@ -39,9 +42,10 @@ pub fn set_icon_location(shortcut_path: &str, icon_path: &str, index: i32) -> Po
         let link: IShellLinkW =
             CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com)?;
         let file: IPersistFile = link.cast().map_err(com)?;
-        file.Load(&HSTRING::from(shortcut_path), STGM_READWRITE).map_err(com)?;
+        let path = extended_length_path(shortcut_path);
+        file.Load(&HSTRING::from(path.as_str()), STGM_READWRITE).map_err(com)?;
         link.SetIconLocation(&HSTRING::from(icon_path), index).map_err(com)?;
-        file.Save(&HSTRING::from(shortcut_path), true).map_err(com)?;
+        file.Save(&HSTRING::from(path.as_str()), true).map_err(com)?;
         Ok(())
     }
 }
@@ -56,7 +60,8 @@ pub fn read_target(shortcut_path: &str) -> PortResult<Option<String>> {
         let link: IShellLinkW =
             CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com)?;
         let file: IPersistFile = link.cast().map_err(com)?;
-        file.Load(&HSTRING::from(shortcut_path), STGM_READ).map_err(com)?;
+        let path = extended_length_path(shortcut_path);
+        file.Load(&HSTRING::from(path.as_str()), STGM_READ).map_err(com)?;
         let mut buf = [0u16; ICON_BUF];
         link.GetPath(&mut buf, std::ptr::null_mut(), 0).map_err(com)?;
         let target = wide_to_string(&buf);
@@ -81,7 +86,7 @@ pub fn create_shortcut(
         link.SetWorkingDirectory(&HSTRING::from(working_dir)).map_err(com)?;
         link.SetIconLocation(&HSTRING::from(icon_path), 0).map_err(com)?;
         let file: IPersistFile = link.cast().map_err(com)?;
-        file.Save(&HSTRING::from(out_lnk), true).map_err(com)?;
+        file.Save(&HSTRING::from(extended_length_path(out_lnk).as_str()), true).map_err(com)?;
         Ok(())
     }
 }

@@ -34,8 +34,9 @@ fn known_folder(id: &GUID) -> PortResult<Option<PathBuf>> {
         if pwstr.is_null() {
             return Ok(None);
         }
-        let text = pwstr.to_string().map_err(|e| PortError::Com(e.to_string()))?;
+        // Free the buffer BEFORE propagating a decode error, or the `?` early-return leaks it.
+        let text = pwstr.to_string();
         CoTaskMemFree(Some(pwstr.0 as *const core::ffi::c_void));
-        Ok(Some(PathBuf::from(text)))
+        Ok(Some(PathBuf::from(text.map_err(|e| PortError::Com(e.to_string()))?)))
     }
 }

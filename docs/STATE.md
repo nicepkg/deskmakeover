@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-10 (colour-field v20 designer PASS — rim band law + corner gate + amber deep boards)
+updated: 2026-07-10 (ADR-0017 type distinction system v1 built — factory ladder in designer acceptance)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -64,6 +64,21 @@ pointer: what is TRUE now, what is in flight, what comes next.
 `scripts/dev/generate-mock-icons.mjs`).
 
 **In flight / next (web):**
+0. **ADR-0017 per-type distinction system — v1 BUILT (commit `7ba12cf`),
+   designer acceptance of the factory ladder in flight.** Three-round
+   adversarial panel (PM/UX/UI) + owner dispositions; docs: ADR-0017,
+   spec 06 §6.5, plan 2026-07-10-type-distinction-system.md. Shipped: sparse
+   `typeOverrides` + `resolveTypeConfig` chain (preview/styleKey/bake all
+   consume resolved configs), kindShapes DELETED, `shortcutShape` (uniform
+   shortcut shape, default off), ExecutableFile→App bucket (bare exe =
+   program), AppxShortcut isShortcut bug fix, hue-spread pool filter
+   (fixed-plate types exit), type ACCORDION panel (expand-to-edit
+   shape/saliency/bounded-plate + canvas scope-highlight dimming), factory
+   saliency ladder (App Apple+Field / Folder Bookmark / File Tile / System
+   Circle+BlackWhite). 355 tests + tsc green. OWNER-PENDING: shortcut mark
+   default (panel consensus = badge ON; owner decree 2026-07-07 = presets
+   ship None — unresolved conflict, decide before F8). F8 additions: host
+   `.exe` classification + Appx mark fix + typeOverrides in Contracts.cs.
 1. **ADR-0016 icon colour-field default** — COMPLETE to the owner's FIVE-STEP
    LAW + the RIM BAND law (spec 02 §Default Composition, ADR-0016 Amendments
    2-3; `IconProfile` metadata layer in profile.ts). Derived plates take the

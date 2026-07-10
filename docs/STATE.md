@@ -64,7 +64,7 @@ pointer: what is TRUE now, what is in flight, what comes next.
 `scripts/dev/generate-mock-icons.mjs`).
 
 **In flight / next (web):**
--1a. **Two-axis T1/T2 SHIPPED at `26aa3db`** — model+engine+bridges live on
+-1a. **Two-axis T1/T2 SHIPPED `26aa3db` · T3 panel SHIPPED `e4bac52`** (Subject+Plate rows live, dual-tab popover dead, accordion pins added; designer §6 acceptance IN FLIGHT). Owed T4: colour-migrate mapping tests · shape=None disabled-state screenshot · spec02/06 colour-axes amendments. Old note: **T1/T2** — model+engine+bridges live on
    subject×plate (smoke: 124 icons byte-identical look, presets match, 0
    errors). Spec FINAL (本色 = plate stop (null,'white'), faithful/minimal
    collapse fixed). NEXT: T3 panel two-row rebuild (主体行+底板行 + 本色

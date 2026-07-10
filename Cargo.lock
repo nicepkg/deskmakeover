@@ -977,6 +977,10 @@ version = "0.0.0"
 [[package]]
 name = "dm-windows"
 version = "0.0.0"
+dependencies = [
+ "dm-domain",
+ "windows",
+]
 
 [[package]]
 name = "dom_query"
@@ -5340,6 +5344,7 @@ name = "xtask"
 version = "0.0.0"
 dependencies = [
  "dm-icon-core",
+ "serde_json",
 ]
 
 [[package]]

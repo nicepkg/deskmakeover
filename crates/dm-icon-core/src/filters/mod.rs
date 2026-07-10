@@ -69,7 +69,7 @@ fn gloss(tile: &mut Raster, size: usize) {
 /// Two-pass 3-4 chamfer distance transform (filters.ts `chamferDistance`).
 /// inside: distance from opaque pixels to the nearest transparency (−1 on
 /// transparent); outside: the reverse. Units are chamfer weights (÷3 ≈ px).
-pub fn chamfer_distance(tile: &Raster, size: usize, inside: bool) -> Vec<f64> {
+pub(crate) fn chamfer_distance(tile: &Raster, size: usize, inside: bool) -> Vec<f64> {
     let inf = f64::MAX / 4.0;
     let d = &tile.data;
     let mut dist = vec![0.0f64; size * size];
@@ -121,4 +121,38 @@ pub fn chamfer_distance(tile: &Raster, size: usize, inside: bool) -> Vec<f64> {
         }
     }
     dist
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::raster::Raster;
+
+    fn centred_square(size: usize, lo: usize, hi: usize) -> Raster {
+        let mut tile = Raster::new(size, size);
+        for y in lo..hi {
+            for x in lo..hi {
+                tile.data[(y * size + x) * 4 + 3] = 255;
+            }
+        }
+        tile
+    }
+
+    #[test]
+    fn chamfer_inside_and_outside_are_polar_and_grow_away_from_the_edge() {
+        let size = 16;
+        let tile = centred_square(size, 4, 12);
+
+        // inside: transparency is -1; opaque distance grows toward the centre.
+        let inside = chamfer_distance(&tile, size, true);
+        assert_eq!(inside[0], -1.0, "a transparent corner is -1 for the inside transform");
+        let centre = inside[8 * size + 8];
+        let edge = inside[4 * size + 8]; // the square's top edge row
+        assert!(edge >= 0.0 && centre > edge, "inside distance deepens toward the centre");
+
+        // outside: opaque is -1; transparency carries the distance.
+        let outside = chamfer_distance(&tile, size, false);
+        assert_eq!(outside[8 * size + 8], -1.0, "an opaque pixel is -1 for the outside transform");
+        assert!(outside[0] > 0.0, "a far transparent corner has a positive outside distance");
+    }
 }

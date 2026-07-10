@@ -9,3 +9,8 @@ publish.workspace = true
 # the core; the codec never re-implements pixel math (DRY iron rule).
 dm-icon-core = { path = "../dm-icon-core" }
 sha2 = "0.10"
+
+[dev-dependencies]
+# Test fixtures square + sqrt through libm (not std / powi) to honour the determinism
+# doctrine — the pinned content-address anchors depend on IEEE-exact fixture pixels.
+libm = "0.2"

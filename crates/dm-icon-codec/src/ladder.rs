@@ -24,6 +24,9 @@ pub const OVERLAY_SIZES: [usize; 6] = [16, 20, 24, 32, 48, 256];
 /// `IconResampler.Downscale`). Falls back to `[source]` when the source is smaller than
 /// every ladder rung.
 pub fn resample_ladder(source: &Raster) -> Vec<Raster> {
+    // A zero-dimension source produces a frame the codec's own `parse` rejects
+    // (dib_width <= 0); refuse it at the source instead of baking an invalid asset.
+    assert!(source.width > 0 && source.height > 0, "cannot bake a zero-dimension source");
     let mut frames: Vec<Raster> = LADDER_SIZES
         .iter()
         .copied()
@@ -155,7 +158,12 @@ mod tests {
         for y in 0..size {
             for x in 0..size {
                 let i = (y * size + x) * 4;
-                let d = (((x as f64 - c).powi(2)) + ((y as f64 - c).powi(2))).sqrt();
+                // libm::sqrt + explicit d*d (not powi/std sqrt) keeps the fixture inside the
+                // determinism doctrine; both are IEEE-correctly-rounded, so the pinned hash
+                // is unaffected.
+                let dx = x as f64 - c;
+                let dy = y as f64 - c;
+                let d = libm::sqrt(dx * dx + dy * dy);
                 let a = if d <= radius { 255 } else { 0 };
                 r.data[i] = 20;
                 r.data[i + 1] = 130;
@@ -185,6 +193,14 @@ mod tests {
         assert_eq!(bake_ico(&checkerboard(256)).content_hash, CHECKER256_ICO_SHA256);
         assert_eq!(bake_ico(&alpha_disc(256)).content_hash, DISC256_ICO_SHA256);
         assert_eq!(transparent_ico().content_hash, TRANSPARENT_ICO_SHA256);
+    }
+
+    #[test]
+    #[should_panic(expected = "zero-dimension source")]
+    fn baking_a_zero_dimension_source_is_rejected() {
+        // A 0×0 render would otherwise ladder-fall-back to a single 0×0 frame whose DIB the
+        // codec's own parse rejects; refuse it up front.
+        bake_ico(&Raster::new(0, 0));
     }
 
     #[test]

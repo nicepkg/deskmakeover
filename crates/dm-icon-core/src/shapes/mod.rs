@@ -56,7 +56,9 @@ pub const APPLE_CORNER_FACTOR: f64 = 0.225;
 
 thread_local! {
     /// Per (shape, size-bits) flattened boundary polygon — the TS oracle memoizes
-    /// the same way (`polyCache`); pure, so the cache is parity-neutral.
+    /// the same way (`polyCache`); pure, so the cache is parity-neutral. Grows
+    /// monotonically but is bounded in practice (a handful of shapes × the few tile
+    /// sizes a session renders); never evicted, per the frozen oracle.
     static POLY_CACHE: RefCell<HashMap<(IconShape, u64), Vec<Pt>>> = RefCell::new(HashMap::new());
 }
 

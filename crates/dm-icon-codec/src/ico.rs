@@ -27,7 +27,9 @@ pub fn write_ico(frames: &[Raster]) -> Vec<u8> {
             + payloads.iter().map(Vec::len).sum::<usize>(),
     );
 
-    // ICONDIR: reserved=0, type=1 (icon), image count.
+    // ICONDIR: reserved=0, type=1 (icon), image count. Envelope: the directory count is
+    // a u16, so at most 65,535 frames (the ladders ship 6).
+    debug_assert!(frames.len() <= u16::MAX as usize, "ICO image count exceeds the u16 directory field");
     out.extend_from_slice(&0u16.to_le_bytes());
     out.extend_from_slice(&1u16.to_le_bytes());
     out.extend_from_slice(&(frames.len() as u16).to_le_bytes());
@@ -41,8 +43,14 @@ pub fn write_ico(frames: &[Raster]) -> Vec<u8> {
         out.push(0); // reserved
         out.extend_from_slice(&1u16.to_le_bytes()); // color planes
         out.extend_from_slice(&32u16.to_le_bytes()); // bits per pixel
+        // Envelope: bytesInRes and the running offset are both u32 (a 256² frame is ~256 KB).
+        debug_assert!(payload.len() <= u32::MAX as usize, "frame bytesInRes exceeds the u32 field");
         out.extend_from_slice(&(payload.len() as u32).to_le_bytes()); // bytesInRes
         out.extend_from_slice(&image_offset.to_le_bytes());
+        debug_assert!(
+            (image_offset as u64) + (payload.len() as u64) <= u32::MAX as u64,
+            "ICO image offset overflows the u32 field"
+        );
         image_offset += payload.len() as u32;
     }
 
@@ -180,7 +188,14 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<IcoEntry>, String> {
         let w = dib_width as usize;
         let hh = (dib_height / 2) as usize;
         let mask_stride = ((w + 31) / 32) * 4;
-        let expected_res = DIB_HEADER_LEN + w * hh * 4 + mask_stride * hh;
+        // Checked so a crafted header cannot wrap the size arithmetic (wasm32 usize is
+        // 32-bit; a malformed ICO must be rejected, never silently accepted after a wrap).
+        let expected_res = w
+            .checked_mul(hh)
+            .and_then(|px| px.checked_mul(4))
+            .and_then(|body| mask_stride.checked_mul(hh).and_then(|mask| body.checked_add(mask)))
+            .and_then(|payload| payload.checked_add(DIB_HEADER_LEN))
+            .ok_or_else(|| format!("frame {i}: DIB dimensions overflow the size field"))?;
         if bytes_in_res as usize != expected_res {
             return Err(format!(
                 "frame {i}: bytesInRes {bytes_in_res} != DIB size {expected_res}"

@@ -147,25 +147,30 @@ pub fn render_tile_cached(
         None
     };
 
-    let geometry_ctx = MarkContext {
+    // Only marks read the geometry context, and building it clones the tile-alpha field
+    // (256 KB at 256²). Skip that allocation entirely on the common no-mark path.
+    let geometry_ctx = mark.map(|_| MarkContext {
         size,
         shape,
         luminance: 0.5,
         mark_color: config.mark_color,
         tile_alpha: tile_alpha.clone(),
-    };
+    });
 
     // Clamp the mark inset so the inscribed card keeps at least one pixel; without
     // this a large inset on a tiny tile underflows `size - 2 * pad` (or drives
     // card_size to 0, tripping the shapeSize assert). At 256² the real insets are a
     // few px, far below (size - 1) / 2, so the master render is unchanged.
-    let pad = mark.map(|m| m.card_inset(&geometry_ctx)).unwrap_or(0).min((size - 1) / 2);
+    let pad = match (mark, &geometry_ctx) {
+        (Some(m), Some(gc)) => m.card_inset(gc).min((size - 1) / 2),
+        _ => 0,
+    };
     let card_size = size - 2 * pad;
     let mut card_mask = shape_mask(shape, size, card_size, pad as f64, pad as f64);
     let carves = mark.map(|m| m.carves_card()).unwrap_or(false);
     if carves {
-        if let Some(m) = mark {
-            m.carve_card(&mut card_mask, &geometry_ctx);
+        if let (Some(m), Some(gc)) = (mark, &geometry_ctx) {
+            m.carve_card(&mut card_mask, gc);
         }
     }
 

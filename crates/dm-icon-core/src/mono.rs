@@ -16,6 +16,9 @@ use crate::js_math::{clamp_byte, clamp_u8_int, js_round};
 use crate::raster::{Raster, Rgba};
 
 thread_local! {
+    /// Per-tint tonal ramp (color.ts `rampCache`); pure, so parity-neutral. Grows
+    /// monotonically but is bounded in practice (one entry per distinct tint a session
+    /// uses); never evicted, per the frozen oracle.
     static RAMP_CACHE: RefCell<HashMap<u32, [u8; 768]>> = RefCell::new(HashMap::new());
 }
 

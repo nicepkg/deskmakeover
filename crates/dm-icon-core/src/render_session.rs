@@ -41,6 +41,10 @@ impl RenderSession {
 
     /// Register (or replace) a decoded 256px source under an id, with a caller-
     /// supplied content hash of the source bytes for cache keying.
+    ///
+    /// Trust contract: the caller owns `source_hash` correctness. Two different
+    /// rasters sharing a hash collide in the profile cache (one's profile is reused
+    /// for the other); the app derives it from the real source bytes.
     pub fn register(&mut self, id: impl Into<String>, source_hash: u64, raster: Raster) {
         self.sources.insert(id.into(), Registered { raster, source_hash });
     }
@@ -85,7 +89,7 @@ impl RenderSession {
     ) -> Option<Raster> {
         let hash = self.sources.get(id)?.source_hash;
         self.analyze(id)?; // populate the cache
-        let config = self.look.as_ref().expect("set_look before render");
+        let config = self.look.as_ref()?; // None until set_look — align with the Option API
         let raster = &self.sources.get(id)?.raster;
         let profile = self.profiles.get(&hash).map(|c| &c.profile);
         Some(render_tile_cached(raster, config, is_shortcut, show_original, size, opts, diag, profile))
@@ -153,6 +157,16 @@ mod tests {
         let direct = crate::compose::render_tile(&src, &spectrum(), false, false, 256, &opts, &mut d2);
         assert_eq!(session_tile.data, direct.data);
         assert_eq!(d1.lane, d2.lane);
+    }
+
+    #[test]
+    fn render_without_a_look_returns_none() {
+        // The look is optional until set; render should mirror the rest of the API and
+        // return None rather than panicking.
+        let mut s = RenderSession::new();
+        s.register("a", 1, solid_source(30, 120, 200));
+        let mut diag = ComposeDiagnostics::default();
+        assert!(s.render("a", false, false, 256, &RenderOpts::default(), &mut diag).is_none());
     }
 
     #[test]

@@ -2,11 +2,16 @@
 //! the crate's PUBLIC API (keeps the source files under the 500-line cap). Covers the
 //! `Empty` compose lane (no source in the oracle corpus reaches it) and blur invariance.
 
-use dm_icon_core::compose::{render_tile, ComposeDiagnostics, ComposeLane, RenderOpts};
+use dm_icon_core::analysis::{find_content_bounds, solid_bounds, ContentBounds};
+use dm_icon_core::compose::{
+    render_tile, render_tile_cached, ComposeDiagnostics, ComposeFieldLane, ComposeLane, RenderOpts,
+};
 use dm_icon_core::config::{
     Band, Config, Distinction, FilterStyle, MarkStyle, MonoStyle, PlateFallback, Subject,
 };
-use dm_icon_core::raster::{backdrop_blur, box_blur, Raster};
+use dm_icon_core::js_math::{clamp_u8_int, js_round};
+use dm_icon_core::profile::{IconProfile, IconProfileKind};
+use dm_icon_core::raster::{backdrop_blur, box_blur, clip_to_mask, from_rgb_int, Raster};
 use dm_icon_core::shapes::IconShape;
 
 fn base_config() -> Config {
@@ -95,4 +100,100 @@ fn backdrop_blur_of_a_uniform_raster_stays_that_colour() {
     }
     // radius < 1 is an identity clone.
     assert_eq!(backdrop_blur(&src, 0).data, src.data);
+}
+
+#[test]
+fn derived_plate_field_lane_via_the_render_session_profile_seam() {
+    // The `DerivedPlate` field sub-lane is a faithful port of the frozen oracle but is
+    // UNREACHABLE from `icon_profile(artwork)`: it needs kind==Bare && !transparent_edges,
+    // yet the ≥90%-opaque border that !transparent_edges demands forces content coverage
+    // ≥ 0.98, which the classifier routes to FullSquare BEFORE it ever detects a
+    // background (profile.rs). No artwork — hence no RenderSession — reaches it in
+    // production. We drive the ported branch through the same profile-override seam the
+    // RenderSession uses, proving it composes a plate and records the lane.
+    let mut artwork = Raster::new(64, 64);
+    for y in 16..48 {
+        for x in 16..48 {
+            let i = (y * 64 + x) * 4;
+            artwork.data[i..i + 4].copy_from_slice(&[200, 40, 40, 255]);
+        }
+    }
+    let forced = IconProfile {
+        kind: IconProfileKind::Bare,
+        transparent_edges: false,
+        background: None,
+        background_lightness: None,
+        subject_colour: None,
+        subject_lightness: 0.4,
+        subject_mask: None,
+        subject_rim_colour: Some(from_rgb_int(0xcc3344)),
+        subject_rim_lightness: 0.4,
+    };
+    let mut diag = ComposeDiagnostics::default();
+    let out = render_tile_cached(
+        &artwork,
+        &base_config(),
+        false,
+        false,
+        64,
+        &RenderOpts::default(),
+        &mut diag,
+        Some(&forced),
+    );
+    assert_eq!(diag.lane, ComposeLane::DerivedField);
+    assert_eq!(diag.field_lane, Some(ComposeFieldLane::DerivedPlate));
+    assert!(out.data.chunks_exact(4).any(|p| p[3] > 0), "the derived-plate lane must paint a tile");
+}
+
+#[test]
+fn clip_to_mask_conserves_the_three_coverage_regimes() {
+    // Property: cov ≤ 0 fully zeroes RGBA (compositeOver's alpha guard depends on it),
+    // 0 < cov < 1 keeps RGB and scales alpha by round(a·cov), cov ≥ 1 leaves the pixel
+    // byte-identical. (The raster.rs point test misses the cov ≥ 1 untouched branch.)
+    let size = 24;
+    let n = size * size;
+    let mut r = Raster::new(size, size);
+    for i in 0..n {
+        let i4 = i * 4;
+        r.data[i4] = (i % 251) as u8;
+        r.data[i4 + 1] = ((i * 7) % 251) as u8;
+        r.data[i4 + 2] = ((i * 13) % 251) as u8;
+        r.data[i4 + 3] = 40 + (i % 200) as u8;
+    }
+    let before = r.data.clone();
+    let cov = 0.375;
+    let mask: Vec<f64> = (0..n).map(|i| match i % 3 { 0 => 0.0, 1 => cov, _ => 1.0 }).collect();
+    clip_to_mask(&mut r, &mask);
+    for i in 0..n {
+        let i4 = i * 4;
+        match i % 3 {
+            0 => assert_eq!(&r.data[i4..i4 + 4], &[0, 0, 0, 0], "cov ≤ 0 must fully zero pixel {i}"),
+            1 => {
+                assert_eq!(&r.data[i4..i4 + 3], &before[i4..i4 + 3], "partial cov must keep RGB");
+                let want = clamp_u8_int(js_round(before[i4 + 3] as f64 * cov));
+                assert_eq!(r.data[i4 + 3], want, "partial cov must scale alpha by round(a·cov)");
+            }
+            _ => assert_eq!(&r.data[i4..i4 + 4], &before[i4..i4 + 4], "cov ≥ 1 must not touch the pixel"),
+        }
+    }
+}
+
+#[test]
+fn content_bounds_and_solid_bounds_survive_a_zero_by_zero_raster() {
+    // The genuinely-degenerate raster (no decode yields it) exercises the "no content
+    // found" early-out in both scanners. NOTE: has_transparent_edges is NOT 0-width-safe
+    // (`c.width - 1` underflows) — flagged to team-lead, deliberately not called here.
+    let empty = Raster::new(0, 0);
+    assert_eq!(find_content_bounds(&empty), ContentBounds { left: 0, top: 0, right: 0, bottom: 0 });
+    assert_eq!(solid_bounds(&empty), None);
+}
+
+#[test]
+#[should_panic(expected = "size must be positive")]
+fn render_tile_rejects_a_zero_output_size() {
+    // The output-size contract (compose.ts renderTile asserts size > 0); a 0-size tile is a
+    // caller bug, pinned so the guard cannot be silently removed.
+    let artwork = Raster::new(16, 16);
+    let mut diag = ComposeDiagnostics::default();
+    render_tile(&artwork, &base_config(), false, false, 0, &RenderOpts::default(), &mut diag);
 }

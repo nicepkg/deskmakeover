@@ -11,7 +11,7 @@ use crate::analysis::{find_content_bounds, ContentBounds};
 use crate::color::{field_shadow_tone, neutral_contrast_tone, themed_contrast_tone};
 use crate::config::{Config, IconShape};
 use crate::js_math::{clamp_u8_int, js_round};
-use crate::profile::{icon_profile, IconProfileKind};
+use crate::profile::{icon_profile, IconProfile, IconProfileKind};
 use crate::raster::{from_rgb_int, over_at, Raster, Rgba};
 use crate::sampling::draw_scaled;
 use crate::segment::segment_subject;
@@ -50,10 +50,20 @@ pub(crate) fn compose_field(
     config: &Config,
     opts: &RenderOpts,
     diag: &mut ComposeDiagnostics,
+    profile_override: Option<&IconProfile>,
 ) {
     let band = config.plate_band;
     let box_ = field_content_box(shape, card_size);
-    let profile = icon_profile(artwork);
+    // The RenderSession may supply the cached profile (same raster → identical);
+    // otherwise it is computed here exactly as the TS oracle does.
+    let computed;
+    let profile: &IconProfile = match profile_override {
+        Some(p) => p,
+        None => {
+            computed = icon_profile(artwork);
+            &computed
+        }
+    };
 
     // Step 1: a filled standard square is already a complete tile — clip only.
     if profile.kind == IconProfileKind::FullSquare {

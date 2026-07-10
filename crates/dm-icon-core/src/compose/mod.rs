@@ -16,6 +16,7 @@ use crate::filters::apply_filter;
 use crate::js_math::js_round;
 use crate::marks::{draw_classic_arrow, resolve_mark, MarkContext, Placement};
 use crate::mono::{mono_map_adaptive, mono_ramp, transform_pixel_in_place};
+use crate::profile::IconProfile;
 use crate::raster::{
     clip_to_mask, from_rgb_int, over_at, shape_mask, Raster, Rgba, WHITE,
 };
@@ -180,6 +181,23 @@ pub fn render_tile(
     opts: &RenderOpts,
     diag: &mut ComposeDiagnostics,
 ) -> Raster {
+    render_tile_cached(artwork, config, is_shortcut, show_original, size, opts, diag, None)
+}
+
+/// `render_tile` with an optional RenderSession-cached profile (same raster →
+/// identical to `iconProfile(artwork)`, so byte parity is preserved). The
+/// derived-field lane consumes it, skipping the per-render re-analysis.
+#[allow(clippy::too_many_arguments)]
+pub fn render_tile_cached(
+    artwork: &Raster,
+    config: &Config,
+    is_shortcut: bool,
+    show_original: bool,
+    size: usize,
+    opts: &RenderOpts,
+    diag: &mut ComposeDiagnostics,
+    profile: Option<&IconProfile>,
+) -> Raster {
     assert!(size > 0, "size must be positive");
     let tint = config.tint;
 
@@ -220,7 +238,7 @@ pub fn render_tile(
     }
 
     let (mut tile, pass_through) =
-        compose_tile(artwork, size, pad, card_size, shape, config, tint, opts, diag);
+        compose_tile(artwork, size, pad, card_size, shape, config, tint, opts, diag, profile);
     diag.pass_through = pass_through;
 
     if !pass_through || carves {
@@ -306,6 +324,7 @@ fn compose_tile(
     tint: u32,
     opts: &RenderOpts,
     diag: &mut ComposeDiagnostics,
+    profile: Option<&IconProfile>,
 ) -> (Raster, bool) {
     let mut content = Raster::new(size, size);
 
@@ -321,7 +340,7 @@ fn compose_tile(
         && shape != IconShape::None
     {
         diag.lane = ComposeLane::DerivedField;
-        field::compose_field(artwork, &mut content, size, pad, card_size, shape, config, opts, diag);
+        field::compose_field(artwork, &mut content, size, pad, card_size, shape, config, opts, diag, profile);
         return (content, false);
     }
 

@@ -28,6 +28,7 @@ pub mod marks;
 pub mod mono;
 pub mod profile;
 pub mod raster;
+pub mod render_session;
 pub mod sampling;
 pub mod segment;
 pub mod shapes;

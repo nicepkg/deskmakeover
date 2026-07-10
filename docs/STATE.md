@@ -70,11 +70,19 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 ## Live now — web, through commit `b881568`
 
-**356 bun tests + `tsc -b` green**; browser visual-acceptance evidence
+**357 bun tests + `tsc -b` green**; browser visual-acceptance evidence
 `docs/plans/evidence/2026-07-icons-v2/` (01-75). The contract truth is
 `apps/desktop/frontend/src/bridge/types.ts` (bridge **schema 4**). Mock desktop = a full
-~120-icon fake desktop (`bridge/mock-desktop.ts` + `public/mock-icons/`, PNG pack from
-`scripts/dev/generate-mock-icons.mjs`).
+120-icon fake desktop (`bridge/mock-desktop.ts` + `public/mock-icons/`, PNG pack from
+`scripts/dev/generate-mock-icons.mjs`; the "~488" in the M0 plan text was stale — the
+committed synthetic pack is 120 sources).
+
+**M0b DONE** — parity oracle corpus committed under `testdata/icons/` (1,368 PNGs,
+19 MB): Tier A full desktop under the spectrum default, Tier B 24-source style matrix
+(47 cells each), Tier C per-look hue-spread sessions, per-source stage dumps. Harness
+`apps/desktop/frontend/scripts/capture-oracle.ts` (`--capture` / `--verify [--sample N]`,
+deterministic); CI smoke `tests/oracle-corpus.test.ts`. This is the TS side of the M5
+tri-target differential.
 
 **In flight / next (web):**
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all

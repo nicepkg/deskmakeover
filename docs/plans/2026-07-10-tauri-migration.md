@@ -22,10 +22,31 @@ Panel pricing for the whole endpoint: 18–29 agent-days.
 Scaffold cargo workspace per ADR-0019 layout; move `src/DeskMakeover.Web` →
 `apps/desktop/frontend` (path-only move, imports fixed, 356 tests stay green); freeze
 banners into TS compositor + C# projects; capture the TS oracle corpus: golden 256px
-renders + stage dumps (profile/masks/rim/seeds) over the ~488 mock PNGs + perf
-baselines (48px×300 warm, 256px×300 warm).
+renders + stage dumps (profile/masks/rim/seeds) over the mock PNGs + perf
+baselines (48px, 256px warm).
 **Exit**: corpus committed under `testdata/icons/`; `bun test` + `tsc -b` green from
 the new path; CHANGELOG Unreleased notes the replatform.
+
+**M0b DONE (oracle corpus).** Committed under `testdata/icons/` (1,368 PNGs, 19 MB;
+sources referenced, not copied). The mock pack is **120** synthetic 256² PNGs — NOT
+488 (that figure was stale). Tiers: **A** = full desktop under the spectrum default
+(120 masters + resolved config/lane per item); **B** = 24-source style matrix, 47
+cells each (7 presets · 12 shapes · 4 subjects · 5 plate stops · 2 distinctions ·
+8 marks · 5 filters · shortcut badge · peek) = 1,128 cells; **C** = one hue-spread
+session JSON per look (decode seed + resolved fieldSeed). Per-source stage dumps:
+profile JSON (classification, own-background verdict + anchor, corner-symmetry, rim
+band + majority hex, dominant, foreground bbox, matchesShape/maxScaleInside) +
+subject-mask PNG. The real Win11 shortcut-arrow badge is loaded and composited exactly
+as the app worker does, so Keep/peek goldens carry the true badge (its sha256 is pinned
+in the manifest). Harness `apps/desktop/frontend/scripts/capture-oracle.ts`
+(`--capture` / `--verify [--sample N]`, deterministic — capture-twice byte-identical);
+parity anchor is the per-cell RGBA sha256. CI smoke `tests/oracle-corpus.test.ts` runs
+`--verify --sample 12`. Additive read-only diagnostics export added to the frozen
+`compose.ts` (compose lane) + `analysis.ts` (`cornersSymmetric`) — no pixel change, 357
+tests green. Lane coverage: 9/10 compose lanes + 5/6 field sub-lanes (the `empty` guard
+and the `derived-plate` field branch have no source in the 120-pack — unit-tested
+elsewhere, not fabricated). This harness is the TS side of the M5 tri-target
+differential.
 
 ## M1 — Go/no-go spikes (Windows, ~2d, gate for everything after)
 The five ADR-0019 spikes: STA actor + IFolderView reads · cross-process

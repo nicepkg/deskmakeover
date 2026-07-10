@@ -31,6 +31,31 @@ pub fn write_atomic(path: &str, bytes: &[u8]) -> PortResult<()> {
     result
 }
 
+/// Finalizes a file a COM writer (`IPersistFile::Save`) has written to a temp path: flush its
+/// bytes to disk, then atomically publish it over `target`. This gives the `.lnk` writers the same
+/// durability + atomic publication as the plain-fs writers — a crash mid-Save can no longer tear
+/// the live shortcut, and a clean commit is durable (P1-3). On any failure the temp is removed.
+/// [WINDOWS-VERIFY] the flush + ReplaceFileW on NTFS.
+pub fn finalize_saved(tmp: &str, target: &str) -> PortResult<()> {
+    let (tmp, target) = (Path::new(tmp), Path::new(target));
+    let result = flush_then_publish(tmp, target);
+    if result.is_err() {
+        let _ = fs::remove_file(tmp);
+    }
+    result
+}
+
+fn flush_then_publish(tmp: &Path, target: &Path) -> PortResult<()> {
+    // A fresh write handle to the COM-written temp: FlushFileBuffers flushes the file regardless of
+    // which handle wrote it. `write(true)` opens without truncating.
+    fs::OpenOptions::new().write(true).open(tmp).map_err(io)?.sync_all().map_err(io)?;
+    publish(tmp, target)?;
+    if let Ok(handle) = fs::File::open(target_dir(target)) {
+        let _ = handle.sync_all();
+    }
+    Ok(())
+}
+
 fn write_then_rename(tmp: &Path, target: &Path, bytes: &[u8]) -> PortResult<()> {
     // The caller guarantees the target's parent exists (the writers check `is_dir`/`is_file`
     // first). We deliberately do NOT create it: writing into a directory the user has deleted must
@@ -84,6 +109,12 @@ fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
 #[cfg(not(windows))]
 fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
     fs::rename(tmp, target).map_err(io)
+}
+
+/// A process-unique temp sibling path for `target`, for a COM writer (`IPersistFile::Save`) to save
+/// into before [`finalize_saved`] flushes and publishes it.
+pub fn temp_path_for(target: &str) -> String {
+    temp_sibling(Path::new(target)).to_string_lossy().into_owned()
 }
 
 /// A process-unique sibling temp path in the target's own directory, so the rename is

@@ -32,22 +32,27 @@ pub fn read_icon_location(shortcut_path: &str) -> PortResult<Option<(String, i32
     }
 }
 
-/// Points the `.lnk` at `icon_path` (with `index`) and persists it, remembering the change.
-/// Mirrors `ShellLinkShortcutIconWriter.Apply`.
+/// Points the `.lnk` at `icon_path` (with `index`) and persists it durably + atomically: the edit
+/// is saved to a temp sibling, then flushed and published over the target, so a crash mid-write
+/// cannot tear the live shortcut and a clean commit is durable (P1-3). Mirrors
+/// `ShellLinkShortcutIconWriter.Apply`.
 ///
 /// [WINDOWS-VERIFY] runtime.
 pub fn set_icon_location(shortcut_path: &str, icon_path: &str, index: i32) -> PortResult<()> {
-    // SAFETY: COM object confined to this STA thread.
+    let target = extended_length_path(shortcut_path);
+    let tmp = extended_length_path(&crate::durable::temp_path_for(shortcut_path));
+    // SAFETY: COM object confined to this STA thread; dropped before we publish, so the target is
+    // no longer held open when ReplaceFileW runs.
     unsafe {
         let link: IShellLinkW =
             CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com)?;
         let file: IPersistFile = link.cast().map_err(com)?;
-        let path = extended_length_path(shortcut_path);
-        file.Load(&HSTRING::from(path.as_str()), STGM_READWRITE).map_err(com)?;
+        file.Load(&HSTRING::from(target.as_str()), STGM_READWRITE).map_err(com)?;
         link.SetIconLocation(&HSTRING::from(icon_path), index).map_err(com)?;
-        file.Save(&HSTRING::from(path.as_str()), true).map_err(com)?;
-        Ok(())
+        // Save to the temp path (fRemember = false); durable::finalize_saved publishes it.
+        file.Save(&HSTRING::from(tmp.as_str()), false).map_err(com)?;
     }
+    crate::durable::finalize_saved(&tmp, &target)
 }
 
 /// Reads the `.lnk`'s resolved target path (used to extract a clean icon when the link has no
@@ -78,7 +83,9 @@ pub fn create_shortcut(
     working_dir: &str,
     icon_path: &str,
 ) -> PortResult<()> {
-    // SAFETY: COM object created, used, and dropped on this STA thread.
+    let out = extended_length_path(out_lnk);
+    let tmp = extended_length_path(&crate::durable::temp_path_for(out_lnk));
+    // SAFETY: COM object created, used, and dropped on this STA thread before we publish.
     unsafe {
         let link: IShellLinkW =
             CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com)?;
@@ -86,9 +93,10 @@ pub fn create_shortcut(
         link.SetWorkingDirectory(&HSTRING::from(working_dir)).map_err(com)?;
         link.SetIconLocation(&HSTRING::from(icon_path), 0).map_err(com)?;
         let file: IPersistFile = link.cast().map_err(com)?;
-        file.Save(&HSTRING::from(extended_length_path(out_lnk).as_str()), true).map_err(com)?;
-        Ok(())
+        // Save to a temp sibling, then flush + atomically publish over the target (P1-3).
+        file.Save(&HSTRING::from(tmp.as_str()), false).map_err(com)?;
     }
+    crate::durable::finalize_saved(&tmp, &out)
 }
 
 fn wide_to_string(buf: &[u16]) -> String {

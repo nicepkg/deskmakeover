@@ -64,7 +64,7 @@ pointer: what is TRUE now, what is in flight, what comes next.
 `scripts/dev/generate-mock-icons.mjs`).
 
 **In flight / next (web):**
--1a. **Two-axis T1/T2 SHIPPED `26aa3db` · T3 panel SHIPPED `e4bac52`** (Subject+Plate rows live, dual-tab popover dead, accordion pins added; designer §6 acceptance IN FLIGHT). Owed T4: colour-migrate mapping tests · shape=None disabled-state screenshot · spec02/06 colour-axes amendments. Old note: **T1/T2** — model+engine+bridges live on
+-1a. **TWO-AXIS RESHAPE DESIGNER-ACCEPTED (final PASS at `46a26bc`)** — subject×plate + 本色 fifth stop + panel two rows + accordion parity all certified (§6 full pass, four-way glyph distinguishability, violet-arc rulings executed). Owed T4 tail: colour-migrate mapping tests · banned-arc swatch guard in banned-colors.test · spec02/06 colour-axes amendments · OWNER-PENDING: 灰暗文件板 A(暖纸色板,推荐)/B(深板变暖)/C(不改) disposition. Was: T1/T2 `26aa3db` · T3 `e4bac52` (Subject+Plate rows live, dual-tab popover dead, accordion pins added; designer §6 acceptance IN FLIGHT). Owed T4: colour-migrate mapping tests · shape=None disabled-state screenshot · spec02/06 colour-axes amendments. Old note: **T1/T2** — model+engine+bridges live on
    subject×plate (smoke: 124 icons byte-identical look, presets match, 0
    errors). Spec FINAL (本色 = plate stop (null,'white'), faithful/minimal
    collapse fixed). NEXT: T3 panel two-row rebuild (主体行+底板行 + 本色

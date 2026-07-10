@@ -8,7 +8,7 @@
 //!   (`f32`/`f64`), including JS rounding semantics at byte boundaries
 //!   (`js_math::js_round`, `js_math::clamp_u8_round_half_even`);
 //! - every module is a 1:1 port of the FROZEN TS compositor
-//!   (`apps/desktop/frontend/src/icon-compositor/*`) — the external pixel
+//!   (`src/icon-compositor/*`) — the external pixel
 //!   contract is byte parity against that oracle.
 //!
 //! Spike 4 (M1 gate) ships the slice modules only: raster primitives, Circle

@@ -1,7 +1,7 @@
 # Icon parity oracle corpus (ADR-0019 M0b)
 
 Golden renders + stage dumps from the **frozen** TypeScript icon compositor
-(`apps/desktop/frontend/src/icon-compositor`). This is the permanent parity
+(`src/icon-compositor`). This is the permanent parity
 oracle for the Rust port and the **TS side of the M5 tri-target differential**
 (TS vs Rust-WASM vs Rust-native). Regenerated only with a reviewed `--bless`
 (re-run `--capture`); never hand-edit a golden.
@@ -15,7 +15,7 @@ oracle for the Rust port and the **TS side of the M5 tri-target differential**
 - `tier-c/<preset>.json` — one cross-icon hue-spread session per look: every item's decode seed + resolved fieldSeed (what the Rust RenderSession must reproduce).
 - `perf-baseline.json` — informational warm timings; **excluded from --verify**.
 
-## Commands (run from `apps/desktop/frontend`)
+## Commands (run from the repo root)
 - Capture / re-bless: `bun scripts/capture-oracle.ts --capture`
 - Full verify (CI-nightly / manual): `bun scripts/capture-oracle.ts --verify`
 - Fast CI smoke (also `tests/oracle-corpus.test.ts`): `bun scripts/capture-oracle.ts --verify --sample 12`

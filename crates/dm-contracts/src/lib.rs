@@ -3,7 +3,7 @@
 //!
 //! M2 covers the first slice only: settings get/set + a diagnostics ping. Every
 //! DTO derives `specta::Type`, so `apps/desktop/src-tauri` exports byte-identical
-//! TypeScript into `frontend/src/bridge/generated.ts` (drift is a CI failure).
+//! TypeScript into `src/bridge/generated.ts` (drift is a CI failure).
 //! The rest of bridge schema 4 keeps living in `bridge/types.ts` until later
 //! phases migrate it here.
 

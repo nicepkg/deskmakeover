@@ -32,8 +32,7 @@ import { shapeContains } from '@/icon-compositor/shapes'
 import { loadMockSources } from './oracle/desktop-session'
 import { rasterHash } from './oracle/png-codec'
 
-const FRONTEND = resolve(import.meta.dir, '..')
-const REPO_ROOT = resolve(FRONTEND, '../../..')
+const REPO_ROOT = resolve(import.meta.dir, '..')
 const OUT = join(REPO_ROOT, 'target/spike4')
 
 // ---- slice spec (fixed for the spike; the Rust side hardcodes the same) -----
@@ -265,7 +264,7 @@ function fixtures(): string {
 function main(): void {
   mkdirSync(join(OUT, 'sources'), { recursive: true })
   mkdirSync(join(OUT, 'ts'), { recursive: true })
-  const sources = loadMockSources(FRONTEND)
+  const sources = loadMockSources(REPO_ROOT)
   const rows: string[] = []
   let area = 0
   let supersample = 0

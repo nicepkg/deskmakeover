@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-const appRes = join(import.meta.dir, '..', '..', '..', '..', 'src', 'DeskMakeover.App', 'Resources')
+const appRes = join(import.meta.dir, '..', 'legacy', 'src', 'DeskMakeover.App', 'Resources')
 const outDir = join(import.meta.dir, '..', 'src', 'lib', 'i18n')
 
 function parseResx(path: string): Map<string, string> {

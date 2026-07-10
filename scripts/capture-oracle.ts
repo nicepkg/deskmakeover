@@ -43,11 +43,10 @@ import {
   writeJson,
 } from './oracle/manifest'
 
-const FRONTEND = resolve(import.meta.dir, '..')
-const REPO_ROOT = resolve(FRONTEND, '../../..')
+const REPO_ROOT = resolve(import.meta.dir, '..')
 const TESTDATA = join(REPO_ROOT, 'testdata/icons')
 const MASTER = 256
-const ARROW_ASSET = join(FRONTEND, 'src/assets/win-native-arrow.png')
+const ARROW_ASSET = join(REPO_ROOT, 'src/assets/win-native-arrow.png')
 
 /** Load the real Win11 shortcut-arrow badge exactly as the app's worker does at
  *  boot (native size, no resize), so shortcut/Keep goldens match the app bake
@@ -114,7 +113,7 @@ function cellRecord(path: string, source: OracleSource, config: ConfigDto, isSho
 
 export function capture(): void {
   const arrowBytes = initNativeArrow()
-  const sources = loadMockSources(FRONTEND)
+  const sources = loadMockSources(REPO_ROOT)
   const sourceEntries = sources.map((s) => ({ id: s.id, sha256: sha256Hex(s.bytes) }))
   const set = setHash(sourceEntries)
 
@@ -206,9 +205,9 @@ export function capture(): void {
       decode: 'Pure node:zlib inflate + PNG un-filter (colortype 6 / 8-bit / no interlace). No colour management; straight alpha. Verified byte-identical to PIL and the browser canvas on the mock pack.',
       encode: 'Deterministic: Paeth per-scanline filter + zlib deflate level 9. Proven by capture-twice byte-diff.',
       masterSize: MASTER,
-      shortcutArrow: { asset: 'apps/desktop/frontend/src/assets/win-native-arrow.png', sha256: sha256Hex(arrowBytes), note: 'Loaded at native 100² and composited by drawClassicArrow exactly as the app worker does at boot; shortcut/Keep goldens carry the real badge, not the vector fallback. The Rust port must composite the same asset.' },
+      shortcutArrow: { asset: 'src/assets/win-native-arrow.png', sha256: sha256Hex(arrowBytes), note: 'Loaded at native 100² and composited by drawClassicArrow exactly as the app worker does at boot; shortcut/Keep goldens carry the real badge, not the vector fallback. The Rust port must composite the same asset.' },
     },
-    sourceDir: 'apps/desktop/frontend/public/mock-icons',
+    sourceDir: 'public/mock-icons',
     setHash: set,
     sources: sourceManifest,
     tiers: {
@@ -270,7 +269,7 @@ export function verify(sampleN: number | null): number {
   // Source population must match (Tier A/C pixels depend on the whole set) —
   // hashed from bytes only, no decode. Full mode decodes everything; sample
   // mode decodes just the sources it touches, so the CI smoke stays snappy.
-  const metas = readSourceMetas(FRONTEND)
+  const metas = readSourceMetas(REPO_ROOT)
   const currentSet = setHash(metas.map((m) => ({ id: m.id, sha256: sha256Hex(m.bytes) })))
   const manifest = readJson<{ setHash: string; counts: Record<string, number> }>(join(TESTDATA, 'manifest.json'))
   if (currentSet !== manifest.setHash) errors.push(`setHash drift: source pack changed (${currentSet.slice(0, 16)} != ${manifest.setHash.slice(0, 16)})`)
@@ -356,7 +355,7 @@ function readme(): string {
   return `# Icon parity oracle corpus (ADR-0019 M0b)
 
 Golden renders + stage dumps from the **frozen** TypeScript icon compositor
-(\`apps/desktop/frontend/src/icon-compositor\`). This is the permanent parity
+(\`src/icon-compositor\`). This is the permanent parity
 oracle for the Rust port and the **TS side of the M5 tri-target differential**
 (TS vs Rust-WASM vs Rust-native). Regenerated only with a reviewed \`--bless\`
 (re-run \`--capture\`); never hand-edit a golden.
@@ -370,7 +369,7 @@ oracle for the Rust port and the **TS side of the M5 tri-target differential**
 - \`tier-c/<preset>.json\` — one cross-icon hue-spread session per look: every item's decode seed + resolved fieldSeed (what the Rust RenderSession must reproduce).
 - \`perf-baseline.json\` — informational warm timings; **excluded from --verify**.
 
-## Commands (run from \`apps/desktop/frontend\`)
+## Commands (run from the repo root)
 - Capture / re-bless: \`bun scripts/capture-oracle.ts --capture\`
 - Full verify (CI-nightly / manual): \`bun scripts/capture-oracle.ts --verify\`
 - Fast CI smoke (also \`tests/oracle-corpus.test.ts\`): \`bun scripts/capture-oracle.ts --verify --sample 12\`

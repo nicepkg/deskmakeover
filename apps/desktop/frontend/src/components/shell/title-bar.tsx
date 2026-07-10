@@ -16,7 +16,10 @@ export function TitleBar() {
   const maximized = useApp((s) => s.maximized)
 
   return (
-    <header className="app-drag flex h-[46px] shrink-0 items-center justify-between">
+    <header
+      data-tauri-drag-region
+      className="app-drag flex h-[46px] shrink-0 items-center justify-between"
+    >
       {/* The logo slot is exactly as wide as the module rail (66px) and centers the
           mark — the app icon and the rail glyphs share one vertical axis. */}
       <div className="flex items-center">

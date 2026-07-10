@@ -1,6 +1,7 @@
 import { BRIDGE_SCHEMA_VERSION } from './types'
 import type { BridgeEvents, BridgeMethods, FrameMeta } from './types'
 import { mockCall } from './mock'
+import { isTauri, tauriCall, tauriHandles } from './tauri'
 
 // The WebView2 script API surface we use (typed locally — no @types dependency).
 interface WebViewApi {
@@ -76,6 +77,11 @@ export function call<M extends keyof BridgeMethods>(
 ): Promise<BridgeMethods[M]['result']> {
   const params = args[0]
   if (!webview) {
+    // Under Tauri, the verbs Rust owns go to the host; the rest stay on the mock
+    // so the browser dev loop is unchanged.
+    if (isTauri() && tauriHandles(method)) {
+      return tauriCall(method, params) as Promise<BridgeMethods[M]['result']>
+    }
     return mockCall(method, params) as Promise<BridgeMethods[M]['result']>
   }
 
@@ -97,6 +103,14 @@ export function on<T extends keyof BridgeEvents>(
   }
   set.add(handler as EventHandler)
   return () => set.delete(handler as EventHandler)
+}
+
+/** Dispatch a bridge event to registered `on()` handlers. Used by the Tauri
+ *  bridge to feed host-side signals (e.g. window-state) through the same stream
+ *  the WebView2 host uses. Declared as a function so the tauri↔client import
+ *  cycle stays safe. */
+export function emit<T extends keyof BridgeEvents>(topic: T, data: BridgeEvents[T]): void {
+  eventHandlers.get(topic)?.forEach((h) => h(data))
 }
 
 export function onFrame(handler: FrameHandler): () => void {

@@ -311,6 +311,17 @@ impl<'p> TxnDriver<'p> {
             )
             .into());
         }
+        // P2-1: the paired empty asset was verified to exist BEFORE the mutation, but it could be
+        // deleted (GC, external process) in the window before the registry commits to referencing
+        // it — and the Recycle Bin fingerprint covers only the registry path text, so a vanished ICO
+        // is otherwise invisible. Re-check it exists AFTER the apply, narrowing the window to a
+        // deletion strictly after this point (unclosable without the applier re-validating at write
+        // time — recorded in the wave-2 [WINDOWS-VERIFY] ledger).
+        if let Some(empty) = &assets.empty {
+            if !self.assets.exists(empty)? {
+                return Err(PortError::AssetMissing(empty.path.clone()).into());
+            }
+        }
         journal.append(&JournalRecord::ItemVerified { txn, item: req.target.id.clone() })?;
         item.new_fingerprint = Some(new_fp);
         Ok(())

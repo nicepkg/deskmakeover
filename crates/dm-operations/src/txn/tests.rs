@@ -773,6 +773,77 @@ fn recyclebin_apply_fails_when_the_paired_empty_asset_does_not_materialize() {
 }
 
 #[test]
+fn recyclebin_apply_fails_when_the_paired_empty_asset_vanishes_during_apply() {
+    // P2-1 window narrowing: the paired empty ICO passes the pre-mutation existence check but is
+    // deleted DURING the apply (GC / external process). Because the Recycle Bin fingerprint covers
+    // only the registry path text, a vanished ICO is invisible to verify — the driver's post-apply
+    // existence RE-check is what must refuse the commit, or a dangling registry reference lands.
+    let world = World::shared();
+    let bin =
+        ItemTarget::new(ItemId::from_raw("RB"), ItemKind::RecycleBin, "HKCU/RecycleBin/DefaultIcon");
+    world.borrow_mut().put(&bin.path, b"orig-registry-state");
+    let plat = FakePlatform::new(world.clone());
+    plat.make_empty_vanish_after_apply(); // the empty passes pre-check, then disappears mid-apply
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let current = Fingerprint::of_bytes(&world.borrow().get(&bin.path).unwrap());
+    let req = ApplyRequest {
+        target: bin.clone(),
+        expected_fingerprint: current,
+        owned: OwnedFields::icon_only(),
+        asset_hash: "hashRB".into(),
+        asset_bytes: b"full-ico".to_vec(),
+        empty_asset_bytes: Some(b"empty-ico".to_vec()),
+        pinned_seed: None,
+    };
+    let out = driver.apply(1, vec![req], &mut journal, &mut ledger).unwrap();
+
+    assert!(out.committed.is_empty(), "a paired empty that vanished during apply must not commit");
+    assert!(out.error.is_some());
+    assert_eq!(world.borrow().get(&bin.path).unwrap(), b"orig-registry-state"); // rolled back
+    assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
+fn the_fake_applier_does_not_ignore_the_paired_empty_asset() {
+    // New-P3: the fake applier used to ignore assets.empty, styling identically whether or not a
+    // paired empty was supplied — an unfaithful model of the P2-1 "reference the EXACT empty asset"
+    // contract. Now a paired apply's styled surface folds in the empty ref, so the committed
+    // fingerprint is NOT the one a primary-only styling would produce.
+    let world = World::shared();
+    let bin =
+        ItemTarget::new(ItemId::from_raw("RB"), ItemKind::RecycleBin, "HKCU/RecycleBin/DefaultIcon");
+    world.borrow_mut().put(&bin.path, b"orig-registry-state");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let current = Fingerprint::of_bytes(&world.borrow().get(&bin.path).unwrap());
+    let req = ApplyRequest {
+        target: bin.clone(),
+        expected_fingerprint: current,
+        owned: OwnedFields::icon_only(),
+        asset_hash: "hashRB".into(),
+        asset_bytes: b"full-ico".to_vec(),
+        empty_asset_bytes: Some(b"empty-ico".to_vec()),
+        pinned_seed: None,
+    };
+    let out = driver.apply(1, vec![req], &mut journal, &mut ledger).unwrap();
+    assert_eq!(out.committed, vec![ItemId::from_raw("RB")]);
+
+    let entry = ledger.get(&bin.id).unwrap().unwrap();
+    // If the fake ignored the empty, the styled bytes would be exactly styled_bytes("hashRB").
+    assert_ne!(
+        entry.last_applied_fingerprint,
+        Fingerprint::of_bytes(&styled_bytes("hashRB")),
+        "the paired empty must influence the applied surface, not be ignored"
+    );
+}
+
+#[test]
 fn recyclebin_request_without_empty_bytes_is_rejected_not_committed() {
     // P1-2: a RecycleBin request with no empty_asset_bytes used to skip pairing entirely while the
     // Windows applier still pointed the registry at a guessed empty path — committing a dangling

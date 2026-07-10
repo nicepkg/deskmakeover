@@ -21,6 +21,16 @@ pub fn styled_bytes(asset_hash: &str) -> Vec<u8> {
     format!("STYLED:{asset_hash}").into_bytes()
 }
 
+/// The styled bytes a fake apply establishes for a full asset set. A paired item (the Recycle Bin)
+/// folds in the EXACT empty ref, so the fake models P2-1 faithfully: the applied surface depends on
+/// the empty asset it was handed, never ignores it. A single-asset item is just its primary.
+fn fake_styled(assets: &ApplyAssets) -> Vec<u8> {
+    match &assets.empty {
+        Some(empty) => styled_bytes(&format!("{}+empty:{}", assets.primary.hash, empty.hash)),
+        None => styled_bytes(&assets.primary.hash),
+    }
+}
+
 /// A virtual desktop shared by all fake ports.
 #[derive(Default)]
 pub struct World {
@@ -113,6 +123,9 @@ pub struct FakePlatform {
     /// When set, `put_empty_variant` returns a ref but does NOT materialize it — a store that
     /// "succeeds" yet leaves the asset absent, so the driver's existence check must catch it.
     empty_variant_vanishes: Rc<RefCell<bool>>,
+    /// When set, the paired empty asset is deleted DURING `apply` (after the pre-mutation existence
+    /// check passed), so only the driver's post-apply re-check stands between it and a dangling ref.
+    vanish_empty_after_apply: Rc<RefCell<bool>>,
 }
 
 impl FakePlatform {
@@ -123,6 +136,7 @@ impl FakePlatform {
             capture_errors: Rc::new(RefCell::new(HashSet::new())),
             materialized: Rc::new(RefCell::new(HashSet::new())),
             empty_variant_vanishes: Rc::new(RefCell::new(false)),
+            vanish_empty_after_apply: Rc::new(RefCell::new(false)),
         }
     }
 
@@ -135,6 +149,12 @@ impl FakePlatform {
     /// driver's existence check is the only thing standing between it and a dangling registry ref.
     pub fn make_empty_variant_vanish(&self) {
         *self.empty_variant_vanishes.borrow_mut() = true;
+    }
+
+    /// Deletes the paired empty asset DURING `apply` (after the pre-mutation existence check), so
+    /// the driver's post-apply re-check is what must catch the dangling reference (P2-1).
+    pub fn make_empty_vanish_after_apply(&self) {
+        *self.vanish_empty_after_apply.borrow_mut() = true;
     }
 
     /// The anchor capture returns a `CaptureFailed` anchor (no restore material — skipped).
@@ -175,24 +195,35 @@ impl ItemStateReader for FakePlatform {
 
 impl IconApplier for FakePlatform {
     fn apply(&self, target: &ItemTarget, assets: &ApplyAssets) -> PortResult<Fingerprint> {
-        let mut world = self.world.borrow_mut();
-        if world.apply_fails.contains(&target.path) {
-            return Err(PortError::Com(format!("apply failed for {}", target.path)));
+        // The fingerprint the applier PROMISES for this asset set, derived from the assets
+        // themselves (primary AND the paired empty) and independent of whether the underlying write
+        // actually lands — exactly the non-tautological derivation P1-1 requires of the real
+        // applier, and honouring the empty ref (P2-1) rather than ignoring it. The driver re-reads
+        // the live state and rejects the apply unless the two agree (P1-4).
+        let promised = Fingerprint::of_bytes(&fake_styled(assets));
+        {
+            let mut world = self.world.borrow_mut();
+            if world.apply_fails.contains(&target.path) {
+                return Err(PortError::Com(format!("apply failed for {}", target.path)));
+            }
+            if world.noop_apply.contains(&target.path) {
+                return Ok(promised); // "succeeds" but writes nothing → driver's re-read won't match
+            }
+            if world.wrong_write.contains(&target.path) {
+                // Lands a different asset than requested while still promising the requested one.
+                world.put(&target.path, &styled_bytes("stale-other-asset"));
+                return Ok(promised);
+            }
+            world.put(&target.path, &fake_styled(assets));
         }
-        // The fingerprint the applier PROMISES for this asset, derived from the asset itself and
-        // independent of whether the underlying write actually lands — this is exactly the
-        // non-tautological derivation P1-1 requires of the real applier. The driver re-reads the
-        // live state and rejects the apply unless the two agree (P1-4).
-        let promised = Fingerprint::of_bytes(&styled_bytes(&assets.primary.hash));
-        if world.noop_apply.contains(&target.path) {
-            return Ok(promised); // "succeeds" but writes nothing → driver's re-read won't match
+        // Model a paired empty asset that is deleted DURING the apply (a GC or an external process),
+        // so the driver's post-apply existence re-check is the only thing between it and a committed
+        // dangling reference (P2-1 window narrowing).
+        if *self.vanish_empty_after_apply.borrow() {
+            if let Some(empty) = &assets.empty {
+                self.materialized.borrow_mut().remove(&empty.path);
+            }
         }
-        if world.wrong_write.contains(&target.path) {
-            // Lands a different asset than requested while still promising the requested one.
-            world.put(&target.path, &styled_bytes("stale-other-asset"));
-            return Ok(promised);
-        }
-        world.put(&target.path, &styled_bytes(&assets.primary.hash));
         Ok(promised)
     }
 

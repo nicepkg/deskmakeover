@@ -699,9 +699,11 @@ fn recyclebin_request_without_empty_bytes_is_rejected_not_committed() {
 }
 
 #[test]
-fn journal_failure_after_mutation_still_rolls_back_to_original() {
+fn journal_failure_after_mutation_restores_to_original_without_journaling() {
     // Fail the ItemApplied append (call 4: TxnBegin, ItemPrepared, AssetWritten, ItemApplied).
-    // The desktop mutation already happened; rollback must still walk it back exactly.
+    // The desktop mutation already happened, but the JOURNAL is the thing that failed and may be
+    // torn — so the driver restores the item from its anchor WITHOUT appending rollback records
+    // (P1-5). Recovery re-confirms from the durable prefix.
     let world = World::shared();
     let a = target("A");
     seed(&world, &a, b"orig-A");
@@ -712,17 +714,42 @@ fn journal_failure_after_mutation_still_rolls_back_to_original() {
 
     let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
     assert!(out.error.is_some());
-    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // rolled back exactly
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // restored exactly
     assert!(ledger.all().unwrap().is_empty());
-    // The failed ItemApplied was never recorded, but the rollback records were.
+    // No rollback records were appended to the possibly-torn journal.
+    assert!(!journal.records().iter().any(|r| matches!(r,
+        JournalRecord::ItemRolledBack { .. } | JournalRecord::TxnRolledBack { .. })));
+}
+
+#[test]
+fn applier_failure_with_healthy_journal_still_journals_a_clean_rollback() {
+    // The complementary case: the APPLIER fails (not the journal), so the journal is healthy and a
+    // clean TxnRolledBack terminal SHOULD be recorded (recovery then skips the txn).
+    let world = World::shared();
+    let a = target("A");
+    let b = target("B");
+    seed(&world, &a, b"orig-A");
+    seed(&world, &b, b"orig-B");
+    world.borrow_mut().fail_apply(&b.path); // B's mutation fails → journaled rollback of A
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let out = driver
+        .apply(1, vec![request(&a, &world, "hashA"), request(&b, &world, "hashB")], &mut journal, &mut ledger)
+        .unwrap();
+    assert!(out.error.is_some());
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
     assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::TxnRolledBack { .. })));
 }
 
 #[test]
-fn prepare_append_failure_mid_batch_rolls_back_already_mutated_items() {
-    // P1-5: item A applies fully, then the ItemPrepared append for item B fails. A is already
-    // mutated on the desktop, so the append failure must roll A back — not strand it with no
-    // ledger entry and no terminal record.
+fn prepare_append_failure_mid_batch_restores_mutated_items_without_journaling() {
+    // P1-5: item A applies fully, then the ItemPrepared append for item B fails. The journal may
+    // be torn, so the driver must NOT append rollback records to it (that could turn a torn tail
+    // into fatal mid-file corruption). It restores A from its anchor WITHOUT journaling; recovery
+    // re-confirms from the durable prefix.
     // Call order for two items: 1 TxnBegin, 2 ItemPrepared(A), 3 AssetWritten(A), 4 ItemApplied(A),
     // 5 ItemVerified(A), 6 ItemPrepared(B) ← fail here.
     let world = World::shared();
@@ -741,19 +768,48 @@ fn prepare_append_failure_mid_batch_rolls_back_already_mutated_items() {
 
     assert!(out.error.is_some());
     assert!(out.committed.is_empty());
-    // A was mutated then walked back; B never mutated. The ledger holds nothing.
+    // A was mutated then restored; B never mutated. The ledger holds nothing.
     assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
     assert_eq!(world.borrow().get(&b.path).unwrap(), b"orig-B");
     assert!(ledger.all().unwrap().is_empty());
-    assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::ItemRolledBack { .. })));
+    // No rollback records were appended to the (possibly torn) journal.
+    assert!(!journal.records().iter().any(|r| matches!(r,
+        JournalRecord::ItemRolledBack { .. } | JournalRecord::TxnRolledBack { .. })));
 }
 
 #[test]
-fn commit_append_failure_rolls_back_every_applied_item() {
-    // P1-5: all items apply + verify, but the TxnCommitted append fails. Every applied item is on
-    // the desktop with no terminal record — they must all roll back, not linger as residue.
-    // Single-item call order: 1 TxnBegin, 2 ItemPrepared, 3 AssetWritten, 4 ItemApplied,
-    // 5 ItemVerified, 6 TxnCommitted ← fail here.
+fn persistent_journal_failure_restores_every_mutated_item() {
+    // P1-5b: a PERSISTENT journal outage (every append from the failure point on fails) during a
+    // two-item batch must still restore every already-mutated item — a naive rollback that `?`-
+    // aborts on the first failed append would strand later items.
+    // Two-item order: 1 TxnBegin, 2 ItemPrepared(A) ... 6 ItemPrepared(B) ← fails, and so would
+    // any subsequent append. A is mutated; the restore path must not touch the journal.
+    let world = World::shared();
+    let a = target("A");
+    let b = target("B");
+    seed(&world, &a, b"orig-A");
+    seed(&world, &b, b"orig-B");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = FailingJournal::fail_from(6);
+    let mut ledger = MemLedgerStore::new();
+
+    let out = driver
+        .apply(1, vec![request(&a, &world, "hashA"), request(&b, &world, "hashB")], &mut journal, &mut ledger)
+        .unwrap();
+
+    assert!(out.error.is_some());
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // restored despite the outage
+    assert_eq!(world.borrow().get(&b.path).unwrap(), b"orig-B");
+    assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
+fn commit_append_failure_when_not_durable_recovers_by_rolling_back() {
+    // P1-4: the TxnCommitted append fails and the record never reached disk. apply propagates the
+    // error WITHOUT rolling back in-process (the record might have been durable — the driver can't
+    // know). Because here it was NOT durable, recovery sees an incomplete txn and restores.
+    // Single-item order: ... 6 TxnCommitted ← fails, writing nothing.
     let world = World::shared();
     let a = target("A");
     seed(&world, &a, b"orig-A");
@@ -762,13 +818,46 @@ fn commit_append_failure_rolls_back_every_applied_item() {
     let mut journal = FailingJournal::fail_on_call(6);
     let mut ledger = MemLedgerStore::new();
 
-    let out = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+    let result = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger);
+    assert!(matches!(result, Err(OperationError::Journal(_))));
+    // Not rolled back in-process — the mutation stands, awaiting recovery.
+    assert_eq!(world.borrow().get(&a.path).unwrap(), styled_bytes("hashA"));
+    assert!(!journal.records().iter().any(|r| matches!(r, JournalRecord::TxnCommitted { .. })));
 
-    assert!(out.error.is_some());
-    assert!(out.committed.is_empty());
-    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // rolled back exactly
-    assert!(ledger.all().unwrap().is_empty());
-    assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::TxnRolledBack { .. })));
+    // Recovery: no commit record → incomplete txn → restore to the true original.
+    let mut fresh = MemLedgerStore::new();
+    recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
+    assert!(fresh.all().unwrap().is_empty());
+}
+
+#[test]
+fn commit_append_failure_when_durable_recovers_by_rolling_forward() {
+    // P1-4 (the dangerous case): the TxnCommitted record reached disk but the fsync reported an
+    // error. The driver must NOT roll back — the commit is durable, so recovery rolls FORWARD.
+    // Rolling back here (the old behaviour) would restore the desktop while the journal says
+    // committed, producing an unrecoverable split state.
+    // Single-item order: ... 6 TxnCommitted ← written to the log, then reports failure.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = FailingJournal::fail_after_write(6);
+    let mut ledger = MemLedgerStore::new();
+
+    let result = driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger);
+    assert!(result.is_err());
+    // Desktop stays styled and the commit record IS on the log.
+    assert_eq!(world.borrow().get(&a.path).unwrap(), styled_bytes("hashA"));
+    assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::TxnCommitted { .. })));
+
+    // Recovery reconciles the committed txn: the ledger is rebuilt and the desktop stays styled.
+    let mut fresh = MemLedgerStore::new();
+    let rec = recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
+    assert_eq!(rec.reconciled, vec![ItemId::from_raw("A")]);
+    assert_eq!(world.borrow().get(&a.path).unwrap(), styled_bytes("hashA"));
+    assert!(fresh.get(&a.id).unwrap().is_some());
 }
 
 #[test]

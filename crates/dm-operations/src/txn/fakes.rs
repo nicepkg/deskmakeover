@@ -261,18 +261,39 @@ impl JournalSink for RecordingJournal {
     }
 }
 
-/// A journal that fails its `fail_at`-th append (1-based) but records everything before it, so a
-/// journal-write failure at any point in the durable pipeline can be injected.
+/// A journal that injects an append failure at a chosen point, with three fault shapes so the
+/// crash-window cases (P1-4/P1-5) can be modelled:
+/// * `fail_on_call(n)` — fail exactly the `n`-th append, writing nothing (a clean failure);
+/// * `fail_from(n)` — fail the `n`-th append AND every one after (a persistent journal failure);
+/// * `fail_after_write(n)` — write the `n`-th record to the log THEN report failure (models a
+///   record that reached disk while the fsync returned an error — the outcome-ambiguous commit).
 pub struct FailingJournal {
     inner: VecJournal,
     fail_at: usize,
+    persistent: bool,
+    write_before_fail: bool,
     calls: usize,
 }
 
 impl FailingJournal {
-    /// Fail on the `n`-th append call (1-based); use a large `n` to never fail.
+    fn new(fail_at: usize, persistent: bool, write_before_fail: bool) -> Self {
+        Self { inner: VecJournal::new(), fail_at, persistent, write_before_fail, calls: 0 }
+    }
+
+    /// Fail exactly the `n`-th append call (1-based), writing nothing; a large `n` never fails.
     pub fn fail_on_call(n: usize) -> Self {
-        Self { inner: VecJournal::new(), fail_at: n, calls: 0 }
+        Self::new(n, false, false)
+    }
+
+    /// Fail the `n`-th append and every append after it (a persistent journal outage).
+    pub fn fail_from(n: usize) -> Self {
+        Self::new(n, true, false)
+    }
+
+    /// Write the `n`-th record to the log, then report the append as failed (a durable record whose
+    /// fsync returned an error).
+    pub fn fail_after_write(n: usize) -> Self {
+        Self::new(n, false, true)
     }
 
     pub fn records(&self) -> &[JournalRecord] {
@@ -283,7 +304,11 @@ impl FailingJournal {
 impl JournalSink for FailingJournal {
     fn append(&mut self, record: &JournalRecord) -> Result<()> {
         self.calls += 1;
-        if self.calls == self.fail_at {
+        let fail = if self.persistent { self.calls >= self.fail_at } else { self.calls == self.fail_at };
+        if fail {
+            if self.write_before_fail {
+                let _ = self.inner.append(record); // the record IS durable; only the fsync "failed"
+            }
             return Err(OperationError::Journal("injected journal append failure".into()));
         }
         self.inner.append(record)

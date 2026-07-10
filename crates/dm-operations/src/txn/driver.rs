@@ -149,14 +149,14 @@ impl<'p> TxnDriver<'p> {
                 owned: req.owned,
                 pinned_seed: req.pinned_seed,
             }) {
-                // A journal append failure between items must not strand ALREADY-mutated items on
-                // the desktop (P1-5). If earlier items in this batch mutated, roll them back;
-                // otherwise nothing has been touched, so propagate the error with a pristine
-                // desktop.
+                // The journal just failed and may be torn — appending rollback records after it
+                // would risk fatal mid-file corruption (P1-5). Restore already-mutated items from
+                // their anchors WITHOUT touching the journal; recovery re-confirms from the durable
+                // prefix. If nothing has mutated yet, propagate with a pristine desktop.
                 if applied.is_empty() {
                     return Err(e);
                 }
-                return self.rollback(txn, applied, journal, ledger, format!("journal append failed: {e}"));
+                return self.abandon(applied, ledger, format!("prepare journal append failed: {e}"));
             }
             // From here the item is a rollback candidate (a mutation might start below).
             applied.push(Prepared {
@@ -171,16 +171,25 @@ impl<'p> TxnDriver<'p> {
             let idx = applied.len() - 1;
 
             if let Err(e) = self.mutate_item(txn, &req, &mut applied[idx], journal) {
-                // Hard failure → roll back everything prepared so far (LIFO), leave no residue.
-                return self.rollback(txn, applied, journal, ledger, format!("apply failed: {e}"));
+                // If the JOURNAL failed, it may be torn — restore from anchors without journaling
+                // (P1-5). If the applier/asset failed but the journal is healthy, do the normal
+                // journaled rollback so recovery sees a clean TxnRolledBack terminal.
+                return if is_journal_error(&e) {
+                    self.abandon(applied, ledger, format!("apply journal append failed: {e}"))
+                } else {
+                    self.rollback(txn, applied, journal, ledger, format!("apply failed: {e}"))
+                };
             }
         }
 
-        // All items applied + verified → commit and record the ledger. If the commit record itself
-        // cannot be flushed, every applied item is still on the desktop with no terminal record —
-        // roll them all back rather than leaving mutated residue (P1-5).
+        // All items applied + verified → commit. The TxnCommitted record is the linearization
+        // point: if its append fails, the record may still be durable, so recovery could roll the
+        // transaction FORWARD. Rolling the desktop back here would then contradict a committed
+        // ledger and poison it (P1-4). Instead propagate — leaving the mutations in place — and let
+        // recovery reconcile (roll forward if the commit is durable, roll back if not). We also
+        // must NOT append anything more to a possibly-torn journal (P1-5).
         if let Err(e) = journal.append(&JournalRecord::TxnCommitted { txn }) {
-            return self.rollback(txn, applied, journal, ledger, format!("commit journal append failed: {e}"));
+            return Err(e);
         }
         for item in &applied {
             let version = ledger.next_version()?;
@@ -340,4 +349,47 @@ impl<'p> TxnDriver<'p> {
         }
         Ok(outcome)
     }
+
+    /// Restores every prepared item from its anchor and drops its ledger entry WITHOUT writing to
+    /// the journal — used when the journal itself has failed mid-transaction (before the commit
+    /// point), so appending more records after a possibly-torn write would corrupt it (P1-5).
+    /// Recovery re-confirms the outcome from the durable journal prefix (the incomplete txn has no
+    /// terminal, so it is aborted and restored — idempotent over these already-restored items).
+    /// Best-effort and resilient: a restore/ledger error is collected, never aborts the remaining
+    /// items (P1-5 — a persistent journal failure must not strand mutated items). No item is
+    /// committed to the ledger before the commit loop, so `remove` only clears a stale re-apply
+    /// entry.
+    fn abandon(
+        &self,
+        applied: Vec<Prepared>,
+        ledger: &mut dyn LedgerStore,
+        reason: String,
+    ) -> Result<ApplyOutcome> {
+        let mut outcome = ApplyOutcome { error: Some(reason), ..Default::default() };
+        let mut errors: Vec<String> = Vec::new();
+        for item in applied.into_iter().rev() {
+            match self.applier.restore(&item.target, &item.anchor) {
+                Ok(()) => {
+                    if let Err(e) = ledger.remove(&item.target.id) {
+                        errors.push(format!("{}: ledger {e}", item.target.id.as_str()));
+                    } else {
+                        outcome.rolled_back.push(item.target.id.clone());
+                    }
+                }
+                Err(e) => errors.push(format!("{}: {e}", item.target.id.as_str())),
+            }
+        }
+        if !errors.is_empty() {
+            let msg = outcome.error.take().unwrap_or_default();
+            outcome.error = Some(format!("{msg} · restore-incomplete: {}", errors.join("; ")));
+        }
+        Ok(outcome)
+    }
+}
+
+/// Whether an error is a journal-append failure — the signal that the journal may be torn and must
+/// not be appended to again (P1-5). Distinguishes a compromised journal from a healthy-journal
+/// applier/asset failure, which can still journal a clean rollback terminal.
+fn is_journal_error(e: &OperationError) -> bool {
+    matches!(e, OperationError::Journal(_))
 }

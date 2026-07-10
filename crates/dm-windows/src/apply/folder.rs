@@ -20,7 +20,8 @@ pub fn apply(folder_path: &str, icon_path: &str) -> PortResult<()> {
     if Path::new(&ini).exists() {
         attrs::set(&ini, attrs::NORMAL)?;
     }
-    std::fs::write(&ini, desktop_ini_bytes(icon_path)).map_err(|e| PortError::Io(e.to_string()))?;
+    // Durable + atomic so a crash mid-write can't tear `desktop.ini` (P1-9).
+    crate::durable::write_atomic(&ini, &desktop_ini_bytes(icon_path))?;
     attrs::set(&ini, attrs::HIDDEN | attrs::SYSTEM)?;
     let folder_attrs = attrs::get(folder_path)?;
     attrs::set(folder_path, folder_attrs | attrs::READONLY)
@@ -44,7 +45,7 @@ pub fn restore(
 
     match desktop_ini {
         Some(anchor) => {
-            std::fs::write(&ini, &anchor.content).map_err(|e| PortError::Io(e.to_string()))?;
+            crate::durable::write_atomic(&ini, &anchor.content)?;
             attrs::set(&ini, anchor.attributes)?;
         }
         None if Path::new(&ini).exists() => {

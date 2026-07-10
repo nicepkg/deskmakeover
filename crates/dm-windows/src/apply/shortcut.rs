@@ -23,7 +23,8 @@ pub fn apply(shortcut_path: &str, icon_path: &str) -> PortResult<()> {
 }
 
 /// Restores the shortcut by writing its captured original bytes back verbatim
-/// (oracle `RestoreOriginalContent`).
+/// (oracle `RestoreOriginalContent`). Durable + atomic so a crash mid-restore can't tear the
+/// `.lnk` (P1-9). [WINDOWS-VERIFY] runtime.
 pub fn restore_bytes(path: &str, bytes: &[u8]) -> PortResult<()> {
-    std::fs::write(path, bytes).map_err(|e| PortError::Io(e.to_string()))
+    crate::durable::write_atomic(path, bytes)
 }

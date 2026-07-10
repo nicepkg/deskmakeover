@@ -15,7 +15,8 @@ pub fn apply(url_path: &str, icon_path: &str, index: i32) -> PortResult<()> {
     let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
     internet_shortcut_upsert(&mut lines, "IconFile", icon_path).map_err(PortError::Io)?;
     internet_shortcut_upsert(&mut lines, "IconIndex", &index.to_string()).map_err(PortError::Io)?;
-    std::fs::write(url_path, lines.join("\r\n")).map_err(|e| io(url_path, e))
+    // Durable + atomic so a crash mid-write can't tear the `.url` (P1-9).
+    crate::durable::write_atomic(url_path, lines.join("\r\n").as_bytes())
 }
 
 fn io(path: &str, e: std::io::Error) -> PortError {

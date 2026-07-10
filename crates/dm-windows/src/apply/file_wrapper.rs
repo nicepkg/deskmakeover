@@ -38,8 +38,9 @@ pub fn restore(file_path: &str, anchor: &WrapperAnchor) -> PortResult<()> {
             std::fs::remove_file(&wrapper).map_err(|e| PortError::Io(e.to_string()))?;
         }
     } else if let Some(bytes) = &anchor.wrapper_content {
-        // The apply overwrote a user-made shortcut of the same name — put its bytes back.
-        std::fs::write(&wrapper, bytes).map_err(|e| PortError::Io(e.to_string()))?;
+        // The apply overwrote a user-made shortcut of the same name — put its bytes back, durably
+        // and atomically so a crash mid-restore can't tear it (P1-9).
+        crate::durable::write_atomic(&wrapper, bytes)?;
     }
     if Path::new(file_path).exists() {
         attrs::set(file_path, anchor.file_attributes)?;

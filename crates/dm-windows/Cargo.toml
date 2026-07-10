@@ -11,6 +11,10 @@ publish.workspace = true
 [dependencies]
 dm-domain = { path = "../dm-domain" }
 
+[dev-dependencies]
+# Temp dirs for the host-side durability/atomic-replace tests (durable::write_atomic).
+tempfile = "3"
+
 [target.'cfg(windows)'.dependencies]
 # Per-user Recycle Bin DefaultIcon values (HKCU) — pure-Rust registry, no C build.
 winreg = "0.55"

@@ -1,4 +1,10 @@
 <Project>
+  <!--
+    FROZEN 2026-07-10 (ADR-0019): the entire .NET tree (every project under src/ and
+    tests/) is an executable oracle for the Tauri + Rust port. No new code, no fixes
+    except oracle corrections. Deleted in one commit (tag last-dotnet) at M8. This
+    props file is imported by every C# project, so the freeze applies workspace-wide.
+  -->
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>

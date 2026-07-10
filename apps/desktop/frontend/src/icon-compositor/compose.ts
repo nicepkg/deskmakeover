@@ -1,3 +1,6 @@
+// FROZEN 2026-07-10 (ADR-0019): parity oracle for the Rust port. No new styles,
+// no fixes except oracle corrections. Deleted after M6 certification.
+
 import type { ConfigDto, IconShape } from '@/bridge/types'
 import type { ContentBounds } from './analysis'
 import { analysis, boundsH, boundsW, colorDistance } from './analysis'

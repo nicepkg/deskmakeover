@@ -12,7 +12,16 @@ pub fn sticker(tile: &mut Raster, size: usize) {
     let shadow = 2.0_f64.max(size as f64 * 0.016);
     let inset = (border + shadow + 1.0).ceil() as usize;
 
-    let target = size - 2 * inset;
+    // A tile smaller than the die-cut margins has no room for the sticker; mirror
+    // the frozen TS silent no-op (a negative canvas size drew nothing) instead of
+    // underflowing `size - 2 * inset`.
+    let target = match size.checked_sub(2 * inset) {
+        Some(t) if t > 0 => t,
+        _ => {
+            tile.data.fill(0);
+            return;
+        }
+    };
     let clone = tile.clone();
     let shrunk = downscale(&clone, target);
     tile.data.fill(0);

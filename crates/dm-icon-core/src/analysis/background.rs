@@ -149,6 +149,11 @@ impl RingAccumulator {
 }
 
 fn try_uniform_rect_ring(c: &Raster, inset: usize, tolerance: i32) -> Option<Rgba> {
+    // A ring inset past the canvas has no pixels (and `c.width - 1 - inset` would
+    // underflow on a tiny fully-opaque source, e.g. a 3×3 board).
+    if inset + 1 >= c.width {
+        return None;
+    }
     let min = inset;
     let max = c.width - 1 - inset;
     if max <= min {

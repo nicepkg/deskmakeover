@@ -24,7 +24,13 @@ pub extern "C" fn spike4_alloc(len: usize) -> *mut u8 {
 
 /// Render the Spike-4 slice: `src` is a straight-alpha RGBA source of
 /// `src_w × src_h`; the `size × size × 4` result is written to `out`.
-/// Returns 0 on success (non-zero reserved for future error codes).
+/// Returns 0 on success, 1 for a zero dimension, 2 if the source byte length
+/// overflows `usize`.
+///
+/// The length is computed in `usize` with `checked_mul` — on `wasm32` `usize`
+/// is 32-bit, so `src_w * src_h * 4` in `u32` would silently wrap. (M6 memo:
+/// every `w * h * 4` in the future `render_tile` ABI must be checked the same
+/// way.)
 ///
 /// # Safety
 /// `src` must point to `src_w * src_h * 4` readable bytes and `out` to
@@ -38,10 +44,16 @@ pub unsafe extern "C" fn spike4_render_slice(
     size: u32,
     out: *mut u8,
 ) -> u32 {
-    let src_len = (src_w * src_h * 4) as usize;
+    let (w, h, s) = (src_w as usize, src_h as usize, size as usize);
+    if w == 0 || h == 0 || s == 0 {
+        return 1;
+    }
+    let Some(src_len) = w.checked_mul(h).and_then(|n| n.checked_mul(4)) else {
+        return 2;
+    };
     let data = std::slice::from_raw_parts(src, src_len).to_vec();
-    let artwork = Raster { width: src_w as usize, height: src_h as usize, data };
-    let tile = render_slice_tile(&artwork, size as usize);
+    let artwork = Raster { width: w, height: h, data };
+    let tile = render_slice_tile(&artwork, s);
     let out_slice = std::slice::from_raw_parts_mut(out, tile.data.len());
     out_slice.copy_from_slice(&tile.data);
     0
@@ -89,6 +101,21 @@ mod tests {
             let core = render_slice_tile(&Raster { width: sw, height: sh, data: src.clone() }, size);
             assert_eq!(out, core.data, "ABI output != core render at {sw}x{sh}->{size}");
         }
+    }
+
+    #[test]
+    fn degenerate_dimensions_return_an_error_code_without_panicking() {
+        // 0-dim would trip render_slice_tile's size assert; u32-space w*h*4 would wrap on
+        // wasm32. Both return a non-zero code before any pointer read (src is a dummy).
+        let src = vec![0u8; 4];
+        let mut out = vec![0u8; 16 * 16 * 4];
+        for &(w, h, s) in &[(0u32, 16u32, 16u32), (16, 0, 16), (16, 16, 0)] {
+            let code = unsafe { spike4_render_slice(src.as_ptr(), w, h, s, out.as_mut_ptr()) };
+            assert_eq!(code, 1, "degenerate {w}x{h}->{s} must return code 1");
+        }
+        // src byte length overflows usize (u32::MAX² × 4).
+        let code = unsafe { spike4_render_slice(src.as_ptr(), u32::MAX, u32::MAX, 16, out.as_mut_ptr()) };
+        assert_eq!(code, 2, "overflowing dimensions must return code 2");
     }
 
     #[test]

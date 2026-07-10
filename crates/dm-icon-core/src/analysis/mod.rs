@@ -65,25 +65,35 @@ pub fn color_distance(a: Rgba, b: Rgba) -> i32 {
 }
 
 /// >10% of the 1px border see-through → the icon floats (analysis.ts
-/// `hasTransparentEdges`).
+/// `hasTransparentEdges`). The top/bottom edges walk the width, the left/right
+/// edges walk the height — the frozen TS assumed a square and read past the row
+/// on non-square rasters; this is the corrected, dimension-safe form (byte-
+/// identical for the square 256² masters the whole pipeline normalises to).
 pub fn has_transparent_edges(c: &Raster) -> bool {
-    let last = c.width - 1;
+    if c.width == 0 || c.height == 0 {
+        return false;
+    }
+    let last_x = c.width - 1;
+    let last_y = c.height - 1;
     let mut transparent = 0i32;
     let mut total = 0i32;
-    for i in 0..c.width {
-        if alpha_at(c, i, 0) < 245 {
+    for x in 0..c.width {
+        if alpha_at(c, x, 0) < 245 {
             transparent += 1;
         }
-        if alpha_at(c, i, last) < 245 {
+        if alpha_at(c, x, last_y) < 245 {
             transparent += 1;
         }
-        if alpha_at(c, 0, i) < 245 {
+        total += 2;
+    }
+    for y in 0..c.height {
+        if alpha_at(c, 0, y) < 245 {
             transparent += 1;
         }
-        if alpha_at(c, last, i) < 245 {
+        if alpha_at(c, last_x, y) < 245 {
             transparent += 1;
         }
-        total += 4;
+        total += 2;
     }
     transparent > total / 10
 }

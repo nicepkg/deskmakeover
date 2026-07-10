@@ -57,6 +57,12 @@ pub(crate) fn mark_rgb(ctx: &MarkContext) -> Rgba {
 
 /// A scaled/offset stamp of the mark geometry (marks.ts `stampMask`).
 pub(crate) fn stamp_mask(ctx: &MarkContext, mask_size: usize, off_x: f64, off_y: f64) -> Vec<f64> {
+    // A mark whose inscribed geometry collapses to zero (tiny tiles: `size - 2*pad == 0`)
+    // stamps nothing — guard both the shape_mask shapeSize assert and the None-shape
+    // `size / mask_size` divide. Never fires at the 256² master (insets are a few px).
+    if mask_size == 0 {
+        return vec![0.0; ctx.size * ctx.size];
+    }
     if ctx.shape != IconShape::None {
         return shape_mask(ctx.shape, ctx.size, mask_size, off_x, off_y);
     }

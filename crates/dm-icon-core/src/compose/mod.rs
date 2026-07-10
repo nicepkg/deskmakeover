@@ -155,7 +155,11 @@ pub fn render_tile_cached(
         tile_alpha: tile_alpha.clone(),
     };
 
-    let pad = mark.map(|m| m.card_inset(&geometry_ctx)).unwrap_or(0);
+    // Clamp the mark inset so the inscribed card keeps at least one pixel; without
+    // this a large inset on a tiny tile underflows `size - 2 * pad` (or drives
+    // card_size to 0, tripping the shapeSize assert). At 256² the real insets are a
+    // few px, far below (size - 1) / 2, so the master render is unchanged.
+    let pad = mark.map(|m| m.card_inset(&geometry_ctx)).unwrap_or(0).min((size - 1) / 2);
     let card_size = size - 2 * pad;
     let mut card_mask = shape_mask(shape, size, card_size, pad as f64, pad as f64);
     let carves = mark.map(|m| m.carves_card()).unwrap_or(false);
@@ -222,6 +226,11 @@ fn alpha_field_of(tile: &Raster) -> Vec<f64> {
 /// 保留原样 / peek (compose.ts `buildOriginalCard`).
 fn build_original_card(artwork: &Raster, size: usize) -> Raster {
     let mut card = Raster::new(size, size);
+    // A zero-dimension source has nothing to sample (and `sample_bilinear` would
+    // underflow `width - 1`); the show-original card is simply transparent.
+    if artwork.width == 0 || artwork.height == 0 {
+        return card;
+    }
     for y in 0..size {
         for x in 0..size {
             let u = (x as f64 + 0.5) / size as f64;

@@ -19,5 +19,5 @@ pub use ledger::{JsonLedgerStore, LedgerEntry, LedgerStore, MemLedgerStore, TxnS
 pub use settings_store::SettingsStore;
 pub use txn::{
     recover, recover_from_journal, ApplyOutcome, ApplyRequest, FileJournal, JournalRecord,
-    JournalSink, RecoveryOutcome, TxnDriver, VecJournal,
+    JournalSink, RecoveryOutcome, TxnDriver, TxnIdAllocator, VecJournal,
 };

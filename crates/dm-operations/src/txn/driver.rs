@@ -15,7 +15,7 @@ use dm_domain::{
     PortError,
 };
 
-use crate::error::Result;
+use crate::error::{OperationError, Result};
 use crate::ledger::entry::{LedgerEntry, TxnState};
 use crate::ledger::store::LedgerStore;
 use crate::txn::journal::{JournalRecord, JournalSink};
@@ -116,6 +116,17 @@ impl<'p> TxnDriver<'p> {
 
         if proceeding.is_empty() {
             return Ok(outcome);
+        }
+
+        // The txn id must be strictly greater than any already in the durable journal, so a reused
+        // or regressed id can never merge two transactions' records into one recovery group (which
+        // recovery would misclassify) — P1-7. The composition root allocates ids via
+        // `TxnIdAllocator`; this guard rejects a caller that bypasses it, before any mutation.
+        let max_seen = journal.read_all()?.iter().map(|r| r.txn()).max().unwrap_or(0);
+        if txn <= max_seen {
+            return Err(OperationError::Journal(format!(
+                "txn id {txn} is not monotonic (journal already holds up to {max_seen}); ids must never be reused"
+            )));
         }
 
         journal.append(&JournalRecord::TxnBegin {

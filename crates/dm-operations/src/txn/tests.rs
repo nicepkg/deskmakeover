@@ -9,6 +9,7 @@ use std::rc::Rc;
 use dm_domain::{Fingerprint, ItemId, ItemKind, ItemTarget, OwnedFields};
 
 use super::driver::{ApplyRequest, TxnDriver};
+use super::id::TxnIdAllocator;
 use super::fakes::{
     paired_empty_path, styled_bytes, FailingAssetStore, FailingJournal, FakePlatform,
     RecordingJournal, World,
@@ -546,6 +547,79 @@ fn apply_that_lands_a_different_asset_than_requested_does_not_commit() {
     assert!(out.error.is_some());
     assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A"); // rolled back to the true original
     assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
+fn driver_rejects_a_reused_txn_id() {
+    // P1-7: a txn id must be strictly greater than any already in the journal, so a reused id can
+    // never merge two transactions' records under one id (which recovery would misclassify).
+    let world = World::shared();
+    let a = target("A");
+    let b = target("B");
+    seed(&world, &a, b"orig-A");
+    seed(&world, &b, b"orig-B");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+    // Reusing id 1 (≤ the max already journalled) must be rejected before any mutation.
+    let result = driver.apply(1, vec![request(&b, &world, "hashB")], &mut journal, &mut ledger);
+    assert!(matches!(result, Err(OperationError::Journal(_))));
+    assert_eq!(world.borrow().get(&b.path).unwrap(), b"orig-B"); // B never touched
+}
+
+#[test]
+fn allocator_feeds_the_driver_monotonic_ids_that_survive_restart() {
+    // P1-7: the composition root drives the id from TxnIdAllocator, which resumes past the journal
+    // after a crash so ids never regress.
+    let world = World::shared();
+    let a = target("A");
+    let b = target("B");
+    seed(&world, &a, b"orig-A");
+    seed(&world, &b, b"orig-B");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let mut alloc = TxnIdAllocator::from_journal(&journal).unwrap();
+    let id1 = alloc.next_id();
+    driver.apply(id1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+    let id2 = alloc.next_id();
+    driver.apply(id2, vec![request(&b, &world, "hashB")], &mut journal, &mut ledger).unwrap();
+    assert_eq!((id1, id2), (1, 2));
+    // A fresh allocator (process restart) resumes past the durable journal, never back to 1.
+    let resumed = TxnIdAllocator::from_journal(&journal).unwrap();
+    assert!(resumed.peek() > id2, "allocator must resume past the journal after a crash");
+}
+
+#[test]
+fn recovery_fails_closed_when_one_txn_id_has_both_terminals() {
+    // P1-7: if a committed txn's id is reused by a later rolled-back txn, their records merge under
+    // one id. The old code let rolled-back win and silently DROPPED the committed work. A single id
+    // with both terminals is definitively id reuse / corruption — recovery must fail closed, not
+    // guess (neither terminal is correct for all the merged items).
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+
+    // Simulate id reuse: the same id later also acquires a rollback terminal.
+    let mut records = journal.records().to_vec();
+    records.push(JournalRecord::TxnRolledBack { txn: 1 });
+
+    let mut fresh = MemLedgerStore::new();
+    let result = recover(&records, &plat, &plat, &mut fresh);
+    assert!(
+        matches!(result, Err(OperationError::Journal(_))),
+        "a txn id bearing both terminals must fail closed, not misclassify committed work"
+    );
 }
 
 #[test]

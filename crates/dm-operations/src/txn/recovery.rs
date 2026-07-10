@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use dm_domain::{IconApplier, ItemStateReader, ItemTarget, RestoreAnchor};
 
-use crate::error::Result;
+use crate::error::{OperationError, Result};
 use crate::ledger::entry::{LedgerEntry, TxnState};
 use crate::ledger::store::LedgerStore;
 use crate::txn::journal::{JournalRecord, JournalSink};
@@ -99,6 +99,19 @@ pub fn recover(
     let mut outcome = RecoveryOutcome::default();
     for txn in txn_order {
         let group = txns.remove(&txn).expect("txn in order list");
+        // A single txn id can only ever have ONE terminal — a real transaction either commits or
+        // rolls back, never both. Both terminals under one id means id reuse or journal corruption:
+        // the records of two different transactions merged into one group. Neither "committed-wins"
+        // nor "rolled-back-wins" is correct (each mishandles the other transaction's items —
+        // rolled-back-wins silently drops the committed work, committed-wins wrongly reconciles the
+        // rolled-back items as styled). Fail closed and surface it (P1-7), consistent with the
+        // fail-closed stance for a corrupt ledger / mid-file journal damage. The monotonic id
+        // allocator + the driver's monotonic guard prevent this upstream; this is the last line.
+        if group.committed && group.rolled_back {
+            return Err(OperationError::Journal(format!(
+                "transaction id {txn} carries both a commit and a rollback terminal — id reuse or journal corruption; refusing to recover"
+            )));
+        }
         if group.rolled_back {
             outcome.clean_txns += 1;
         } else if group.committed {

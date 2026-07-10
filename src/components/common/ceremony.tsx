@@ -40,10 +40,13 @@ function Scrim({ onClose, children }: { onClose?: () => void; children: ReactNod
   )
 }
 
-/** Generic confirm sheet (restore / replace-all …). */
+/** Generic confirm sheet (restore / replace-all …). `body` carries an optional
+ *  explanatory paragraph (e.g. the arrow restore's honest "affects beautified
+ *  icons too" note). */
 export function ConfirmSheet({
   open,
   title,
+  body,
   confirmLabel,
   cancelLabel,
   destructive = false,
@@ -52,6 +55,7 @@ export function ConfirmSheet({
 }: {
   open: boolean
   title: string
+  body?: string
   confirmLabel: string
   cancelLabel: string
   destructive?: boolean
@@ -63,6 +67,7 @@ export function ConfirmSheet({
       {open && (
         <Scrim onClose={onCancel}>
           <p className="text-body font-medium text-t1">{title}</p>
+          {body && <p className="mt-2 text-[12px] leading-relaxed text-t2">{body}</p>}
           <div className="mt-4 flex justify-end gap-1.5">
             <button
               type="button"
@@ -88,15 +93,20 @@ export function ConfirmSheet({
   )
 }
 
-/** First-apply consent: what happens · what never happens · the one UAC prompt. */
+/** First-apply consent: what happens · what never happens · the one UAC prompt,
+ *  plus the machine-wide arrow disclosure (ADR-0021). On multi-user machines
+ *  (`multiUser`) the sheet is non-skippable: backdrop/Esc no longer dismiss it,
+ *  so the whole-computer sentence cannot be clicked past (owner disposition 3). */
 export function ConsentSheet({
   open,
   count,
+  multiUser = false,
   onAgree,
   onCancel,
 }: {
   open: boolean
   count: number
+  multiUser?: boolean
   onAgree: () => void
   onCancel: () => void
 }) {
@@ -109,7 +119,7 @@ export function ConsentSheet({
   return (
     <AnimatePresence>
       {open && (
-        <Scrim onClose={onCancel}>
+        <Scrim onClose={multiUser ? undefined : onCancel}>
           <p className="text-cardtitle font-medium text-t1">{t('ConsentTitle')}</p>
           <div className="mt-3 space-y-2.5">
             {rows.map((r) => (
@@ -121,6 +131,13 @@ export function ConsentSheet({
               </div>
             ))}
           </div>
+          {/* Machine-wide arrow disclosure — always shown; set apart from the
+              three facts by a hairline (never a left bar, never colour-only).
+              On multi-user machines the sheet above is non-skippable so this
+              sentence can't be dismissed around. */}
+          <p className="mt-3.5 border-t border-hair pt-3 text-[12px] leading-relaxed text-t2">
+            {t('ConsentArrow')}
+          </p>
           <div className="mt-4 flex justify-end gap-1.5">
             <button
               type="button"

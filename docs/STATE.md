@@ -129,6 +129,23 @@ plan's DONE blocks, this is the pointer):**
   modules).
   **Blocked on the owner's win11:** M1 spikes 1/2/5 (+3 needs him present),
   workspace-wide msvc check (rusqlite bundled C), all [WINDOWS-VERIFY] items.
+- **Codex full-review + wave-2 hardening (2026-07-11, EXECUTING):** an independent
+  Codex full-review of snapshot `7dc82c1` produced 26 findings; triaged vs HEAD
+  (independent reviewer + lead re-verify) = 6 FIXED · **7 OPEN-CONFIRMED** · 3
+  OUT-OF-SCOPE · 10 OVER-RATED. The 7 open defects all live behind the
+  currently-unwired apply/txn/CAS surface (no live user harm today) and **gate the
+  M6 cutover** — fixing now is the pre-M6 prep. Owner approved the fix docs
+  2026-07-11; two disjoint-crate agents dispatched: **m34** (dm-operations/
+  dm-windows/dm-domain: P1-4 CAS-verify, P1-10 RegularFile-commit, P1-14 empty-ICO,
+  P1-9 fsync, P2-5 error-honesty, P2-2 settings-txn + latent P1-12/7/5, P2-4) ·
+  **m5** (dm-icon-core: P2-7 thread-local arrow → OnceLock, byte-parity re-cert).
+  Brief: `docs/plans/2026-07-11-windows-hardening-wave2.md`. Each fix ships a
+  red→green regression test; Phase-6 Codex review + Phase-7 verify gate the merge.
+- **M6 performance architecture (design input, 2026-07-11):** two converged reviews
+  (senior-eng subagent + Codex 60min) → recommended parallelism = N workers × 1
+  WASM instance, register-once ABI, latest-generation coalescing; ranked byte-safe
+  optimizations (#0 = fix the thread-local arrow, above). Open questions need the
+  owner's win11 + real benchmarks. Doc: `docs/plans/2026-07-11-m6-performance-architecture.md`.
 
 **In flight / next (web):**
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all

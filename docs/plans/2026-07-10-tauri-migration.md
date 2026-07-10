@@ -192,6 +192,15 @@ byte-equality CI + TS↔Rust corpus certification. Then delete the TS pixel modu
 suite re-pointed at the WASM-backed renderer stays green; owner eyeballs the
 before/after on his real desktop.
 
+**Performance architecture (design input, two converged reviews):**
+`docs/plans/2026-07-11-m6-performance-architecture.md` — the recommended M6 shape
+(N workers × one WASM instance, register-once ABI, profile cache, latest-generation
+coalescing), the ranked byte-safe optimizations, the DO-NOT-DO list, and the
+**hard rayon prerequisite** (move the thread-local `NATIVE_ARROW` to an explicit
+RenderContext before ANY native multi-threading — else output varies by thread).
+The WASM flip is a single-truth move, not a speedup (wasm ≈ 1.5–2× the frozen TS
+at preview sizes); the real levers are the profile cache and not rendering stale frames.
+
 ## M7 — Resident mode (spec 07, ~2-3d)
 `dm-resident`: watcher (hints) + reconciler (truth) + job processor (native core,
 persisted profile cache) + privileged queue + incremental ledger versions with

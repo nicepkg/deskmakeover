@@ -10,6 +10,7 @@
 //! [WINDOWS-VERIFY] runtime (filesystem/registry/COM semantics).
 
 use std::path::Path;
+use std::sync::Arc;
 
 use dm_domain::{
     DesktopIniAnchor, Fingerprint, ItemKind, ItemStateReader, ItemTarget, PortError, PortResult,
@@ -17,22 +18,43 @@ use dm_domain::{
 };
 
 use crate::apply::{file_wrapper, recyclebin};
+use crate::com::StaExecutor;
 use crate::fingerprint_surface::{self as fp, SurfaceState};
 use crate::shell::{attrs, shell_link};
 use crate::textfmt;
 
 /// Reads fingerprints and anchors across all item kinds.
-pub struct WindowsStateReader;
+///
+/// Holds the shared [`StaExecutor`] because reading a `.lnk`'s icon location is COM
+/// (`IShellLinkW`), which — like every shell function ([`crate::shell`]) — MUST run on the STA
+/// apartment thread. The applier already marshals its `.lnk` writes onto this executor; the reader
+/// must route its `.lnk` reads through the SAME discipline, or a preflight/read-back can fail with
+/// an uninitialized or wrong COM apartment. Non-COM reads (file attributes, `desktop.ini` text,
+/// registry values) stay inline.
+pub struct WindowsStateReader {
+    exec: Arc<StaExecutor>,
+}
+
+impl WindowsStateReader {
+    /// Builds a reader that marshals its COM reads onto `exec` — pass the SAME executor the
+    /// [`crate::apply::WindowsIconApplier`] uses so all shell COM shares one apartment thread.
+    pub fn new(exec: Arc<StaExecutor>) -> Self {
+        Self { exec }
+    }
+}
 
 impl ItemStateReader for WindowsStateReader {
     fn read_fingerprint(&self, target: &ItemTarget) -> PortResult<Fingerprint> {
         match target.kind {
             // The surface is the icon LOCATION the writer sets (path + index), read straight from
-            // the live `.lnk`. A missing shortcut is NotFound (a deleted item is skipped, not read
-            // as an empty surface).
+            // the live `.lnk` — a COM read, so it runs on the STA thread (outer `?` = thread-join
+            // error, inner `?` = the read's own error). A missing shortcut is NotFound (a deleted
+            // item is skipped, not read as an empty surface).
             ItemKind::Shortcut => {
                 require_exists(&target.path)?;
-                let (path, index) = shell_link::read_icon_location(&target.path)?.unwrap_or_default();
+                let p = target.path.clone();
+                let (path, index) =
+                    self.exec.run(move || shell_link::read_icon_location(&p))??.unwrap_or_default();
                 Ok(SurfaceState::IconRef { path, index }.fingerprint())
             }
             // `.url`: the `[InternetShortcut]` `IconFile`/`IconIndex`.
@@ -56,8 +78,10 @@ impl ItemStateReader for WindowsStateReader {
             ItemKind::RegularFile => {
                 let owned_attr_bits = attrs::get(&target.path)? & fp::OWNED_ATTR_BITS;
                 let wrapper = file_wrapper::wrapper_path(&target.path);
+                // The wrapper's icon location is a COM read (`IShellLinkW`) → STA thread.
                 let wrapper_icon = if Path::new(&wrapper).exists() {
-                    shell_link::read_icon_location(&wrapper)?
+                    let w = wrapper.clone();
+                    self.exec.run(move || shell_link::read_icon_location(&w))??
                 } else {
                     None
                 };

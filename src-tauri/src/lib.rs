@@ -112,9 +112,11 @@ fn run_startup_recovery(data_dir: &Path) -> Result<(), String> {
         use dm_windows::{StaExecutor, WindowsIconApplier, WindowsStateReader};
 
         // A one-shot STA executor for the recovery pass; the resident apply/scan stack owns its own.
+        // The reader and applier share it so ALL shell COM (.lnk reads AND writes) runs on the one
+        // STA apartment thread.
         let exec = Arc::new(StaExecutor::spawn().map_err(|e| e.to_string())?);
-        let applier = WindowsIconApplier::new(exec);
-        let reader = WindowsStateReader;
+        let applier = WindowsIconApplier::new(exec.clone());
+        let reader = WindowsStateReader::new(exec);
         let mut journal = FileJournal::new(&journal_path);
         let mut ledger = JsonLedgerStore::new(&ledger_path);
         let outcome =

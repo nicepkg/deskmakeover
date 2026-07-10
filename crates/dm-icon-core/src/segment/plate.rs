@@ -302,3 +302,77 @@ fn detect_flat_plate(
 
     Some(Rgba { r: er as u8, g: eg as u8, b: eb as u8, a: 255 })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fill(c: &mut Raster, x0: usize, y0: usize, x1: usize, y1: usize, rgb: [u8; 3]) {
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let i = (y * c.width + x) * 4;
+                c.data[i] = rgb[0];
+                c.data[i + 1] = rgb[1];
+                c.data[i + 2] = rgb[2];
+                c.data[i + 3] = 255;
+            }
+        }
+    }
+
+    /// Silhouette = a sub-rectangle (the plate), with a margin so erosion yields a real
+    /// rim (a full-canvas mask erodes to itself and has none).
+    fn rect_sil(size: usize, x0: usize, y0: usize, x1: usize, y1: usize) -> Vec<u8> {
+        let mut sil = vec![0u8; size * size];
+        for y in y0..y1 {
+            for x in x0..x1 {
+                sil[y * size + x] = 1;
+            }
+        }
+        sil
+    }
+
+    #[test]
+    fn splits_a_coherent_glyph_and_reports_the_flat_plate() {
+        // A 32×32 blue plate + one connected white glyph → Otsu split + flat-plate detection.
+        let size = 40;
+        let mut c = Raster::new(size, size);
+        fill(&mut c, 4, 4, 36, 36, [40, 90, 200]);
+        fill(&mut c, 16, 15, 25, 25, [245, 245, 245]);
+        let sil = rect_sil(size, 4, 4, 36, 36);
+        let split = plate_split(&c, &sil).expect("a coherent plate splits");
+        let field = split.field.expect("the flat plate colour is detected");
+        assert!(field.b > field.r && field.b > field.g, "the field is the blue plate");
+    }
+
+    #[test]
+    fn rejects_speckled_ink_as_fragmentation() {
+        // Same plate, but the ink is isolated specks on a 3-lattice (never 4-connected):
+        // it clears Otsu + the ink fraction, then the coherence guard rejects it.
+        let size = 40;
+        let mut c = Raster::new(size, size);
+        fill(&mut c, 4, 4, 36, 36, [40, 90, 200]);
+        let mut count = 0;
+        for y in (6..34).step_by(3) {
+            for x in (6..34).step_by(3) {
+                let i = (y * size + x) * 4;
+                c.data[i] = 245;
+                c.data[i + 1] = 245;
+                c.data[i + 2] = 245;
+                count += 1;
+            }
+        }
+        assert!(count > 40, "enough specks to clear the ink-fraction floor");
+        assert!(plate_split(&c, &rect_sil(size, 4, 4, 36, 36)).is_none(), "shattered ink -> None");
+    }
+
+    #[test]
+    fn rejects_rim_owning_ink_as_polarity_inversion() {
+        // A majority-white centre (the field) inside a thick blue border (the ink) within the
+        // plate. The ink owns the rim and is too thick (frac >= 0.3) to be line-art → rejected.
+        let size = 40;
+        let mut c = Raster::new(size, size);
+        fill(&mut c, 4, 4, 36, 36, [40, 90, 200]);
+        fill(&mut c, 8, 8, 32, 32, [245, 245, 245]);
+        assert!(plate_split(&c, &rect_sil(size, 4, 4, 36, 36)).is_none(), "rim-owning ink -> None");
+    }
+}

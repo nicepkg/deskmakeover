@@ -19,7 +19,9 @@
 
 pub mod analysis;
 pub mod color;
+pub mod config;
 pub mod js_math;
+pub mod mono;
 pub mod raster;
 pub mod sampling;
 pub mod shapes;

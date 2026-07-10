@@ -2,7 +2,7 @@
 //! of the C# `RasterOps.cs`). Straight-alpha RGBA, row-major; alpha/coverage
 //! fields are `f64` (TS `Float64Array`), never `f32`.
 
-use crate::js_math::{clamp_byte, clamp_u8_int, js_round};
+use crate::js_math::{clamp01, clamp_byte, clamp_u8_int, js_round};
 use crate::shapes::{shape_contains, IconShape};
 
 /// A straight-alpha RGBA bitmap (row-major, 4 bytes per pixel).
@@ -31,6 +31,37 @@ pub struct Rgba {
 
 pub const TRANSPARENT: Rgba = Rgba { r: 0, g: 0, b: 0, a: 0 };
 pub const WHITE: Rgba = Rgba { r: 255, g: 255, b: 255, a: 255 };
+
+/// `makeRaster` alias with a distinct height (raster.ts `makeRaster(w, h)`).
+pub fn make_raster(width: usize, height: usize) -> Raster {
+    Raster::new(width, height)
+}
+
+/// `cloneRaster` — a fresh copy of the pixel buffer (raster.ts `cloneRaster`).
+pub fn clone_raster(src: &Raster) -> Raster {
+    src.clone()
+}
+
+/// raster.ts `fromRgbInt` — unpack `0xRRGGBB` to an opaque colour.
+pub fn from_rgb_int(rgb: u32) -> Rgba {
+    Rgba { r: ((rgb >> 16) & 0xff) as u8, g: ((rgb >> 8) & 0xff) as u8, b: (rgb & 0xff) as u8, a: 255 }
+}
+
+/// raster.ts `rgbaOf` — `0xRRGGBB` + [0,1] alpha → straight-alpha colour.
+pub fn rgba_of(rgb: u32, alpha: f64) -> Rgba {
+    Rgba {
+        r: ((rgb >> 16) & 0xff) as u8,
+        g: ((rgb >> 8) & 0xff) as u8,
+        b: (rgb & 0xff) as u8,
+        a: clamp_u8_int(js_round(clamp01(alpha) * 255.0)),
+    }
+}
+
+/// raster.ts `hexToInt` — '#RRGGBB' → packed `0xRRGGBB`. The frozen inputs are
+/// always clean 6-hex strings (`parseInt(...,16)` there); non-hex → 0.
+pub fn hex_to_int(hex: &str) -> u32 {
+    u32::from_str_radix(hex.trim_start_matches('#'), 16).unwrap_or(0) & 0x00ff_ffff
+}
 
 /// Straight-alpha Porter-Duff "over" written INTO the buffer at byte offset
 /// `i4`. Result RGB normalised by the output alpha (raster.ts `overAt`).

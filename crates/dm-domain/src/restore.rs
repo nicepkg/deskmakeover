@@ -1,0 +1,173 @@
+//! Exact-restore anchors: everything needed to return one item to its true original with
+//! zero residue, captured BEFORE any mutation.
+//!
+//! Harvested from the frozen oracle: `DeskMakeover.Shell/RestoreMetadataCollector.cs` (the
+//! per-kind capture) and `DesktopBakeService.TryRestoreItem` (the per-kind replay). The
+//! reversibility invariant the anchor exists to guarantee (`DesktopBakeService` codex B4):
+//! the anchor is journaled before the desktop is touched, so a crash at any point can always
+//! be walked back to the captured original.
+
+use serde::{Deserialize, Serialize};
+
+/// Bytes serialized as base64 so the JSON journal/ledger stays compact (matching the oracle,
+/// which stored `Convert.ToBase64String` blobs in snapshot metadata).
+mod bytes_base64 {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&STANDARD.encode(bytes))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        let text = String::deserialize(d)?;
+        STANDARD.decode(text.as_bytes()).map_err(serde::de::Error::custom)
+    }
+}
+
+/// The captured original of a folder's `desktop.ini` (present-case only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DesktopIniAnchor {
+    #[serde(with = "bytes_base64")]
+    pub content: Vec<u8>,
+    /// The raw Win32 `FILE_ATTRIBUTE_*` bits of the original `desktop.ini`.
+    pub attributes: u32,
+}
+
+/// The captured original of a loose file's wrapping state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrapperAnchor {
+    /// The original file's `FILE_ATTRIBUTE_*` bits (restored on unwrap).
+    pub file_attributes: u32,
+    /// Whether a same-named wrapper `.lnk` already existed before the apply.
+    pub wrapper_existed: bool,
+    /// If a wrapper existed, its original bytes (our apply overwrote it; restore resurrects it).
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "opt_bytes_base64")]
+    pub wrapper_content: Option<Vec<u8>>,
+}
+
+/// The captured original Recycle Bin `DefaultIcon` registry values, kinds preserved so
+/// restore writes byte-identical state (REG_SZ vs REG_EXPAND_SZ, unexpanded `%SystemRoot%`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecycleBinAnchor {
+    pub key_existed: bool,
+    pub default: Option<RegistryValue>,
+    pub empty: Option<RegistryValue>,
+    pub full: Option<RegistryValue>,
+}
+
+/// One registry string value plus its kind (1 = `REG_SZ`, 2 = `REG_EXPAND_SZ`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryValue {
+    pub raw: String,
+    pub kind: u32,
+}
+
+/// The exact-restore material for one item, discriminated by capture shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "anchor")]
+pub enum RestoreAnchor {
+    /// `.lnk` and `.url`: restore by replaying the original file bytes verbatim.
+    FileBytes {
+        #[serde(with = "bytes_base64")]
+        bytes: Vec<u8>,
+    },
+    /// Folder: original folder attributes + optional original `desktop.ini`.
+    Folder {
+        attributes: u32,
+        #[serde(default)]
+        desktop_ini: Option<DesktopIniAnchor>,
+    },
+    /// Loose file wrapped as a styled shortcut.
+    RegularFile(WrapperAnchor),
+    /// Recycle Bin registry state.
+    RecycleBin(RecycleBinAnchor),
+    /// Capture failed — recorded so the presence of restore material can be verified before
+    /// an apply proceeds (oracle: `restore.captureError`).
+    CaptureFailed { reason: String },
+}
+
+impl RestoreAnchor {
+    /// Whether this anchor actually carries restore material (a failed capture does not).
+    /// Mirrors `SnapshotRestoreVerifier.HasRestoreMaterial`: an item without material is
+    /// skipped by the planner rather than styled with no way back.
+    pub fn has_material(&self) -> bool {
+        !matches!(self, RestoreAnchor::CaptureFailed { .. })
+    }
+}
+
+/// Optional bytes as base64 (for `WrapperAnchor::wrapper_content`).
+mod opt_bytes_base64 {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(bytes: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error> {
+        match bytes {
+            Some(b) => s.serialize_str(&STANDARD.encode(b)),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Vec<u8>>, D::Error> {
+        let opt = Option::<String>::deserialize(d)?;
+        match opt {
+            Some(text) => STANDARD
+                .decode(text.as_bytes())
+                .map(Some)
+                .map_err(serde::de::Error::custom),
+            None => Ok(None),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_bytes_anchor_round_trips_and_has_material() {
+        let anchor = RestoreAnchor::FileBytes { bytes: b"original shortcut".to_vec() };
+        assert!(anchor.has_material());
+        let json = serde_json::to_string(&anchor).unwrap();
+        // Bytes must be base64, not a numeric array (compactness + oracle parity).
+        assert!(json.contains("b3JpZ2luYWwgc2hvcnRjdXQ="), "expected base64 blob, got {json}");
+        let back: RestoreAnchor = serde_json::from_str(&json).unwrap();
+        assert_eq!(anchor, back);
+    }
+
+    #[test]
+    fn capture_failed_has_no_material() {
+        let anchor = RestoreAnchor::CaptureFailed { reason: "locked".into() };
+        assert!(!anchor.has_material());
+    }
+
+    #[test]
+    fn wrapper_anchor_round_trips_with_and_without_prior_wrapper() {
+        let with = RestoreAnchor::RegularFile(WrapperAnchor {
+            file_attributes: 0x80,
+            wrapper_existed: true,
+            wrapper_content: Some(b"prior lnk".to_vec()),
+        });
+        let without = RestoreAnchor::RegularFile(WrapperAnchor {
+            file_attributes: 0x80,
+            wrapper_existed: false,
+            wrapper_content: None,
+        });
+        for a in [with, without] {
+            let back: RestoreAnchor = serde_json::from_str(&serde_json::to_string(&a).unwrap()).unwrap();
+            assert_eq!(a, back);
+        }
+    }
+
+    #[test]
+    fn recyclebin_anchor_preserves_value_kinds() {
+        let anchor = RestoreAnchor::RecycleBin(RecycleBinAnchor {
+            key_existed: false,
+            default: Some(RegistryValue { raw: "%SystemRoot%\\System32\\imageres.dll,-54".into(), kind: 2 }),
+            empty: None,
+            full: None,
+        });
+        let back: RestoreAnchor = serde_json::from_str(&serde_json::to_string(&anchor).unwrap()).unwrap();
+        assert_eq!(anchor, back);
+    }
+}

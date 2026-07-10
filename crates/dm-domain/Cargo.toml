@@ -4,4 +4,15 @@ edition.workspace = true
 version.workspace = true
 publish.workspace = true
 
+# The shared, platform-agnostic kernel: item identity, fingerprints, restore anchors,
+# and the port traits the platform layer (dm-windows) implements and the pure operations
+# layer (dm-operations) drives. No I/O, no C-compiling dependencies — stays clean for both
+# the Mac host build and the `x86_64-pc-windows-msvc` cross-check.
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+base64 = "0.22"
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1"

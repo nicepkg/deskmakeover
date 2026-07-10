@@ -927,6 +927,13 @@ dependencies = [
 [[package]]
 name = "dm-domain"
 version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "dm-icon-codec"
@@ -951,9 +958,11 @@ name = "dm-operations"
 version = "0.0.0"
 dependencies = [
  "dm-contracts",
+ "dm-domain",
  "rusqlite",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

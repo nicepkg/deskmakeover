@@ -6,11 +6,16 @@ publish.workspace = true
 
 [dependencies]
 dm-contracts = { path = "../dm-contracts" }
+dm-domain = { path = "../dm-domain" }
 # `bundled` builds SQLite from source so the app never depends on a system copy.
+# NOTE (Mac-first): this C-compiling dep is why the *workspace* msvc cross-check is blocked
+# on Mac. The transaction/ledger machinery below is pure Rust with no rusqlite and no
+# cfg(windows), so its msvc-cleanliness is structural; rusqlite only backs `settings_store`.
 rusqlite = { version = "0.32", features = ["bundled"] }
-serde = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 
 [dev-dependencies]
 serde_json = "1"
+tempfile = "3"

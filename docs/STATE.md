@@ -73,9 +73,14 @@ pointer: what is TRUE now, what is in flight, what comes next.
    kindShapes default stays UNIFORM (By-type one click away); T8 letter badge
    CLOSED (subsumed by the File family plate). T7 glass rim SHIPPED
    (designer PASS + lightness-inverse gloss guard — plates keep their pixels,
-   fresnel rim + counter-shade + top sheen only). Owed tail: D4 corpus ΔE probe
-   (browser harness — bun cannot decode PNGs; spread maths unit-tested) · T9
-   cross-vendor adversarial review · resx sweep of new PENDING-RESX. Plan: `docs/plans/2026-07-10-icon-colour-field.md`.
+   fresnel rim + counter-shade + top sheen only). T9 codex adversarial review DONE:
+   11 findings all verified + fixed same day (styleKey kindShapes hole, backdrop
+   rectangle behind recoloured crops, bake-time spread freeze barrier, source
+   URL generation gate, dispatch-epoch render gate, dead-seed clearing + idle
+   spread recompute, ±π seam pair, Field-inert 背景 tab hidden, matcher semantics,
+   single-pass dominantColor + slim stats, shadow scratch reuse) + 3 gap tests
+   (338 green). Owed: D4 corpus ΔE probe (browser harness — bun cannot decode
+   PNGs) · resx sweep of new PENDING-RESX. Plan: `docs/plans/2026-07-10-icon-colour-field.md`.
 2. Zone rebuild polish tail: equal-gap ticks (deferred, NOT accepted), rename-input polish,
    SwiftShader/`MAX_TEXTURE_SIZE` startup probe with reduced-res fallback, TS bake fixtures.
 3. Dark theme + zh locale full regression screenshots → `docs/plans/evidence/2026-07-v3/`.

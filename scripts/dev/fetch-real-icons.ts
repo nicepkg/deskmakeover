@@ -22,29 +22,45 @@
 // dist/real-icons, and the shipped app mirrors the user's real desktop and
 // needs no bundled icons.
 //
-// Usage:
-//   node scripts/dev/fetch-real-icons.mjs             harvest + rebuild manifest
-//   node scripts/dev/fetch-real-icons.mjs --scan      rebuild manifest only
-//   node scripts/dev/fetch-real-icons.mjs --keep-cache  keep .cache/win11sim
+// Usage (bun-only repo — always run with bun):
+//   bun scripts/dev/fetch-real-icons.ts               harvest + rebuild manifest
+//   bun scripts/dev/fetch-real-icons.ts --scan        rebuild manifest only
+//   bun scripts/dev/fetch-real-icons.ts --keep-cache  keep .cache/win11sim
 //     (default: the 37 MB clone cache is deleted after a successful harvest;
 //      the next harvest re-clones on demand)
+//
+// Runtime note: Bun natives (Bun.file / Bun.write / Bun.spawnSync /
+// import.meta.dir) everywhere they exist; node:fs remains ONLY for directory
+// ops (cp/mkdir/readdir/rm), which is Bun's own recommended surface for those.
 
-import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const ROOT = join(import.meta.dir, '..', '..')
 const OUT = join(ROOT, 'public', 'real-icons')
 const CACHE = join(ROOT, '.cache', 'win11sim')
 const SCAN_ONLY = process.argv.includes('--scan')
 const KEEP_CACHE = process.argv.includes('--keep-cache')
 
-const SUBDIRS = ['windows', 'folders', 'apps', 'files', 'wallpapers']
+const SUBDIRS = ['windows', 'folders', 'apps', 'files', 'wallpapers'] as const
+type Subdir = (typeof SUBDIRS)[number]
+
+interface ManifestEntry {
+  file: string
+  id: string
+  kind: string
+  label: string
+  extraSources: string[]
+}
+interface Refinement {
+  kind?: string
+  label?: string
+  extraSources?: string[]
+}
 
 // kind default per subfolder; explicit entries below refine (SystemIcon,
 // AppxShortcut, RecycleBin are always explicit — they carry special behavior).
-const SUBDIR_KIND = {
+const SUBDIR_KIND: Record<Exclude<Subdir, 'wallpapers'>, string> = {
   windows: 'Shortcut',
   folders: 'Folder',
   apps: 'Shortcut',
@@ -56,12 +72,16 @@ const REPOS = [
   { name: 'windows-11-web', url: 'https://github.com/piyushsuthar/windows-11-web.git' },
 ]
 
-function ensureRepo({ name, url }) {
+function ensureRepo({ name, url }: { name: string; url: string }): string {
   const dir = join(CACHE, name)
   if (!existsSync(dir)) {
     mkdirSync(CACHE, { recursive: true })
     console.log(`cloning ${url} (shallow)...`)
-    execFileSync('git', ['clone', '--depth', '1', url, dir], { stdio: 'inherit' })
+    const res = Bun.spawnSync(['git', 'clone', '--depth', '1', url, dir], {
+      stdout: 'inherit',
+      stderr: 'inherit',
+    })
+    if (res.exitCode !== 0) throw new Error(`clone failed: ${url}`)
   }
   return dir
 }
@@ -70,7 +90,7 @@ function ensureRepo({ name, url }) {
 
 // win11React icon/win/*.png — extracted imageres/shell32 resources. Named
 // files get their real shell labels; numbered file-type icons become files.
-const WIN_LABELS = {
+const WIN_LABELS: Record<string, string> = {
   thispc: '此电脑',
   bin: '回收站',
   folder: '新建文件夹',
@@ -91,7 +111,7 @@ const WIN_LABELS = {
 }
 
 // win11React icon/*.png — real first/third-party app icons.
-const APP_LABELS = {
+const APP_LABELS: Record<string, string> = {
   edge: 'Microsoft Edge',
   excel: 'Excel',
   powerpoint: 'PowerPoint',
@@ -134,7 +154,7 @@ const APP_LABELS = {
 // (2026-07-09): every label MUST match the art — a PDF name on a printer icon
 // is exactly the confusion the owner banned. kind: doc-like art = RegularFile,
 // tool-like art = Shortcut.
-const NUM_ICONS = {
+const NUM_ICONS: Record<string, { label: string; kind: string }> = {
   3: { label: '新建文本文档.txt', kind: 'RegularFile' },
   50: { label: '归档', kind: 'Folder' },
   58: { label: '资源', kind: 'Folder' },
@@ -184,7 +204,7 @@ const NUM_ICONS = {
 // Explicit kind/label refinements for HARVESTED files, keyed by subfolder path.
 // Owner-added files needing the same refinement go in overrides.json (merged
 // on top of this book at scan time, same shape).
-const REFINEMENTS = {
+const REFINEMENTS: Record<string, Refinement> = {
   // This PC / Network / User Files / Control Panel style via the per-user
   // CLSID DefaultIcon mechanism (owner prototype truth) — STYLEABLE; the C#
   // writers are a Windows-batch addition.
@@ -204,12 +224,20 @@ const REFINEMENTS = {
   'apps/app-maps.png': { kind: 'AppxShortcut' },
 }
 
+// Harvest-known labels, persisted so --scan runs keep them without re-harvest.
+const LABEL_BOOK_PATH = join(OUT, 'labels.json')
+
+async function loadJson<T>(path: string, fallback: T): Promise<T> {
+  const f = Bun.file(path)
+  return (await f.exists()) ? ((await f.json()) as T) : fallback
+}
+
 // ---- harvest (merge-only: overwrites its own outputs, never deletes) ----
 
-function harvest() {
+function harvest(labelBook: Record<string, string>): void {
   const [w11react, w11web] = REPOS.map(ensureRepo)
   for (const d of SUBDIRS) mkdirSync(join(OUT, d), { recursive: true })
-  const put = (srcPath, sub, file, label) => {
+  const put = (srcPath: string, sub: Subdir, file: string, label?: string) => {
     cpSync(srcPath, join(OUT, sub, file))
     if (label !== undefined) labelBook[`${sub}/${file}`] = label
   }
@@ -223,11 +251,11 @@ function harvest() {
       put(join(winDir, f), 'windows', 'win-bin-empty.png')
       continue
     }
-    const num = /^\d+$/.test(base) ? NUM_ICONS[base] : null
+    const num = /^\d+$/.test(base) ? NUM_ICONS[base] : undefined
     const isFolder = num ? num.kind === 'Folder' : /folder|docs|down|music|pics|vid|desk/.test(base)
     const isFile = num?.kind === 'RegularFile'
-    const sub = isFolder ? 'folders' : isFile ? 'files' : 'windows'
-    put(join(winDir, f), sub, `win-${f}`, num ? num.label : WIN_LABELS[base] ?? base)
+    const sub: Subdir = isFolder ? 'folders' : isFile ? 'files' : 'windows'
+    put(join(winDir, f), sub, `win-${f}`, num ? num.label : (WIN_LABELS[base] ?? base))
   }
 
   // 2) Real app icons — win11React icon/*.png (64px; small real .lnk icons
@@ -256,7 +284,7 @@ function harvest() {
     [join('ThemeC', 'img0.jpg'), 'wallpaper-office.jpg'],
     [join('ThemeB', 'img0.jpg'), 'wallpaper-spare-b.jpg'],
     [join('ThemeD', 'img0.jpg'), 'wallpaper-spare-d.jpg'],
-  ]) {
+  ] as const) {
     const p = join(wallDir, src)
     if (existsSync(p)) cpSync(p, join(OUT, 'wallpapers', out))
   }
@@ -264,28 +292,19 @@ function harvest() {
 
 // ---- manifest: rebuilt by SCANNING the tree (owner-added files included) ----
 
-// Harvest-known labels, persisted so --scan runs keep them without re-harvest.
-const LABEL_BOOK_PATH = join(OUT, 'labels.json')
-const labelBook = existsSync(LABEL_BOOK_PATH)
-  ? JSON.parse(readFileSync(LABEL_BOOK_PATH, 'utf8'))
-  : {}
-
-function buildManifest() {
-  const overridesPath = join(OUT, 'overrides.json')
-  const overrides = existsSync(overridesPath)
-    ? JSON.parse(readFileSync(overridesPath, 'utf8'))
-    : {}
-  const refine = (rel) => ({ ...REFINEMENTS[rel], ...overrides[rel] })
+async function buildManifest(labelBook: Record<string, string>): Promise<ManifestEntry[]> {
+  const overrides = await loadJson<Record<string, Refinement>>(join(OUT, 'overrides.json'), {})
+  const refine = (rel: string): Refinement => ({ ...REFINEMENTS[rel], ...overrides[rel] })
 
   // files referenced as extraSources never get their own manifest entry
-  const consumed = new Set()
+  const consumed = new Set<string>()
   for (const book of [REFINEMENTS, overrides]) {
     for (const entry of Object.values(book)) {
       for (const extra of entry.extraSources ?? []) consumed.add(extra)
     }
   }
 
-  const manifest = []
+  const manifest: ManifestEntry[] = []
   for (const sub of SUBDIRS) {
     if (sub === 'wallpapers') continue // not desktop icons
     const dir = join(OUT, sub)
@@ -305,15 +324,19 @@ function buildManifest() {
     }
   }
   manifest.sort((a, b) => a.file.localeCompare(b.file))
-  writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2))
-  writeFileSync(LABEL_BOOK_PATH, JSON.stringify(labelBook, null, 2))
+  await Bun.write(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2))
+  await Bun.write(LABEL_BOOK_PATH, JSON.stringify(labelBook, null, 2))
   return manifest
 }
 
-function main() {
-  if (!SCAN_ONLY) harvest()
-  const manifest = buildManifest()
-  const kinds = manifest.reduce((m, e) => ((m[e.kind] = (m[e.kind] ?? 0) + 1), m), {})
+async function main(): Promise<void> {
+  const labelBook = await loadJson<Record<string, string>>(LABEL_BOOK_PATH, {})
+  if (!SCAN_ONLY) harvest(labelBook)
+  const manifest = await buildManifest(labelBook)
+  const kinds = manifest.reduce<Record<string, number>>(
+    (m, e) => ((m[e.kind] = (m[e.kind] ?? 0) + 1), m),
+    {},
+  )
   console.log(`real-icons: ${manifest.length} icons ->`, kinds)
   console.log(`SSoT: ${OUT} (committed; stripped from release artifacts — ADR-0015 D9 amendment)`)
   if (!SCAN_ONLY && !KEEP_CACHE && existsSync(CACHE)) {
@@ -322,4 +345,4 @@ function main() {
   }
 }
 
-main()
+await main()

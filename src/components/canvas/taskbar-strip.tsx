@@ -23,7 +23,7 @@ function PinnedCell({ children }: { children: React.ReactNode }) {
 }
 
 /** REAL extracted icon (dev fixture pack) with the drawn-vector fallback for
- *  environments that have not run scripts/dev/fetch-real-icons.mjs. */
+ *  environments that have not run scripts/dev/fetch-real-icons.ts. */
 function PinnedIcon({ src, fallback }: { src: string; fallback: React.ReactNode }) {
   const [failed, setFailed] = React.useState(false)
   if (failed) return <>{fallback}</>

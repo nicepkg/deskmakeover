@@ -15,7 +15,7 @@ import { typeOverridesEqual } from '@/lib/type-config'
 
 // Browser-only fake desktop DATA source (icons contract v2, spec 06 §2/§5):
 // the canvas wallpaper scene, the REAL icon pack (public/real-icons/, the
-// asset SSoT harvested by scripts/dev/fetch-real-icons.mjs) and the session state
+// asset SSoT harvested by scripts/dev/fetch-real-icons.ts) and the session state
 // machine. NO styling happens here any more — the icon compositor renders
 // sources exactly as it does against the Windows host, so the Mac dev loop
 // shows engine truth (ADR-0015 D1 retired the old approximate tile painter).
@@ -184,7 +184,7 @@ const MARK_SWATCHES = ['#FFFFFF', '#141414', '#FF6F5E', '#B97D4E', '#3FB6A8']
 // ---- desktop items: the REAL icon pack is REQUIRED (owner order 2026-07-11:
 // synthetic icons are gone from the mock desktop) ----
 // public/real-icons/ is the gitignored asset SSoT (subfoldered by type),
-// harvested by scripts/dev/fetch-real-icons.mjs: genuine Windows system icons
+// harvested by scripts/dev/fetch-real-icons.ts: genuine Windows system icons
 // + real app icons at their native sizes. A fresh clone must run the harvest
 // script once; there is no synthetic fallback.
 
@@ -257,7 +257,7 @@ async function loadManifest(): Promise<PackEntry[]> {
       return all
     }
     console.error(
-      '[mock desktop] real icon pack missing — run `node scripts/dev/fetch-real-icons.mjs` (public/real-icons/ is the asset SSoT; no synthetic fallback)',
+      '[mock desktop] real icon pack missing — run `bun scripts/dev/fetch-real-icons.ts` (public/real-icons/ is the asset SSoT; no synthetic fallback)',
     )
     return []
   })()

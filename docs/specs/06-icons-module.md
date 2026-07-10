@@ -224,7 +224,7 @@ the icons and wallpaper canvases (one component).
   2026-07-11 — the synthetic pack is too clean to expose 真实适配 bugs and is now
   parity-fixture-only): `public/real-icons/` is the gitignored asset SSoT
   (subfolders windows/folders/apps/files/wallpapers; own nested git repo;
-  harvest/scan via `scripts/dev/fetch-real-icons.mjs`). No synthetic fallback.
+  harvest/scan via `bun scripts/dev/fetch-real-icons.ts`). No synthetic fallback.
   Extracted assets NEVER enter this repo or any shipped artifact (D9; vite
   closeBundle strips dist/real-icons). Developer Options adds
   Messy/Office/Gamer scenario switches for demos.

@@ -4,7 +4,7 @@
 //
 // Usage: bun scripts/render-shape-sheet.ts [outDir] [size]
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs' // dir ops: Bun's recommended surface
 import { join } from 'node:path'
 import type { IconShape } from '../src/bridge/types'
 import { shapeMask } from '../src/icon-compositor/raster'
@@ -26,7 +26,7 @@ for (const shape of SHAPES) {
   const buf = new Uint8Array(header.length + px.length)
   buf.set(new TextEncoder().encode(header), 0)
   buf.set(px, header.length)
-  writeFileSync(join(OUT, `${shape}.pgm`), buf)
+  await Bun.write(join(OUT, `${shape}.pgm`), buf)
   console.log(shape)
 }
 console.log(`masks -> ${OUT}`)

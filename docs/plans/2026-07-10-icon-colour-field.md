@@ -9,10 +9,11 @@ mock loop). C# TileRenderer sync moves to F8 (see Global constraints). Panel:
 > §Default Composition): knockout deleted (owner iron law — subjects never
 > recoloured), Vivid plates C[0.09,0.12]@L0.87, plated clamp [0.60,0.80] with
 > neutral exemption, pale contrast-target lane + ring halo, box 36/256, hue
-> spread 12° min-gap in ±18° cap. Designer-seat acceptance: PASS. Owed: T5
-> (kind families/affordances/kindShapes), T6 colour-row UI (满彩 swatch + band
-> depth), T7 glass rim, T8 letter badge, D4 corpus ΔE test, T9 adversarial
-> review sweep.
+> spread 12° min-gap in ±18° cap. Designer-seat acceptance: PASS (v7 base +
+> v8.1 kind families). T5/T6 SHIPPED (families amber/blue-violet/neutral + tab,
+> dog-ear cut, 满彩 swatch + band depth + kindShapes toggle UI; owner: uniform
+> default). T8 CLOSED (subsumed by the File family plate). Owed: T7 glass rim,
+> D4 corpus ΔE probe (browser harness), T9 adversarial review sweep.
 
 ## Global constraints
 

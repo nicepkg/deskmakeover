@@ -69,11 +69,12 @@ pointer: what is TRUE now, what is in flight, what comes next.
    icon SUBJECT pixels are never recoloured. Field mode + presets + hue spread +
    kind families (amber folders/tab · blue-violet files · true-neutral system;
    brand library folders keep own plates) + colour-row 满彩 swatch + 鲜明/柔和 +
-   统一外形/分类外形 toggle all live through preview AND bake. Owed tail: T7 glass
-   rim rework · T8 letter badge (re-evaluate: File family may cover it) · D4 corpus
-   ΔE test · T9 cross-vendor adversarial review · resx sweep of new PENDING-RESX.
-   ❓ OPEN owner decision: folder Bookmark shape ON by default (designer recommends;
-   comparison shots in .dev-shots). Plan: `docs/plans/2026-07-10-icon-colour-field.md`.
+   统一外形/分类外形 toggle all live through preview AND bake. Owner 2026-07-10:
+   kindShapes default stays UNIFORM (By-type one click away); T8 letter badge
+   CLOSED (subsumed by the File family plate). Owed tail: T7 glass rim rework ·
+   D4 corpus ΔE probe (browser harness — bun cannot decode PNGs; spread-level
+   maths already unit-tested) · T9 cross-vendor adversarial review · resx sweep
+   of new PENDING-RESX. Plan: `docs/plans/2026-07-10-icon-colour-field.md`.
 2. Zone rebuild polish tail: equal-gap ticks (deferred, NOT accepted), rename-input polish,
    SwiftShader/`MAX_TEXTURE_SIZE` startup probe with reduced-res fallback, TS bake fixtures.
 3. Dark theme + zh locale full regression screenshots → `docs/plans/evidence/2026-07-v3/`.

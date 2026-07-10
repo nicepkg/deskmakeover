@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "identifier": "com.xiaominglab.deskmakeover",
   "build": {
-    "frontendDist": "../frontend/dist",
+    "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "cd frontend && bun run dev",
-    "beforeBuildCommand": "cd frontend && bun run build"
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run build"
   },
   "app": {
     "windows": [

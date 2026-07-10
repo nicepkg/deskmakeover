@@ -1,4 +1,4 @@
-//! Regenerate `frontend/src/bridge/generated.ts` from the Rust command surface.
+//! Regenerate `src/bridge/generated.ts` from the Rust command surface.
 //! Invoked by `bun run gen:bindings`. Writing lives here (not in a test) so a
 //! plain `cargo test` never mutates the source tree.
 //!

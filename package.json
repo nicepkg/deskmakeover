@@ -1,5 +1,5 @@
 {
-  "name": "deskmakeover-web",
+  "name": "deskmakeover",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,7 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "bun test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "tauri:build": "tauri build",
+    "gen:bindings": "cargo run -p deskmakeover-desktop --bin gen-bindings",
+    "check:bindings": "cargo test -p deskmakeover-desktop --test bindings"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.2",
@@ -29,6 +34,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

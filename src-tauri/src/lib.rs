@@ -30,7 +30,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
 /// Absolute path to the committed TS bindings, resolved from the crate dir so
 /// codegen works regardless of the caller's cwd.
 pub fn bindings_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../frontend/src/bridge/generated.ts")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/bridge/generated.ts")
 }
 
 /// Regenerate the TS bindings at `path` from the live command surface.

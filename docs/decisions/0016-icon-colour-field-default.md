@@ -125,6 +125,27 @@ pale-lane/contrast-guard experiments deleted. Designer final verdict on v17:
 PASS (implementation fidelity); three law-consequence aesthetic notes recorded
 for the owner in spec 02.
 
+## Amendment 3 (2026-07-10, final — the RIM band law)
+
+The owner's closing insight, delivered in three corrections: derived plates are
+NOT driven by the subject's interior — they are driven by the artwork's
+OUTERMOST RING, because that ring is what must separate from the plate. The
+first cut (1px α≥128 boundary ring, chroma-weighted mean colour) failed live:
+thin highlight outlines and AA matte fringes made dark-rimmed icons (GitHub's
+disc, the terminal, Microsoft's deep-blue lineup) read "light" and take dark
+boards, and chroma-weighting let a loud accent steal the hue (Explorer's
+yellow ring seeded a BLUE plate). Fixed measurement (profile.ts `subjectRim`):
+the rim is a BAND of fully-solid pixels (α ≥ 245; soft shadows and fringes
+excluded) ~minDim/16 deep over the WHOLE opaque artwork (not the subject
+mask — segmentation must not hide a dark disc from its own edge), its colour
+the MAJORITY hue via the same `dominantColor` merged-majority vote, its
+lightness the band mean. Plate = rim hue, deep side when the rim is light
+(≥0.7), pale side when dark — 亮圈深底 / 暗圈浅底, 黄圈得黄底. Engine-level
+proof on the 124-icon real pack flipped ~30 wrong-side plates; regression
+tests pin the outline, accent-vs-majority, and soft-shadow cases. Subject
+interior colour/lightness stay recorded as metadata (step 4) for future
+consumers.
+
 ## Consequences
 
 - The default demos AND lives well: colour pop-out returns to native level while

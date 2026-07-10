@@ -250,15 +250,22 @@ The five steps (each icon takes the FIRST matching step):
    UNCHANGED — no clamps, no contrast pushes, no band restyle, no shadow.
 3. **Irregular artwork**: segment the subject directly (`segmentSubject`) —
    the background is OURS to add.
-4. **Subject colour + lightness**: neighbour-hue merged band (adjacent buckets
-   join at ≥10% of peak weight, span ≤ ±65°) must cover ≥50% of the SUBJECT's
-   pixels to count as a theme; subject mean lightness over the mask.
-5. **Derived plate**: theme hue (grayscale subjects → pure neutral, hue never
-   forced) at the lightness OPPOSING the subject — the dark board is reserved
-   for genuinely light subjects (mean ≥ 0.7; mid tones read dark to the eye
-   and take the bright board; white plates are legal). Subjects on derived
-   plates carry a silhouette-shaped shadow OPPOSING the plate (deep shadow on
-   light boards, light glow on dark boards). Glyph box ~72% (36/256);
+4. **Subject colour + lightness** (recorded metadata): neighbour-hue merged
+   band (adjacent buckets join at ≥10% of peak weight, span ≤ ±65°) must cover
+   ≥50% of the SUBJECT's pixels to count as a theme; subject mean lightness
+   over the mask. Derived plates do NOT read these two — see step 5.
+5. **Derived plate — the RIM law (owner, 2026-07-10)**: the plate is decided by
+   the artwork's OUTERMOST BAND — the ring of fully-solid pixels (α ≥ 245, so
+   AA fringes and soft shadows never vote) within ~6% of the icon's dimension
+   from its silhouette edge, over the WHOLE opaque artwork (not the segmented
+   subject — the whole artwork borders the plate). The band's MAJORITY hue
+   (same merged-majority rule as step 4; a thin highlight outline or accent
+   never outvotes the ring) gives the plate its hue; the band's mean lightness
+   picks the side: rim ≥ 0.7 → deep board of that hue (亮圈配深底), rim < 0.7 →
+   pale board of that hue (暗圈配浅底). A yellow-ringed folder takes 淡黄/深黄,
+   never another hue; neutral rims take pure neutral boards. Subjects on
+   derived plates carry a silhouette-shaped shadow OPPOSING the plate (deep
+   shadow on light boards, light glow on dark boards). Glyph box ~72% (36/256);
    composeFromPlate's no-foreground fallback centres content at the keyline —
    nothing ever runs wall-to-wall.
 

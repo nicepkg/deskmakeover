@@ -7,6 +7,7 @@ use std::path::Path;
 
 use dm_domain::{PortError, PortResult, WrapperAnchor};
 
+use crate::fingerprint_surface::wrapper_working_dir;
 use crate::shell::{attrs, shell_link};
 
 /// The companion wrapper path for a loose file (`<file>.lnk`), oracle `WrapperPathFor`.
@@ -20,10 +21,9 @@ pub fn apply(file_path: &str, icon_path: &str) -> PortResult<()> {
     if !Path::new(file_path).is_file() {
         return Err(PortError::NotFound(file_path.to_string()));
     }
-    let working_dir = Path::new(file_path)
-        .parent()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    // The SAME derivation the surface's `expected_after_apply` uses, so the working dir the wrapper
+    // is given can never drift from what the driver expects to read back (P1-#1).
+    let working_dir = wrapper_working_dir(file_path);
     shell_link::create_shortcut(&wrapper_path(file_path), file_path, &working_dir, icon_path)?;
     let current = attrs::get(file_path)?;
     attrs::set(file_path, current | attrs::HIDDEN | attrs::SYSTEM)

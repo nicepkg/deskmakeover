@@ -19,7 +19,7 @@ use dm_domain::{
 
 use crate::apply::{file_wrapper, recyclebin};
 use crate::com::StaExecutor;
-use crate::fingerprint_surface::{self as fp, SurfaceState};
+use crate::fingerprint_surface::{self as fp, SurfaceState, WrapperSurface};
 use crate::shell::{attrs, shell_link};
 use crate::textfmt;
 
@@ -63,37 +63,48 @@ impl ItemStateReader for WindowsStateReader {
                     textfmt::parse_internet_shortcut_icon(&read_text(&target.path)?).unwrap_or_default();
                 Ok(SurfaceState::IconRef { path, index }.fingerprint())
             }
-            // Folder: the `desktop.ini` `IconResource` path/index (BOM-tolerant parse).
+            // Folder: the `desktop.ini` `IconResource` path/index (BOM-tolerant parse) PLUS the
+            // folder attribute bits apply owns (READONLY — Explorer needs it to honour desktop.ini),
+            // masked so unrelated bits are not a false conflict (P1-#1/P2-2).
             ItemKind::Folder => {
                 require_dir(&target.path)?;
                 // An absent desktop.ini is an unstyled folder (empty surface); a present-but-
                 // unreadable one is a real error, not silently "unstyled" (P2-3).
-                let (path, index) = textfmt::parse_desktop_ini_icon(&read_desktop_ini(&target.path)?).unwrap_or_default();
-                Ok(SurfaceState::IconRef { path, index }.fingerprint())
+                let icon = textfmt::parse_desktop_ini_icon(&read_desktop_ini(&target.path)?).unwrap_or_default();
+                let owned_attr_bits = attrs::get(&target.path)? & fp::FOLDER_OWNED_ATTR_BITS;
+                Ok(SurfaceState::Folder { icon, owned_attr_bits }.fingerprint())
             }
-            // Loose file: the companion wrapper's icon location + ONLY the owned attribute bits
-            // (Hidden|System). The file's own bytes are never touched by apply, so they are not the
-            // surface (P1-10); unrelated bits (ARCHIVE, offline) are masked off (P2-2). A missing
-            // original is NotFound via `attrs::get`, so a deleted file is skipped.
+            // Loose file: the companion wrapper's FULL identity (icon location + target + working
+            // dir) + ONLY the owned attribute bits (Hidden|System) on the original. The file's own
+            // bytes are never touched by apply, so they are not the surface (P1-10); unrelated bits
+            // (ARCHIVE, offline) are masked off (P2-2); the wrapper target/workdir are covered so a
+            // partial write is caught (P1-#1). A missing original is NotFound via `attrs::get`.
             ItemKind::RegularFile => {
                 let owned_attr_bits = attrs::get(&target.path)? & fp::OWNED_ATTR_BITS;
-                let wrapper = file_wrapper::wrapper_path(&target.path);
-                // The wrapper's icon location is a COM read (`IShellLinkW`) → STA thread.
-                let wrapper_icon = if Path::new(&wrapper).exists() {
-                    let w = wrapper.clone();
-                    self.exec.run(move || shell_link::read_icon_location(&w))??
+                let wrapper_path = file_wrapper::wrapper_path(&target.path);
+                // The wrapper's identity is a COM read (`IShellLinkW`) → STA thread.
+                let wrapper = if Path::new(&wrapper_path).exists() {
+                    let w = wrapper_path.clone();
+                    let id = self.exec.run(move || shell_link::read_wrapper_identity(&w))??;
+                    Some(WrapperSurface {
+                        icon: id.icon.unwrap_or_default(),
+                        target: id.target,
+                        working_dir: id.working_dir,
+                    })
                 } else {
                     None
                 };
-                Ok(SurfaceState::RegularFile { wrapper_icon, owned_attr_bits }.fingerprint())
+                Ok(SurfaceState::RegularFile { wrapper, owned_attr_bits }.fingerprint())
             }
-            // Recycle Bin: the empty + full icon paths the per-user `DefaultIcon` values point at
-            // (stripping the trailing `,index`), so the surface matches the paired assets.
+            // Recycle Bin: the default/empty/full icon values the per-user `DefaultIcon` points at,
+            // each parsed into (path, index) so the surface matches the paired assets AND a wrong
+            // index or a stale `default` is caught (P1-#1).
             ItemKind::RecycleBin => {
                 let a = recyclebin::read_current();
-                let empty = a.empty.as_ref().map(|v| strip_icon_index(&v.raw)).unwrap_or_default().to_string();
-                let full = a.full.as_ref().map(|v| strip_icon_index(&v.raw)).unwrap_or_default().to_string();
-                Ok(SurfaceState::RecycleBin { empty, full }.fingerprint())
+                let default = a.default.as_ref().map(|v| parse_icon_ref(&v.raw)).unwrap_or_default();
+                let empty = a.empty.as_ref().map(|v| parse_icon_ref(&v.raw)).unwrap_or_default();
+                let full = a.full.as_ref().map(|v| parse_icon_ref(&v.raw)).unwrap_or_default();
+                Ok(SurfaceState::RecycleBin { default, empty, full }.fingerprint())
             }
             other => Err(PortError::Unsupported(format!("fingerprint for {other:?}"))),
         }
@@ -190,11 +201,14 @@ fn require_dir(path: &str) -> PortResult<()> {
     }
 }
 
-/// Strips the trailing `,index` from a `DefaultIcon` registry value (`C:\x.ico,0` → `C:\x.ico`),
-/// splitting on the LAST comma so icon paths containing commas survive.
-fn strip_icon_index(value: &str) -> &str {
+/// Parses a `DefaultIcon` registry value (`C:\x.ico,0`) into `(path, index)`, splitting on the LAST
+/// comma so icon paths containing commas survive. A value with no comma is `(value, 0)`.
+fn parse_icon_ref(value: &str) -> (String, i32) {
     match value.rfind(',') {
-        Some(comma) => &value[..comma],
-        None => value,
+        Some(comma) => {
+            let index = value[comma + 1..].trim().parse().unwrap_or(0);
+            (value[..comma].to_string(), index)
+        }
+        None => (value.to_string(), 0),
     }
 }

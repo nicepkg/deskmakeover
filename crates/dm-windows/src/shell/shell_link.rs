@@ -55,6 +55,45 @@ pub fn set_icon_location(shortcut_path: &str, icon_path: &str, index: i32) -> Po
     crate::durable::finalize_saved(&tmp, &target)
 }
 
+/// The identity fields a loose-file wrapper `.lnk` carries: its icon location, its resolved target,
+/// and its working directory. Read together in one COM `Load` so the reader can fingerprint the
+/// whole styleable surface a wrapper apply establishes (P1-#1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WrapperIdentity {
+    pub icon: Option<(String, i32)>,
+    pub target: String,
+    pub working_dir: String,
+}
+
+/// Reads a wrapper `.lnk`'s icon location + target + working directory in a single COM `Load`.
+/// [WINDOWS-VERIFY] runtime.
+pub fn read_wrapper_identity(shortcut_path: &str) -> PortResult<WrapperIdentity> {
+    // SAFETY: the shell-link COM object is created, used, and dropped on this (STA) thread.
+    unsafe {
+        let link: IShellLinkW =
+            CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com)?;
+        let file: IPersistFile = link.cast().map_err(com)?;
+        let path = extended_length_path(shortcut_path);
+        file.Load(&HSTRING::from(path.as_str()), STGM_READ).map_err(com)?;
+
+        let mut icon_buf = [0u16; ICON_BUF];
+        let mut index = 0i32;
+        link.GetIconLocation(&mut icon_buf, &mut index).map_err(com)?;
+        let icon_path = wide_to_string(&icon_buf);
+        let icon = if icon_path.is_empty() { None } else { Some((icon_path, index)) };
+
+        let mut target_buf = [0u16; ICON_BUF];
+        link.GetPath(&mut target_buf, std::ptr::null_mut(), 0).map_err(com)?;
+        let target = wide_to_string(&target_buf);
+
+        let mut dir_buf = [0u16; ICON_BUF];
+        link.GetWorkingDirectory(&mut dir_buf).map_err(com)?;
+        let working_dir = wide_to_string(&dir_buf);
+
+        Ok(WrapperIdentity { icon, target, working_dir })
+    }
+}
+
 /// Reads the `.lnk`'s resolved target path (used to extract a clean icon when the link has no
 /// explicit icon location). Mirrors `ShellLinkComInterop.GetTargetPath`.
 ///

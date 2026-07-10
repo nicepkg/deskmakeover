@@ -52,12 +52,14 @@ impl IconApplier for WindowsIconApplier {
             }
             other => return Err(PortError::Unsupported(format!("apply for {other:?}"))),
         };
-        // The expected styleable-surface fingerprint, derived from the ASSET — not a re-read of the
-        // just-written state. Built via the SAME host-tested surface logic the reader uses, so the
-        // driver's independent read-back can confirm the write matched the request; a COM write
-        // that reports success yet leaves the old icon is caught (P1-1). [WINDOWS-VERIFY].
+        // The expected styleable-surface fingerprint, derived from the ASSET (and the item's own
+        // path, for the wrapper target/working-dir) — not a re-read of the just-written state. Built
+        // via the SAME host-tested surface logic the reader uses, so the driver's independent
+        // read-back can confirm the write matched the request; a COM write that reports success yet
+        // leaves the old icon — or a partial write that omits a coupled field (folder READONLY, the
+        // wrapper target, a Recycle Bin index) — is caught (P1-1/P1-#1). [WINDOWS-VERIFY].
         let empty = assets.empty.as_ref().map(|e| e.path.as_str());
-        Ok(fp::expected_after_apply(target.kind, &assets.primary.path, empty).fingerprint())
+        Ok(fp::expected_after_apply(target.kind, &target.path, &assets.primary.path, empty).fingerprint())
     }
 
     fn restore(&self, target: &ItemTarget, anchor: &RestoreAnchor) -> PortResult<()> {

@@ -10,6 +10,7 @@ members = [
     "crates/dm-windows",
     "crates/dm-resident",
     "crates/dm-test-support",
+    "xtask",
 ]
 
 # Shared crate metadata (DRY): each member inherits edition/version/publish.

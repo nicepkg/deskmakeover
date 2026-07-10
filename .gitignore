@@ -40,3 +40,6 @@ apps/desktop/frontend/dist/
 # Real-icon dev fixtures (extracted MS/brand assets — NEVER ship, never commit)
 apps/desktop/frontend/public/mock-icons-real/
 .cache/
+
+# Agent worktrees (git worktree add .worktrees/<task>)
+.worktrees/

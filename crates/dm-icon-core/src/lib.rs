@@ -19,13 +19,15 @@
 
 pub mod analysis;
 pub mod color;
+pub mod compose;
 pub mod config;
+pub mod filters;
 pub mod hue_spread;
 pub mod js_math;
+pub mod marks;
 pub mod mono;
 pub mod profile;
 pub mod raster;
 pub mod sampling;
 pub mod segment;
 pub mod shapes;
-pub mod slice;

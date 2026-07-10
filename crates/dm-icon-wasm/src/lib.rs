@@ -9,7 +9,7 @@
 //! compiles natively too, so `cargo test` covers the adapter arithmetic.
 
 use dm_icon_core::raster::Raster;
-use dm_icon_core::slice::render_slice_tile;
+use dm_icon_core::compose::render_slice_tile;
 
 /// Allocate `len` bytes inside the module's linear memory; returns the offset.
 /// The runner allocates once per buffer role and reuses across calls. Memory

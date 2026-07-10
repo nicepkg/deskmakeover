@@ -136,13 +136,13 @@ pub fn shape_mask(
     shape: IconShape,
     buffer_size: usize,
     shape_size: usize,
-    offset_x: i32,
-    offset_y: i32,
+    offset_x: f64,
+    offset_y: f64,
 ) -> Vec<f64> {
     assert!(shape_size > 0, "shapeSize must be positive");
     let size = shape_size as f64;
-    let ox = offset_x as f64;
-    let oy = offset_y as f64;
+    let ox = offset_x;
+    let oy = offset_y;
     let mut mask = vec![0.0f64; buffer_size * buffer_size];
     let grid_w = buffer_size + 1;
     let mut grid = vec![0u8; grid_w * grid_w];
@@ -398,7 +398,7 @@ mod tests {
 
     #[test]
     fn circle_mask_interior_exterior_and_conservation() {
-        let mask = shape_mask(IconShape::Circle, 64, 64, 0, 0);
+        let mask = shape_mask(IconShape::Circle, 64, 64, 0.0, 0.0);
         assert_eq!(mask[32 * 64 + 32], 1.0); // centre
         assert_eq!(mask[0], 0.0); // corner
         // every value in [0,1]

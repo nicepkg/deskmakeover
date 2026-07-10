@@ -22,13 +22,17 @@ use dm_icon_core::analysis::{
     max_scale_inside, solid_bounds, try_detect_background, visible_lightness_mean, ContentBounds,
 };
 use dm_icon_core::color::{field_shadow_tone, srgb_decode, srgb_encode};
+use dm_icon_core::compose::{render_slice_tile, render_tile, ComposeDiagnostics, RenderOpts};
+use dm_icon_core::config::{
+    Band, Config, Distinction, FilterStyle, MarkStyle, MonoStyle, PlateFallback, Subject,
+};
 use dm_icon_core::hue_spread::{compute_hue_spread, SpreadEntry};
 use dm_icon_core::js_math::js_round;
+use dm_icon_core::marks::set_native_arrow_raster;
 use dm_icon_core::profile::{icon_profile, IconProfileKind};
-use dm_icon_core::raster::{shape_mask, Raster, Rgba, WHITE};
+use dm_icon_core::raster::{hex_to_int, shape_mask, Raster, Rgba, WHITE};
 use dm_icon_core::segment::segment_subject;
 use dm_icon_core::shapes::IconShape;
-use dm_icon_core::slice::render_slice_tile;
 
 /// The Spike-4 slice sizes — must match scripts/spike4-slice.ts SIZES.
 const SIZES: [usize; 2] = [256, 512];
@@ -42,9 +46,10 @@ fn main() -> ExitCode {
         [cmd, dir] if cmd == "m5-shape-masks" => m5_shape_masks(Path::new(dir)),
         [cmd, dir] if cmd == "m5-profiles" => m5_profiles(Path::new(dir)),
         [cmd, dir] if cmd == "m5-hue" => m5_hue(Path::new(dir)),
+        [cmd, dir] if cmd == "m5-pixels" => m5_pixels(Path::new(dir)),
         _ => {
             eprintln!(
-                "usage: xtask spike4-native <dir> | spike4-compare <dir> | m5-shape-masks <dir> | m5-profiles <dir> | m5-hue <dir>"
+                "usage: xtask spike4-native <dir> | spike4-compare <dir> | m5-shape-masks <dir> | m5-profiles <dir> | m5-hue <dir> | m5-pixels <dir>"
             );
             ExitCode::from(2)
         }
@@ -164,6 +169,184 @@ fn json_diff(a: &Value, b: &Value, path: &str) -> Option<String> {
             }
         }
     }
+}
+
+// ---- M5 modules 8/9/10 gate: full pixel differential -----------------------
+
+fn parse_config(v: &Value) -> Config {
+    let s = |k: &str| v[k].as_str().unwrap_or_else(|| panic!("config.{k} not a string in {v}"));
+    Config {
+        shape: parse_shape(s("shape")),
+        subject: match s("subject") {
+            "Original" => Subject::Original,
+            "BlackWhite" => Subject::BlackWhite,
+            "Mono" => Subject::Mono,
+            o => panic!("subject {o}"),
+        },
+        tint: hex_to_int(s("tint")),
+        mono_style: match s("monoStyle") {
+            "Tonal" => MonoStyle::Tonal,
+            "Flat" => MonoStyle::Flat,
+            o => panic!("monoStyle {o}"),
+        },
+        plate_band: match s("plateBand") {
+            "Vivid" => Band::Vivid,
+            "Quiet" => Band::Quiet,
+            o => panic!("plateBand {o}"),
+        },
+        shortcut_shape: v["shortcutShape"].as_str().map(parse_shape),
+        distinction: match s("distinction") {
+            "Mark" => Distinction::Mark,
+            "Keep" => Distinction::Keep,
+            "None" => Distinction::None,
+            o => panic!("distinction {o}"),
+        },
+        mark_style: match s("markStyle") {
+            "Glass" => MarkStyle::Glass,
+            "Shadow" => MarkStyle::Shadow,
+            "Halo" => MarkStyle::Halo,
+            "Satin" => MarkStyle::Satin,
+            "Arc" => MarkStyle::Arc,
+            "Fold" => MarkStyle::Fold,
+            "Ring" => MarkStyle::Ring,
+            o => panic!("markStyle {o}"),
+        },
+        mark_color: v["markColor"].as_str().map(hex_to_int),
+        filter: match s("filter") {
+            "None" => FilterStyle::None,
+            "Gloss" => FilterStyle::Gloss,
+            "Glass" => FilterStyle::Glass,
+            "Pixel" => FilterStyle::Pixel,
+            "Sticker" => FilterStyle::Sticker,
+            o => panic!("filter {o}"),
+        },
+        plate_color: v["plateColor"].as_str().map(hex_to_int),
+        plate_fallback: match s("plateFallback") {
+            "derived" => PlateFallback::Derived,
+            "white" => PlateFallback::White,
+            o => panic!("plateFallback {o}"),
+        },
+    }
+}
+
+#[derive(Default)]
+struct LaneStat {
+    cells: usize,
+    equal: usize,
+    diff_bytes: u64,
+    total_bytes: u64,
+}
+
+fn m5_pixels(dir: &Path) -> ExitCode {
+    let base = dir.join("pixels");
+
+    // Load the genuine Win11 arrow badge exactly as the app worker does at boot.
+    let meta: Value = serde_json::from_slice(&fs::read(base.join("arrow.json")).unwrap())
+        .expect("parse arrow.json");
+    let aw = meta["width"].as_u64().unwrap() as usize;
+    let ah = meta["height"].as_u64().unwrap() as usize;
+    let arrow_data = read_rgba(&base.join("arrow.rgba"), aw * ah * 4);
+    set_native_arrow_raster(Some(Raster { width: aw, height: ah, data: arrow_data }));
+
+    let lines = fs::read_to_string(base.join("cells.jsonl"))
+        .unwrap_or_else(|e| panic!("read cells.jsonl: {e} — run tests/icon-parity/m5/cells.ts"));
+    let mut per_lane: BTreeMap<String, LaneStat> = BTreeMap::new();
+    let mut total = LaneStat::default();
+    let mut lane_mismatch = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+    let mut worst: Option<(String, u8)> = None;
+    let mut source_cache: BTreeMap<String, Raster> = BTreeMap::new();
+
+    for line in lines.lines().filter(|l| !l.is_empty()) {
+        let rec: Value = serde_json::from_str(line).expect("parse cell record");
+        let file = rec["file"].as_str().unwrap();
+        let source_id = rec["sourceId"].as_str().unwrap();
+        let config = parse_config(&rec["config"]);
+        let is_shortcut = rec["isShortcut"].as_bool().unwrap();
+        let show_original = rec["showOriginal"].as_bool().unwrap();
+        let opts = RenderOpts { field_seed: rec["opts"]["fieldSeed"].as_str().map(hex_to_int) };
+        let expected_lane = rec["lane"].as_str().unwrap();
+        let expected_field = rec["fieldLane"].as_str();
+
+        if !source_cache.contains_key(source_id) {
+            let data = read_rgba(&base.join(format!("sources/{source_id}.rgba")), CORPUS_SIZE * CORPUS_SIZE * 4);
+            source_cache.insert(source_id.to_owned(), Raster { width: CORPUS_SIZE, height: CORPUS_SIZE, data });
+        }
+        let src = &source_cache[source_id];
+
+        let mut diag = ComposeDiagnostics::default();
+        let out = render_tile(src, &config, is_shortcut, show_original, CORPUS_SIZE, &opts, &mut diag);
+        let expected = read_rgba(&base.join(format!("expected/{file}.rgba")), CORPUS_SIZE * CORPUS_SIZE * 4);
+
+        let lane_str = diag.lane.as_str().to_owned();
+        let entry = per_lane.entry(lane_str.clone()).or_default();
+        entry.cells += 1;
+        total.cells += 1;
+        entry.total_bytes += expected.len() as u64;
+        total.total_bytes += expected.len() as u64;
+
+        let mut first: Option<usize> = None;
+        let mut diff = 0u64;
+        for (i, (&a, &b)) in out.data.iter().zip(expected.iter()).enumerate() {
+            if a != b {
+                diff += 1;
+                if first.is_none() {
+                    first = Some(i);
+                }
+                let d = a.abs_diff(b);
+                if worst.as_ref().map(|w| d > w.1).unwrap_or(true) {
+                    worst = Some((file.to_owned(), d));
+                }
+            }
+        }
+        entry.diff_bytes += diff;
+        total.diff_bytes += diff;
+        if diff == 0 {
+            entry.equal += 1;
+            total.equal += 1;
+        } else if failures.len() < 40 {
+            let at = first.unwrap();
+            failures.push(format!(
+                "{file} [{lane_str}]: {diff} diff bytes, first at ({},{}) ch {} rust={} ts={}",
+                (at / 4) % CORPUS_SIZE,
+                (at / 4) / CORPUS_SIZE,
+                at % 4,
+                out.data[at],
+                expected[at],
+            ));
+        }
+
+        let field_str = diag.field_lane.map(|f| f.as_str());
+        if lane_str != expected_lane || field_str != expected_field {
+            lane_mismatch += 1;
+            if failures.len() < 40 {
+                failures.push(format!(
+                    "{file}: lane {lane_str}/{field_str:?} != {expected_lane}/{expected_field:?}"
+                ));
+            }
+        }
+    }
+
+    println!("== M5 full pixel differential (compose + marks + filters) ==");
+    println!("{:<18} {:>6} {:>12} {:>18}", "lane", "cells", "equal-cells", "diff-bytes");
+    for (lane, s) in &per_lane {
+        println!("{:<18} {:>6} {:>12} {:>18}", lane, s.cells, s.equal, format!("{}/{}", s.diff_bytes, s.total_bytes));
+    }
+    println!("{:<18} {:>6} {:>12} {:>18}", "TOTAL", total.cells, total.equal, format!("{}/{}", total.diff_bytes, total.total_bytes));
+    println!("lane/fieldLane mismatches: {lane_mismatch}");
+    if let Some((f, d)) = &worst {
+        println!("worst byte delta: {d} ({f})");
+    }
+
+    if total.equal == total.cells && lane_mismatch == 0 {
+        println!("RESULT: PASS — every tier-A + tier-B cell is byte-identical and every lane exact");
+        return ExitCode::SUCCESS;
+    }
+    println!("RESULT: FAIL");
+    for f in failures.iter().take(40) {
+        println!("  {f}");
+    }
+    ExitCode::FAILURE
 }
 
 // ---- M5 module-6 gate: computeHueSpread parity -----------------------------
@@ -336,8 +519,8 @@ fn m5_shape_masks(dir: &Path) -> ExitCode {
         let shape = parse_shape(f[0]);
         let size: usize = f[1].parse().unwrap();
         let shape_size: usize = f[2].parse().unwrap();
-        let ox: i32 = f[3].parse().unwrap();
-        let oy: i32 = f[4].parse().unwrap();
+        let ox: f64 = f[3].parse().unwrap();
+        let oy: f64 = f[4].parse().unwrap();
 
         let bytes = fs::read(path).unwrap();
         assert_eq!(bytes.len(), size * size * 8, "{} wrong length", path.display());
@@ -600,7 +783,7 @@ fn check_fixtures(dir: &Path, failures: &mut Vec<String>) -> FixtureReport {
                 let ts_bits = u64::from_str_radix(f[3], 16).unwrap();
                 let mask = masks
                     .entry(size)
-                    .or_insert_with(|| shape_mask(IconShape::Circle, size, size, 0, 0));
+                    .or_insert_with(|| shape_mask(IconShape::Circle, size, size, 0.0, 0.0));
                 let rust_bits = mask[i].to_bits();
                 if ts_bits != rust_bits {
                     report.gate_diffs += 1;

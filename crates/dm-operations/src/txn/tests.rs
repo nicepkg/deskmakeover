@@ -630,6 +630,79 @@ fn recovery_fails_closed_when_one_txn_id_has_both_terminals() {
 }
 
 #[test]
+fn an_abandoned_txn_does_not_clobber_a_later_committed_txn_on_the_same_item() {
+    // New-P1 (abandon is not a write fence): txn 1 abandons item A (restores the original, writes NO
+    // journal terminal), then txn 2 re-styles A and commits. Both sets of records coexist in the log
+    // (no checkpoint between them — the abandon-then-retry window). On recovery the terminal-less
+    // txn 1 must NOT re-abort A over txn 2's committed result, or the desktop lands on the original
+    // (O) while the ledger says committed (C) — an unrecoverable split.
+    let a = target("A");
+    let orig_fp = Fingerprint::of_bytes(b"orig-A");
+    let anchor = dm_domain::RestoreAnchor::FileBytes { bytes: b"orig-A".to_vec() };
+    let styled2 = styled_bytes("hash2");
+    let styled2_fp = Fingerprint::of_bytes(&styled2);
+    let asset2 = dm_domain::AssetRef::new("hash2", "assets/hash2.ico");
+
+    let records = vec![
+        // txn 1 — abandoned: prepared A, then abandon left NO terminal record.
+        JournalRecord::TxnBegin { txn: 1, items: vec![a.id.clone()] },
+        JournalRecord::ItemPrepared {
+            txn: 1,
+            item: a.id.clone(),
+            target: a.clone(),
+            anchor: anchor.clone(),
+            original_fingerprint: orig_fp,
+            expected_fingerprint: orig_fp,
+            asset_hash: "hash1".into(),
+            owned: OwnedFields::icon_only(),
+            pinned_seed: None,
+        },
+        // txn 2 — re-styled A to hash2 and committed durably.
+        JournalRecord::TxnBegin { txn: 2, items: vec![a.id.clone()] },
+        JournalRecord::ItemPrepared {
+            txn: 2,
+            item: a.id.clone(),
+            target: a.clone(),
+            anchor: anchor.clone(),
+            original_fingerprint: orig_fp,
+            expected_fingerprint: orig_fp,
+            asset_hash: "hash2".into(),
+            owned: OwnedFields::icon_only(),
+            pinned_seed: None,
+        },
+        JournalRecord::AssetWritten { txn: 2, item: a.id.clone(), asset: asset2 },
+        JournalRecord::ItemApplied { txn: 2, item: a.id.clone(), new_fingerprint: styled2_fp },
+        JournalRecord::ItemVerified { txn: 2, item: a.id.clone() },
+        JournalRecord::TxnCommitted { txn: 2 },
+    ];
+
+    // The desktop at crash time reflects txn 2's committed styling (txn 1 restored O, txn 2 applied
+    // hash2, crash after commit).
+    let world = World::shared();
+    seed(&world, &a, &styled2);
+    let plat = FakePlatform::new(world.clone());
+    let mut ledger = MemLedgerStore::new();
+
+    let out = recover(&records, &plat, &plat, &mut ledger).unwrap();
+
+    // txn 1's abort must be suppressed for A; txn 2's commit reconciled.
+    assert!(!out.aborted.contains(&a.id), "the committed item must not be aborted by the earlier txn");
+    assert_eq!(out.reconciled, vec![a.id.clone()]);
+    assert_eq!(
+        world.borrow().get(&a.path).unwrap(),
+        styled2,
+        "desktop must keep txn 2's committed styling, not be reverted by txn 1's abandon"
+    );
+    let entry = ledger.get(&a.id).unwrap().unwrap();
+    assert_eq!(entry.state, TxnState::Committed);
+    assert_eq!(entry.last_applied_fingerprint, styled2_fp);
+
+    // Idempotent: a second pass changes nothing.
+    recover(&records, &plat, &plat, &mut ledger).unwrap();
+    assert_eq!(world.borrow().get(&a.path).unwrap(), styled2);
+}
+
+#[test]
 fn recyclebin_apply_materializes_and_verifies_the_paired_empty_asset() {
     // P1-14: the Recycle Bin's registry references BOTH a full and an empty ICO, the empty one by
     // convention (`<full>-empty.ico`). The driver used to write only the primary asset, so the
@@ -808,6 +881,43 @@ fn prepare_append_failure_mid_batch_restores_mutated_items_without_journaling() 
     // No rollback records were appended to the (possibly torn) journal.
     assert!(!journal.records().iter().any(|r| matches!(r,
         JournalRecord::ItemRolledBack { .. } | JournalRecord::TxnRolledBack { .. })));
+}
+
+#[test]
+fn a_journal_tear_during_rollback_still_restores_every_mutated_item() {
+    // P1-5: the applier fails (the healthy-journal rollback path), but the journal then tears DURING
+    // the rollback. A naive rollback that `?`-aborts on the first failed `ItemRolledBack` append
+    // would leave every earlier-applied item stranded in its mutated state. The rollback must keep
+    // restoring from anchors, stop journaling, and let recovery finish from the durable prefix.
+    // Call order (3 items, C's apply fails): 1 TxnBegin, 2-5 A, 6-9 B, 10 ItemPrepared(C),
+    // 11 AssetWritten(C), [C apply fails]. Rollback then appends 12 ItemRolledBack(C) — fail_from(12)
+    // tears there and onward, so B's and A's rollback appends would also fail.
+    let world = World::shared();
+    let a = target("A");
+    let b = target("B");
+    let c = target("C");
+    seed(&world, &a, b"orig-A");
+    seed(&world, &b, b"orig-B");
+    seed(&world, &c, b"orig-C");
+    world.borrow_mut().fail_apply(&c.path); // C's mutation fails → healthy-journal rollback path
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = FailingJournal::fail_from(12); // journal tears at the first rollback append
+    let mut ledger = MemLedgerStore::new();
+
+    // Do NOT unwrap: the pre-fix code `?`-propagates an Err here; the fixed code returns Ok. Either
+    // way, the load-bearing assertion is that no mutated item is left stranded.
+    let _ = driver.apply(
+        1,
+        vec![request(&a, &world, "hashA"), request(&b, &world, "hashB"), request(&c, &world, "hashC")],
+        &mut journal,
+        &mut ledger,
+    );
+
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A", "A stranded mutated after a torn rollback");
+    assert_eq!(world.borrow().get(&b.path).unwrap(), b"orig-B", "B stranded mutated after a torn rollback");
+    assert_eq!(world.borrow().get(&c.path).unwrap(), b"orig-C");
+    assert!(ledger.all().unwrap().is_empty());
 }
 
 #[test]

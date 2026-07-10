@@ -119,18 +119,36 @@ impl FileJournal {
     }
 }
 
-impl JournalSink for FileJournal {
-    fn append(&mut self, record: &JournalRecord) -> Result<()> {
+impl FileJournal {
+    /// The raw append: create the parent, serialize, append the line, and fsync. Any step can fail
+    /// with an I/O or serialization error; [`append`](FileJournal::append) reclassifies all of them
+    /// as `OperationError::Journal` (see there).
+    fn try_append(&self, record: &JournalRecord) -> std::io::Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let mut line = serde_json::to_vec(record)?;
+        let mut line = serde_json::to_vec(record)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         line.push(b'\n');
         let mut file = fs::OpenOptions::new().create(true).append(true).open(&self.path)?;
         file.write_all(&line)?;
         // Durability before the mutation this record guards.
         file.sync_all()?;
         Ok(())
+    }
+}
+
+impl JournalSink for FileJournal {
+    fn append(&mut self, record: &JournalRecord) -> Result<()> {
+        // A failed append means the record did NOT durably land, and the log may be torn — classify
+        // EVERY failure (I/O, fsync, serialization) as `OperationError::Journal`, never a bare `Io`
+        // or `Serde`. The driver keys its crash-safety on this: `is_journal_error` recognizes only
+        // `OperationError::Journal`, and it is the signal to ABANDON (restore from anchors WITHOUT
+        // journaling) rather than journal a rollback into a possibly-corrupt file (P1-5). A journal
+        // write failure IS, definitionally, a journal error; leaving it as `Io` sent real production
+        // outages down the normal rollback path while `Journal`-injecting tests stayed falsely green.
+        self.try_append(record)
+            .map_err(|e| OperationError::Journal(format!("append to {}: {e}", self.path.display())))
     }
 
     fn read_all(&self) -> Result<Vec<JournalRecord>> {
@@ -252,6 +270,24 @@ mod tests {
         // Survives reopen (durability).
         let reopened = FileJournal::new(dir.path().join("txn.log"));
         assert_eq!(reopened.read_all().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_real_file_journal_append_failure_is_a_journal_error_not_io() {
+        // P1-5: the driver's abandon path recognizes ONLY `OperationError::Journal`. A real
+        // FileJournal write failure must therefore surface as that variant, or production would take
+        // the normal rollback path onto a possibly-torn log while `Journal`-injecting doubles stayed
+        // falsely green. Force a genuine outage by pointing the journal under a path whose parent is
+        // a regular file, so `create_dir_all` + open cannot succeed.
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("i-am-a-file");
+        fs::write(&blocker, b"x").unwrap();
+        let mut j = FileJournal::new(blocker.join("txn.log")); // parent is a file, not a dir
+        let err = j.append(&begin(1)).unwrap_err();
+        assert!(
+            matches!(err, OperationError::Journal(_)),
+            "a real FileJournal outage must classify as Journal (so the driver abandons), got {err:?}"
+        );
     }
 
     #[test]

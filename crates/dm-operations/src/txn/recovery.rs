@@ -96,6 +96,25 @@ pub fn recover(
         apply_record(group, record);
     }
 
+    // An item that a LATER transaction re-styled and committed is owned by that transaction. An
+    // earlier INCOMPLETE (abandoned) transaction must not restore its original over that committed
+    // result: `abandon` does not journal a terminal, so its terminal-less records would otherwise be
+    // replayed here and re-abort an item a later txn legitimately committed — leaving desktop=O while
+    // the ledger says C (the abandon-then-retry crash-consistency hole). Monotonic ids (P1-7) make
+    // "later" == "higher id", so we skip an incomplete txn's restore for any item a strictly-higher
+    // committed txn owns. Built before the drain loop so every committed group is visible up front.
+    let mut committed_owner: HashMap<String, u64> = HashMap::new();
+    for (&id, group) in &txns {
+        if group.committed && !group.rolled_back {
+            for item in &group.order {
+                let slot = committed_owner.entry(item.as_str().to_string()).or_insert(id);
+                if id > *slot {
+                    *slot = id;
+                }
+            }
+        }
+    }
+
     let mut outcome = RecoveryOutcome::default();
     for txn in txn_order {
         let group = txns.remove(&txn).expect("txn in order list");
@@ -117,7 +136,7 @@ pub fn recover(
         } else if group.committed {
             reconcile_committed(&group, reader, ledger, &mut outcome)?;
         } else {
-            abort_incomplete(&group, applier, ledger, &mut outcome)?;
+            abort_incomplete(&group, txn, &committed_owner, applier, ledger, &mut outcome)?;
         }
     }
     Ok(outcome)
@@ -169,12 +188,20 @@ fn apply_record(group: &mut TxnRecovery, record: &JournalRecord) {
 /// entry (the item is now un-styled, so the ledger must not claim otherwise).
 fn abort_incomplete(
     group: &TxnRecovery,
+    txn: u64,
+    committed_owner: &HashMap<String, u64>,
     applier: &dyn IconApplier,
     ledger: &mut dyn LedgerStore,
     outcome: &mut RecoveryOutcome,
 ) -> Result<()> {
     // LIFO: mirror the driver's rollback order.
     for id in group.order.iter().rev() {
+        // Do NOT restore an item a strictly-later committed transaction owns: that txn re-styled and
+        // committed it after this one was abandoned, so its live styled state (and ledger entry) is
+        // authoritative. Restoring the original here would clobber it (desktop O, ledger C).
+        if committed_owner.get(id.as_str()).is_some_and(|&owner| owner > txn) {
+            continue;
+        }
         let rec = &group.items[id.as_str()];
         applier.restore(&rec.target, &rec.anchor)?;
         ledger.remove(id)?;

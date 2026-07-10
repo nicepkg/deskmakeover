@@ -331,18 +331,44 @@ impl<'p> TxnDriver<'p> {
     ) -> Result<ApplyOutcome> {
         let mut outcome = ApplyOutcome { error: Some(reason), ..Default::default() };
         let mut restore_errors: Vec<String> = Vec::new();
+        // If a journal append fails MID-rollback the log may now be torn, so we must stop appending
+        // to it — but never stop restoring: a naive `?` on the per-item append (or ledger remove)
+        // would abort the loop and strand every later item still mutated (P1-5). Keep walking the
+        // LIFO restore; recovery finishes the terminal from the durable prefix (a terminal-less txn
+        // is aborted → restores the remainder, idempotent over what we already restored here).
+        let mut journal_torn = false;
         for item in applied.into_iter().rev() {
             match self.applier.restore(&item.target, &item.anchor) {
                 Ok(()) => {
-                    ledger.remove(&item.target.id)?;
-                    journal.append(&JournalRecord::ItemRolledBack { txn, item: item.target.id.clone() })?;
-                    outcome.rolled_back.push(item.target.id.clone());
+                    if let Err(e) = ledger.remove(&item.target.id) {
+                        restore_errors.push(format!("{}: ledger {e}", item.target.id.as_str()));
+                        continue;
+                    }
+                    if journal_torn {
+                        // Restored, just not journaled — recovery re-confirms from the durable prefix.
+                        outcome.rolled_back.push(item.target.id.clone());
+                    } else if let Err(e) = journal
+                        .append(&JournalRecord::ItemRolledBack { txn, item: item.target.id.clone() })
+                    {
+                        journal_torn = true;
+                        restore_errors.push(format!("journal torn during rollback: {e}"));
+                    } else {
+                        outcome.rolled_back.push(item.target.id.clone());
+                    }
                 }
                 Err(e) => restore_errors.push(format!("{}: {e}", item.target.id.as_str())),
             }
         }
-        if restore_errors.is_empty() {
-            journal.append(&JournalRecord::TxnRolledBack { txn })?;
+        // A clean `TxnRolledBack` terminal only when every item restored AND the journal never tore;
+        // otherwise withhold it so startup recovery finishes the job. If even the terminal append
+        // fails, every item is already restored and the ledger is clean, so recovery's abort is a
+        // no-op — record the reason and return `Ok`, never `?`-propagate (which would look like a
+        // failure the caller must react to when the desktop is in fact fully clean).
+        if restore_errors.is_empty() && !journal_torn {
+            if let Err(e) = journal.append(&JournalRecord::TxnRolledBack { txn }) {
+                let msg = outcome.error.take().unwrap_or_default();
+                outcome.error = Some(format!("{msg} · rollback terminal not durable: {e}"));
+            }
         } else {
             let msg = outcome.error.take().unwrap_or_default();
             outcome.error = Some(format!("{msg} · rollback-incomplete: {}", restore_errors.join("; ")));

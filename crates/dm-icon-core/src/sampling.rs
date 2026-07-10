@@ -211,6 +211,72 @@ fn draw_supersampled(
     }
 }
 
+/// Bilinear sample in [0,1] UV space (sampling.ts `sampleBilinear`).
+pub fn sample_bilinear(src: &Raster, u: f64, v: f64) -> (u8, u8, u8, u8) {
+    sample_bilinear_at(src, u * src.width as f64 - 0.5, v * src.height as f64 - 0.5)
+}
+
+/// Linear-light premultiplied box average to target² (sampling.ts `downscale`).
+/// A no-op copy when the target is not smaller than the source.
+pub fn downscale(src: &Raster, target: usize) -> Raster {
+    if target >= src.width {
+        return src.clone();
+    }
+    let mut dst = Raster::new(target, target);
+    let sw = src.width;
+    let sh = src.height;
+    let sd = &src.data;
+    let scale_x = sw as f64 / target as f64;
+    let scale_y = sh as f64 / target as f64;
+    for dy in 0..target {
+        let top = dy as f64 * scale_y;
+        let bottom = (dy as f64 + 1.0) * scale_y;
+        let y0 = js_trunc(top) as usize;
+        let y1 = (bottom.ceil() as usize).min(sh);
+        for dx in 0..target {
+            let left = dx as f64 * scale_x;
+            let right = (dx as f64 + 1.0) * scale_x;
+            let x0 = js_trunc(left) as usize;
+            let x1 = (right.ceil() as usize).min(sw);
+            let mut rp = 0.0f64;
+            let mut gp = 0.0f64;
+            let mut bp = 0.0f64;
+            let mut a_sum = 0.0f64;
+            let mut area_sum = 0.0f64;
+            for y in y0..y1 {
+                let hy = ((y + 1) as f64).min(bottom) - (y as f64).max(top);
+                if hy <= 0.0 {
+                    continue;
+                }
+                for x in x0..x1 {
+                    let wx = ((x + 1) as f64).min(right) - (x as f64).max(left);
+                    if wx <= 0.0 {
+                        continue;
+                    }
+                    let area = wx * hy;
+                    let i4 = (y * sw + x) * 4;
+                    let af = (sd[i4 + 3] as f64 / 255.0) * area;
+                    rp += srgb_decode(sd[i4]) * af;
+                    gp += srgb_decode(sd[i4 + 1]) * af;
+                    bp += srgb_decode(sd[i4 + 2]) * af;
+                    a_sum += sd[i4 + 3] as f64 * area;
+                    area_sum += area;
+                }
+            }
+            let o4 = (dy * target + dx) * 4;
+            if area_sum <= 0.0 || a_sum <= 0.0 {
+                continue;
+            }
+            let weight = a_sum / 255.0;
+            dst.data[o4] = srgb_encode(rp / weight);
+            dst.data[o4 + 1] = srgb_encode(gp / weight);
+            dst.data[o4 + 2] = srgb_encode(bp / weight);
+            dst.data[o4 + 3] = js_round(a_sum / area_sum).clamp(0.0, 255.0) as u8;
+        }
+    }
+    dst
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,5 +329,26 @@ mod tests {
         assert!(dst.data.chunks(4).all(|p| p[3] == 255));
         // corners keep their source tone (255 at TL, 0 at TR after bilinear clamping)
         assert_eq!(dst.data[3], 255);
+    }
+
+    #[test]
+    fn downscale_short_circuits_and_averages_uniform() {
+        let mut src = Raster::new(8, 8);
+        for i in 0..64 {
+            src.data[i * 4] = 200;
+            src.data[i * 4 + 1] = 100;
+            src.data[i * 4 + 2] = 50;
+            src.data[i * 4 + 3] = 255;
+        }
+        assert_eq!(downscale(&src, 8).data, src.data); // target >= src → clone
+        let d = downscale(&src, 4);
+        assert!(d.data.chunks(4).all(|p| p == [200, 100, 50, 255]));
+    }
+
+    #[test]
+    fn sample_bilinear_uv_hits_pixel_centres() {
+        let src = checker(4, 4);
+        // u=0.125 maps to fx = 0.5-0.5 = 0.0 → the (0,0) pixel.
+        assert_eq!(sample_bilinear(&src, 0.125, 0.125), (255, 255, 255, 255));
     }
 }

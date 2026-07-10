@@ -109,16 +109,26 @@ impl JournalSink for FileJournal {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(OperationError::Io(e.to_string())),
         };
+        let lines: Vec<String> = std::io::BufReader::new(file).lines().collect::<std::io::Result<_>>()?;
         let mut records = Vec::new();
-        for line in std::io::BufReader::new(file).lines() {
-            let line = line?;
+        for (idx, line) in lines.iter().enumerate() {
             if line.trim().is_empty() {
                 continue;
             }
-            records.push(
-                serde_json::from_str(&line)
-                    .map_err(|e| OperationError::Journal(format!("corrupt journal line: {e}")))?,
-            );
+            match serde_json::from_str(line) {
+                Ok(record) => records.push(record),
+                Err(e) => {
+                    // A parse failure is tolerated ONLY on the final content line: a crash mid-append
+                    // leaves a torn tail whose `sync_all` never returned, so the mutation that record
+                    // would guard never happened — dropping it is safe and recovery stays consistent.
+                    // A corrupt line with any well-formed line after it is mid-file damage and stays
+                    // fatal: recovery must never be trusted to a journal it can only partially parse.
+                    if lines[idx + 1..].iter().all(|l| l.trim().is_empty()) {
+                        break;
+                    }
+                    return Err(OperationError::Journal(format!("corrupt journal line {}: {e}", idx + 1)));
+                }
+            }
         }
         Ok(records)
     }
@@ -195,19 +205,55 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_journal_line_is_an_error_not_a_silent_drop() {
-        // A torn/garbage line must fail read_all loudly — recovery cannot be trusted to a journal
-        // it can only partially parse.
+    fn mid_file_corruption_is_an_error_not_a_silent_drop() {
+        // A garbage line with a well-formed record AFTER it is mid-file damage, not a torn tail —
+        // recovery cannot be trusted to a journal it can only partially parse, so it stays fatal.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("txn.log");
         let mut j = FileJournal::new(&path);
         j.append(&begin(1)).unwrap();
-        // Append a garbage line directly.
         use std::io::Write;
         let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
         f.write_all(b"{ this is not a record }\n").unwrap();
         drop(f);
+        // A later, well-formed record proves the garbage line is NOT the tail.
+        j.append(&JournalRecord::TxnCommitted { txn: 1 }).unwrap();
         assert!(matches!(j.read_all(), Err(OperationError::Journal(_))));
+    }
+
+    #[test]
+    fn a_torn_tail_line_is_dropped_not_fatal() {
+        // A crash mid-append leaves a partial final line whose fsync never returned; recovery must
+        // read the durable prefix and drop the tail, not brick on it.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("txn.log");
+        let mut j = FileJournal::new(&path);
+        j.append(&begin(1)).unwrap();
+        j.append(&JournalRecord::TxnCommitted { txn: 1 }).unwrap();
+        // Simulate a torn write: a partial JSON line with no trailing newline.
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        f.write_all(b"{\"rec\":\"ItemApp").unwrap();
+        drop(f);
+        let read = j.read_all().unwrap();
+        assert_eq!(read.len(), 2);
+        assert_eq!(read[0], begin(1));
+        assert_eq!(read[1], JournalRecord::TxnCommitted { txn: 1 });
+    }
+
+    #[test]
+    fn a_torn_tail_after_trailing_blank_lines_is_dropped() {
+        // Trailing blank lines before the torn fragment must not turn tail tolerance into a
+        // mid-file verdict.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("txn.log");
+        let mut j = FileJournal::new(&path);
+        j.append(&begin(1)).unwrap();
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        f.write_all(b"\n{ torn").unwrap();
+        drop(f);
+        assert_eq!(j.read_all().unwrap().len(), 1);
     }
 
     #[test]

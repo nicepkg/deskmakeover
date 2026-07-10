@@ -56,6 +56,13 @@ pub struct LedgerEntry {
     pub owned: OwnedFields,
     /// The content-addressed generated asset currently applied.
     pub asset: AssetRef,
+    /// The paired empty-state asset (the Recycle Bin's empty ICO) when this item has one. Persisted
+    /// alongside the primary so a future asset GC can discover and retain the EXACT empty reference
+    /// rather than orphaning an arbitrary paired path right after commit (new-P1). `None` for
+    /// single-asset kinds. `#[serde(default)]` keeps older ledgers (written before this field)
+    /// readable.
+    #[serde(default)]
+    pub empty_asset: Option<AssetRef>,
     /// The transaction state.
     pub state: TxnState,
     /// The pinned hue seed this item was allocated (ADR-0020 §2: background additions allocate

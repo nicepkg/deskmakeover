@@ -38,8 +38,16 @@ pub enum JournalRecord {
         owned: OwnedFields,
         pinned_seed: Option<u32>,
     },
-    /// The generated `.ico` was written to the content-addressed store.
-    AssetWritten { txn: u64, item: ItemId, asset: AssetRef },
+    /// The generated `.ico` was written to the content-addressed store. `empty` carries the paired
+    /// empty-state asset (the Recycle Bin's empty ICO) so recovery can rebuild the ledger's exact
+    /// empty reference for a future GC (new-P1); `#[serde(default)]` keeps older journals readable.
+    AssetWritten {
+        txn: u64,
+        item: ItemId,
+        asset: AssetRef,
+        #[serde(default)]
+        empty: Option<AssetRef>,
+    },
     /// The icon location was swapped; `new_fingerprint` is the confirmed applied state.
     ItemApplied { txn: u64, item: ItemId, new_fingerprint: Fingerprint },
     /// The applied state was read back and verified.

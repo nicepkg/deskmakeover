@@ -670,7 +670,7 @@ fn an_abandoned_txn_does_not_clobber_a_later_committed_txn_on_the_same_item() {
             owned: OwnedFields::icon_only(),
             pinned_seed: None,
         },
-        JournalRecord::AssetWritten { txn: 2, item: a.id.clone(), asset: asset2 },
+        JournalRecord::AssetWritten { txn: 2, item: a.id.clone(), asset: asset2, empty: None },
         JournalRecord::ItemApplied { txn: 2, item: a.id.clone(), new_fingerprint: styled2_fp },
         JournalRecord::ItemVerified { txn: 2, item: a.id.clone() },
         JournalRecord::TxnCommitted { txn: 2 },
@@ -804,6 +804,48 @@ fn recyclebin_apply_fails_when_the_paired_empty_asset_vanishes_during_apply() {
     assert!(out.error.is_some());
     assert_eq!(world.borrow().get(&bin.path).unwrap(), b"orig-registry-state"); // rolled back
     assert!(ledger.all().unwrap().is_empty());
+}
+
+#[test]
+fn the_paired_empty_asset_is_persisted_in_the_ledger_and_survives_recovery() {
+    // New-P1: the empty ICO the Recycle Bin references must be recorded in the ledger AND the
+    // journal, so a future asset GC keeps the EXACT empty asset instead of orphaning it right after
+    // commit. It lands on commit and is rebuilt by recovery from the AssetWritten record.
+    let world = World::shared();
+    let bin =
+        ItemTarget::new(ItemId::from_raw("RB"), ItemKind::RecycleBin, "HKCU/RecycleBin/DefaultIcon");
+    world.borrow_mut().put(&bin.path, b"orig-registry-state");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+
+    let current = Fingerprint::of_bytes(&world.borrow().get(&bin.path).unwrap());
+    let req = ApplyRequest {
+        target: bin.clone(),
+        expected_fingerprint: current,
+        owned: OwnedFields::icon_only(),
+        asset_hash: "hashRB".into(),
+        asset_bytes: b"full-ico".to_vec(),
+        empty_asset_bytes: Some(b"empty-ico".to_vec()),
+        pinned_seed: None,
+    };
+    driver.apply(1, vec![req], &mut journal, &mut ledger).unwrap();
+
+    let expected_empty = paired_empty_path("assets/hashRB.ico");
+    let committed = ledger.get(&bin.id).unwrap().unwrap();
+    let empty_ref =
+        committed.empty_asset.expect("committed Recycle Bin entry must record its empty asset");
+    assert_eq!(empty_ref.path, expected_empty);
+
+    // Recovery from the journal rebuilds the same empty ref (crash in the commit→upsert gap).
+    let mut fresh = MemLedgerStore::new();
+    recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
+    let rebuilt = fresh.get(&bin.id).unwrap().unwrap();
+    assert_eq!(
+        rebuilt.empty_asset.expect("recovery must rebuild the empty asset").path,
+        expected_empty
+    );
 }
 
 #[test]

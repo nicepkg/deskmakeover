@@ -41,6 +41,7 @@ struct ItemRecovery {
     owned: dm_domain::OwnedFields,
     pinned_seed: Option<u32>,
     asset: Option<dm_domain::AssetRef>,
+    empty_asset: Option<dm_domain::AssetRef>,
     new_fingerprint: Option<dm_domain::Fingerprint>,
 }
 
@@ -166,13 +167,15 @@ fn apply_record(group: &mut TxnRecovery, record: &JournalRecord) {
                     owned: *owned,
                     pinned_seed: *pinned_seed,
                     asset: None,
+                    empty_asset: None,
                     new_fingerprint: None,
                 },
             );
         }
-        JournalRecord::AssetWritten { item, asset, .. } => {
+        JournalRecord::AssetWritten { item, asset, empty, .. } => {
             if let Some(rec) = group.items.get_mut(item.as_str()) {
                 rec.asset = Some(asset.clone());
+                rec.empty_asset = empty.clone();
             }
         }
         JournalRecord::ItemApplied { item, new_fingerprint, .. } => {
@@ -241,6 +244,7 @@ fn reconcile_committed(
             last_applied_fingerprint: new_fp,
             owned: rec.owned,
             asset,
+            empty_asset: rec.empty_asset.clone(),
             state: TxnState::Committed,
             pinned_seed: rec.pinned_seed,
             version,

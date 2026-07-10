@@ -59,6 +59,8 @@ struct Prepared {
     owned: OwnedFields,
     pinned_seed: Option<u32>,
     asset: AssetRef,
+    /// The paired empty-state asset (Recycle Bin), carried to the ledger on commit (new-P1).
+    empty_asset: Option<AssetRef>,
     /// Set once the mutation is applied + verified.
     new_fingerprint: Option<Fingerprint>,
 }
@@ -166,6 +168,7 @@ impl<'p> TxnDriver<'p> {
                 owned: req.owned,
                 pinned_seed: req.pinned_seed,
                 asset: AssetRef::new(String::new(), String::new()),
+                empty_asset: None,
                 new_fingerprint: None,
             });
             let idx = applied.len() - 1;
@@ -202,6 +205,7 @@ impl<'p> TxnDriver<'p> {
                 last_applied_fingerprint: new_fp,
                 owned: item.owned,
                 asset: item.asset.clone(),
+                empty_asset: item.empty_asset.clone(),
                 state: TxnState::Committed,
                 pinned_seed: item.pinned_seed,
                 version,
@@ -290,8 +294,16 @@ impl<'p> TxnDriver<'p> {
             }
             None => ApplyAssets::single(asset.clone()),
         };
+        // Carry the paired empty ref to the ledger (via the journal) so a future GC keeps the EXACT
+        // empty asset, not a guessed paired path (new-P1).
+        item.empty_asset = assets.empty.clone();
 
-        journal.append(&JournalRecord::AssetWritten { txn, item: req.target.id.clone(), asset: asset.clone() })?;
+        journal.append(&JournalRecord::AssetWritten {
+            txn,
+            item: req.target.id.clone(),
+            asset: asset.clone(),
+            empty: assets.empty.clone(),
+        })?;
 
         // The external mutation (icon-location swap). The applier reports the fingerprint the
         // styleable surface should now carry — derived from the asset, independent of a re-read.

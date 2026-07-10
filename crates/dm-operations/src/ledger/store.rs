@@ -209,6 +209,7 @@ mod tests {
             last_applied_fingerprint: Fingerprint::of_bytes(b"applied"),
             owned: OwnedFields::icon_only(),
             asset: AssetRef::new("hash", "C:/gen.ico"),
+            empty_asset: None,
             state: TxnState::Committed,
             pinned_seed: None,
             version,

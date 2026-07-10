@@ -16,6 +16,7 @@
 pub mod classify;
 pub mod durable;
 pub mod fingerprint_surface;
+pub mod pathcheck;
 pub mod textfmt;
 
 #[cfg(windows)]

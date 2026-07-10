@@ -18,8 +18,10 @@ use dm_domain::{
 };
 
 use crate::apply::{file_wrapper, recyclebin};
+use crate::classify::parse_icon_location;
 use crate::com::StaExecutor;
 use crate::fingerprint_surface::{self as fp, SurfaceState, WrapperSurface};
+use crate::pathcheck;
 use crate::shell::{attrs, shell_link};
 use crate::textfmt;
 
@@ -53,7 +55,7 @@ impl ItemStateReader for WindowsStateReader {
             // A UWP shortcut's desktop entry is an ordinary `.lnk`, so it reads through the same
             // IconRef surface as a Shortcut (spec 06 §6, P1-12).
             ItemKind::Shortcut | ItemKind::AppxShortcut => {
-                require_exists(&target.path)?;
+                pathcheck::require_exists(&target.path)?;
                 let p = target.path.clone();
                 let (path, index) =
                     self.exec.run(move || shell_link::read_icon_location(&p))??.unwrap_or_default();
@@ -69,7 +71,7 @@ impl ItemStateReader for WindowsStateReader {
             // folder attribute bits apply owns (READONLY — Explorer needs it to honour desktop.ini),
             // masked so unrelated bits are not a false conflict (P1-#1/P2-2).
             ItemKind::Folder => {
-                require_dir(&target.path)?;
+                pathcheck::require_dir(&target.path)?;
                 // An absent desktop.ini is an unstyled folder (empty surface); a present-but-
                 // unreadable one is a real error, not silently "unstyled" (P2-3).
                 let icon = textfmt::parse_desktop_ini_icon(&read_desktop_ini(&target.path)?).unwrap_or_default();
@@ -84,8 +86,9 @@ impl ItemStateReader for WindowsStateReader {
             ItemKind::RegularFile => {
                 let owned_attr_bits = attrs::get(&target.path)? & fp::OWNED_ATTR_BITS;
                 let wrapper_path = file_wrapper::wrapper_path(&target.path);
-                // The wrapper's identity is a COM read (`IShellLinkW`) → STA thread.
-                let wrapper = if Path::new(&wrapper_path).exists() {
+                // The wrapper's identity is a COM read (`IShellLinkW`) → STA thread. `path_exists`
+                // propagates a metadata error rather than reading it as "no wrapper" (P2, wave-2R).
+                let wrapper = if pathcheck::path_exists(&wrapper_path)? {
                     let w = wrapper_path.clone();
                     let id = self.exec.run(move || shell_link::read_wrapper_identity(&w))??;
                     Some(WrapperSurface {
@@ -102,10 +105,14 @@ impl ItemStateReader for WindowsStateReader {
             // each parsed into (path, index) so the surface matches the paired assets AND a wrong
             // index or a stale `default` is caught (P1-#1).
             ItemKind::RecycleBin => {
+                // `parse_icon_location` only treats a trailing segment as the index when it parses as
+                // an integer, so a malformed value (`…\full.ico,garbage`) stays whole and cannot be
+                // mistaken for a valid `(path, 0)` — nor can two distinct comma-bearing paths collide
+                // (wave-2R P1-#2). Reuses the host-tested classifier parser.
                 let a = recyclebin::read_current()?;
-                let default = a.default.as_ref().map(|v| parse_icon_ref(&v.raw)).unwrap_or_default();
-                let empty = a.empty.as_ref().map(|v| parse_icon_ref(&v.raw)).unwrap_or_default();
-                let full = a.full.as_ref().map(|v| parse_icon_ref(&v.raw)).unwrap_or_default();
+                let default = a.default.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                let empty = a.empty.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                let full = a.full.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
                 Ok(SurfaceState::RecycleBin { default, empty, full }.fingerprint())
             }
             // System is styleable per spec 06 §6 but its HKCU CLSID reader is a Windows-scoped
@@ -205,32 +212,3 @@ fn read_text(path: &str) -> PortResult<String> {
     }
 }
 
-/// Fails with `NotFound` when a shortcut path is gone, so a deleted item is skipped rather than
-/// surfacing as a COM load error (which the driver would treat as a real infrastructure failure).
-fn require_exists(path: &str) -> PortResult<()> {
-    if Path::new(path).exists() {
-        Ok(())
-    } else {
-        Err(PortError::NotFound(path.to_string()))
-    }
-}
-
-fn require_dir(path: &str) -> PortResult<()> {
-    if Path::new(path).is_dir() {
-        Ok(())
-    } else {
-        Err(PortError::NotFound(path.to_string()))
-    }
-}
-
-/// Parses a `DefaultIcon` registry value (`C:\x.ico,0`) into `(path, index)`, splitting on the LAST
-/// comma so icon paths containing commas survive. A value with no comma is `(value, 0)`.
-fn parse_icon_ref(value: &str) -> (String, i32) {
-    match value.rfind(',') {
-        Some(comma) => {
-            let index = value[comma + 1..].trim().parse().unwrap_or(0);
-            (value[..comma].to_string(), index)
-        }
-        None => (value.to_string(), 0),
-    }
-}

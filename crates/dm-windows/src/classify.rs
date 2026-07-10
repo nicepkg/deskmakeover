@@ -181,4 +181,16 @@ mod tests {
         // A trailing non-integer after the comma is part of the path, not an index.
         assert_eq!(parse_icon_location("a.dll,notanumber"), ("a.dll,notanumber".into(), 0));
     }
+
+    #[test]
+    fn malformed_suffix_stays_in_the_path_so_values_do_not_collide() {
+        // wave-2R P1-#2: the Recycle Bin index verification reuses THIS parser precisely because a
+        // non-integer suffix must NOT be stripped to index 0 — otherwise a malformed value passes
+        // CAS as a valid one, and distinct comma-bearing values collapse together.
+        assert_eq!(parse_icon_location(r"C:\gen\full.ico,garbage"), (r"C:\gen\full.ico,garbage".into(), 0));
+        // …so a malformed value differs from the well-formed `(C:\gen\full.ico, 0)`.
+        assert_ne!(parse_icon_location(r"C:\gen\full.ico,garbage"), parse_icon_location(r"C:\gen\full.ico,0"));
+        // Two distinct comma-bearing values do not collapse to the same (path, 0).
+        assert_ne!(parse_icon_location("custom,one.ico"), parse_icon_location("custom,two.ico"));
+    }
 }

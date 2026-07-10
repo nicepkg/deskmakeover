@@ -64,6 +64,19 @@ pointer: what is TRUE now, what is in flight, what comes next.
 `scripts/dev/generate-mock-icons.mjs`).
 
 **In flight / next (web):**
+-1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all
+   designer PASS): seven coordinate-bookmark presets (spectrum default ·
+   stationery · glass · pebble · ink · white · ascast), six mark styles
+   (Fold retired), #65470D dark-brown folder boards banned, featured-four
+   fold + 「更多风格 +N」 counting chip, glass preset wears Shadow (Glass
+   bead mark redesign = COMPONENT DEBT). Preset hover carries typeOverrides
+   (`5d3b589` bug fix); type-row picker overflow fixed (`f03abe0`).
+   Normative: docs/product/preset-collection-v2.md. OWNER-PENDING: which
+   sets enter factory lineup + default confirmation (all seven live now,
+   spectrum default). Owed unchanged: colour-migrate tests · banned-arc
+   guard · fixed-plate shadow regression test · folder-drift probe (likely
+   obsolete — folders now derive/manila by design) · spec02/06 amendments ·
+   alpha-plate exploration (owner asked; verdict: plumbing not algorithm).
 -1a. **TWO-AXIS RESHAPE DESIGNER-ACCEPTED (final PASS at `46a26bc`)** — subject×plate + 本色 fifth stop + panel two rows + accordion parity all certified (§6 full pass, four-way glyph distinguishability, violet-arc rulings executed). Paper file band PASS at `c080912` (owner A). NEW OWED: ① regression
    assertion - fixed-plate tiles MUST carry the silhouette shadow (T2 bug
    relapsed once, designer strong-rec); ② INVESTIGATE folder band colour

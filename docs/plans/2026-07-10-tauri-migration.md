@@ -115,6 +115,25 @@ fix (helper path).
 **Exit**: manual product complete on the new stack; C#-vs-Rust differential run on a
 real desktop shows no semantic drift on the overlapping subset.
 
+**M3/M4 blind-write DONE (2026-07-10, Mac-first — Windows runtime pending).** Task
+plan `2026-07-10-m34-windows-blind.md` (incl. the [WINDOWS-VERIFY] checklist).
+Ports & adapters: `dm-domain` (I/O-free kernel: item/fingerprint/restore-anchor/
+ports) ← `dm-operations` (pure transaction + incremental ledger, crash-durable WAL
+upgrade over C#'s in-memory JournaledOperationRunner) + `dm-windows` (COM adapters,
+cfg(windows)) + `dm-elevated` (requireAdministrator bin, verb whitelist + LPE
+guards). 55 tests green on Mac via in-memory fakes, incl. the kill-point battery
+(every journal truncation point + torn-write variants → each item exactly original
+or target). C# invariants harvested as named tests (CAS conflict abort, LIFO
+rollback, anchor-before-mutation, corrupt-ledger-never-reads-empty, pinned hue
+seeds). Three deliberate divergences per ADR-0019/0020: per-item CAS skip (not
+batch abort) · incremental re-apply (true original locked in the ledger, no
+restore-first) · durable WAL journal. dm-domain/dm-windows/dm-elevated pass
+`cargo check --target x86_64-pc-windows-msvc` in isolation (kept zero-C-deps);
+the workspace-wide msvc check is blocked on Mac by rusqlite's bundled SQLite C
+source (needs Windows SDK headers) — ruled: runs natively in the Windows batch,
+no cargo-xwin. Two documented stubs await Windows: `shell/layout.rs`
+(IFolderView2 positions) and `watcher.rs` (ReadDirectoryChangesW, M7 scope).
+
 ## M5 — Rust icon core (Mac-testable, ~4-5d, parallel with M4)
 Port order (determinism-purity first, fixture gate per module): color/math →
 shapes → raster → analysis/profile → segment → hue-spread + RenderSession →
@@ -127,6 +146,23 @@ stage-dump differential harness across the full corpus.
 **Exit**: every module green vs TS oracle (classification exact + SSIM/ΔE gates);
 wasm↔native byte-equal in CI; RenderSession serves register/analyze/setLook/render
 with the persisted profile cache (`source_hash + analysis_schema_version`).
+
+**M5 DONE (2026-07-11, certified byte-exact).** Full TS pixel pipeline in
+`dm-icon-core` (task plan `2026-07-10-m5-icon-core.md`; 10 modules + RenderSession,
+50 unit tests, all files ≤500 lines). One-command certification
+`bun tests/icon-parity/m5/run.ts` — ALL GATES PASS, independently re-run at
+acceptance: shape masks 48/48 bit-identical · StageProfile 120/120 deep-equal +
+masks 120/120 byte-equal · hue-spread 7/7 · **full-corpus pixel differential
+1248/1248 cells byte-identical (0/327,155,712 diff bytes), every lane/fieldLane
+exact**. Zero logged pixel-byte exceptions — certification landed at byte-equality,
+tighter than the SSIM gate above. Exactness intel: `x**2` ported as explicit `d*d`
+(dodges the JSC-vs-libm pow 1-ulp LUT drift, which never surfaced anywhere); all
+byte stores pre-rounded via js_math (the Uint8ClampedArray ties-to-even path never
+fires in practice — kept as defence). `slice.rs` absorbed into `compose/`.
+Remaining for M6: full render_tile wasm export + Config ABI serialization +
+wasm↔native CI. Follow-on M5.11 in flight: `dm-icon-codec` ICO writer + content
+hash from the C# IcoWriter oracle (serves the ledger's content-addressed AssetRef,
+ADR-0021 overlay ICOs, RecycleBin empty pair).
 
 ## M6 — Dual-target cutover (single truth source, ~1-2d)
 Wire `dm-icon-wasm` into the existing Worker-pool adapter behind a dev comparison

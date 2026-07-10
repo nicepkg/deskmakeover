@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-10 (REPLATFORM DECIDED: Tauri 2 + Rust, ADR-0019/0020/0021 — F8 is void; also: two-axis reshape + preset collection v2 shipped)
+updated: 2026-07-11 (replatform executing Mac-first: M2 + M3/M4 blind-write + M5 icon core DONE — M5 certified byte-exact vs the TS oracle; community-standard layout, .NET quarantined under legacy/)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -93,6 +93,30 @@ Determinism intel (M5 checklist seed): JSC pow vs libm pow = 1 ulp apart on 34/2
 decode-LUT entries → TS↔Rust byte parity is EMPIRICAL (full-corpus differential remains
 the certification gate); wasm↔native parity is structural. Details in the migration
 plan §M1. Remaining M1 spikes (1/2/3/5) are Windows-bound.
+
+**Replatform progress (Mac-first, 2026-07-10→11 — details live in the migration
+plan's DONE blocks, this is the pointer):**
+- **Layout restructured (ADR-0019 Amendment 1, owner order):** community-standard
+  Tauri — web app at the repo ROOT (`src/`, `public/`, root `package.json`),
+  `src-tauri/` + `crates/` at root, the ENTIRE frozen .NET tree quarantined under
+  `legacy/`, `apps/` deleted, `.gitignore` .NET globs scoped (Rust `src/bin` no
+  longer swallowed). Six-commit chunk `1aadc6e..fd2ff77`.
+- **M2 DONE:** Tauri 2 window hosts the app on Mac; tauri-specta generated
+  bindings (`src/bridge/generated.ts`); rusqlite settings store; 359 bun tests.
+- **M3/M4 blind-write DONE:** dm-domain/dm-operations/dm-windows/dm-elevated —
+  durable WAL transaction + incremental CAS ledger fully unit-tested on Mac
+  (55 tests incl. kill-point battery); COM adapters msvc-check clean in
+  isolation; runtime verification = [WINDOWS-VERIFY] checklist in
+  `docs/plans/2026-07-10-m34-windows-blind.md`, batched with M1 spikes.
+- **M5 DONE, CERTIFIED:** full TS pixel pipeline in `dm-icon-core` — one-command
+  cert `bun tests/icon-parity/m5/run.ts`: 1248/1248 corpus cells byte-identical
+  (0/327,155,712 diff bytes), masks 48/48, profiles 120/120, hue-spread 7/7.
+  TS compositor stays frozen until the M6 cutover deletes it.
+- **In flight:** M5.11 `dm-icon-codec` (ICO writer + content hash vs the C#
+  IcoWriter oracle). **Next:** M6 dual-target cutover (render_tile wasm export +
+  Config ABI + wasm↔native CI → flip preview to WASM → delete TS pixel modules).
+  **Blocked on the owner's win11:** M1 spikes 1/2/5 (+3 needs him present),
+  workspace-wide msvc check (rusqlite bundled C), all [WINDOWS-VERIFY] items.
 
 **In flight / next (web):**
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all

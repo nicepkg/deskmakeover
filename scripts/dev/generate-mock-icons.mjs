@@ -18,7 +18,7 @@ import { build, kindFor } from './mock-icons/categories.mjs'
 import { labelFor } from './mock-icons/labels.mjs'
 
 const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
-const OUT_DIR = join(root, 'public', 'mock-icons')
+const OUT_DIR = join(root, 'testdata', 'icons', 'source-pack')
 
 // Distribution (spec 06 §5), summing to 120.
 const PLAN = [

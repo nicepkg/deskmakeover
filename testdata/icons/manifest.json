@@ -16,14 +16,14 @@
     "masterSize": 256,
     "note": "Byte-comparison in --verify is on DECODED RGBA pixels (platform-independent), not PNG container bytes. The per-cell rasterHash is sha256 of decoded RGBA and is the canonical parity anchor for the M5 tri-target differential.",
     "shortcutArrow": {
-      "asset": "src/assets/win-native-arrow.png",
+      "asset": "public/win-native-arrow.png",
       "note": "Loaded at native 100² and composited by drawClassicArrow exactly as the app worker does at boot; shortcut/Keep goldens carry the real badge, not the vector fallback. The Rust port must composite the same asset.",
       "sha256": "2432a8e026a6f409d94512f19bc116f4df49fa21fea1fc1c7a3248159eb2c4a0"
     }
   },
   "schemaVersion": 1,
   "setHash": "b6f151b9c7aa68bed9f9b3538e94c64e8dc2bef08bbbacac4d1577c44222e202",
-  "sourceDir": "public/mock-icons",
+  "sourceDir": "testdata/icons/source-pack",
   "sources": [
     {
       "bucket": "App",

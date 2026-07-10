@@ -26,7 +26,11 @@ import { decodePng } from './png-codec'
 export const PRESET_IDS = ['spectrum', 'glass', 'ink', 'white', 'stationery', 'pebble', 'ascast'] as const
 export type PresetId = (typeof PRESET_IDS)[number]
 
-export const MOCK_ICONS_DIR = 'public/mock-icons'
+// Synthetic parity fixtures (deterministic, committed — the oracle corpus is
+// anchored to them; the mock DESKTOP itself uses public/real-icons only).
+export const MOCK_ICONS_DIR = 'testdata/icons/source-pack'
+// LEGACY IDENTITY PREFIX, not a served URL: sourceUrl is the hue-spread
+// artKey pinned throughout the committed corpus — do not rename.
 const MOCK_ICONS_URL = '/mock-icons'
 
 interface SyntheticEntry {

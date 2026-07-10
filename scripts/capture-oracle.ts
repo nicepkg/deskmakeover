@@ -46,7 +46,7 @@ import {
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const TESTDATA = join(REPO_ROOT, 'testdata/icons')
 const MASTER = 256
-const ARROW_ASSET = join(REPO_ROOT, 'src/assets/win-native-arrow.png')
+const ARROW_ASSET = join(REPO_ROOT, 'public/win-native-arrow.png')
 
 /** Load the real Win11 shortcut-arrow badge exactly as the app's worker does at
  *  boot (native size, no resize), so shortcut/Keep goldens match the app bake
@@ -205,9 +205,9 @@ export function capture(): void {
       decode: 'Pure node:zlib inflate + PNG un-filter (colortype 6 / 8-bit / no interlace). No colour management; straight alpha. Verified byte-identical to PIL and the browser canvas on the mock pack.',
       encode: 'Deterministic: Paeth per-scanline filter + zlib deflate level 9. Proven by capture-twice byte-diff.',
       masterSize: MASTER,
-      shortcutArrow: { asset: 'src/assets/win-native-arrow.png', sha256: sha256Hex(arrowBytes), note: 'Loaded at native 100² and composited by drawClassicArrow exactly as the app worker does at boot; shortcut/Keep goldens carry the real badge, not the vector fallback. The Rust port must composite the same asset.' },
+      shortcutArrow: { asset: 'public/win-native-arrow.png', sha256: sha256Hex(arrowBytes), note: 'Loaded at native 100² and composited by drawClassicArrow exactly as the app worker does at boot; shortcut/Keep goldens carry the real badge, not the vector fallback. The Rust port must composite the same asset.' },
     },
-    sourceDir: 'public/mock-icons',
+    sourceDir: 'testdata/icons/source-pack',
     setHash: set,
     sources: sourceManifest,
     tiers: {

@@ -50,9 +50,7 @@ fn flush_then_publish(tmp: &Path, target: &Path) -> PortResult<()> {
     // which handle wrote it. `write(true)` opens without truncating.
     fs::OpenOptions::new().write(true).open(tmp).map_err(io)?.sync_all().map_err(io)?;
     publish(tmp, target)?;
-    if let Ok(handle) = fs::File::open(target_dir(target)) {
-        let _ = handle.sync_all();
-    }
+    sync_parent_dir(target)?;
     Ok(())
 }
 
@@ -67,11 +65,24 @@ fn write_then_rename(tmp: &Path, target: &Path, bytes: &[u8]) -> PortResult<()> 
         file.sync_all().map_err(io)?;
     }
     publish(tmp, target)?;
-    // fsync the directory so the rename itself survives a crash (POSIX). Best-effort where a
-    // directory can't be opened as a file.
-    if let Ok(handle) = fs::File::open(target_dir(target)) {
-        let _ = handle.sync_all();
-    }
+    sync_parent_dir(target)?;
+    Ok(())
+}
+
+/// fsync the directory that contains `target` so the create/rename is itself durable.
+///
+/// On POSIX a lost directory fsync means a crash can drop the namespace change even though the
+/// file bytes were flushed — so we PROPAGATE its error, never swallow it (P1-#3). On Windows there
+/// is no POSIX-style directory fsync; the namespace change's durability is carried by
+/// `REPLACEFILE_WRITE_THROUGH` in [`publish`] (and, for a fresh-target rename, by the temp's
+/// `FlushFileBuffers`), so this is a documented no-op there. [WINDOWS-VERIFY] the write-through path.
+#[cfg(not(windows))]
+fn sync_parent_dir(target: &Path) -> PortResult<()> {
+    fs::File::open(target_dir(target)).map_err(io)?.sync_all().map_err(io)
+}
+
+#[cfg(windows)]
+fn sync_parent_dir(_target: &Path) -> PortResult<()> {
     Ok(())
 }
 
@@ -81,11 +92,21 @@ fn write_then_rename(tmp: &Path, target: &Path, bytes: &[u8]) -> PortResult<()> 
 /// descriptor (DACL), alternate data streams (e.g. `Zone.Identifier`), and compression/encryption
 /// attributes onto the replacement — `MoveFileEx(REPLACE_EXISTING)` would silently drop them, and
 /// the restore anchors capture only main-stream bytes, so that loss is unrecoverable (P2-4). A
-/// fresh target (nothing to preserve) is a plain rename. `[WINDOWS-VERIFY]` the ReplaceFileW path.
+/// fresh target (nothing to preserve) is a plain rename.
+///
+/// Flags (P1-#3/P2-#4): `REPLACEFILE_WRITE_THROUGH` makes the replacement durable before the call
+/// returns (the write-through barrier the journal fsync assumes). We deliberately do NOT pass
+/// `REPLACEFILE_IGNORE_MERGE_ERRORS` — a failure to merge the target's ACL/metadata onto the
+/// replacement must surface loudly, not silently succeed with lost security state.
+///
+/// Known limitation ([WINDOWS-VERIFY]): `ReplaceFileW` does not preserve **hard-link identity** —
+/// other links to the original file are not redirected to the replacement. DeskMakeover styles
+/// desktop items (`.lnk`/`.url`/`desktop.ini`/wrapper) that are not expected to be hard-linked, so
+/// this is an accepted limitation rather than a preserved property.
 #[cfg(windows)]
 fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
     use windows::core::HSTRING;
-    use windows::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_IGNORE_MERGE_ERRORS};
+    use windows::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_WRITE_THROUGH};
 
     if target.exists() {
         // SAFETY: both paths are valid UTF-16; no buffers are retained past the call.
@@ -94,7 +115,7 @@ fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
                 &HSTRING::from(target.as_os_str()),
                 &HSTRING::from(tmp.as_os_str()),
                 windows::core::PCWSTR::null(),
-                REPLACEFILE_IGNORE_MERGE_ERRORS,
+                REPLACEFILE_WRITE_THROUGH,
                 None,
                 None,
             )
@@ -130,6 +151,7 @@ fn temp_sibling(target: &Path) -> PathBuf {
     }
 }
 
+#[cfg(not(windows))]
 fn target_dir(target: &Path) -> &Path {
     match target.parent() {
         Some(p) if !p.as_os_str().is_empty() => p,

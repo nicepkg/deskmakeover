@@ -304,4 +304,110 @@ mod tests {
     fn empty_frame_list_panics_like_csharp() {
         write_ico(&[]);
     }
+
+    // ---- malformed-ICO rejection battery (every `parse` guard) ----
+
+    #[test]
+    fn parse_rejects_a_truncated_icondir() {
+        assert!(parse(&[0, 0, 1]).is_err());
+        assert!(parse(&[]).is_err());
+    }
+
+    #[test]
+    fn parse_rejects_a_nonzero_reserved_field() {
+        let mut b = write_ico(&[solid(16, 1, 2, 3, 255)]);
+        b[0] = 1; // reserved must be 0
+        assert!(parse(&b).unwrap_err().contains("reserved"));
+    }
+
+    #[test]
+    fn parse_rejects_zero_image_count() {
+        let mut b = write_ico(&[solid(16, 1, 2, 3, 255)]);
+        b[4] = 0;
+        b[5] = 0; // count = 0
+        assert!(parse(&b).unwrap_err().contains("zero images"));
+    }
+
+    #[test]
+    fn parse_rejects_a_truncated_directory() {
+        // Header claims 2 images but carries no entries.
+        let bytes = [0u8, 0, 1, 0, 2, 0];
+        assert!(parse(&bytes).unwrap_err().contains("truncated directory"));
+    }
+
+    #[test]
+    fn parse_rejects_a_non_packed_offset() {
+        let mut b = write_ico(&[solid(16, 1, 2, 3, 255)]);
+        // Entry imageOffset is at 6+12..6+16; bump it so it no longer equals dir_end.
+        b[6 + 12] = b[6 + 12].wrapping_add(4);
+        assert!(parse(&b).unwrap_err().contains("offset"));
+    }
+
+    #[test]
+    fn parse_rejects_a_payload_escaping_the_buffer() {
+        let mut b = write_ico(&[solid(16, 1, 2, 3, 255)]);
+        // Inflate bytesInRes (entry +8..+12) far past the buffer.
+        b[6 + 8] = 0xff;
+        b[6 + 9] = 0xff;
+        assert!(parse(&b).unwrap_err().contains("escapes buffer"));
+    }
+
+    #[test]
+    fn parse_rejects_a_dib_size_mismatch() {
+        let mut b = write_ico(&[solid(16, 1, 2, 3, 255), solid(32, 4, 5, 6, 255)]);
+        // Frame 0 payload starts right after the 2-entry directory (6 + 32 = 38);
+        // corrupt its DIB biWidth (payload +4) so the declared bytesInRes no longer
+        // matches the size implied by the dimensions.
+        b[38 + 4] = b[38 + 4].wrapping_add(3);
+        assert!(parse(&b).is_err());
+    }
+
+    #[test]
+    fn parse_rejects_trailing_bytes() {
+        let mut b = write_ico(&[solid(16, 1, 2, 3, 255)]);
+        b.push(0); // one byte past the last payload
+        assert!(parse(&b).unwrap_err().contains("trailing"));
+    }
+
+    #[test]
+    fn write_then_parse_round_trips_every_frame_structurally() {
+        let frames: Vec<Raster> = [16usize, 20, 24, 32, 48, 256]
+            .iter()
+            .map(|&s| solid(s, (s % 256) as u8, 0, 0, 255))
+            .collect();
+        let entries = parse(&write_ico(&frames)).expect("valid ICO");
+        assert_eq!(entries.len(), frames.len());
+        for (e, f) in entries.iter().zip(&frames) {
+            assert_eq!(e.dib_width as usize, f.width);
+            assert_eq!(e.dib_height as usize, f.height * 2);
+            assert_eq!(e.dib_size_image as usize, f.width * f.height * 4);
+            assert_eq!(e.planes, 1);
+            assert_eq!(e.bit_count, 32);
+            assert_eq!(e.dir_width, dimension_byte(f.width));
+        }
+    }
+
+    #[test]
+    fn an_extreme_frame_count_is_valid_and_tightly_packed() {
+        // 40 frames of the smallest size — offsets must stay monotonic + tight.
+        let frames: Vec<Raster> = (0..40).map(|_| solid(16, 9, 9, 9, 255)).collect();
+        let bytes = write_ico(&frames);
+        let entries = parse(&bytes).expect("valid many-frame ICO");
+        assert_eq!(entries.len(), 40);
+        // Every payload identical (same frame) → identical bytesInRes; offsets step by it.
+        let step = entries[0].bytes_in_res;
+        for i in 1..entries.len() {
+            assert_eq!(entries[i].image_offset, entries[i - 1].image_offset + step);
+        }
+    }
+
+    #[test]
+    fn a_non_square_frame_writes_distinct_width_height() {
+        // The C# layout supports W≠H (width/height bytes written separately).
+        let mut r = Raster::new(24, 16);
+        r.data.chunks_exact_mut(4).for_each(|p| p.copy_from_slice(&[1, 2, 3, 255]));
+        let entries = parse(&write_ico(&[r])).expect("valid non-square ICO");
+        assert_eq!((entries[0].dir_width, entries[0].dir_height), (24, 16));
+        assert_eq!((entries[0].dib_width, entries[0].dib_height), (24, 32));
+    }
 }

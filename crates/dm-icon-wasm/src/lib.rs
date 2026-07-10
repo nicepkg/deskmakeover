@@ -61,4 +61,48 @@ mod tests {
         let c4 = (16 * 32 + 16) * 4;
         assert_eq!(&out[c4..c4 + 4], &[255, 255, 255, 255]);
     }
+
+    fn gradient(w: usize, h: usize) -> Vec<u8> {
+        let mut d = vec![0u8; w * h * 4];
+        for y in 0..h {
+            for x in 0..w {
+                let i = (y * w + x) * 4;
+                d[i] = (x * 255 / w.max(1)) as u8;
+                d[i + 1] = (y * 255 / h.max(1)) as u8;
+                d[i + 2] = 128;
+                d[i + 3] = if (x + y) % 3 == 0 { 255 } else { 180 };
+            }
+        }
+        d
+    }
+
+    /// The `extern "C"` ABI (pointer/len marshalling) must be a faithful pass-through
+    /// to `render_slice_tile` — proven natively here; spike4 then proves native↔wasm
+    /// byte-equality for the same export cross-runtime.
+    #[test]
+    fn abi_output_equals_core_over_varied_inputs() {
+        for &(sw, sh, size) in &[(16usize, 16usize, 32usize), (64, 64, 256), (256, 256, 512), (200, 200, 48)] {
+            let src = gradient(sw, sh);
+            let mut out = vec![0u8; size * size * 4];
+            let code = unsafe { spike4_render_slice(src.as_ptr(), sw as u32, sh as u32, size as u32, out.as_mut_ptr()) };
+            assert_eq!(code, 0);
+            let core = render_slice_tile(&Raster { width: sw, height: sh, data: src.clone() }, size);
+            assert_eq!(out, core.data, "ABI output != core render at {sw}x{sh}->{size}");
+        }
+    }
+
+    #[test]
+    fn alloc_returns_a_usable_zeroed_buffer() {
+        let n = 4096;
+        let ptr = spike4_alloc(n);
+        assert!(!ptr.is_null());
+        // Safety: `spike4_alloc` just gave us `n` writable, zeroed bytes.
+        unsafe {
+            let s = std::slice::from_raw_parts_mut(ptr, n);
+            assert!(s.iter().all(|&b| b == 0), "alloc must zero the buffer");
+            s[0] = 42;
+            s[n - 1] = 7;
+            assert_eq!((s[0], s[n - 1]), (42, 7));
+        }
+    }
 }

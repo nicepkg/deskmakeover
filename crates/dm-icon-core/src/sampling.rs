@@ -351,4 +351,62 @@ mod tests {
         // u=0.125 maps to fx = 0.5-0.5 = 0.0 → the (0,0) pixel.
         assert_eq!(sample_bilinear(&src, 0.125, 0.125), (255, 255, 255, 255));
     }
+
+    // ---- properties + degenerate inputs ----
+
+    fn solid(w: usize, h: usize, c: [u8; 4]) -> Raster {
+        let mut r = Raster::new(w, h);
+        for p in r.data.chunks_exact_mut(4) {
+            p.copy_from_slice(&c);
+        }
+        r
+    }
+
+    #[test]
+    fn downscale_of_a_uniform_field_is_that_colour_at_every_target() {
+        let src = solid(64, 64, [173, 92, 210, 255]);
+        for target in [1usize, 2, 7, 16, 31, 48, 63] {
+            let d = downscale(&src, target);
+            assert_eq!((d.width, d.height), (target, target));
+            assert!(
+                d.data.chunks_exact(4).all(|p| p == [173, 92, 210, 255]),
+                "target {target} not uniform"
+            );
+        }
+    }
+
+    #[test]
+    fn supersample_upscale_of_a_uniform_field_stays_uniform() {
+        // draw_scaled takes the supersample lane when the destination is larger; a
+        // constant source must produce a constant tile (bilinear of constants).
+        let src = solid(3, 3, [40, 160, 90, 255]);
+        let mut dst = Raster::new(24, 24);
+        let b = ContentBounds { left: 0, top: 0, right: 3, bottom: 3 };
+        draw_scaled(&src, b, &mut dst, 24, 0, 0, 24, 24);
+        assert!(dst.data.chunks_exact(4).all(|p| p == [40, 160, 90, 255]));
+    }
+
+    #[test]
+    fn downscale_of_a_fully_transparent_field_stays_transparent() {
+        let d = downscale(&Raster::new(32, 32), 8); // all-zero source
+        assert!(d.data.chunks_exact(4).all(|p| p == [0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn downscale_1x1_and_target_ge_source_clone() {
+        let src = solid(1, 1, [5, 6, 7, 255]);
+        assert_eq!(downscale(&src, 1).data, src.data); // 1 >= 1 → clone
+        let bigger = solid(8, 8, [9, 9, 9, 255]);
+        assert_eq!(downscale(&bigger, 16).data, bigger.data); // target > width → clone
+    }
+
+    #[test]
+    fn bilinear_clamps_out_of_range_coords_to_the_edge() {
+        let src = checker(4, 4); // (0,0) white, (3,0) ... alternating
+        // Far out-of-range coords clamp into the source, never panic / index oob.
+        let tl = sample_bilinear_at(&src, -100.0, -100.0);
+        let br = sample_bilinear_at(&src, 1e6, 1e6);
+        assert_eq!(tl, (255, 255, 255, 255)); // clamps to (0,0)
+        assert_eq!(br.3, 255); // opaque corner, no panic
+    }
 }

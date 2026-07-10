@@ -109,4 +109,95 @@ mod tests {
         assert_eq!(clamp_byte(-0.4), 0);
         assert_eq!(clamp_byte(127.5), 128);
     }
+
+    // ---- exhaustive byte-boundary references (js_math is the parity foundation) ----
+
+    /// ECMAScript ToUint8Clamp: clamp to [0,255], round half to EVEN.
+    fn to_uint8_clamp(x: f64) -> u8 {
+        if x.is_nan() || x <= 0.0 {
+            return 0;
+        }
+        if x >= 255.0 {
+            return 255;
+        }
+        let f = x.floor();
+        let d = x - f;
+        let up = d > 0.5 || (d == 0.5 && (f as i64) % 2 == 1);
+        (if up { f + 1.0 } else { f }) as u8
+    }
+
+    /// `Math.round`: floor(x) + 1 iff the fraction is ≥ 0.5 (ties toward +∞).
+    fn math_round(x: f64) -> f64 {
+        let f = x.floor();
+        if x - f >= 0.5 {
+            f + 1.0
+        } else {
+            f
+        }
+    }
+
+    #[test]
+    fn clamp_u8_int_is_identity_in_range_and_saturates_outside() {
+        for v in 0..=255u32 {
+            assert_eq!(clamp_u8_int(v as f64), v as u8);
+        }
+        assert_eq!(clamp_u8_int(-0.1), 0);
+        assert_eq!(clamp_u8_int(-1000.0), 0);
+        assert_eq!(clamp_u8_int(255.0), 255);
+        assert_eq!(clamp_u8_int(255.9), 255);
+        assert_eq!(clamp_u8_int(1e9), 255);
+    }
+
+    #[test]
+    fn clamp_u8_round_half_even_matches_reference_exhaustively() {
+        // Every integer + half-integer across (and past) the range: exercises the
+        // ties-to-even path at all 256 midpoints, plus out-of-range and NaN.
+        let mut k = -8;
+        while k <= 520 {
+            let x = k as f64 / 2.0;
+            assert_eq!(clamp_u8_round_half_even(x), to_uint8_clamp(x), "half-step mismatch at {x}");
+            k += 1;
+        }
+        // Dense thirds to cover non-half fractions too.
+        for k in -30..=(255 * 3 + 30) {
+            let x = k as f64 / 3.0;
+            assert_eq!(clamp_u8_round_half_even(x), to_uint8_clamp(x), "thirds mismatch at {x}");
+        }
+        assert_eq!(clamp_u8_round_half_even(f64::NAN), 0);
+    }
+
+    #[test]
+    fn js_round_matches_reference_over_a_dense_sweep() {
+        for k in -2000..=2000 {
+            let x = k as f64 / 7.0;
+            assert_eq!(js_round(x), math_round(x), "mismatch at {x}");
+        }
+        // Exact half-integers: ties always go UP toward +∞ (NOT half-even).
+        for n in -5..=5 {
+            assert_eq!(js_round(n as f64 + 0.5), n as f64 + 1.0);
+        }
+    }
+
+    #[test]
+    fn clamp_byte_matches_clamp_then_math_round_exhaustively() {
+        for k in -40..=(255 * 4 + 40) {
+            let x = k as f64 / 4.0;
+            let expect = if x < 0.0 {
+                0.0
+            } else if x > 255.0 {
+                255.0
+            } else {
+                math_round(x)
+            };
+            assert_eq!(clamp_byte(x), expect as u8, "mismatch at {x}");
+        }
+    }
+
+    #[test]
+    fn clamp01_saturates_and_passes_nan_through() {
+        assert_eq!(clamp01(-0.5), 0.0);
+        assert_eq!(clamp01(0.3), 0.3);
+        assert_eq!(clamp01(1.5), 1.0);
+        assert!(clamp01(f64::NAN).is_nan());
+    }
 }

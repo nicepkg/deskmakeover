@@ -154,4 +154,57 @@ mod tests {
         ]);
         assert_ne!(out.get("a"), out.get("b"));
     }
+
+    // ---- properties (id-sort then hue-sort make the result set-, not order-, defined) ----
+
+    fn dup(list: &[SpreadEntry]) -> Vec<SpreadEntry> {
+        list.iter().map(|s| e(&s.id, &s.art_key, s.seed.as_deref())).collect()
+    }
+
+    #[test]
+    fn output_is_permutation_invariant() {
+        let base = vec![
+            e("a", "artA", Some("#3366CC")),
+            e("b", "artB", Some("#3364CE")),
+            e("c", "artC", Some("#CC3366")),
+            e("d", "artA", Some("#3366CC")), // shares artA with a
+            e("z", "artZ", None),
+        ];
+        let forward = compute_hue_spread(&base);
+        let mut shuffled = dup(&base);
+        shuffled.reverse();
+        assert_eq!(compute_hue_spread(&shuffled), forward);
+        shuffled.rotate_left(2);
+        assert_eq!(compute_hue_spread(&shuffled), forward);
+    }
+
+    #[test]
+    fn same_art_members_share_the_reps_rotated_plate() {
+        // artA appears twice (a,d) among colliding blues that force a rotation; both
+        // members must carry the identical (rotated) hex, and it must equal a's.
+        let out = compute_hue_spread(&[
+            e("a", "artA", Some("#3366CC")),
+            e("d", "artA", Some("#3366CC")),
+            e("b", "artB", Some("#3364CE")),
+        ]);
+        assert_eq!(out.get("a"), out.get("d"));
+    }
+
+    #[test]
+    fn empty_and_single_are_trivial() {
+        assert!(compute_hue_spread(&[]).is_empty());
+        let one = compute_hue_spread(&[e("a", "x", Some("#3366CC"))]);
+        // Single rep → no neighbour → no rotation.
+        assert_eq!(one.get("a").map(String::as_str), Some("#3366CC"));
+    }
+
+    #[test]
+    fn is_deterministic_across_calls() {
+        let list = [
+            e("a", "artA", Some("#3366CC")),
+            e("b", "artB", Some("#3364CE")),
+            e("c", "artC", Some("#33CC88")),
+        ];
+        assert_eq!(compute_hue_spread(&list), compute_hue_spread(&list));
+    }
 }

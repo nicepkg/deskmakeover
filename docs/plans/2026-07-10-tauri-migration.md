@@ -18,9 +18,20 @@ Panel pricing for the whole endpoint: 18–29 agent-days.
 - Windows verification runs on the owner's Windows box (SSH/Tailscale) in a logged-in
   interactive Explorer session — session-zero results don't count.
 
+**Mac-first execution note (ADR-0019 Amendment 1, owner order).** Everything verifiable
+on a Mac is built and verified on a Mac now: the Tauri UI, the full Rust icon core vs the
+frozen TS oracle corpus, and the WASM preview. Windows platform code is **blind-written
+behind `cfg(windows)`** and kept compiling via `cargo check --target
+x86_64-pc-windows-msvc` (`rustup target add` — `check` needs no linker). Concretely:
+**M3/M4 split into a "blind-write on Mac" half** (Rust behind `cfg(windows)`, compiles but
+does not run) **and a "verify on Windows" half** that batches with M1 spikes 1/2/5 when
+the owner is at his box; **M2's "runs on Windows" exit is deferred into that Windows
+batch** (M2 still ships and is accepted on Mac).
+
 ## M0 — Freeze truth (Mac, ~0.5d)
-Scaffold cargo workspace per ADR-0019 layout; move `src/DeskMakeover.Web` →
-`apps/desktop/frontend` (path-only move, imports fixed, 356 tests stay green); freeze
+Scaffold cargo workspace per ADR-0019 layout (Amendment 1: web at the repo root, not
+`apps/`); move `src/DeskMakeover.Web` → the repo root `src/` (path-only move, imports
+fixed, 356 tests stay green); freeze
 banners into TS compositor + C# projects; capture the TS oracle corpus: golden 256px
 renders + stage dumps (profile/masks/rim/seeds) over the mock PNGs + perf
 baselines (48px, 256px warm).
@@ -38,7 +49,7 @@ profile JSON (classification, own-background verdict + anchor, corner-symmetry, 
 band + majority hex, dominant, foreground bbox, matchesShape/maxScaleInside) +
 subject-mask PNG. The real Win11 shortcut-arrow badge is loaded and composited exactly
 as the app worker does, so Keep/peek goldens carry the true badge (its sha256 is pinned
-in the manifest). Harness `apps/desktop/frontend/scripts/capture-oracle.ts`
+in the manifest). Harness `scripts/capture-oracle.ts`
 (`--capture` / `--verify [--sample N]`, deterministic — capture-twice byte-identical);
 parity anchor is the per-cell RGBA sha256. CI smoke `tests/oracle-corpus.test.ts` runs
 `--verify --sample 12`. Additive read-only diagnostics export added to the frozen
@@ -76,7 +87,7 @@ non-integer stores, f32-store/f64-accumulate in the shadow `boxBlurInPlace`,
 `Math.trunc/ceil` mirrors in the area-average sampler.
 
 ## M2 — Tauri foundation (Mac-first, ~2d)
-`apps/desktop/src-tauri`: host the React app; mock bridge rides Tauri commands
+`src-tauri`: host the React app; mock bridge rides Tauri commands
 (browser mock loop stays intact); generated TS bindings from `dm-contracts`;
 settings/look persistence in Rust (rusqlite); scoped asset protocol; CSP +
 per-window capabilities; titlebar/window-state parity with the WPF shell; delete

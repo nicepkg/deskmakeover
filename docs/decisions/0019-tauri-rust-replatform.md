@@ -54,18 +54,17 @@
    `IconRendering` + their tests as **executable oracles**: port semantics faithfully
    (BakeService invariants become named Rust tests during the port), run C# vs Rust
    differentially on a real desktop where useful, then delete the entire .NET tree in
-   one commit tagged `last-dotnet`. No `legacy/` graveyard — git is the archive.
+   one commit tagged `last-dotnet`. (**Amended by Amendment 1**: the frozen tree is
+   quarantined under `legacy/` until that M8 deletion, rather than left in place at the root.)
 4. **Workspace structure** (maintainability-first; all `unsafe` confined to
    `dm-windows` + the helper):
 
 ```text
-deskmakeover/
-├─ Cargo.toml                  # workspace · rust-toolchain.toml · deny.toml
-├─ apps/
-│  ├─ desktop/
-│  │  ├─ frontend/             # existing React/Vite/Bun app (moved from src/DeskMakeover.Web)
-│  │  └─ src-tauri/            # thin composition root: commands, lifecycle, tray, capabilities
-│  └─ elevated-helper/         # requireAdministrator Rust exe, fixed verb whitelist
+deskmakeover/                    # AMENDED by Amendment 1 (2026-07-10): app un-nested to the root
+├─ package.json · index.html · vite.config.ts · tsconfig* · Cargo.toml · rust-toolchain.toml · deny.toml
+├─ src/                        # React/Vite/Bun web app — the visible UI (moved from src/DeskMakeover.Web)
+├─ public/                     # web static assets (fonts, mock-icons)
+├─ src-tauri/                  # thin composition root: commands, lifecycle, tray, capabilities
 ├─ crates/
 │  ├─ dm-domain/               # IDs, config, plans, typed errors (no I/O)
 │  ├─ dm-contracts/            # serde DTOs → generated TS bindings (tauri-specta)
@@ -77,11 +76,14 @@ deskmakeover/
 │  │                           #   extract, .lnk/.url, desktop.ini, system icons,
 │  │                           #   wallpaper, watcher, Explorer refresh
 │  ├─ dm-resident/             # reconciler, job processor, privileged queue, policy
+│  ├─ dm-elevated/             # requireAdministrator Rust bin crate, fixed verb whitelist
 │  └─ dm-test-support/
+├─ scripts/                    # web dev tooling: mock-icon gen, oracle capture, spike4 slice
+├─ tests/                      # bun unit tests + icon-parity · recovery-killpoints ·
+│                              #   windows-shell · webview2-smoke · installer
 ├─ testdata/icons/             # parity corpus: inputs / expected / profiles / manifest
-├─ tests/                      # icon-parity · recovery-killpoints · windows-shell ·
-│                              #   webview2-smoke · installer
-└─ xtask/                      # binding/golden generation, package verification
+├─ xtask/                      # binding/golden generation, package verification
+└─ legacy/                     # FROZEN .NET oracle (Amendment 1): quarantined, deleted at M8
 ```
 
 ## Engineering discipline (binding)
@@ -155,3 +157,29 @@ child-process exit); resident mode runs windowless.
   `docs/reviews/2026-07-10-tauri-rust-migration-panel.md` (includes the chief-architect
   seat's round-2 minority preference for shipping once on .NET first, and why it was
   outpriced).
+
+## Amendment 1 (2026-07-10, owner) — layout overruled; Mac-first execution
+
+Supersedes §3's "No `legacy/` graveyard" wording and §4's `apps/desktop/**` nesting
+(the §4 diagram above is edited in place to match).
+
+1. **Community-standard Tauri layout, single app.** There is exactly one product — a
+   Windows desktop app — so the `apps/` nesting is dropped. The web app is hoisted to the
+   repo root (`src/`, `public/`, `tests/`, `index.html`, one root `package.json`), the
+   Tauri composition root is `src-tauri/` at the root, and the shared Rust logic stays in
+   `crates/`.
+2. **`legacy/` containment.** The frozen .NET oracle is quarantined under `legacy/`
+   (self-contained — `cd legacy && dotnet build` — so C# relative project refs stay
+   intact) until the M8 deletion; nothing .NET-related lives outside it. This overrides
+   §3's "no `legacy/` graveyard" line only in *where the interim home is*; the intent
+   (delete in one `last-dotnet` commit at M8, git as the long-term archive) is unchanged.
+   The future elevated helper is a workspace crate `crates/dm-elevated` (a
+   `requireAdministrator` bin crate), not a root directory.
+3. **Mac-first execution (owner order).** Everything verifiable on a Mac gets built and
+   verified on a Mac: the Tauri UI, the full Rust icon core vs the frozen TS oracle corpus,
+   and the WASM preview. Windows platform code (`dm-windows`, the M3/M4 apply / restore /
+   shell work) is **blind-written behind `cfg(windows)`** and kept compiling via
+   `cargo check --target x86_64-pc-windows-msvc` (add the target with `rustup target add`;
+   `check` needs no linker). ALL Windows runtime verification batches until the owner is at
+   his Windows box; the M1 spikes 1/2/5 remain the entry gate for that batch, and M2's
+   "runs on Windows" exit folds into it.

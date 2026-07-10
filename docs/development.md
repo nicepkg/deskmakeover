@@ -28,7 +28,7 @@ The web half runs on **any OS** (macOS included); the C# half needs **Windows**.
 See §3 for the three dev modes and when to use which.
 
 ```bash
-# --- web (React SPA) — Bun only, never npm/node — ANY OS, repo/apps/desktop/frontend ---
+# --- web (React SPA) — Bun only, never npm/node — ANY OS, from the repo root ---
 bun install                 # first time
 bun run dev                 # Vite dev server (default :5173, auto-increments) + mock bridge
 bun run build               # production web bundle -> dist/
@@ -37,10 +37,10 @@ bun run lint                # oxlint
 ```
 
 ```bash
-# --- desktop shell (Tauri 2 + Rust) — macOS-buildable, repo/apps/desktop (ADR-0019 M2) ---
+# --- desktop shell (Tauri 2 + Rust) — macOS-buildable, from the repo root (ADR-0019 M2) ---
 bun install                 # first time — installs @tauri-apps/cli here
 bun run tauri:dev           # launch the REAL app (mock desktop) on macOS — see §3.5
-bun run gen:bindings        # regenerate frontend/src/bridge/generated.ts from the Rust commands
+bun run gen:bindings        # regenerate src/bridge/generated.ts from the Rust commands
 bun run check:bindings      # drift guard — fails if generated.ts is stale (CI gate)
 ```
 ```bash
@@ -50,12 +50,13 @@ cargo test -p dm-contracts -p dm-operations    # contract + settings-store units
 ```
 
 ```powershell
-# --- C# engine/host — WINDOWS ONLY, MUST use the repo-local SDK (see §1) ---
+# --- FROZEN .NET oracle (legacy/, ADR-0019) — WINDOWS ONLY, repo-local SDK (see §1) ---
+cd legacy
 .\.dotnet\dotnet.exe build
-.\.dotnet\dotnet.exe test   # engine + host + E2E (277 pre-v3; re-verify in F8)
+.\.dotnet\dotnet.exe test   # engine + host + E2E (frozen oracle — see §4)
 
-# --- package (Windows) — ⚠️ packaging is UNVERIFIED, not yet shippable (see §5) ---
-pwsh scripts\dev\publish.ps1        # publishes the App only (no ElevatedHelper, no web build) — see §5
+# --- .NET packaging (frozen; superseded by Tauri M8) — ⚠️ UNVERIFIED (see §5) ---
+pwsh scripts\dev\publish.ps1        # App-only publish (no ElevatedHelper, no web build) — see §5
 bun  scripts\publish-win.mjs        # DEV/local folder (uncompressed) — see §5
 ```
 
@@ -72,26 +73,28 @@ bun  scripts\publish-win.mjs        # DEV/local folder (uncompressed) — see §
 
 ### ⚠️ The .NET SDK gotcha (read this or lose an hour)
 
-`global.json` pins **`10.0.100` with `rollForward: latestFeature`**, and the SDK is
-**repo-local at `.dotnet/`** (gitignored). The `dotnet` on your PATH is the *Program
-Files* muxer, which on this machine has **only the .NET 8 runtime, no SDK** — so a
-bare `dotnet build` / `dotnet test` fails with *"No .NET SDKs were found. Requested
-10.0.100."* even though the project builds fine.
+The whole .NET tree now lives under `legacy/` (ADR-0019 Amendment 1) — run every `dotnet`
+command from `legacy/`. `legacy/global.json` pins **`10.0.100` with `rollForward:
+latestFeature`**, and the SDK is **repo-local at `legacy/.dotnet/`** (gitignored). The
+`dotnet` on your PATH is the *Program Files* muxer, which on this machine has **only the
+.NET 8 runtime, no SDK** — so a bare `dotnet build` / `dotnet test` fails with *"No .NET
+SDKs were found. Requested 10.0.100."* even though the project builds fine.
 
-**Always invoke the repo-local SDK**, or a script that auto-resolves it:
+**Always invoke the repo-local SDK** (from `legacy/`), or a script that auto-resolves it:
 - `.\.dotnet\dotnet.exe <cmd>` directly, **or**
-- `scripts/dev/publish.ps1` and `scripts/publish-win.mjs` both prefer `repo/.dotnet`
-  automatically (the `.mjs` falls back to PATH `dotnet` if `.dotnet` is absent).
+- `legacy/scripts/dev/publish.ps1` and `legacy/scripts/publish-win.mjs` both prefer
+  `legacy/.dotnet` automatically (the `.mjs` falls back to PATH `dotnet` if `.dotnet` is absent).
 
-**If `.dotnet/` is missing** (fresh clone / wiped state), reinstall it — user-local, no
+**If `legacy/.dotnet/` is missing** (fresh clone / wiped state), reinstall it — user-local, no
 admin:
 ```powershell
+cd legacy
 iwr https://dot.net/v1/dotnet-install.ps1 -OutFile $env:TEMP\dotnet-install.ps1
-& $env:TEMP\dotnet-install.ps1 -Channel 10.0 -InstallDir "D:\codes\deskmakeover\.dotnet"
+& $env:TEMP\dotnet-install.ps1 -Channel 10.0 -InstallDir "$PWD\.dotnet"
 .\.dotnet\dotnet.exe --list-sdks   # expect 10.0.3xx
 ```
 (Do NOT diagnose "no SDK on this machine" by running the PATH `dotnet` — check
-`repo/.dotnet` first.)
+`legacy/.dotnet` first.)
 
 ---
 
@@ -99,30 +102,33 @@ iwr https://dot.net/v1/dotnet-install.ps1 -OutFile $env:TEMP\dotnet-install.ps1
 
 ```
 DeskMakeover/
-├─ apps/desktop/frontend/           # the visible UI — React 19 + Tailwind 4 + shadcn + Motion (Bun); moved here from src/DeskMakeover.Web (ADR-0019)
-├─ crates/                          # Rust workspace (dm-*): the port of the C# engine per ADR-0019 (src-tauri lands at M2)
-├─ src/                             # FROZEN .NET oracle (ADR-0019) — no new code; deleted in one commit at M8
-│  ├─ DeskMakeover.Core/            # domain types (StyleConfig, WallpaperConfig, …) — no Win32
-│  ├─ DeskMakeover.IconRendering/   # pure render: shapes, colour math, marks, WallpaperBakeRenderer (WYSIWYG)
-│  ├─ DeskMakeover.Shell/           # Win32/Shell interop behind adapters (IFolderView, IDesktopWallpaper, …)
-│  ├─ DeskMakeover.Operations/      # journaled ops, snapshot/restore
-│  ├─ DeskMakeover.ElevatedHelper/  # the requireAdministrator helper (icon bake) — a SECURITY boundary (§6)
-│  └─ DeskMakeover.App/             # the WPF host: WebView2 window + JSON-RPC bridge + RPC controllers (Host/)
-├─ tests/                           # .NET test projects (Core/Operations/Shell/IconRendering/App/E2E)
-├─ scripts/
-│  ├─ dev/publish.ps1               # SHIPPABLE single-file release
-│  ├─ dev/upsert-strings.py         # add UI strings into the resx source (see §6 i18n)
-│  └─ publish-win.mjs               # DEV/local uncompressed publish
+├─ src/                             # the visible UI — React 19 + Tailwind 4 + shadcn + Motion (Bun); the web app the Tauri shell hosts (ADR-0019 + Amendment 1)
+├─ public/                          # web static assets (fonts, committed mock-icon pack)
+├─ index.html · vite.config.ts · tsconfig* · package.json · bun.lock   # web app root config
+├─ src-tauri/                       # Tauri 2 + Rust composition root (ADR-0019 M2): window/tray/commands/capabilities/CSP
+├─ crates/                          # Rust workspace (dm-*): the port of the C# engine per ADR-0019
+├─ xtask/                           # workspace automation (binding + golden generation, packaging checks)
+├─ scripts/                         # web dev tooling: mock-icon gen (dev/), oracle capture, spike4 slice
+├─ tests/                           # bun unit tests + tests/icon-parity (Rust/TS parity harness)
+├─ testdata/icons/                  # frozen-TS parity oracle corpus (ADR-0019 M0b)
 ├─ docs/                            # specs / decisions (ADR) / plans / STATE / this runbook
-├─ .dotnet/                         # repo-local .NET SDK (gitignored — see §1)
-├─ artifacts/  publish/             # build outputs (gitignored)
-└─ Directory.Build.props            # <Version> + warnings-as-errors for all C# projects
+├─ Cargo.toml · rust-toolchain.toml · deny.toml
+└─ legacy/                          # FROZEN .NET oracle (ADR-0019) — quarantined; deleted in one commit at M8
+   ├─ DeskMakeover.slnx · Directory.Build.props · global.json
+   ├─ src/                          # 6 C# projects (Core / IconRendering / Shell / Operations / ElevatedHelper / App-WPF)
+   ├─ tests/                        # 6 .NET test projects (Core/Operations/Shell/IconRendering/App/E2E)
+   └─ scripts/                      # .NET publish + WPF capture + resx-i18n tooling
 ```
 
-The visible UI is **web**; the engine is **C#**. They talk over a JSON-RPC bridge
-(`WebMessageReceived`) plus a shared-buffer channel for preview pixels (spec 05).
-**WYSIWYG law**: the web displays engine-produced pixels 1:1 — it must never paint
-visual state the bake cannot reproduce.
+The visible UI is **web** (`src/`); it is hosted by the **Tauri 2 + Rust** shell
+(`src-tauri/` + the `dm-*` crates), which is replacing the old .NET/WPF engine + WebView2
+host per **ADR-0019** (+ Amendment 1: the app is un-nested to the repo root, the .NET tree
+quarantined under `legacy/`). The whole .NET tree now lives, frozen, under `legacy/` as an
+executable oracle for the Rust port (deleted at M8); nothing outside `legacy/` is .NET.
+**WYSIWYG law** still holds: the web displays engine-produced pixels 1:1 and must never
+paint visual state the bake cannot reproduce. The §3.2/§3.3 (native WebView2 host) and §5
+(.NET packaging) passages below describe that frozen `legacy/` stack; the live loop is
+Mode A (§3.1) and the Tauri loop (§3.5).
 
 ---
 
@@ -146,7 +152,7 @@ how you LAUNCH, not by build flags.
 ### 3.1 Mode A — browser + mock (any OS)
 
 ```bash
-cd apps/desktop/frontend && bun run dev     # http://localhost:5173 (auto-increments)
+bun run dev     # http://localhost:5173 (auto-increments) — from the repo root
 ```
 Uses the **mock bridge** (`src/bridge/mock.ts` + `src/bridge/mock-desktop.ts`) — NO C#
 host needed. **The mock renders the FULL app** (since v3): a fake desktop (wallpaper +
@@ -167,9 +173,9 @@ is exercisable.
 ### 3.2 Mode B — native host + HMR (Windows)
 
 ```powershell
-cd apps\desktop\frontend ; bun run dev              # terminal 1: Vite (note the port)
+bun run dev                                         # terminal 1: Vite (note the port), from root
 $env:DESKMAKEOVER_DEV_SERVER = "http://localhost:5173"
-.\.dotnet\dotnet.exe run --project src\DeskMakeover.App   # terminal 2 (Debug build)
+cd legacy ; .\.dotnet\dotnet.exe run --project src\DeskMakeover.App   # terminal 2 (Debug build)
 ```
 `DESKMAKEOVER_DEV_SERVER` is a **DEBUG-only** affordance (`Host/WebShellWindow.cs`) —
 a Release binary ignores it by construction. The host adds the dev origin to its
@@ -184,8 +190,8 @@ engine, real bridge, real shared-buffer frames.
 ### 3.3 Mode C — native host + built assets (Windows)
 
 ```powershell
-cd apps\desktop\frontend ; bun run build
-.\.dotnet\dotnet.exe run --project src\DeskMakeover.App    # no env var → serves <out>/web
+bun run build                                             # from the repo root
+cd legacy ; .\.dotnet\dotnet.exe run --project src\DeskMakeover.App    # no env var → serves <out>/web
 ```
 
 ### 3.4 Bun-only
@@ -195,19 +201,19 @@ yourself typing `npm`/`node`, stop.
 
 ### 3.5 Mode D — Tauri host (the ADR-0019 replatform loop, macOS-buildable)
 
-The Tauri 2 shell (`apps/desktop/src-tauri`) hosts the SAME React app as Mode A. It is
+The Tauri 2 shell (`src-tauri`) hosts the SAME React app as Mode A. It is
 the successor to the WebView2/WPF host (Modes B/C) and, unlike them, builds and runs on
 **macOS** today. As of M2 only settings persistence + the frameless titlebar's window
 controls are wired to Rust; every other bridge verb still hits the mock, so the desktop
 window shows the full mock desktop exactly like the browser loop.
 
 ```bash
-cd apps/desktop
+# from the repo root (package.json + src-tauri live here)
 bun install                 # once — @tauri-apps/cli
 bun run tauri:dev           # compiles the Rust host, starts Vite (:5173), opens the window
 ```
 
-- **`tauri:dev` runs from `apps/desktop`.** It merges `src-tauri/tauri.dev.conf.json` over
+- **`tauri:dev` runs from the repo root.** It merges `src-tauri/tauri.dev.conf.json` over
   the base config. That merge relaxes the CSP for Vite HMR (inline+eval scripts, a
   `ws://localhost` socket); the base `tauri.conf.json` keeps the **strict production CSP**
   (Tauri hashes the app's own inline scripts at build time, so prod needs no `unsafe-*`).
@@ -228,18 +234,18 @@ bun run tauri:dev           # compiles the Rust host, starts Vite (:5173), opens
 
 The bridge DTOs for this slice are Rust types in `crates/dm-contracts` (`SettingsDto`,
 `SettingsPatch`, `DiagnosticsPing`). `tauri-specta` turns the `#[specta::specta]` command
-surface into `frontend/src/bridge/generated.ts` — one command list feeds BOTH the runtime
+surface into `src/bridge/generated.ts` — one command list feeds BOTH the runtime
 `invoke` handler and the TS export, so arg/return/error shapes cannot drift (the reason
 ts-rs was not chosen: it would need a hand-kept parallel command wrapper — the schema-1/4
 split ADR-0019 bans).
 
 ```bash
-cd apps/desktop
+# from the repo root
 bun run gen:bindings        # writes generated.ts (do NOT hand-edit that file)
 bun run check:bindings      # cargo test that fails if generated.ts is out of date
 ```
 
-The rest of bridge schema 4 still lives in `frontend/src/bridge/types.ts`; later phases
+The rest of bridge schema 4 still lives in `src/bridge/types.ts`; later phases
 migrate it into `dm-contracts`.
 
 ---
@@ -248,8 +254,8 @@ migrate it into `dm-contracts`.
 
 | Suite | Command | Count |
 |-------|---------|-------|
-| Web unit | `cd apps/desktop/frontend && bun test` | 297 |
-| C# engine + host + E2E | `.\.dotnet\dotnet.exe test` (Windows) | 277 (pre-v3; re-verify in F8) |
+| Web unit | `bun test` (from the repo root) | 359 |
+| .NET oracle (legacy) | `cd legacy ; .\.dotnet\dotnet.exe test` (Windows) | 277 (frozen; pre-v3) |
 | Web lint | `bun run lint` (oxlint) | — |
 
 - **Banned-colour gate**: `tests/banned-colors.test.ts` walks every shipped web source
@@ -259,7 +265,7 @@ migrate it into `dm-contracts`.
 - **Copy law**: no dashes (`—`) in any user-facing string value (owner decree; reads
   as AI text). Grep `'": "[^"]*—'` over `src/lib/i18n/*.ts` before shipping strings.
 - **File size**: every source file ≤ 500 lines (split, don't grow).
-- **E2E** (`tests/DeskMakeover.E2E`) is opt-in: `DESKMAKEOVER_E2E=1`; it drives the real
+- **E2E** (`legacy/tests/DeskMakeover.E2E`) is opt-in: `DESKMAKEOVER_E2E=1`; it drives the real
   exe with `DESKMAKEOVER_FAKE_APPLY=1` so the bake/apply are stubbed (never real — §6).
   Plain `dotnet test` stays hermetic.
 - Core logic / rendering / restore behaviour require tests; a **bug fix ships a regression
@@ -280,24 +286,24 @@ migrate it into `dm-contracts`.
 
 | Script | Output | Size | Purpose |
 |--------|--------|------|---------|
-| **`scripts/dev/publish.ps1`** | `publish/DeskMakeover-v<ver>-win-x64/DeskMakeover.App.exe` | ~64 MB, single-file, compressed | Intended shippable target, but **App-only** (no helper, no web build) — packaging UNVERIFIED (see banner). |
-| `scripts/publish-win.mjs` | `artifacts/win-x64/DeskMakeover/` | uncompressed folder | DEV/local smoke. **Not** the shipping size. Also publishes the ElevatedHelper as a separate self-contained single-file. |
+| **`legacy/scripts/dev/publish.ps1`** | `legacy/publish/DeskMakeover-v<ver>-win-x64/DeskMakeover.App.exe` | ~64 MB, single-file, compressed | Intended shippable target, but **App-only** (no helper, no web build) — packaging UNVERIFIED (see banner). |
+| `legacy/scripts/publish-win.mjs` | `legacy/artifacts/win-x64/DeskMakeover/` | uncompressed folder | DEV/local smoke. **Not** the shipping size. Also publishes the ElevatedHelper as a separate self-contained single-file. |
 
 ```powershell
-# ship:
-pwsh scripts\dev\publish.ps1
-#   -> publish\DeskMakeover-v0.0.0-win-x64\DeskMakeover.App.exe  (~64 MB, no .NET install)
+# ship (run from legacy/):
+pwsh legacy\scripts\dev\publish.ps1
+#   -> legacy\publish\DeskMakeover-v0.0.0-win-x64\DeskMakeover.App.exe  (~64 MB, no .NET install)
 
 # local smoke (uncompressed, faster to iterate on the host):
-bun scripts\publish-win.mjs
-#   -> artifacts\win-x64\DeskMakeover\DeskMakeover.App.exe  (+ helper\)
+bun legacy\scripts\publish-win.mjs
+#   -> legacy\artifacts\win-x64\DeskMakeover\DeskMakeover.App.exe  (+ helper\)
 ```
 
 Notes:
 - **Build the web first.** Both scripts run `bun run build` (the `.mjs`) or expect
   `dist/**` to exist so the App carries `<out>/web`. If `web/` is missing from the
   output, you skipped the web build.
-- **Version** = `Directory.Build.props` `<Version>` (currently `0.0.0`, pre-release).
+- **Version** = `legacy/Directory.Build.props` `<Version>` (currently `0.0.0`, pre-release).
   The in-app version narrative is RESTORED (ADR-0013 amendment): the About identity
   card shows the version and opens the changelog; the changelog auto-opens exactly
   once per UPDATE (never on first install — `shouldAutoShowChangelog`). Move off
@@ -312,9 +318,9 @@ Notes:
 
 ## 6. 注意事项 (caveats — the hard-won ones)
 
-1. **Repo-local `.dotnet` SDK** (§1) — the PATH `dotnet` is runtime-only; always use
-   `.\.dotnet\dotnet.exe` or the scripts. Never conclude "the machine has no SDK" from
-   the PATH muxer.
+1. **Repo-local `legacy/.dotnet` SDK** (§1) — the PATH `dotnet` is runtime-only; from
+   `legacy/` always use `.\.dotnet\dotnet.exe` or the scripts. Never conclude "the machine
+   has no SDK" from the PATH muxer.
 
 2. **The ElevatedHelper is a SECURITY boundary — never "share the runtime to save space".**
    It runs `requireAdministrator`, and the app runs from user-writable `%LOCALAPPDATA%\
@@ -323,7 +329,7 @@ Notes:
    *standalone self-contained single-file* exe (it does not load code from the shared app
    folder). The ~70 MB is buying that boundary — do not collapse it. Safe slimming is
    single-file compression, not runtime-sharing.
-   - **Open item (release blocker)**: `publish.ps1`'s output is app-only (no
+   - **Open item (release blocker)**: `legacy/scripts/dev/publish.ps1`'s output is app-only (no
      `ElevatedHelper.exe`); the release must deliver/embed the helper before shipping or the
      one-click bake path fails for end users. Nothing has shipped yet — this is unproven, verify on a real host.
 
@@ -336,11 +342,11 @@ Notes:
    Automation/E2E must stub them (`DESKMAKEOVER_FAKE_APPLY=1`). The live-run checklist is
    `docs/verification/owner-supervised-live-runs.md`.
 
-5. **i18n: the resx is the SOURCE, the TS is GENERATED.** `apps/desktop/frontend/src/lib/
+5. **i18n: the resx is the SOURCE, the TS is GENERATED.** `src/lib/
    i18n/{en,zh-hans}.ts` carry a *"GENERATED by scripts/resx-to-i18n.ts — do not edit by
-   hand"* header; the source is `src/DeskMakeover.App/Resources/Strings*.resx` (the C#
+   hand"* header; the source is `legacy/src/DeskMakeover.App/Resources/Strings*.resx` (the C#
    host reads them via `UiText.cs`). To add/change a string, run
-   `python scripts/dev/upsert-strings.py <path-to-json>` (the JSON file holds
+   `python legacy/scripts/dev/upsert-strings.py <path-to-json>` (the JSON file holds
    `{"en":{Key:val},"zh":{Key:val}}` — it writes both resx), then regenerate the TS.
    Hand-editing only the TS works until someone
    regenerates, then your keys vanish (compile error / missing strings).
@@ -355,7 +361,7 @@ Notes:
 7. **WebView2 is Evergreen** — do not bundle the browser runtime (that would add ~150 MB).
    Win11 has it; Win10 auto-updates. A bootstrapper note for edge cases is deferred to
    release (ADR-0011). Consumer-machine hardening lives in TWO layers:
-   `apps/desktop/frontend/src/lib/webview-hardening.ts` (web-side: drop-navigation guard,
+   `src/lib/webview-hardening.ts` (web-side: drop-navigation guard,
    Ctrl+wheel page-zoom guard, host-only context-menu/accelerator suppression — also
    protects the browser dev loop) and the host settings audited against
    `docs/references/webview2-pitfalls.md` §补丁清单 (F8).
@@ -382,7 +388,7 @@ Notes:
 
 `bun scripts/dev/fetch-real-icons.mjs` harvests REAL Windows system icons,
 app icons and the Win11 Bloom wallpapers from two open-source Win11 simulator
-clones into `apps/desktop/frontend/public/mock-icons-real/` (gitignored — these
+clones into `public/mock-icons-real/` (gitignored — these
 are extracted Microsoft/brand assets: local fixtures only, NEVER shipped or
 committed). The mock bridge prefers this pack automatically; without it the
 committed synthetic pack is the fallback.

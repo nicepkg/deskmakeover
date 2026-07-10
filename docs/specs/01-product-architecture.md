@@ -100,8 +100,8 @@ Endpoint layout (migration phases: `docs/plans/2026-07-10-tauri-migration.md`):
 
 | Piece | Role |
 |---|---|
-| `apps/desktop/frontend` | The visible UI (React 19 + Tailwind 4 + Motion, Bun-only): Zustand state, undo/redo, i18n (TS dictionaries = source of truth); Worker pool hosting the WASM icon core; Pixi wallpaper compositor (stays web-only) |
-| `apps/desktop/src-tauri` | Thin composition root: window/tray/single-instance lifecycle (window close destroys the WebView; resident mode is windowless), commands, capabilities/CSP |
+| `src` (+ `index.html`, root configs) | The visible UI (React 19 + Tailwind 4 + Motion, Bun-only): Zustand state, undo/redo, i18n (TS dictionaries = source of truth); Worker pool hosting the WASM icon core; Pixi wallpaper compositor (stays web-only) |
+| `src-tauri` | Thin composition root: window/tray/single-instance lifecycle (window close destroys the WebView; resident mode is windowless), commands, capabilities/CSP |
 | `crates/dm-icon-core` | THE single pixel truth (ADR-0019): analysis/segmentation/colour/shapes/marks/filters/compose + planner + RenderSession; compiled to WASM (preview/bake) AND native (apply/background) |
 | `crates/dm-icon-codec` + `dm-contracts` + `dm-domain` | Resample ladder + ICO assembly; generated TS bindings (tauri-specta — hand-mirrored schemas banned); pure domain types |
 | `crates/dm-windows` | ALL windows-rs/COM/unsafe: STA actor, desktop scan/layout, icon extraction, .lnk/.url/desktop.ini/system-icon writers, IDesktopWallpaper, watcher, Explorer refresh |

@@ -22,21 +22,24 @@ A local Windows 10/11 desktop makeover app: reversible **icon styling** and **wa
 
 ## Development
 
-The web UI runs on **any OS** with Bun; the C# engine/host needs **Windows**. Full runbook
-(three dev modes, the .NET-SDK gotcha, packaging): [docs/development.md](docs/development.md).
+The web UI runs on **any OS** with Bun; the Tauri 2 desktop shell builds on macOS today
+(ADR-0019). Full runbook (dev modes, the Tauri loop, packaging):
+[docs/development.md](docs/development.md).
 
 ```bash
-# web UI (React SPA) — any OS, from apps/desktop/frontend — Bun only, never npm/node
+# web UI (React SPA) — any OS, from the repo root — Bun only, never npm/node
 bun install
-bun run dev        # browser + mock loop (the only working loop today; native host = F8)
-bun test           # 297 tests
+bun run dev        # browser + mock loop
+bun test
 ```
 
-```powershell
-# C# engine/host — WINDOWS ONLY, use the repo-local SDK under .dotnet/
-.\.dotnet\dotnet.exe build
-.\.dotnet\dotnet.exe test
+```bash
+# desktop shell (Tauri 2 + Rust) — macOS-buildable — from the repo root
+bun install                 # installs @tauri-apps/cli
+bun run tauri:dev           # compiles the Rust host, starts Vite, opens the window
 ```
 
-⚠️ **Release packaging is unverified** — `scripts/dev/publish.ps1` / `bun scripts/publish-win.mjs`
-exist but no shippable artifact is proven yet (see [docs/development.md](docs/development.md) §5).
+The former .NET/WPF engine + WebView2 host is a **frozen oracle** under `legacy/`
+(ADR-0019: being ported to Rust, deleted at migration phase M8). Release packaging
+(Tauri NSIS + elevated helper) is phase M8 and not yet proven —
+see [docs/development.md](docs/development.md) §5.

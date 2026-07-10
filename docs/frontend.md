@@ -1,12 +1,13 @@
-# DeskMakeover Frontend (`apps/desktop/frontend`)
+# DeskMakeover Web App (`src/`, repo root)
 
 The visible UI of DeskMakeover — a React 19 + TypeScript + Tailwind 4 + Motion SPA. It runs in a
 plain browser (with a mock bridge) on any OS today, and will be hosted by the Tauri shell after
 the ADR-0019 replatform (it previously ran inside a WebView2 window; that C# host is now frozen).
 
-> This is a subproject. The authoritative docs live at the repo root: **`docs/STATE.md`**
-> (what is true / in flight) and **`docs/development.md`** (the full dev + build runbook). Read
-> those first. This file is only the local quick reference.
+> The web app now lives at the repo root (ADR-0019 Amendment 1: `src/`, `public/`, `index.html`,
+> one root `package.json`). The authoritative docs are **`docs/STATE.md`** (what is true / in
+> flight) and **`docs/development.md`** (the full dev + build runbook). Read those first; this
+> file is only the web-app quick reference.
 
 ## Run it (Bun only — never npm/node)
 
@@ -14,7 +15,7 @@ the ADR-0019 replatform (it previously ran inside a WebView2 window; that C# hos
 bun install        # first time
 bun run dev        # Vite dev server (default :5173, auto-increments) + mock bridge
 bun run build      # tsc -b + production bundle -> dist/
-bun test           # unit tests (297 at HEAD) — includes the banned-colour + copy-law gates
+bun test           # unit tests (359 at HEAD) — includes the banned-colour + copy-law gates
 bun run lint       # oxlint
 ```
 

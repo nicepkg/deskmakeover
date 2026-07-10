@@ -1,10 +1,11 @@
 import * as React from 'react'
 import type { ReactNode } from 'react'
-import { Bug, ClipboardCopy, Download, FolderOpen, ImageDown, Mail, MessageSquare, RotateCcw, ScrollText, Tv } from 'lucide-react'
+import { Bug, CircleHelp, ClipboardCopy, Download, FolderOpen, ImageDown, Mail, MessageSquare, RotateCcw, ScrollText, Tv } from 'lucide-react'
 import { call } from '@/bridge/client'
 const appIcon = '/app-icon.svg'
 import { InspectorCard } from '@/components/common/inspector'
 import { ConfirmSheet } from '@/components/common/ceremony'
+import { arrowRowView } from '@/lib/arrow-overlay'
 import { Segmented } from '@/components/common/segmented'
 import { ToggleSwitch } from '@/components/common/toggle-switch'
 import { useApp } from '@/stores/app'
@@ -47,11 +48,23 @@ export function SettingsPage() {
   const settings = useApp((s) => s.settings)
   const updateSettings = useApp((s) => s.updateSettings)
   // Native shortcut-arrow state (panel record 2026-07-11): the status text here
-  // is the authority. 'hidden' = the overlay is active (apply happened), so the
-  // 恢复系统箭头 action is offered; 'native' = nothing to restore.
-  const arrowOverlay = useIcons((s) => s.state?.arrowOverlay ?? 'native')
-  const arrowHidden = arrowOverlay === 'hidden'
+  // is the authority. Undefined = state not yet resolved (scan pending/failed) →
+  // "checking", NEVER a false "Windows default" that would also strip the
+  // restore action (review P2-2). Only a confirmed 'hidden' offers the action.
+  const arrowOverlay = useIcons((s) => s.state?.arrowOverlay)
+  const overlayRestoring = useIcons((s) => s.overlayRestoring)
+  const arrowRow = arrowRowView(arrowOverlay)
   const [arrowRestoreOpen, setArrowRestoreOpen] = React.useState(false)
+  // Help/FAQ safety net (panel record): 「小箭头不见了？」 scrolls the arrow row
+  // into view and pulses it — the deep-link target for a user who thinks Windows
+  // broke and cannot attribute it.
+  const arrowRowRef = React.useRef<HTMLDivElement>(null)
+  const [arrowHighlight, setArrowHighlight] = React.useState(false)
+  const revealArrowRow = () => {
+    arrowRowRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    setArrowHighlight(true)
+    window.setTimeout(() => setArrowHighlight(false), 1600)
+  }
 
   if (!settings || !info) return null
 
@@ -103,6 +116,9 @@ export function SettingsPage() {
                     <TextLink icon={<ScrollText size={12} />} onClick={() => setLogOpen(true)}>
                       {t('About_Changelog')}
                     </TextLink>
+                    <TextLink icon={<CircleHelp size={12} />} onClick={revealArrowRow}>
+                      {t('Settings_ArrowFaq')}
+                    </TextLink>
                   </div>
                 </div>
                 {/* Community region: the owner's channels as quiet list rows */}
@@ -153,18 +169,24 @@ export function SettingsPage() {
                   the action shows ONLY while the overlay is active — there is
                   nothing to restore when the arrow is already native. */}
               <Row
+                innerRef={arrowRowRef}
+                highlight={arrowHighlight}
                 label={t('Settings_ArrowRestore')}
                 desc={
                   <>
-                    {arrowHidden ? t('Settings_ArrowStatusHidden') : t('Settings_ArrowStatusNative')}
-                    {arrowHidden && (
+                    {t(arrowRow.statusKey)}
+                    {arrowRow.showRestore && (
                       <span className="mt-0.5 block text-t3/70">{t('Settings_ArrowConstraint')}</span>
                     )}
                   </>
                 }
               >
-                {arrowHidden && (
-                  <ActionButton icon={<RotateCcw size={12} />} onClick={() => setArrowRestoreOpen(true)}>
+                {arrowRow.showRestore && (
+                  <ActionButton
+                    icon={<RotateCcw size={12} />}
+                    disabled={overlayRestoring}
+                    onClick={() => setArrowRestoreOpen(true)}
+                  >
                     {t('Settings_ArrowRestoreAction')}
                   </ActionButton>
                 )}
@@ -255,10 +277,29 @@ export function SettingsPage() {
   )
 }
 
-/** One settings row: label(+desc) left, the control right — macOS inset-list grammar. */
-function Row({ label, desc, children }: { label: string; desc?: ReactNode; children: ReactNode }) {
+/** One settings row: label(+desc) left, the control right — macOS inset-list
+ *  grammar. `innerRef` + `highlight` let the Help/FAQ deep-link pulse this row. */
+function Row({
+  label,
+  desc,
+  children,
+  innerRef,
+  highlight,
+}: {
+  label: string
+  desc?: ReactNode
+  children: ReactNode
+  innerRef?: React.Ref<HTMLDivElement>
+  highlight?: boolean
+}) {
   return (
-    <div className="flex min-h-[54px] items-center justify-between gap-6 px-5 py-3">
+    <div
+      ref={innerRef}
+      className={cn(
+        'flex min-h-[54px] items-center justify-between gap-6 px-5 py-3 transition-colors duration-500',
+        highlight && 'rounded-[10px] bg-coral/5 ring-2 ring-coral/50',
+      )}
+    >
       <div className="min-w-0">
         <p className="text-body text-t1">{label}</p>
         {desc && <p className="mt-1 text-[12px] text-t3">{desc}</p>}
@@ -322,12 +363,26 @@ function TextLink({ icon, onClick, children }: { icon?: ReactNode; onClick: () =
   )
 }
 
-function ActionButton({ icon, onClick, children }: { icon: ReactNode; onClick: () => void; children: ReactNode }) {
+function ActionButton({
+  icon,
+  onClick,
+  children,
+  disabled,
+}: {
+  icon: ReactNode
+  onClick: () => void
+  children: ReactNode
+  disabled?: boolean
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[8px] bg-chip px-2.5 py-1 text-[11px] text-t2 transition-colors duration-150 hover:bg-raised-hov hover:text-t1"
+      disabled={disabled}
+      className={cn(
+        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-[8px] bg-chip px-2.5 py-1 text-[11px] text-t2 transition-colors duration-150 hover:bg-raised-hov hover:text-t1',
+        disabled && 'cursor-not-allowed opacity-50 hover:bg-chip hover:text-t2',
+      )}
     >
       {icon}
       {children}

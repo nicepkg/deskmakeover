@@ -20,6 +20,7 @@ import { useIconsHero } from '@/lib/hero'
 import { format, useT } from '@/lib/i18n'
 import type { StringKey } from '@/lib/i18n'
 import type { ConfigDto, FilterStyle, IconShape, MarkStyle, TypeOverrides } from '@/bridge/types'
+import { consentSatisfied, showDoneArrowNote } from '@/lib/arrow-overlay'
 import { cn } from '@/lib/utils'
 
 // The icons INSPECTOR (spec 02 v3): height is scarce, and axes GROW over time —
@@ -91,9 +92,14 @@ export function IconsPanel() {
   // BEHIND this window, the doorway says so.
   const runApply = async () => {
     const ok = await apply()
-    if (!useIcons.getState().state?.applied) return
+    // Gate the completion card on THIS attempt's result — not the persisted
+    // `applied` flag, which stays true from an earlier apply and would pop a
+    // false DoneCard (and its "arrow is now hidden" line) after a failed or
+    // overlay-declined re-apply (review P2-1). The DoneCard's arrow line reads
+    // the live overlay state, so it never claims a hide that did not happen.
+    if (!ok) return
     // First successful apply of this launch → celebrate (confetti + CTA ripple).
-    const fired = ok ? celebrate() : false
+    const fired = celebrate()
     if (fired && !reduced) {
       const r = ctaWrapRef.current?.getBoundingClientRect()
       if (r) setRipple({ key: Date.now(), cx: r.left + r.width / 2, cy: r.top + r.height / 2 })
@@ -101,16 +107,27 @@ export function IconsPanel() {
     const beat = reduced ? 0 : 220
     window.setTimeout(() => setDoneOpen(true), beat)
   }
+  // First-run consent gate (owner disposition #3): v2 consent carries the
+  // machine-wide arrow disclosure and is required to skip. A legacy (pre-
+  // disclosure) consent grandfathers single-user machines only — a machine with
+  // more than one active profile must (re)see the non-skippable disclosure
+  // (review P2-3), even if the user consented before this build.
+  const consentOk = () =>
+    consentSatisfied({
+      v2: localStorage.getItem('dm.consent.icons.v2') === '1',
+      legacy: localStorage.getItem('dm.consent.icons') === '1',
+      profiles: useIcons.getState().state?.activeUserProfiles ?? 1,
+    })
   const onCta = () => {
     if (!(phase === 'ready' || phase === 'dirty')) return
-    if (localStorage.getItem('dm.consent.icons') !== '1') setConsentOpen(true)
+    if (!consentOk()) setConsentOpen(true)
     else void runApply()
   }
   // 回到此版 = stage that version's config, then the SAME ceremonied crossing
   // as apply — no silent desktop writes (spec 06 §3.7).
   const goVersion = (index: number) => {
     stageVersion(index)
-    if (localStorage.getItem('dm.consent.icons') !== '1') setConsentOpen(true)
+    if (!consentOk()) setConsentOpen(true)
     else void runApply()
   }
   const reduced = useReducedMotion()
@@ -722,6 +739,9 @@ export function IconsPanel() {
         count={state.styleableCount}
         multiUser={state.activeUserProfiles > 1}
         onAgree={() => {
+          // v2 records that the machine-wide arrow disclosure was shown; keep
+          // the legacy bit for any other reader.
+          localStorage.setItem('dm.consent.icons.v2', '1')
           localStorage.setItem('dm.consent.icons', '1')
           setConsentOpen(false)
           void runApply()
@@ -748,9 +768,14 @@ export function IconsPanel() {
         }}
         onCancel={() => setArrowGateOpen(false)}
       />
-      {/* DoneCard reinforcement (panel record 2026-07-11): apply hid the native
-          arrow — say so, and point at the Settings restore. */}
-      <DoneCard open={doneOpen} note={t('DoneArrow')} onClose={() => setDoneOpen(false)} />
+      {/* DoneCard reinforcement (panel record 2026-07-11): the arrow line only
+          appears when the overlay is ACTUALLY hidden now — a failed or overlay-
+          declined apply never claims it (review P2-1). */}
+      <DoneCard
+        open={doneOpen}
+        note={showDoneArrowNote(state.arrowOverlay) ? t('DoneArrow') : undefined}
+        onClose={() => setDoneOpen(false)}
+      />
     </aside>
   )
 }

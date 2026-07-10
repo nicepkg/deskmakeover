@@ -644,7 +644,7 @@
     "extraSources": []
   },
   {
-    "file": "windows/p11-control_panel.webp",
+    "file": "windows/p11-control_panel.png",
     "id": "real-p11-control_panel",
     "kind": "SystemIcon",
     "label": "控制面板",

@@ -11,7 +11,7 @@
   },
   "description": "Parity oracle corpus for the frozen TS icon compositor (ADR-0019 M0b).",
   "parity": {
-    "decode": "Goldens: pure node:zlib inflate + PNG un-filter (colortype 6 / 8-bit / no interlace); straight alpha, no colour management. Sources (real pack): oracle/source-decode handles PNG colortype 0/2/3/4/6 incl. 4-bit indexed + PLTE/tRNS (one .webp via macOS sips) and normalizes to 256² with a premultiplied bilinear resize (the app resizes every source to MASTER before renderTile).",
+    "decode": "Goldens: node:zlib inflate (native under Bun; PNG IDAT is zlib-format, which Bun.inflateSync cannot read) + PNG un-filter (colortype 6 / 8-bit / no interlace); straight alpha, no colour management. Sources (real pack, 100% PNG — the one upstream .webp is normalized to PNG at harvest): oracle/source-decode handles PNG colortype 0/2/3/4/6 incl. 4-bit indexed + PLTE/tRNS and normalizes to 256² with a premultiplied bilinear resize (the app resizes every source to MASTER before renderTile).",
     "encode": "Deterministic: Paeth per-scanline filter + zlib deflate level 9. Proven by capture-twice byte-diff.",
     "masterSize": 256,
     "note": "Byte-comparison in --verify is on DECODED RGBA pixels (platform-independent), not PNG container bytes. The per-cell rasterHash is sha256 of decoded RGBA and is the canonical parity anchor for the M5 tri-target differential.",
@@ -22,7 +22,7 @@
     }
   },
   "schemaVersion": 1,
-  "setHash": "e18b62084715829ec76e6b5406f345a41b28d6d974072d98ab558a5e447952a0",
+  "setHash": "8a6c19ee69235d95092cf6b593a89b6c334690d1a3b8c71baf7376bb65b773df",
   "sourceDir": "public/real-icons",
   "sources": [
     {
@@ -1131,15 +1131,15 @@
     },
     {
       "bucket": "System",
-      "file": "windows/p11-control_panel.webp",
+      "file": "windows/p11-control_panel.png",
       "id": "real-p11-control_panel",
       "isShortcut": false,
       "kind": "SystemIcon",
       "label": "控制面板",
       "rasterHash": "853d53ce9212704165a3eeaf13ef5cc88370f9289edfc88efea4c84d482a9bee",
       "seed": "#28ADE7",
-      "sha256": "7e975d7e6c80e2a0a4957ee2b0fd469fddcae967edeae46de65e0bf6bf979d80",
-      "sourceUrl": "/real-icons/windows/p11-control_panel.webp"
+      "sha256": "d2e12fd251b4b7455754731db214de9c0a09b60b1a80343de6332b1b9eb55cf5",
+      "sourceUrl": "/real-icons/windows/p11-control_panel.png"
     },
     {
       "bucket": "App",

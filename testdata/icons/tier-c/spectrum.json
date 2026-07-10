@@ -885,7 +885,7 @@
     }
   ],
   "look": "spectrum",
-  "set": "e18b62084715829ec76e6b5406f345a41b28d6d974072d98ab558a5e447952a0",
+  "set": "8a6c19ee69235d95092cf6b593a89b6c334690d1a3b8c71baf7376bb65b773df",
   "typeOverrides": {
     "File": {
       "patch": {

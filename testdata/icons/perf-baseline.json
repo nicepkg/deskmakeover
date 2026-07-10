@@ -9,8 +9,8 @@
     "platform": "darwin"
   },
   "medianMs": {
-    "256px": 508.78,
-    "48px": 38.68
+    "256px": 710.7,
+    "48px": 72.16
   },
   "note": "Informational only — EXCLUDED from --verify. Median of 5 warm single-threaded full-set renders."
 }

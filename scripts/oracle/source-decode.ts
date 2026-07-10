@@ -1,19 +1,20 @@
 // Source-image decode + normalize for the real-icon oracle pack (ADR-0015 D9). The
 // frozen golden codec (png-codec) only decodes the 8-bit colorType-6 PNGs WE encode;
-// harvested real icons arrive as colorType 2/3/4/6 (incl. 4-bit indexed) and one .webp.
-// This module decodes those to RGBA and normalizes to the 256² master the app feeds
-// renderTile (render.worker resizes every source to MASTER via canvas drawImage).
+// harvested real icons arrive as colorType 0/2/3/4/6 (incl. 4-bit indexed). The pack is
+// normalized to 100% PNG at harvest (the one upstream .webp is converted with sips at
+// harvest time), so this decoder is pure PNG — no runtime image-tool dependency, and the
+// always-on gate runs on any platform.
 //
-// The normalized raster is what the corpus captures and what --verify re-derives, so the
-// resampler only needs to match ITSELF (deterministic), never the browser. Non-PNG (the
-// single control-panel .webp) is converted via macOS `sips` — deterministic, but macOS-
-// only; full --verify of that one source therefore needs macOS (CI's sample avoids it).
+// Sources are decoded to RGBA and normalized to the 256² master the app feeds renderTile
+// (render.worker resizes every source to MASTER via canvas drawImage). The normalized
+// raster is what the corpus captures and what --verify re-derives, so the resampler only
+// needs to match ITSELF (deterministic), never the browser.
+//
+// zlib note: PNG IDAT is zlib-format (RFC 1950). Bun's `Bun.inflateSync` is RAW deflate
+// and cannot read it; `node:zlib` (a native implementation under Bun) is the correct
+// zlib-format decoder and is used deliberately here.
 
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { inflateSync } from 'node:zlib'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import type { Raster } from '@/icon-compositor/raster'
 
 export const MASTER = 256
@@ -250,24 +251,9 @@ function resizeTo(src: Raster, size: number): Raster {
   return { width: size, height: size, data: out }
 }
 
-/** Decode a harvested source file (by path + bytes) and normalize to the 256² master.
- *  PNGs decode in-process; the single .webp is converted via macOS `sips` (deterministic;
- *  recorded macOS-only fallback). Throws on a truly undecodable file — never silent. */
-export function decodeSourceImage(path: string, bytes: Uint8Array): Raster {
-  const raster = path.toLowerCase().endsWith('.png') ? decodePngAny(bytes) : decodeViaSips(path)
-  return resizeTo(raster, MASTER)
-}
-
-function decodeViaSips(path: string): Raster {
-  let tmp: string | null = null
-  try {
-    tmp = mkdtempSync(join(tmpdir(), 'oracle-src-'))
-    const png = join(tmp, 'converted.png')
-    execFileSync('sips', ['-s', 'format', 'png', path, '--out', png], { stdio: 'ignore' })
-    return decodePngAny(new Uint8Array(readFileSync(png)))
-  } catch (e) {
-    throw new Error(`cannot decode non-PNG source ${path} (needs macOS sips): ${(e as Error).message}`)
-  } finally {
-    if (tmp) rmSync(tmp, { recursive: true, force: true })
-  }
+/** Decode a harvested source PNG and normalize to the 256² master. The pack is all-PNG
+ *  (normalized at harvest), so this covers every source; a non-PNG throws loudly in
+ *  `decodePngAny` — never silent. */
+export function decodeSourceImage(bytes: Uint8Array): Raster {
+  return resizeTo(decodePngAny(bytes), MASTER)
 }

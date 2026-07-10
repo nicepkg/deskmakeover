@@ -11,7 +11,6 @@
 //
 // Requires: bun, cargo with the wasm32-unknown-unknown target installed.
 
-import { spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -19,10 +18,10 @@ const SPIKE_DIR = join(REPO_ROOT, 'target/spike4')
 
 function run(label: string, cmd: string, args: string[], cwd: string): void {
   console.log(`\n== ${label}: ${cmd} ${args.join(' ')}`)
-  const r = spawnSync(cmd, args, { cwd, stdio: 'inherit' })
-  if (r.status !== 0) {
-    console.error(`${label} failed (exit ${r.status})`)
-    process.exit(r.status ?? 1)
+  const r = Bun.spawnSync([cmd, ...args], { cwd, stdout: 'inherit', stderr: 'inherit' })
+  if (r.exitCode !== 0) {
+    console.error(`${label} failed (exit ${r.exitCode})`)
+    process.exit(r.exitCode ?? 1)
   }
 }
 

@@ -202,7 +202,7 @@ export function capture(): void {
     description: 'Parity oracle corpus for the frozen TS icon compositor (ADR-0019 M0b).',
     parity: {
       note: 'Byte-comparison in --verify is on DECODED RGBA pixels (platform-independent), not PNG container bytes. The per-cell rasterHash is sha256 of decoded RGBA and is the canonical parity anchor for the M5 tri-target differential.',
-      decode: 'Goldens: pure node:zlib inflate + PNG un-filter (colortype 6 / 8-bit / no interlace); straight alpha, no colour management. Sources (real pack): oracle/source-decode handles PNG colortype 0/2/3/4/6 incl. 4-bit indexed + PLTE/tRNS (one .webp via macOS sips) and normalizes to 256² with a premultiplied bilinear resize (the app resizes every source to MASTER before renderTile).',
+      decode: 'Goldens: node:zlib inflate (native under Bun; PNG IDAT is zlib-format, which Bun.inflateSync cannot read) + PNG un-filter (colortype 6 / 8-bit / no interlace); straight alpha, no colour management. Sources (real pack, 100% PNG — the one upstream .webp is normalized to PNG at harvest): oracle/source-decode handles PNG colortype 0/2/3/4/6 incl. 4-bit indexed + PLTE/tRNS and normalizes to 256² with a premultiplied bilinear resize (the app resizes every source to MASTER before renderTile).',
       encode: 'Deterministic: Paeth per-scanline filter + zlib deflate level 9. Proven by capture-twice byte-diff.',
       masterSize: MASTER,
       shortcutArrow: { asset: 'public/win-native-arrow.png', sha256: sha256Hex(arrowBytes), note: 'Loaded at native 100² and composited by drawClassicArrow exactly as the app worker does at boot; shortcut/Keep goldens carry the real badge, not the vector fallback. The Rust port must composite the same asset.' },

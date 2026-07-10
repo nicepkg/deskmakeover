@@ -211,7 +211,7 @@ const REFINEMENTS: Record<string, Refinement> = {
   'windows/win-thispc.png': { kind: 'SystemIcon' },
   'windows/win-network.png': { kind: 'SystemIcon' },
   'windows/win-user.png': { kind: 'SystemIcon' },
-  'windows/p11-control_panel.webp': { kind: 'SystemIcon', label: '控制面板' },
+  'windows/p11-control_panel.png': { kind: 'SystemIcon', label: '控制面板' },
   // Recycle Bin ships TWO sources: full + empty.
   'windows/win-bin.png': { kind: 'RecycleBin', extraSources: ['windows/win-bin-empty.png'] },
   // UWP on a real desktop — the un-editable path exercised with REAL art.
@@ -271,7 +271,16 @@ function harvest(labelBook: Record<string, string>): void {
   //    recyclebin duplicate the better 256px win11React art — owner call
   //    2026-07-09).
   const cp = join(w11web, 'src', 'assets', 'icons', 'Desktop', 'control_panel.webp')
-  if (existsSync(cp)) put(cp, 'windows', 'p11-control_panel.webp')
+  // Normalize the one upstream .webp to PNG at harvest time (macOS sips) so the committed
+  // pack is 100% PNG — the always-on parity gate's decoder then needs no runtime image tool
+  // (cross-platform). Label/kind come from REFINEMENTS (keyed .png).
+  if (existsSync(cp)) {
+    const res = Bun.spawnSync(['sips', '-s', 'format', 'png', cp, '--out', join(OUT, 'windows', 'p11-control_panel.png')], {
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    if (res.exitCode !== 0) throw new Error('sips webp→png conversion failed for control_panel')
+  }
 
   // 4) Real Win11 default wallpapers (owner order: the dev fallback wallpaper
   //    must be the REAL default, not a drawn scene). Light + dark Bloom;

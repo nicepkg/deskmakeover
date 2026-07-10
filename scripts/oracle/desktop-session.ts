@@ -100,7 +100,7 @@ export function readSourceMetas(rootDir: string): SourceMeta[] {
 
 /** Decode one source raster (normalized to 256²) + derive its hue-spread seed. */
 export function decodeSource(meta: SourceMeta): OracleSource {
-  const raster = decodeSourceImage(meta.path, meta.bytes)
+  const raster = decodeSourceImage(meta.bytes)
   return { ...meta, raster, seed: seedOf(raster) }
 }
 

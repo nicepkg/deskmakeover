@@ -15,7 +15,6 @@
 // non-zero. Spike-4 (tests/icon-parity/spike4/run.ts) remains the tri-target
 // (TS↔native↔wasm) gate for the shared slice.
 
-import { spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -23,10 +22,10 @@ const M5_DIR = join(REPO_ROOT, 'target/m5')
 
 function run(label: string, cmd: string, args: string[]): void {
   console.log(`\n== ${label}: ${cmd} ${args.join(' ')}`)
-  const r = spawnSync(cmd, args, { cwd: REPO_ROOT, stdio: 'inherit' })
-  if (r.status !== 0) {
-    console.error(`\n${label} FAILED (exit ${r.status})`)
-    process.exit(r.status ?? 1)
+  const r = Bun.spawnSync([cmd, ...args], { cwd: REPO_ROOT, stdout: 'inherit', stderr: 'inherit' })
+  if (r.exitCode !== 0) {
+    console.error(`\n${label} FAILED (exit ${r.exitCode})`)
+    process.exit(r.exitCode ?? 1)
   }
 }
 

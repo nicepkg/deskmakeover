@@ -1,9 +1,9 @@
 import * as React from 'react'
 import { ChevronDown, LayoutTemplate } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { ZONE_PRESETS } from '@/lib/zone-presets'
+import { presetsForOrientation } from '@/lib/zone-presets'
 import { useT } from '@/lib/i18n'
-import type { ZoneMaterial, ZoneTitleStyle } from '@/bridge/types'
+import type { ScreenOrientation, ZoneMaterial, ZoneTitleStyle } from '@/bridge/types'
 import type { StringKey } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -211,9 +211,20 @@ export function TitleStyleSwatch({
 /** Preset gallery popover: each layout drawn ON the user's wallpaper thumbnail
  *  (choice, not prediction — spec 04 §2.3). Accent-tinted panels echo the
  *  Adaptive material at micro scale. */
-export function PresetPopover({ wallpaperUrl, onPick }: { wallpaperUrl: string | null; onPick: (id: string) => void }) {
+export function PresetPopover({
+  wallpaperUrl,
+  orientation,
+  onPick,
+}: {
+  wallpaperUrl: string | null
+  /** Active screen shape — shows only its matching preset set (owner 2026-07-12). */
+  orientation: ScreenOrientation
+  onPick: (id: string) => void
+}) {
   const t = useT()
   const [open, setOpen] = React.useState(false)
+  const presets = presetsForOrientation(orientation)
+  const thumbAspect = orientation === 'portrait' ? 'aspect-[9/16]' : 'aspect-video'
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -228,7 +239,7 @@ export function PresetPopover({ wallpaperUrl, onPick }: { wallpaperUrl: string |
       <PopoverContent side="bottom" align="end" className="w-[252px] rounded-[12px] p-2">
         <p className="mb-1.5 px-1 text-[11px] font-medium text-t1">{t('Preset_Gallery')}</p>
         <div className="grid grid-cols-2 gap-1.5">
-          {ZONE_PRESETS.map((preset) => (
+          {presets.map((preset) => (
             <button
               key={preset.id}
               type="button"
@@ -238,7 +249,7 @@ export function PresetPopover({ wallpaperUrl, onPick }: { wallpaperUrl: string |
               }}
               className="group overflow-hidden rounded-[9px] ring-1 ring-hair transition-shadow hover:ring-coral/60"
             >
-              <span className="relative block aspect-video w-full overflow-hidden bg-canvas-stage">
+              <span className={`relative block ${thumbAspect} w-full overflow-hidden bg-canvas-stage`}>
                 {wallpaperUrl && (
                   <img src={wallpaperUrl} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
                 )}

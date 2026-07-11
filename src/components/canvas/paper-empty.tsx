@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import type { ScreenOrientation } from '@/bridge/types'
 import { useT } from '@/lib/i18n'
-import { ZONE_PRESETS } from '@/lib/zone-presets'
+import { presetsForOrientation } from '@/lib/zone-presets'
 import type { ZonePreset } from '@/lib/zone-presets'
 
 // Wallpaper empty state (spec 04 §2.3, IA redesign 2026-07-09): the preset
@@ -14,6 +15,7 @@ export function PaperEmptyState({
   show,
   wallpaperUrl,
   rect,
+  orientation,
   onPreset,
   onImport,
 }: {
@@ -21,11 +23,15 @@ export function PaperEmptyState({
   wallpaperUrl: string | null
   /** The wallpaper's on-screen rect (screen space, already zoom/pan-projected). */
   rect: { left: number; top: number; width: number; height: number }
+  /** The active screen's shape — picks which preset set + thumbnail aspect to show. */
+  orientation: ScreenOrientation
   onPreset: (preset: ZonePreset) => void
   onImport: () => void
 }) {
   const t = useT()
   const reduced = useReducedMotion()
+  const presets = presetsForOrientation(orientation)
+  const thumbAspect = orientation === 'portrait' ? 'aspect-[9/16]' : 'aspect-video'
   return (
     <AnimatePresence>
       {show && (
@@ -46,14 +52,14 @@ export function PaperEmptyState({
           >
             <p className="px-0.5 text-body font-medium">{t('Paper_EmptyLead')}</p>
             <div className="mt-2.5 grid grid-cols-2 gap-1.5">
-              {ZONE_PRESETS.map((preset) => (
+              {presets.map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
                   onClick={() => onPreset(preset)}
                   className="group overflow-hidden rounded-[10px] ring-1 ring-glass-ring transition-shadow hover:ring-coral/70"
                 >
-                  <span className="relative block aspect-video w-full overflow-hidden bg-black/20">
+                  <span className={`relative block ${thumbAspect} w-full overflow-hidden bg-black/20`}>
                     {wallpaperUrl && (
                       <img src={wallpaperUrl} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
                     )}

@@ -348,6 +348,10 @@ export const en = {
   "Preset_Quadrants": "Quadrants", // PENDING-RESX
   "Preset_SideRail": "Side rail", // PENDING-RESX
   "Preset_Workbench": "Workbench", // PENDING-RESX
+  "Preset_Ladder": "Ladder", // PENDING-RESX
+  "Preset_Horizon": "Horizon", // PENDING-RESX
+  "Preset_FocusSplit": "Focus split", // PENDING-RESX
+  "Preset_Totem": "Totem", // PENDING-RESX
   "Preset_faithful": "True colour", // PENDING-RESX (ADR-0016 lineup)
   "Preset_faithful_Desc": "Each icon's own plate, faithfully", // PENDING-RESX
   "Preset_field": "Colour field", // PENDING-RESX (ADR-0016 default)
@@ -557,8 +561,12 @@ export const en = {
   "Zone_Shadow": "Shadow", // PENDING-RESX
   "Zone_TitleApps": "Apps",
   "Zone_TitleArchive": "Archive", // PENDING-RESX
+  "Zone_TitleChat": "Chat", // PENDING-RESX
   "Zone_TitleDoing": "Doing",
   "Zone_TitleInbox": "Inbox", // PENDING-RESX
+  "Zone_TitleMedia": "Media", // PENDING-RESX
+  "Zone_TitleNow": "Now", // PENDING-RESX
+  "Zone_TitleRest": "Everything else", // PENDING-RESX
   "Zone_TitleStyle": "Title style", // PENDING-RESX
   "Zone_TitleWork": "Work",
   "Zone_ToneAuto": "Auto", // PENDING-RESX

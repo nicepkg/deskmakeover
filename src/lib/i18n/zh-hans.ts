@@ -350,6 +350,10 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Preset_Quadrants": "四象限",
   "Preset_SideRail": "左栏收纳",
   "Preset_Workbench": "工作台",
+  "Preset_Ladder": "阶梯",
+  "Preset_Horizon": "地平线",
+  "Preset_FocusSplit": "聚焦分栏",
+  "Preset_Totem": "图腾",
   "Preset_faithful": "原彩保真", // PENDING-RESX (ADR-0016 lineup)
   "Preset_faithful_Desc": "忠实还原每个图标的底色", // PENDING-RESX
   "Preset_field": "满彩", // PENDING-RESX (ADR-0016 default)
@@ -559,8 +563,12 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Zone_Shadow": "投影",
   "Zone_TitleApps": "常用软件",
   "Zone_TitleArchive": "归档",
+  "Zone_TitleChat": "聊天",
   "Zone_TitleDoing": "正在进行",
   "Zone_TitleInbox": "收件箱",
+  "Zone_TitleMedia": "媒体",
+  "Zone_TitleNow": "此刻",
+  "Zone_TitleRest": "其余",
   "Zone_TitleStyle": "标题样式",
   "Zone_TitleWork": "工作文件",
   "Zone_ToneAuto": "自动",

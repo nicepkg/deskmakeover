@@ -182,10 +182,20 @@ describe('projectPreset — zone seams never collapse (owner 2026-07-09)', () =>
     ({ screenWidth: 1920, screenHeight: 1080, taskbarHeight: 48, iconPx: 48,
        cellWidth: 60, cellHeight: 60, inset: 0, columns, rows }) as WallpaperGridInfoDto
 
-  test('every preset keeps a >= 1-cell gap between neighbours at every grid size', () => {
-    for (let rows = 7; rows <= 18; rows++) {
-      for (let cols = 16; cols <= 34; cols += 2) {
-        for (const preset of ZONE_PRESETS) {
+  // Sweep each preset ONLY over grid shapes of its own orientation — a portrait
+  // layout is never shown on a wide-short grid (the picker filters by orientation
+  // 2026-07-12), so asserting it there is meaningless. Landscape = wide/short,
+  // portrait = narrow/tall; both cover the realistic screen range.
+  const SWEEPS = {
+    landscape: { cols: [16, 34, 2], rows: [7, 18, 1] },
+    portrait: { cols: [9, 14, 1], rows: [16, 30, 2] },
+  } as const
+
+  test('every preset keeps a >= 1-cell gap between neighbours at every grid size in its orientation', () => {
+    for (const preset of ZONE_PRESETS) {
+      const s = SWEEPS[preset.orientation]
+      for (let rows = s.rows[0]; rows <= s.rows[1]; rows += s.rows[2]) {
+        for (let cols = s.cols[0]; cols <= s.cols[1]; cols += s.cols[2]) {
           const zs = projectPreset(preset, grid(cols, rows))
           for (const a of zs) {
             for (const b of zs) {

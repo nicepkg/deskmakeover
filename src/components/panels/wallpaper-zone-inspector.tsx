@@ -19,7 +19,7 @@ import {
   allowedTitleStyles,
   resolveAccent,
 } from '@/compositor/material'
-import { ZONE_PRESETS, projectPreset } from '@/lib/zone-presets'
+import { ZONE_PRESETS, orientationOfGrid, projectPreset } from '@/lib/zone-presets'
 import { firstFreeArea } from '@/lib/zone-math'
 import { format, useT } from '@/lib/i18n'
 import type { StringKey } from '@/lib/i18n'
@@ -75,7 +75,7 @@ export function WallpaperZoneInspector() {
   // cluster once zones exist.
   const zoneActions = (
     <span className="flex shrink-0 gap-1">
-      <PresetPopover wallpaperUrl={sourceUrl ?? state.originalUrl} onPick={requestPreset} />
+      <PresetPopover wallpaperUrl={sourceUrl ?? state.originalUrl} orientation={orientationOfGrid(state.grid)} onPick={requestPreset} />
       <IconAction title={t('Paper_AddZone')} onClick={addDefaultZone}>
         <Plus size={14} />
       </IconAction>

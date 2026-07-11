@@ -11,7 +11,7 @@ import type { WallpaperCompositor } from '@/compositor/renderer'
 import { TaskbarStrip } from './taskbar-strip'
 import type { ZoneMeta } from '@/compositor/renderer'
 import { useWallpaperCompositor } from './use-wallpaper-compositor'
-import { projectPreset } from '@/lib/zone-presets'
+import { orientationOfGrid, projectPreset } from '@/lib/zone-presets'
 import { cn } from '@/lib/utils'
 import { ScanShimmer } from './scan-shimmer'
 import { ApplyWave } from './apply-wave'
@@ -429,6 +429,7 @@ export function WallpaperMirror() {
           show={ready && look.zones.length === 0 && !rubber && !comparing}
           wallpaperUrl={sourceUrl ?? state.originalUrl}
           rect={wallRect}
+          orientation={orientationOfGrid(grid)}
           onPreset={(preset) => {
             const s = useWallpaper.getState()
             if (s.state) s.replaceZones(projectPreset(preset, s.state.grid))

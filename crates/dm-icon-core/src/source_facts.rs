@@ -198,3 +198,37 @@ mod facts_cert {
         assert!(bounds_w(content_bounds(Some(&f), &c)) > 0 && bounds_h(content_bounds(Some(&f), &c)) > 0);
     }
 }
+
+/// Purity guard for the cache key. `SourceFacts` is cached by `source_hash +
+/// SOURCE_FACTS_SCHEMA_VERSION`; that key is sound ONLY while every analysis
+/// threshold is a compile-time constant (never an `IconConfig` field) — a
+/// config-derived threshold would serve one config's fact for another source-hash
+/// twin. Purity was audited: all of the thresholds below are `const`/literal.
+///
+/// The AUTHORITATIVE anchor is the frozen-TS-golden 1487-cell cert: change any
+/// threshold value and the Rust output diverges from the golden and the cert turns
+/// red; make one config-dependent and the same-source/multi-config cells make the
+/// four-way fast-vs-scalar differential diverge. This module additionally pins the
+/// one *named* source-fact constant and documents the inline ones as the
+/// schema-bump checklist. Change ANY of these ⇒ bump `SOURCE_FACTS_SCHEMA_VERSION`:
+///
+/// | fact                       | threshold             | value | site                    |
+/// |----------------------------|-----------------------|-------|-------------------------|
+/// | solid_bounds / foreground  | `SOLID_ALPHA`         | 128   | analysis/mod.rs         |
+/// | find_content_bounds        | alpha cutoff `> 24`   | 24    | analysis/mod.rs         |
+/// | foreground_auto            | bg tolerance          | 48    | analysis/mod.rs         |
+/// | try_canvas_background       | rect-ring tolerance   | 18    | analysis/background.rs  |
+/// | try_shape_background        | shape-ring tolerance  | 24    | analysis/background.rs  |
+/// | try_shape_background        | opaque coverage       | 0.62  | analysis/background.rs  |
+#[cfg(test)]
+mod thresholds {
+    use crate::analysis::SOLID_ALPHA;
+
+    #[test]
+    fn solid_alpha_threshold_is_frozen() {
+        // Guards the one named source-fact constant. Changing it (or any inline
+        // threshold in the module docs above) must bump SOURCE_FACTS_SCHEMA_VERSION;
+        // the frozen-golden corpus cert is the behavioral anchor for all of them.
+        assert_eq!(SOLID_ALPHA, 128);
+    }
+}

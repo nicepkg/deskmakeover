@@ -103,16 +103,20 @@ fn cfg(shape: IconShape, mark: MarkStyle, distinction: Distinction) -> Config {
 }
 
 fn jobs() -> Vec<Job> {
+    // Mark-bearing jobs set is_shortcut:true — marks (and Fold's in-place card carve)
+    // resolve ONLY for shortcut cells (compose::render_tile_cached: `is_shortcut &&
+    // distinction == Mark`). With is_shortcut:false the mark path was dead and the
+    // COW test vacuous (Codex Phase-0 audit #4). apple-plain stays a no-mark sharer.
     vec![
-        Job { id: "apple-halo", source: blob(), config: cfg(IconShape::Apple, MarkStyle::Halo, Distinction::Mark), is_shortcut: false, show_original: false, size: 256, seed: None },
-        Job { id: "apple-fold", source: blob(), config: cfg(IconShape::Apple, MarkStyle::Fold, Distinction::Mark), is_shortcut: false, show_original: false, size: 256, seed: Some(0x00_ff_6f_5e) },
+        Job { id: "apple-halo", source: blob(), config: cfg(IconShape::Apple, MarkStyle::Halo, Distinction::Mark), is_shortcut: true, show_original: false, size: 256, seed: None },
+        Job { id: "apple-fold", source: blob(), config: cfg(IconShape::Apple, MarkStyle::Fold, Distinction::Mark), is_shortcut: true, show_original: false, size: 256, seed: Some(0x00_ff_6f_5e) },
         Job { id: "apple-plain", source: board(), config: cfg(IconShape::Apple, MarkStyle::Glass, Distinction::None), is_shortcut: false, show_original: false, size: 256, seed: None },
-        Job { id: "circle-glass", source: disc(), config: cfg(IconShape::Circle, MarkStyle::Glass, Distinction::Mark), is_shortcut: false, show_original: false, size: 256, seed: None },
-        Job { id: "diamond-shadow", source: checkerboard(), config: { let mut c = cfg(IconShape::Diamond, MarkStyle::Shadow, Distinction::Mark); c.plate_fallback = PlateFallback::White; c }, is_shortcut: false, show_original: false, size: 128, seed: None },
-        Job { id: "lemon-arc", source: checkerboard(), config: { let mut c = cfg(IconShape::Lemon, MarkStyle::Arc, Distinction::Mark); c.plate_fallback = PlateFallback::White; c }, is_shortcut: false, show_original: false, size: 96, seed: None },
-        Job { id: "folder-ring", source: board(), config: cfg(IconShape::Folder, MarkStyle::Ring, Distinction::Mark), is_shortcut: false, show_original: false, size: 160, seed: None },
+        Job { id: "circle-glass", source: disc(), config: cfg(IconShape::Circle, MarkStyle::Glass, Distinction::Mark), is_shortcut: true, show_original: false, size: 256, seed: None },
+        Job { id: "diamond-shadow", source: checkerboard(), config: { let mut c = cfg(IconShape::Diamond, MarkStyle::Shadow, Distinction::Mark); c.plate_fallback = PlateFallback::White; c }, is_shortcut: true, show_original: false, size: 128, seed: None },
+        Job { id: "lemon-arc", source: checkerboard(), config: { let mut c = cfg(IconShape::Lemon, MarkStyle::Arc, Distinction::Mark); c.plate_fallback = PlateFallback::White; c }, is_shortcut: true, show_original: false, size: 96, seed: None },
+        Job { id: "folder-ring", source: board(), config: cfg(IconShape::Folder, MarkStyle::Ring, Distinction::Mark), is_shortcut: true, show_original: false, size: 160, seed: None },
         Job { id: "apple-shortcut", source: blob(), config: cfg(IconShape::Apple, MarkStyle::Halo, Distinction::Mark), is_shortcut: true, show_original: false, size: 256, seed: None },
-        Job { id: "circle-odd47", source: disc(), config: cfg(IconShape::Circle, MarkStyle::Glass, Distinction::Mark), is_shortcut: false, show_original: false, size: 47, seed: None },
+        Job { id: "circle-odd47", source: disc(), config: cfg(IconShape::Circle, MarkStyle::Glass, Distinction::Mark), is_shortcut: true, show_original: false, size: 47, seed: None },
     ]
 }
 
@@ -206,17 +210,32 @@ fn randomized_render_order_is_order_independent() {
 
 #[test]
 fn fold_mark_does_not_corrupt_shared_shape_masks() {
-    // apple-fold and apple-plain share the (Apple, 256²) shape-mask key; the Fold
-    // carve (Phase 1: a copy-on-write of the cached mask) must not mutate the entry
-    // apple-plain reuses. Render Fold first, then the sharer, then Fold again.
+    // apple-fold and apple-plain share the (Apple, 256²) tile-alpha key; the Fold
+    // carve mutates the CARD mask in place (marks/styles.rs carve_card) — in Phase 1
+    // a copy-on-write of the cached entry — and a second Fold render at the same key
+    // must not double-carve. Render Fold first, the sharer, then Fold again.
     let (jobs, refs) = references();
     let idx = |id: &str| jobs.iter().position(|j| j.id == id).unwrap();
     let (fold, plain) = (idx("apple-fold"), idx("apple-plain"));
-    let mut s = fresh_session_with_all(&jobs);
 
+    // Liveness: the Fold mark must actually carve+draw. If it renders identically to
+    // the same cell with no mark, the mark path is dead (audit #4) and this test is
+    // vacuous. This assertion is what would have caught the is_shortcut:false bug.
+    let no_mark = Job {
+        id: "apple-fold-nomark",
+        source: jobs[fold].source.clone(),
+        config: Config { distinction: Distinction::None, ..jobs[fold].config.clone() },
+        is_shortcut: jobs[fold].is_shortcut,
+        show_original: false,
+        size: jobs[fold].size,
+        seed: jobs[fold].seed,
+    };
+    assert_ne!(render_fresh(&jobs[fold]), render_fresh(&no_mark), "Fold mark did not carve — mark path is dead");
+
+    let mut s = fresh_session_with_all(&jobs);
     assert_eq!(render_in_session(&mut s, &jobs[fold]), refs[fold], "apple-fold");
     assert_eq!(render_in_session(&mut s, &jobs[plain]), refs[plain], "apple-plain after fold carve");
-    assert_eq!(render_in_session(&mut s, &jobs[fold]), refs[fold], "apple-fold second render");
+    assert_eq!(render_in_session(&mut s, &jobs[fold]), refs[fold], "apple-fold second render (double-carve?)");
     assert_eq!(render_in_session(&mut s, &jobs[plain]), refs[plain], "apple-plain still intact");
 }
 
@@ -224,21 +243,32 @@ fn fold_mark_does_not_corrupt_shared_shape_masks() {
 fn parallel_threads_match_single_thread() {
     let (jobs, refs) = references();
     for threads in [1usize, 2, 4, 8] {
+        // A barrier makes every thread enter its render loop at the same instant, so
+        // the concurrent overlap (shared NATIVE_ARROW read lock now; a shared cache
+        // later) is real, not staggered. Each thread renders in a rotated order but
+        // stores results BY JOB INDEX, so a completion-order/index association bug
+        // (the Phase-3 rayon risk) surfaces as a ref mismatch (Codex Phase-0 audit #7).
+        let barrier = std::sync::Barrier::new(threads);
         std::thread::scope(|scope| {
             let handles: Vec<_> = (0..threads)
-                .map(|_| {
-                    let jobs = &jobs;
+                .map(|t| {
+                    let (jobs, refs, barrier) = (&jobs, &refs, &barrier);
                     scope.spawn(move || {
                         let mut s = fresh_session_with_all(jobs);
-                        jobs.iter().map(|job| render_in_session(&mut s, job)).collect::<Vec<_>>()
+                        let mut out: Vec<Vec<u8>> = vec![Vec::new(); jobs.len()];
+                        barrier.wait();
+                        for k in 0..jobs.len() {
+                            let i = (k + t) % jobs.len();
+                            out[i] = render_in_session(&mut s, &jobs[i]);
+                        }
+                        for (i, job) in jobs.iter().enumerate() {
+                            assert_eq!(out[i], refs[i], "thread {t}/{threads} misassociated or changed {}", job.id);
+                        }
                     })
                 })
                 .collect();
             for h in handles {
-                let outs = h.join().expect("thread panicked");
-                for (i, job) in jobs.iter().enumerate() {
-                    assert_eq!(outs[i], refs[i], "thread pool ({threads}) changed {}", job.id);
-                }
+                h.join().expect("thread panicked");
             }
         });
     }

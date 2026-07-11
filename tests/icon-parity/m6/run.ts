@@ -136,6 +136,21 @@ function nativeLaneVsGolden(kernel: Kernel): void {
   console.log(`RESULT: PASS — ${kernel}-native byte-identical to TS golden, 0/${TOTAL_BYTES}`)
 }
 
+// ── determinism scaffold: cold/hot/random-order/Fold-COW/1-8-thread byte parity ──
+function determinismScaffold(kernel: Kernel): void {
+  const feat = kernel === 'fast' ? ['--features', 'fast'] : []
+  console.log(`\n== ${kernel} determinism scaffold (cargo test parity_determinism) ==`)
+  const r = Bun.spawnSync(
+    ['cargo', 'test', '--locked', '-q', '-p', 'dm-icon-core', ...feat, '--test', 'parity_determinism'],
+    { cwd: REPO_ROOT, stdout: 'pipe', stderr: 'inherit' },
+  )
+  const out = new TextDecoder().decode(r.stdout)
+  process.stdout.write(out)
+  must(r.exitCode === 0, `${kernel} parity_determinism exit ${r.exitCode}`)
+  must(/test result: ok\./.test(out), `${kernel} parity_determinism did not report "test result: ok"`)
+  console.log(`RESULT: PASS — ${kernel} render pipeline byte-deterministic (cold/hot/order/Fold-COW/threads)`)
+}
+
 function main(): void {
   const arg = (process.env.KERNEL ?? 'all').toLowerCase()
   const kernels: Kernel[] = arg === 'all' ? ['scalar', 'fast'] : arg === 'scalar' ? ['scalar'] : arg === 'fast' ? ['fast'] : []
@@ -153,12 +168,19 @@ function main(): void {
   for (const k of kernels) {
     nativeLaneVsGolden(k)
     built[k] = wasmLaneVsGolden(k)
+    determinismScaffold(k)
   }
 
-  if (built.scalar && built.fast) sizeSweep(built.scalar, built.fast)
-  else console.log('\n== size sweep skipped — needs both kernels (run without KERNEL, or KERNEL=all)')
-
-  console.log(`\nM6 CERTIFICATE: ALL GATES PASS — anchor ✓, ${kernels.join('+')} × {native,wasm} == TS golden, 0/${TOTAL_BYTES}`)
+  // The cross-kernel size sweep needs BOTH kernels; a single-kernel shard cannot run
+  // it, so it must NOT claim ALL GATES PASS — that would report full coverage while
+  // the off-golden differential never ran (Codex Phase-0 audit P2).
+  const full = Boolean(built.scalar && built.fast)
+  if (full) {
+    sizeSweep(built.scalar!, built.fast!)
+    console.log(`\nM6 CERTIFICATE: ALL GATES PASS — anchor ✓, scalar+fast × {native,wasm} == TS golden 0/${TOTAL_BYTES}, size sweep ✓, determinism ✓`)
+  } else {
+    console.log(`\nM6 CERTIFICATE: PARTIAL (KERNEL=${kernels[0]}) — anchor ✓, ${kernels[0]} × {native,wasm} == TS golden 0/${TOTAL_BYTES}, determinism ✓; NO cross-kernel size sweep. Run without KERNEL for the full gate.`)
+  }
 }
 
 try {

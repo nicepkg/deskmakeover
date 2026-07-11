@@ -50,6 +50,14 @@ export const GOLDENS_DIGEST = 'f761909af6b8ae66dad749586d6c1445a74209312f820821b
 export const SOURCES_DIGEST = '3721e7a9926f416ccf2492f52813e44e2790b0babdc76892095c88cf4df0077b'
 export const ARROW_RGBA_SHA256 = 'f99be6764e19c9c975abefc55501602f2f92191687387c5b5195226140d59f1b'
 
+// The FULL ordered render manifest — sha256 of cells.jsonl itself, i.e. the exact
+// per-cell source->config->flags->lane->fieldLane list, in order. The lane/field
+// histograms above pin only the MARGINALS: swap a board cell for a second alarm cell
+// and every count/histogram/byte-total is unchanged, so a shape-specific coverage
+// loss slips through. This pins the specs themselves, so any drift in what the corpus
+// renders is red before a byte is diffed. (Codex Phase-0 audit #1.)
+export const CELLS_MANIFEST_SHA256 = '2c9b7f129fb7a5421a98e39242bf9319bd3785cc43b63ec469833e337ada12b5'
+
 // Per-lane cell population — a lane that gains/loses cells (or a renamed/added lane)
 // flips this red even if every present cell still matches its golden. Sums to 1487.
 export const LANE_HISTOGRAM: Readonly<Record<string, number>> = {
@@ -99,27 +107,33 @@ export function digestPixelDir(pixelsDir: string, sub: string): string {
   return sha256Hex(lines.join('\n'))
 }
 
-/** Recompute the setHash from public/real-icons and pin the source pack + arrow —
- *  a changed / added / removed source PNG or arrow asset flips this red. */
+/** Recompute the setHash from the REAL source loader's pack and pin the source pack
+ *  + arrow — a changed / added / removed / reordered source PNG or arrow asset flips
+ *  this red. The recompute enumerates `public/real-icons/manifest.json` (what
+ *  scripts/oracle/desktop-session.ts readSourceMetas actually loads to build the
+ *  corpus), NOT testdata/icons/manifest.json — the two are different files and could
+ *  drift apart, leaving a testdata-only anchor blind to a changed real pack. (Codex
+ *  Phase-0 audit #2.) */
 export function assertSourcePack(): void {
-  const man = JSON.parse(readFileSync(join(REPO_ROOT, 'testdata/icons/manifest.json'), 'utf8')) as {
+  // The pinned anchor value + tier counts live in the corpus manifest.
+  const corpus = JSON.parse(readFileSync(join(REPO_ROOT, 'testdata/icons/manifest.json'), 'utf8')) as {
     setHash: string
     counts: Record<string, number>
-    sources: { id: string; file: string; sha256: string }[]
     parity: { shortcutArrow: { sha256: string } }
   }
-  eq(man.setHash, SET_HASH, 'manifest.setHash')
-  eq(man.parity.shortcutArrow.sha256, ARROW_PNG_SHA256, 'manifest arrow sha256')
-  eq(man.sources.length, SOURCE_COUNT, 'manifest source count')
-  eq(man.counts.tierAMasters, TIER_A, 'manifest counts.tierAMasters')
-  eq(man.counts.tierBCells, TIER_B, 'manifest counts.tierBCells')
+  eq(corpus.setHash, SET_HASH, 'testdata/icons/manifest.json setHash')
+  eq(corpus.parity.shortcutArrow.sha256, ARROW_PNG_SHA256, 'manifest arrow sha256')
+  eq(corpus.counts.tierAMasters, TIER_A, 'manifest counts.tierAMasters')
+  eq(corpus.counts.tierBCells, TIER_B, 'manifest counts.tierBCells')
 
-  const entries = man.sources.map((s) => {
-    const h = sha256Hex(new Uint8Array(readFileSync(join(REPO_ROOT, 'public/real-icons', s.file))))
-    if (h !== s.sha256) fail(`source ${s.id} (${s.file}) sha256: ${h.slice(0, 16)} != ${s.sha256.slice(0, 16)}`)
-    return { id: s.id, sha256: h }
-  })
-  eq(setHash(entries), SET_HASH, 'recomputed setHash from public/real-icons')
+  // Recompute from the loader manifest — the pack the corpus is actually built from.
+  const pack = JSON.parse(readFileSync(join(REPO_ROOT, 'public/real-icons/manifest.json'), 'utf8')) as { id: string; file: string }[]
+  eq(pack.length, SOURCE_COUNT, 'public/real-icons/manifest.json entry count')
+  const entries = pack.map((e) => ({
+    id: e.id,
+    sha256: sha256Hex(new Uint8Array(readFileSync(join(REPO_ROOT, 'public/real-icons', e.file)))),
+  }))
+  eq(setHash(entries), SET_HASH, 'recomputed setHash from the public/real-icons loader pack')
 
   const arrowSha = sha256Hex(new Uint8Array(readFileSync(join(REPO_ROOT, 'public/win-native-arrow.png'))))
   eq(arrowSha, ARROW_PNG_SHA256, 'public/win-native-arrow.png sha256')
@@ -153,6 +167,9 @@ export function assertCorpusShape(pixelsDir: string): void {
   }
   assertHistogram(lane, LANE_HISTOGRAM, 'lane')
   assertHistogram(field, FIELD_HISTOGRAM, 'fieldLane')
+
+  // Pin the full ordered render manifest, not just its marginals (audit #1).
+  eq(sha256Hex(new Uint8Array(readFileSync(join(pixelsDir, 'cells.jsonl')))), CELLS_MANIFEST_SHA256, 'cells.jsonl render-manifest digest')
 
   eq(digestPixelDir(pixelsDir, 'expected'), GOLDENS_DIGEST, 'goldens content digest')
   eq(digestPixelDir(pixelsDir, 'sources'), SOURCES_DIGEST, 'decoded-sources content digest')

@@ -22,7 +22,7 @@ use dm_icon_core::analysis::{
     max_scale_inside, solid_bounds, try_detect_background, visible_lightness_mean, ContentBounds,
 };
 use dm_icon_core::color::{field_shadow_tone, srgb_decode, srgb_encode};
-use dm_icon_core::compose::{render_slice_tile, render_tile, ComposeDiagnostics, RenderOpts};
+use dm_icon_core::compose::{render_slice_tile, ComposeDiagnostics, RenderOpts};
 use dm_icon_core::config::{
     Band, Config, Distinction, FilterStyle, MarkStyle, MonoStyle, PlateFallback, Subject,
 };
@@ -31,6 +31,7 @@ use dm_icon_core::js_math::js_round;
 use dm_icon_core::marks::set_native_arrow_raster;
 use dm_icon_core::profile::{icon_profile, IconProfileKind};
 use dm_icon_core::raster::{hex_to_int, shape_mask, Raster, Rgba, WHITE};
+use dm_icon_core::render_session::RenderSession;
 use dm_icon_core::segment::segment_subject;
 use dm_icon_core::shapes::IconShape;
 
@@ -255,7 +256,13 @@ fn m5_pixels(dir: &Path) -> ExitCode {
     let mut lane_mismatch = 0usize;
     let mut failures: Vec<String> = Vec::new();
     let mut worst: Option<(String, u8)> = None;
-    let mut source_cache: BTreeMap<String, Raster> = BTreeMap::new();
+    // Render through RenderSession (register + set_look + render) — the SAME session
+    // path the wasm cert drives, and the home of the Phase-1 session-owned mask cache.
+    // Driving the bare `render_tile` here would leave a session warm-hit/eviction
+    // regression untested on native AND wasm (Codex Phase-0 audit #5).
+    let mut session = RenderSession::new();
+    let mut registered: BTreeMap<String, u64> = BTreeMap::new();
+    let mut next_hash: u64 = 1;
 
     for line in lines.lines().filter(|l| !l.is_empty()) {
         let rec: Value = serde_json::from_str(line).expect("parse cell record");
@@ -268,14 +275,19 @@ fn m5_pixels(dir: &Path) -> ExitCode {
         let expected_lane = rec["lane"].as_str().unwrap();
         let expected_field = rec["fieldLane"].as_str();
 
-        if !source_cache.contains_key(source_id) {
+        if !registered.contains_key(source_id) {
             let data = read_rgba(&base.join(format!("sources/{source_id}.rgba")), CORPUS_SIZE * CORPUS_SIZE * 4);
-            source_cache.insert(source_id.to_owned(), Raster { width: CORPUS_SIZE, height: CORPUS_SIZE, data });
+            let hash = next_hash;
+            next_hash += 1;
+            session.register(source_id.to_owned(), hash, Raster { width: CORPUS_SIZE, height: CORPUS_SIZE, data });
+            registered.insert(source_id.to_owned(), hash);
         }
-        let src = &source_cache[source_id];
 
+        session.set_look(config);
         let mut diag = ComposeDiagnostics::default();
-        let out = render_tile(src, &config, is_shortcut, show_original, CORPUS_SIZE, &opts, &mut diag);
+        let out = session
+            .render(source_id, is_shortcut, show_original, CORPUS_SIZE, &opts, &mut diag)
+            .expect("RenderSession produced no tile (missing source or look?)");
         let expected = read_rgba(&base.join(format!("expected/{file}.rgba")), CORPUS_SIZE * CORPUS_SIZE * 4);
 
         let lane_str = diag.lane.as_str().to_owned();
@@ -284,6 +296,22 @@ fn m5_pixels(dir: &Path) -> ExitCode {
         total.cells += 1;
         entry.total_bytes += expected.len() as u64;
         total.total_bytes += expected.len() as u64;
+
+        // Length guard BEFORE the zip — a short/long render otherwise truncates to the
+        // shorter and reports 0 diff / exact total, masking the defect (audit #6).
+        if out.data.len() != expected.len() {
+            let d = out.data.len().abs_diff(expected.len()) as u64;
+            entry.diff_bytes += d;
+            total.diff_bytes += d;
+            if failures.len() < 40 {
+                failures.push(format!(
+                    "{file} [{lane_str}]: output length {} != expected {}",
+                    out.data.len(),
+                    expected.len()
+                ));
+            }
+            continue;
+        }
 
         let mut first: Option<usize> = None;
         let mut diff = 0u64;

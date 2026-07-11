@@ -21,7 +21,7 @@ pub mod wallpaper;
 pub use error::{OperationError, Result};
 pub use ledger::{JsonLedgerStore, LedgerEntry, LedgerStore, MemLedgerStore, TxnState};
 pub use settings_store::SettingsStore;
-pub use wallpaper::{SnapshotStore, WallpaperOps, WallpaperOutcome};
+pub use wallpaper::{RustImageDecoder, SnapshotStore, WallpaperOps, WallpaperOutcome};
 pub use txn::{
     recover, recover_from_journal, ApplyOutcome, ApplyRequest, FileJournal, JournalRecord,
     JournalSink, RecoveryOutcome, TxnDriver, TxnIdAllocator, VecJournal,

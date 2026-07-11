@@ -7,6 +7,7 @@
 //! is captured and durably saved BEFORE any `set` mutates it. Any failure to capture
 //! or persist aborts the apply — fail closed, the desktop stays untouched.
 
+mod decode;
 mod snapshot_store;
 
 use std::fs;
@@ -18,6 +19,7 @@ use dm_domain::WallpaperApplier;
 
 use crate::error::{OperationError, Result};
 
+pub use decode::RustImageDecoder;
 pub use snapshot_store::SnapshotStore;
 
 const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];

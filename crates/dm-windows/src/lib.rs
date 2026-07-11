@@ -32,6 +32,8 @@ pub mod shell;
 #[cfg(windows)]
 mod state_reader;
 #[cfg(windows)]
+pub mod topology;
+#[cfg(windows)]
 pub mod wallpaper;
 #[cfg(windows)]
 pub mod watcher;
@@ -48,5 +50,7 @@ pub use refresh::WindowsExplorerRefresher;
 pub use shell::WindowsScanner;
 #[cfg(windows)]
 pub use state_reader::WindowsStateReader;
+#[cfg(windows)]
+pub use topology::WindowsMonitorTopology;
 #[cfg(windows)]
 pub use wallpaper::WindowsWallpaper;

@@ -15,7 +15,9 @@
 
 use std::sync::Arc;
 
-use dm_domain::{PortError, PortResult};
+use dm_domain::{
+    MonitorWallpaper, PortError, PortResult, WallpaperApplier, WallpaperSnapshot,
+};
 use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPROC_SERVER};
@@ -25,31 +27,10 @@ use windows::Win32::UI::Shell::{
 
 use crate::com::StaExecutor;
 
-/// One present monitor's wallpaper: its device path and the image it showed, or `None` when it
-/// showed the solid background colour (or a slideshow frame). A `None` monitor is restored by
-/// clearing our image so the restored background colour shows through. Detached monitors the
-/// engine still remembers are NOT represented here — they are omitted from the snapshot.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MonitorWallpaper {
-    pub monitor_id: String,
-    pub image: Option<String>,
-}
-
-/// The full restore snapshot: the global background colour + position plus every present monitor's
-/// image. Byte-level restore needs the colour and position, not just the images (P2-1).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WallpaperSnapshot {
-    /// `COLORREF` (`0x00BBGGRR`) background colour, shown wherever no image covers the desktop.
-    pub background_color: u32,
-    /// The desktop wallpaper position (fill/fit/stretch/tile/center/span) as its raw enum value.
-    pub position: i32,
-    /// Whether a slideshow was active at capture. Restore is best-effort static (see module note).
-    pub slideshow_active: bool,
-    /// Per present monitor; detached monitors are omitted.
-    pub monitors: Vec<MonitorWallpaper>,
-}
-
-/// The `IDesktopWallpaper` adapter.
+/// The `IDesktopWallpaper` adapter. Snapshot types live in `dm-domain::wallpaper`
+/// (M6-WIRE A2) so the operations layer's snapshot-once policy and the Mac fakes
+/// speak the exact same shapes; this adapter implements the [`WallpaperApplier`]
+/// port over them.
 pub struct WindowsWallpaper {
     exec: Arc<StaExecutor>,
 }
@@ -58,20 +39,24 @@ impl WindowsWallpaper {
     pub fn new(exec: Arc<StaExecutor>) -> Self {
         Self { exec }
     }
+}
 
+impl WallpaperApplier for WindowsWallpaper {
     /// Captures the full restore snapshot (background colour, position, per-monitor images).
-    pub fn capture(&self) -> PortResult<WallpaperSnapshot> {
+    fn capture(&self) -> PortResult<WallpaperSnapshot> {
         self.exec.run(capture_blocking)?
     }
 
     /// Sets one monitor's wallpaper image.
-    pub fn set(&self, monitor_id: String, image_path: String) -> PortResult<()> {
+    fn set(&self, monitor_id: &str, image_path: &str) -> PortResult<()> {
+        let (monitor_id, image_path) = (monitor_id.to_owned(), image_path.to_owned());
         self.exec.run(move || set_blocking(&monitor_id, &image_path))?
     }
 
     /// Restores the captured snapshot: global colour + position, then each monitor's image (or a
     /// cleared image so the background colour shows for a solid-colour monitor).
-    pub fn restore(&self, snapshot: WallpaperSnapshot) -> PortResult<()> {
+    fn restore(&self, snapshot: &WallpaperSnapshot) -> PortResult<()> {
+        let snapshot = snapshot.clone();
         self.exec.run(move || restore_blocking(&snapshot))?
     }
 }
@@ -112,7 +97,8 @@ fn capture_blocking() -> PortResult<WallpaperSnapshot> {
 
 /// SAFETY: caller guarantees an STA thread; the returned PWSTR is freed here. Returns `None` for a
 /// solid-colour desktop or transient slideshow state (GetWallpaper reports an empty path).
-unsafe fn read_wallpaper(dw: &IDesktopWallpaper, monitor_id: &str) -> Option<String> {
+/// pub(crate): the topology reader (`topology.rs`) reuses this exact read discipline.
+pub(crate) unsafe fn read_wallpaper(dw: &IDesktopWallpaper, monitor_id: &str) -> Option<String> {
     let id = HSTRING::from(monitor_id);
     match dw.GetWallpaper(PCWSTR(id.as_ptr())) {
         Ok(pwstr) if !pwstr.is_null() => {

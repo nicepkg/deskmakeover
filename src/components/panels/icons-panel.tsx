@@ -57,7 +57,7 @@ export function IconsPanel() {
   const t = useT()
   const { state, phase, statusText, ctaText } = useIconsHero()
   const bareLook = useIcons((s) => s.bareLook)
-  const { mutate, selectPreset, selectSystemDefault, apply, restore, stageVersion, hover } = useIcons.getState()
+  const { mutate, selectPreset, selectSystemDefault, apply, restore, stageVersion, hover, hoverBare } = useIcons.getState()
   const [moreShapes, setMoreShapes] = React.useState(false)
   const [morePresets, setMorePresets] = React.useState(false)
   // Fold-animation hover freeze (owner diagnosis 2026-07-10: hovering a card
@@ -159,6 +159,24 @@ export function IconsPanel() {
       }
     },
     [hover],
+  )
+  // The System Default card's try-on (owner 2026-07-12: hovering it must preview
+  // like every other style card). Shares hoverTimer with tryOn — one pending
+  // hover at a time, same 90ms feel; the preview channel is hoveringBare.
+  const bareTryOn = React.useCallback(
+    (hovering: boolean) => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current)
+      if (hovering) {
+        hoverTimer.current = setTimeout(() => {
+          hoverTimer.current = null
+          hoverBare(true)
+        }, 90)
+      } else {
+        hoverTimer.current = null
+        hoverBare(false)
+      }
+    },
+    [hoverBare],
   )
 
   // Continuous colour drags (picker area / hue strip) fire per pointer move;
@@ -306,9 +324,15 @@ export function IconsPanel() {
               aria-pressed={bareLook}
               title={`${t('Preset_SystemDefault')} · ${t('Preset_SystemDefault_Desc')}`}
               onClick={() => {
+                bareTryOn(false)
                 hover(null)
                 selectSystemDefault()
               }}
+              onMouseEnter={() => {
+                if (foldAnimating.current) return
+                bareTryOn(true)
+              }}
+              onMouseLeave={() => bareTryOn(false)}
               className={cn(
                 'group relative flex w-full flex-col overflow-hidden rounded-[10px] border bg-raised text-left transition-colors duration-150',
                 bareLook ? 'border-coral/50' : 'border-hair-strong',

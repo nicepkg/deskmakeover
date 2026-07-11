@@ -27,9 +27,12 @@ export function IconsMirror() {
   const comparing = useIcons((s) => s.comparing)
   // System Default (A1): a bare look paints every tile original — the same
   // show-original path as hold-to-compare — but persistently. A hover try-on
-  // (hoverConfig) still previews over it, so browsing other presets works.
+  // (hoverConfig) still previews over it, so browsing other presets works; and
+  // hoveringBare is the symmetric try-on for the System Default card itself
+  // (owner 2026-07-12: hovering it must preview like every other style card).
   const bareLook = useIcons((s) => s.bareLook)
   const hoverConfig = useIcons((s) => s.hoverConfig)
+  const hoveringBare = useIcons((s) => s.hoveringBare)
   const renderTick = useIcons((s) => s.renderTick)
   const applyProgress = useIcons((s) => s.applyProgress)
   const canUndo = useIcons((s) => s.canUndo)
@@ -153,7 +156,7 @@ export function IconsMirror() {
                 item={item}
                 grid={grid}
                 config={activeConfig}
-                showOriginal={comparing || (bareLook && !hoverConfig)}
+                showOriginal={comparing || hoveringBare || (bareLook && !hoverConfig)}
                 renderSize={renderSize}
                 renderTick={renderTick}
                 waveKind={waveKind}

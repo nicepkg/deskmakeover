@@ -76,6 +76,10 @@ interface IconsState {
    *  look — config alone previewed the wrong plates, owner bug 2026-07-10);
    *  null = keep the committed ladder. */
   hoverTypeOverrides: TypeOverrides | null
+  /** Hover try-on of the BARE desktop (the System Default card, owner 2026-07-12:
+   *  hovering it must preview like every other style card): paints original icons
+   *  + the native arrow, never commits — symmetric with hoverConfig. */
+  hoveringBare: boolean
   /** Bumped whenever tiles must re-render (source loaded / rescan / zoom settle). */
   renderTick: number
   /** First-paint gate: false until every dispatched tile has landed, so the
@@ -102,6 +106,8 @@ interface IconsState {
   beginGesture: () => void
   endGesture: () => void
   hover: (change: Partial<ConfigDto> | null, typeOverrides?: TypeOverrides) => void
+  /** Bare-desktop hover try-on (System Default card) — repaint only, no commit. */
+  hoverBare: (on: boolean) => void
   selectPreset: (presetId: string) => void
   /** System Default (A1): reset the working design to bare (client-only, no host
    *  write). Highlighted when active; the CTA then restores rather than applies. */
@@ -506,6 +512,7 @@ export const useIcons = create<IconsState>((set, get) => {
     waveStamp: 0,
     hoverConfig: null,
     hoverTypeOverrides: null,
+    hoveringBare: false,
     editingBucket: null,
     renderTick: 0,
     ready: false,
@@ -642,6 +649,10 @@ export const useIcons = create<IconsState>((set, get) => {
         hoverConfig: change ? { ...s.state.config, ...change } : null,
         hoverTypeOverrides: change && typeOverrides !== undefined ? typeOverrides : null,
       })
+    },
+
+    hoverBare: (on) => {
+      if (get().hoveringBare !== on) set({ hoveringBare: on })
     },
 
     selectPreset: (presetId) => {

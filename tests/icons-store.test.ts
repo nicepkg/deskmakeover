@@ -120,6 +120,19 @@ describe('undo granularity', () => {
     expect(useIcons.getState().hoverConfig).toBeNull()
   })
 
+  test('bare hover try-on (System Default card) previews without committing', () => {
+    const s = useIcons.getState()
+    const before = { ...s.state!.config }
+    s.hoverBare(true)
+    // Preview channel only — the working design, bare flag and history are untouched.
+    expect(useIcons.getState().hoveringBare).toBe(true)
+    expect(useIcons.getState().bareLook).toBe(false)
+    expect(useIcons.getState().state!.config).toEqual(before)
+    expect(useIcons.getState().canUndo).toBe(false)
+    s.hoverBare(false)
+    expect(useIcons.getState().hoveringBare).toBe(false)
+  })
+
   test('override set + clear are single steps and round-trip through undo', () => {
     const s = useIcons.getState()
     s.setOverride('a', 'tint', '#3FB6A8')

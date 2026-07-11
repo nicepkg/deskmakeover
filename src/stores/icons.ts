@@ -21,6 +21,32 @@ import { useToasts } from '@/stores/toasts'
 const PERSIST_DEBOUNCE_MS = 400
 const APPLY_CHUNK = 20
 
+// System-Default (bare) draft persistence (A3). The host settings store persists
+// the config/overrides draft ([M6-WIRE]); the bare-look intent is NOT a host
+// concept (no ConfigDto represents it — see selectSystemDefault), so it rides the
+// SAME client layer as the consent flags. Persisting it makes a relaunch resume
+// the last bare selection (with the applied/not-applied status line), and it is
+// the ONLY place a "system default" resume can live — the host can't distinguish
+// "un-styled + spectrum draft" from "un-styled + system-default intent". Guarded
+// so a non-browser / privacy-mode env degrades to session-only, never crashes.
+const BARE_LOOK_KEY = 'dm.icons.bareLook'
+export function readBareLook(): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem(BARE_LOOK_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+export function persistBareLook(value: boolean): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    if (value) localStorage.setItem(BARE_LOOK_KEY, '1')
+    else localStorage.removeItem(BARE_LOOK_KEY)
+  } catch {
+    // Storage unavailable (SSR / privacy mode): the intent stays session-only.
+  }
+}
+
 interface LookSnapshot {
   config: ConfigDto
   overrides: Map<string, { mode: 'keep' | 'tint'; tint: string | null }>
@@ -330,6 +356,10 @@ export const useIcons = create<IconsState>((set, get) => {
   }
 
   const schedulePersist = () => {
+    // The bare-look intent is client-only — write it immediately (not debounced)
+    // so a fast close never drops it. Every look mutator sets bareLook then calls
+    // this, so this one line keeps storage coherent across edits + undo/redo.
+    persistBareLook(get().bareLook)
     if (persistTimer) clearTimeout(persistTimer)
     persistTimer = setTimeout(() => {
       persistTimer = null
@@ -540,6 +570,11 @@ export const useIcons = create<IconsState>((set, get) => {
       }
       // Scan succeeded — adoptScan clears the recovery budget + timer + exhausted.
       adoptScan(result)
+      // A3 resume: rehydrate the last bare-look intent BEFORE first paint, so a
+      // relaunch whose last selection was System Default opens bare (not the
+      // rehydrated config). Only the initial scan resumes it — a manual rescan
+      // must not resurrect a bare intent the user has since left.
+      set({ bareLook: readBareLook() })
       // The first paint is gated by `ready` (loadSources): the desktop stays
       // veiled until EVERY tile has landed, so there is never a wallpaper-with-
       // blank-icons window. That first reveal (once per launch) sweeps the coral
@@ -591,6 +626,7 @@ export const useIcons = create<IconsState>((set, get) => {
         if (undoStack.length > 60) undoStack.shift()
         redoStack = []
         set({ canUndo: true, canRedo: false, bareLook: false })
+        persistBareLook(false) // a slider/wheel drag is a real edit — leave bare
       }
       gestureDepth++
     },
@@ -632,6 +668,7 @@ export const useIcons = create<IconsState>((set, get) => {
       if (!s.state || s.bareLook) return
       pushUndo()
       set({ bareLook: true, hoverConfig: null })
+      persistBareLook(true) // resume the bare selection on the next launch (A3)
     },
 
     setOverride: (id, mode, tint) => {
@@ -920,6 +957,7 @@ export function resetIconsHistoryForTests(): void {
   scanRetryCount = 0
   stateGen = 0
   bridge = call
+  persistBareLook(false) // clear the client bare-look flag so it can't bleed across tests
 }
 
 /** Test seam: inject a controllable bridge (null restores the real `call`). */

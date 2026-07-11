@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { ConfigDto, IconItemDto, IconsStateDto } from '../src/bridge/types'
-import { __setBridgeForTests, effectiveTileConfig, resetIconsHistoryForTests, resumeStatusKey, useIcons } from '../src/stores/icons'
+import { __setBridgeForTests, effectiveTileConfig, persistBareLook, readBareLook, resetIconsHistoryForTests, resumeStatusKey, useIcons } from '../src/stores/icons'
 import { DEFAULT_KIND_POLICY } from '../src/lib/kind-policy'
 
 // Undo granularity + override semantics (spec 06 §3.3/§3.4): one step per
@@ -223,6 +223,28 @@ describe('System Default reset preset (A1)', () => {
     expect(useIcons.getState().bareLook).toBe(false)
     useIcons.getState().redo()
     expect(useIcons.getState().bareLook).toBe(true)
+  })
+
+  // A3: the bare-look intent persists to the client layer so a relaunch resumes
+  // it (readBareLook is what scan() rehydrates from). Injected storage keeps the
+  // test deterministic regardless of the runner's web-storage support.
+  test('the bare-look intent persists to client storage and rehydrates', () => {
+    const store: Record<string, string> = {}
+    ;(globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => (k in store ? store[k] : null),
+      setItem: (k: string, v: string) => { store[k] = v },
+      removeItem: (k: string) => { delete store[k] },
+    }
+    try {
+      persistBareLook(false)
+      expect(readBareLook()).toBe(false)
+      useIcons.getState().selectSystemDefault()
+      expect(readBareLook()).toBe(true) // scan() would resume this on next launch
+      useIcons.getState().mutate({ shape: 'Circle' })
+      expect(readBareLook()).toBe(false) // a real edit clears the resumed intent
+    } finally {
+      delete (globalThis as { localStorage?: unknown }).localStorage
+    }
   })
 })
 

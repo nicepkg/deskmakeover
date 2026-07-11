@@ -19,9 +19,31 @@ use crate::source_facts::{SourceFacts, SOURCE_FACTS_SCHEMA_VERSION};
 /// profiles across a persisted store.
 pub const ANALYSIS_SCHEMA_VERSION: u32 = 1;
 
+/// The per-source cache key. Derived from the raster CONTENT, not the caller's
+/// `source_hash`, so a caller that reuses a hash for different bytes cannot alias one
+/// source's profile / facts onto another — the root fix for the Phase-2 trust-contract
+/// collision (the source-fact `backs` self-heal stays as a belt-and-suspenders second
+/// line). Native keys by the full blake3 `source_digest` (necessarily distinct for
+/// distinct pixels); wasm keeps its monotonic `nextHash` (expanded), so the shipped
+/// .wasm links no blake3 and the preview's collision-free-in-practice behavior is
+/// unchanged.
+type SourceKey = [u8; 32];
+
+#[cfg(not(target_arch = "wasm32"))]
+fn source_key(_caller_hash: u64, raster: &Raster) -> SourceKey {
+    crate::output_cache::source_digest(raster)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn source_key(caller_hash: u64, _raster: &Raster) -> SourceKey {
+    let mut k = [0u8; 32];
+    k[..8].copy_from_slice(&caller_hash.to_le_bytes());
+    k
+}
+
 struct Registered {
     raster: Raster,
-    source_hash: u64,
+    key: SourceKey,
 }
 
 struct CachedProfile {
@@ -37,13 +59,13 @@ struct CachedSourceFacts {
 #[derive(Default)]
 pub struct RenderSession {
     sources: HashMap<String, Registered>,
-    profiles: HashMap<u64, CachedProfile>,
+    profiles: HashMap<SourceKey, CachedProfile>,
     /// Immutable per-source analysis facts (content/solid/foreground bounds,
     /// background, segmentation, transparent-edges) the compose path would otherwise
-    /// recompute every render — keyed by `source_hash + schema`, same as the profile
-    /// (M6 Phase 2). Fed as `Option<&SourceFacts>` into compose; the fast accessors
-    /// read it, the scalar reference recomputes.
-    source_facts: HashMap<u64, CachedSourceFacts>,
+    /// recompute every render — keyed by the content `SourceKey` + schema, same as the
+    /// profile (M6 Phase 2). Fed as `Option<&SourceFacts>` into compose; the fast
+    /// accessors read it, the scalar reference recomputes.
+    source_facts: HashMap<SourceKey, CachedSourceFacts>,
     look: Option<Config>,
     /// Session-owned geometry mask cache — reused across every `render`, so the
     /// dominant `shape_mask` recompute collapses to a warm hit (M6 Phase 1). Under
@@ -56,35 +78,30 @@ impl RenderSession {
         Self::default()
     }
 
-    /// Register (or replace) a decoded 256px source under an id, with a caller-
-    /// supplied content hash of the source bytes for cache keying.
-    ///
-    /// Trust contract: the caller owns `source_hash` correctness. Two different
-    /// rasters sharing a hash collide in these caches (one's profile / source facts
-    /// reused for the other); the app derives the hash from the real source bytes and
-    /// never reuses one for different bytes. The source-fact cache SELF-HEALS the
-    /// dangerous half of a violation — a reused hash across differently sized rasters
-    /// recomputes instead of indexing a stale mask out of bounds (see
-    /// `source_facts::SourceFacts::backs`). A same-size different-content reuse still
-    /// forks; that residual is root-fixed in Phase 4 (content-digest key). Native
-    /// callers must not reuse a `source_hash` for different bytes before then.
+    /// Register (or replace) a decoded 256px source under an id. `source_hash` is the
+    /// caller's advisory content hash; the caches key by a `SourceKey` DERIVED from the
+    /// raster (see [`source_key`]), so on native a caller reusing a hash for different
+    /// bytes cannot alias — the Phase-2 trust-contract collision is root-fixed here.
+    /// The source-fact `backs` self-heal stays as a belt-and-suspenders second line
+    /// (and on wasm, where the key is still the caller hash, it remains load-bearing).
     pub fn register(&mut self, id: impl Into<String>, source_hash: u64, raster: Raster) {
-        self.sources.insert(id.into(), Registered { raster, source_hash });
+        let key = source_key(source_hash, &raster);
+        self.sources.insert(id.into(), Registered { raster, key });
     }
 
     /// The cached profile for a registered source, computing + caching on a miss
     /// or when the analysis schema version has moved.
     pub fn analyze(&mut self, id: &str) -> Option<&IconProfile> {
-        let hash = self.sources.get(id)?.source_hash;
+        let key = self.sources.get(id)?.key;
         let stale = self
             .profiles
-            .get(&hash)
+            .get(&key)
             .map_or(true, |c| c.schema != ANALYSIS_SCHEMA_VERSION);
         if stale {
             let profile = icon_profile(&self.sources.get(id)?.raster);
-            self.profiles.insert(hash, CachedProfile { schema: ANALYSIS_SCHEMA_VERSION, profile });
+            self.profiles.insert(key, CachedProfile { schema: ANALYSIS_SCHEMA_VERSION, profile });
         }
-        self.profiles.get(&hash).map(|c| &c.profile)
+        self.profiles.get(&key).map(|c| &c.profile)
     }
 
     /// The decode-time hue-spread seed (subject rim colour hex) for a source, or
@@ -103,17 +120,17 @@ impl RenderSession {
     /// profile (byte-identical to a fresh analysis).
     /// Compute + cache the immutable source facts for a source (miss or schema move),
     /// mirroring `analyze`. Pure — a cached fact is byte-identical to a recompute.
-    fn ensure_source_facts(&mut self, id: &str, hash: u64) {
+    fn ensure_source_facts(&mut self, id: &str, key: SourceKey) {
         let stale = self
             .source_facts
-            .get(&hash)
+            .get(&key)
             .map_or(true, |c| c.schema != SOURCE_FACTS_SCHEMA_VERSION);
         if !stale {
             return;
         }
         let Some(reg) = self.sources.get(id) else { return };
         let facts = SourceFacts::compute(&reg.raster);
-        self.source_facts.insert(hash, CachedSourceFacts { schema: SOURCE_FACTS_SCHEMA_VERSION, facts });
+        self.source_facts.insert(key, CachedSourceFacts { schema: SOURCE_FACTS_SCHEMA_VERSION, facts });
     }
 
     pub fn render(
@@ -125,13 +142,13 @@ impl RenderSession {
         opts: &RenderOpts,
         diag: &mut ComposeDiagnostics,
     ) -> Option<Raster> {
-        let hash = self.sources.get(id)?.source_hash;
+        let key = self.sources.get(id)?.key;
         self.analyze(id)?; // populate the profile cache
-        self.ensure_source_facts(id, hash); // populate the source-fact cache
+        self.ensure_source_facts(id, key); // populate the source-fact cache
         let config = self.look.as_ref()?; // None until set_look — align with the Option API
         let raster = &self.sources.get(id)?.raster;
-        let profile = self.profiles.get(&hash).map(|c| &c.profile);
-        let facts = self.source_facts.get(&hash).map(|c| &c.facts);
+        let profile = self.profiles.get(&key).map(|c| &c.profile);
+        let facts = self.source_facts.get(&key).map(|c| &c.facts);
         Some(render_tile_cached(raster, config, is_shortcut, show_original, size, opts, diag, profile, &mut self.mask_cache, facts))
     }
 
@@ -370,14 +387,14 @@ mod tests {
         assert_eq!(s.cached_source_facts_count(), 1, "source facts recomputed instead of reused across 8 renders");
     }
 
-    /// Contract-violation self-heal end-to-end (the scenario both Phase-2 reviews
-    /// raised): a caller reuses a `source_hash` across differently sized rasters. The
-    /// first render caches the LARGER raster's facts; re-registering the SAME hash
-    /// with a SMALLER raster and rendering must NOT panic — without the accessor
-    /// self-heal the fast build would index the stale larger segmentation mask into
-    /// the smaller raster in `mono_subject_layer` (OOB). The mono-flat lane reaches
-    /// that layer. The healed output equals a fresh render of the small raster; the
-    /// airtight per-fact proof is `source_facts::accessor_self_heals_on_dim_mismatch`.
+    /// Contract-violation end-to-end (the scenario both Phase-2 reviews raised): a
+    /// caller reuses a `source_hash` across differently sized rasters. Since Phase 4a
+    /// the cache keys by content digest, so the smaller raster is a correct MISS (not a
+    /// stale hit) — it renders fresh and must NOT panic. The self-heal `backs` is now a
+    /// belt-and-suspenders second line that no longer fires here (its airtight per-fact
+    /// proof is `source_facts::accessor_self_heals_on_dim_mismatch`, and it stays
+    /// load-bearing on wasm, which still keys by the caller hash). The output equals a
+    /// fresh render of the small raster.
     #[test]
     fn stale_hash_reuse_self_heals_across_sizes() {
         let mut s = RenderSession::new();
@@ -395,5 +412,43 @@ mod tests {
             free_render_cfg(&small, &mono_flat(), 256),
             "fast self-heal must equal a fresh render of the small raster",
         );
+    }
+
+    /// Root-fix proof (Phase 4a content-digest key): a DIFFERENT raster of the SAME
+    /// size registered under the SAME caller hash must NOT serve the first raster's
+    /// cached facts — the content key differs, so it is a correct miss. This is exactly
+    /// the same-size collision the `backs` self-heal could NOT catch (dimensions match);
+    /// the digest key eliminates it at the root. Would go red under the old u64 keying
+    /// (stale facts aliased, one cache entry).
+    #[test]
+    fn same_hash_different_content_does_not_alias() {
+        let mut s = RenderSession::new();
+        s.set_look(spectrum());
+        s.register("x", 5, solid_source(30, 120, 200)); // 256², hash 5
+        let mut d = ComposeDiagnostics::default();
+        let _ = s.render("x", false, false, 256, &RenderOpts::default(), &mut d).unwrap();
+
+        let b = plated_source(); // 256², DIFFERENT content, SAME hash 5
+        s.register("x", 5, b.clone());
+        let mut d2 = ComposeDiagnostics::default();
+        let after = s.render("x", false, false, 256, &RenderOpts::default(), &mut d2).unwrap();
+        assert_eq!(after.data, free_render(&b, 256), "same-hash different-content aliased stale facts");
+        assert_eq!(s.cached_source_facts_count(), 2, "distinct content must be distinct cache entries");
+    }
+
+    /// The digest key also MERGES: the same raster under two different caller hashes
+    /// shares one cache entry (facts are a pure function of the pixels, so this is
+    /// byte-correct and strictly a reuse win).
+    #[test]
+    fn same_content_different_hash_shares_entry() {
+        let mut s = RenderSession::new();
+        s.set_look(spectrum());
+        let src = plated_source();
+        s.register("p", 100, src.clone());
+        s.register("q", 200, src.clone()); // identical bytes, different caller hash
+        let mut d = ComposeDiagnostics::default();
+        let _ = s.render("p", false, false, 256, &RenderOpts::default(), &mut d).unwrap();
+        let _ = s.render("q", false, false, 256, &RenderOpts::default(), &mut d).unwrap();
+        assert_eq!(s.cached_source_facts_count(), 1, "identical content must share one entry regardless of caller hash");
     }
 }

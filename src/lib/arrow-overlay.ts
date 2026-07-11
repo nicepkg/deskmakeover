@@ -41,9 +41,12 @@ export function showDoneArrowNote(overlay: ArrowOverlay | undefined): boolean {
 /** First-run consent gate (owner disposition #3, review P2-3). `v2` = this
  *  build's consent, which includes the machine-wide arrow disclosure. A legacy
  *  (pre-disclosure) consent grandfathers SINGLE-user machines only; a machine
- *  with more than one active profile must (re)see the non-skippable disclosure. */
+ *  with more than one active profile must (re)see the non-skippable disclosure.
+ *  The single-user exception is EXACTLY one profile: a malformed host count of
+ *  zero or negative is not "known single user" and must fail closed into the
+ *  disclosure (review new-P3), never grandfather. */
 export function consentSatisfied(opts: { v2: boolean; legacy: boolean; profiles: number }): boolean {
-  return opts.v2 || (opts.legacy && opts.profiles <= 1)
+  return opts.v2 || (opts.legacy && opts.profiles === 1)
 }
 
 /** Mirrors the Rust `OverlayOutcome` (dm-domain ports.rs): Applied | Declined |

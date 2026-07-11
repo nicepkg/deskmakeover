@@ -61,6 +61,13 @@ describe('consentSatisfied — multi-user disclosure gate (review P2-3)', () => 
     expect(consentSatisfied({ v2: false, legacy: true, profiles: 2 })).toBe(false)
   })
 
+  test('legacy consent fails CLOSED on a malformed count — zero/negative is not "known single user"', () => {
+    // The single-user exception is EXACTLY 1; a bogus host count must gate, not
+    // grandfather (review new-P3). `<= 1` would have let 0 and -1 slip through.
+    expect(consentSatisfied({ v2: false, legacy: true, profiles: 0 })).toBe(false)
+    expect(consentSatisfied({ v2: false, legacy: true, profiles: -1 })).toBe(false)
+  })
+
   test('never consented → always gated', () => {
     expect(consentSatisfied({ v2: false, legacy: false, profiles: 1 })).toBe(false)
     expect(consentSatisfied({ v2: false, legacy: false, profiles: 3 })).toBe(false)

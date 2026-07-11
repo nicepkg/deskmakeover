@@ -11,7 +11,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 
 const RESETS: { label: string; keys: string[] }[] = [
   { label: 'Welcome gate (first run)', keys: ['dm.welcome.done'] },
-  { label: 'Apply consent sheet', keys: ['dm.consent.icons'] },
+  // Clear BOTH consent bits: legacy (`dm.consent.icons`) and the v2 machine-wide
+  // arrow disclosure (`dm.consent.icons.v2`). Missing v2 here left the consent
+  // sheet un-replayable once v2 was set (review new-P3).
+  { label: 'Apply consent sheet', keys: ['dm.consent.icons', 'dm.consent.icons.v2'] },
   { label: 'Changelog seen flag', keys: ['dm.changelog.seen'] },
 ]
 // NOTE: the reveal wand + per-tile bloom now replay on EVERY launch, and the

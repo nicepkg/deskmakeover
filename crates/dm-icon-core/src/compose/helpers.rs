@@ -2,10 +2,8 @@
 //! `mod.rs` to hold the 500-line cap. Pure layout/draw primitives consumed by
 //! both `compose_tile` and the Field lane.
 
-use crate::analysis::{
-    bounds_h, bounds_w, color_distance, find_content_bounds, foreground_auto, max_scale_auto,
-    try_detect_background, ContentBounds,
-};
+use crate::analysis::{bounds_h, bounds_w, color_distance, find_content_bounds, max_scale_auto, ContentBounds};
+use crate::source_facts::{content_bounds, detected_background, foreground, SourceFacts};
 use crate::config::IconShape;
 use crate::js_math::js_round;
 use crate::raster::{Raster, Rgba};
@@ -94,13 +92,14 @@ pub(crate) fn compose_from_plate(
     shape: IconShape,
     bg: Rgba,
     box_cap: Option<usize>,
+    source_facts: Option<&SourceFacts>,
 ) {
     fill_region(content, size, pad, card_size, bg.r, bg.g, bg.b);
-    let plate = find_content_bounds(artwork);
+    let plate = content_bounds(source_facts, artwork);
     let plate_min = 1.max(bounds_w(plate).min(bounds_h(plate)));
-    let fg = foreground_auto(artwork);
+    let fg = foreground(source_facts, artwork);
 
-    let own = try_detect_background(artwork);
+    let own = detected_background(source_facts, artwork);
     let swapped = match own {
         Some(own) if color_distance(own, Rgba { a: 255, ..bg }) > BG_SWAP_MIN_SHIFT => {
             Some(backdrop_swapped(artwork, own, bg))
@@ -124,7 +123,7 @@ pub(crate) fn compose_from_plate(
         return;
     }
     let cap = box_cap.unwrap_or_else(|| content_box(shape, card_size));
-    draw_centred(source, find_content_bounds(artwork), content, size, pad, card_size, cap);
+    draw_centred(source, content_bounds(source_facts, artwork), content, size, pad, card_size, cap);
 }
 
 /// The artwork with backdrop pixels swapped to the new plate colour

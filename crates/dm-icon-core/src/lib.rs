@@ -32,4 +32,5 @@ pub mod raster;
 pub mod render_session;
 pub mod sampling;
 pub mod segment;
+pub mod source_facts;
 pub mod shapes;

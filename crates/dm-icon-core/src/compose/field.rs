@@ -7,14 +7,14 @@ use super::{
     compose_from_plate, composite_over, draw_centred, field_content_box, fill_region,
     ComposeDiagnostics, ComposeFieldLane, RenderOpts,
 };
-use crate::analysis::{find_content_bounds, ContentBounds};
+use crate::analysis::ContentBounds;
 use crate::color::{field_shadow_tone, neutral_contrast_tone, themed_contrast_tone};
 use crate::config::{Config, IconShape};
 use crate::js_math::{clamp_u8_int, js_round};
 use crate::profile::{icon_profile, IconProfile, IconProfileKind};
 use crate::raster::{from_rgb_int, over_at, Raster, Rgba};
 use crate::sampling::draw_scaled;
-use crate::segment::segment_subject;
+use crate::source_facts::{content_bounds, segmentation, SourceFacts};
 
 /// Shadow modes (compose.ts `SHADOW_MODES`). `Halo` mirrors the frozen oracle's
 /// defined-but-unused pale-art mode.
@@ -51,6 +51,7 @@ pub(crate) fn compose_field(
     opts: &RenderOpts,
     diag: &mut ComposeDiagnostics,
     profile_override: Option<&IconProfile>,
+    source_facts: Option<&SourceFacts>,
 ) {
     let band = config.plate_band;
     let box_ = field_content_box(shape, card_size);
@@ -78,12 +79,12 @@ pub(crate) fn compose_field(
     if let Some(user_plate) = user_plate {
         if profile.kind == IconProfileKind::OwnBoard || !profile.transparent_edges {
             diag.field_lane = Some(ComposeFieldLane::UserPlateBoard);
-            compose_from_plate(artwork, content, size, pad, card_size, shape, user_plate, Some(box_));
+            compose_from_plate(artwork, content, size, pad, card_size, shape, user_plate, Some(box_), source_facts);
             return;
         }
         diag.field_lane = Some(ComposeFieldLane::UserPlateBare);
         fill_region(content, size, pad, card_size, user_plate.r, user_plate.g, user_plate.b);
-        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, user_plate, ShadowMode::Dock);
+        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, user_plate, ShadowMode::Dock, source_facts);
         return;
     }
 
@@ -91,7 +92,7 @@ pub(crate) fn compose_field(
     if profile.kind == IconProfileKind::OwnBoard {
         if let Some(bg) = profile.background {
             diag.field_lane = Some(ComposeFieldLane::OwnBoard);
-            compose_from_plate(artwork, content, size, pad, card_size, shape, bg, Some(box_));
+            compose_from_plate(artwork, content, size, pad, card_size, shape, bg, Some(box_), source_facts);
             return;
         }
     }
@@ -109,11 +110,11 @@ pub(crate) fn compose_field(
 
     if profile.transparent_edges {
         diag.field_lane = Some(ComposeFieldLane::DerivedBareShadow);
-        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, plate, ShadowMode::Dock);
+        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, plate, ShadowMode::Dock, source_facts);
         return;
     }
     diag.field_lane = Some(ComposeFieldLane::DerivedPlate);
-    compose_from_plate(artwork, content, size, pad, card_size, shape, plate, Some(box_));
+    compose_from_plate(artwork, content, size, pad, card_size, shape, plate, Some(box_), source_facts);
 }
 
 /// The artwork drawn ORIGINAL over a soft silhouette shadow (compose.ts
@@ -129,12 +130,13 @@ pub(crate) fn draw_bare_with_shadow(
     box_: usize,
     plate: Rgba,
     mode: ShadowMode,
+    source_facts: Option<&SourceFacts>,
 ) {
     let spec = shadow_spec(mode);
     let mut layer = Raster::new(size, size);
     let mut alpha = vec![0.0f32; size * size];
     let mut tmp = vec![0.0f32; size * size];
-    draw_centred(artwork, find_content_bounds(artwork), &mut layer, size, pad, card_size, box_);
+    draw_centred(artwork, content_bounds(source_facts, artwork), &mut layer, size, pad, card_size, box_);
 
     for (i, a) in alpha.iter_mut().enumerate() {
         *a = (layer.data[i * 4 + 3] as f64 / 255.0) as f32;
@@ -207,8 +209,9 @@ fn box_blur_in_place(field: &mut [f32], tmp: &mut [f32], w: usize, h: usize, rad
 /// The segmented subject as its own layer (compose.ts `monoSubjectLayer`).
 /// `flat_tint` recolours the subject to one flat colour; None keeps its pixels.
 /// Returns None when segmentation is degenerate (< 2% of the canvas).
-pub(crate) fn mono_subject_layer(artwork: &Raster, flat_tint: Option<u32>) -> Option<Raster> {
-    let mask = segment_subject(artwork).mask;
+pub(crate) fn mono_subject_layer(artwork: &Raster, flat_tint: Option<u32>, source_facts: Option<&SourceFacts>) -> Option<Raster> {
+    let seg = segmentation(source_facts, artwork);
+    let mask = &seg.mask;
     let solid: usize = mask.iter().map(|&v| v as usize).sum();
     if (solid as f64) < mask.len() as f64 * 0.02 {
         return None;

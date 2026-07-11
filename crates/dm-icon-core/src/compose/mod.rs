@@ -9,10 +9,7 @@ mod helpers;
 
 pub(crate) use helpers::*;
 
-use crate::analysis::{
-    bounds_h, bounds_w, find_content_bounds, has_transparent_edges, matches_shape, solid_bounds,
-    try_detect_background, ContentBounds,
-};
+use crate::analysis::{bounds_h, bounds_w, find_content_bounds, matches_shape, ContentBounds};
 use crate::color::luminance;
 use std::sync::Arc;
 
@@ -22,9 +19,12 @@ use crate::marks::{draw_classic_arrow, resolve_mark, MarkContext, Placement};
 use crate::mask_cache::{MaskCache, MaskKey};
 use crate::mono::{mono_map_adaptive, mono_ramp, transform_pixel_in_place};
 use crate::profile::IconProfile;
+use crate::source_facts::{
+    content_bounds, detected_background, segmentation, solid_bounds_of, transparent_edges,
+    SourceFacts,
+};
 use crate::raster::{clip_to_mask, from_rgb_int, over_at, shape_mask, Raster, WHITE};
 use crate::sampling::{draw_scaled, sample_bilinear};
-use crate::segment::segment_subject;
 
 /// Per-icon inputs resolved OUTSIDE the tile (compose.ts `RenderOpts`).
 /// `field_seed` is the hue-spread-adjusted seed already parsed via `hexToInt`
@@ -131,7 +131,7 @@ pub fn render_tile(
     diag: &mut ComposeDiagnostics,
 ) -> Raster {
     let mut mask_cache = MaskCache::new();
-    render_tile_cached(artwork, config, is_shortcut, show_original, size, opts, diag, None, &mut mask_cache)
+    render_tile_cached(artwork, config, is_shortcut, show_original, size, opts, diag, None, &mut mask_cache, None)
 }
 
 /// `render_tile` with an optional RenderSession-cached profile (same raster →
@@ -148,6 +148,7 @@ pub fn render_tile_cached(
     diag: &mut ComposeDiagnostics,
     profile: Option<&IconProfile>,
     mask_cache: &mut MaskCache,
+    source_facts: Option<&SourceFacts>,
 ) -> Raster {
     assert!(size > 0, "size must be positive");
     let tint = config.tint;
@@ -211,7 +212,7 @@ pub fn render_tile_cached(
     };
 
     let (mut tile, pass_through) =
-        compose_tile(artwork, size, pad, card_size, shape, config, tint, opts, diag, profile);
+        compose_tile(artwork, size, pad, card_size, shape, config, tint, opts, diag, profile, source_facts);
     diag.pass_through = pass_through;
 
     if !pass_through || carves {
@@ -306,11 +307,12 @@ fn compose_tile(
     opts: &RenderOpts,
     diag: &mut ComposeDiagnostics,
     profile: Option<&IconProfile>,
+    source_facts: Option<&SourceFacts>,
 ) -> (Raster, bool) {
     let mut content = Raster::new(size, size);
 
-    let content_b = find_content_bounds(artwork);
-    if solid_bounds(artwork).is_none() && bounds_w(content_b) <= 1 && bounds_h(content_b) <= 1 {
+    let content_b = content_bounds(source_facts, artwork);
+    if solid_bounds_of(source_facts, artwork).is_none() && bounds_w(content_b) <= 1 && bounds_h(content_b) <= 1 {
         diag.lane = ComposeLane::Empty;
         return (content, true);
     }
@@ -321,7 +323,7 @@ fn compose_tile(
         && shape != IconShape::None
     {
         diag.lane = ComposeLane::DerivedField;
-        field::compose_field(artwork, &mut content, size, pad, card_size, shape, config, opts, diag, profile);
+        field::compose_field(artwork, &mut content, size, pad, card_size, shape, config, opts, diag, profile, source_facts);
         return (content, false);
     }
 
@@ -335,7 +337,7 @@ fn compose_tile(
         && (config.mono_style == MonoStyle::Flat || plate_override.is_some())
     {
         let flat = if config.mono_style == MonoStyle::Flat { Some(tint) } else { None };
-        if let Some(mut layer) = field::mono_subject_layer(artwork, flat) {
+        if let Some(mut layer) = field::mono_subject_layer(artwork, flat, source_facts) {
             diag.lane = ComposeLane::LayeredMono;
             if config.mono_style != MonoStyle::Flat {
                 mono_map_adaptive(&mut layer, tint);
@@ -350,7 +352,7 @@ fn compose_tile(
 
     if shape == IconShape::None {
         diag.lane = ComposeLane::PassthroughNone;
-        let free = find_content_bounds(artwork);
+        let free = content_bounds(source_facts, artwork);
         let (fw, fh) = fit(bounds_w(free), bounds_h(free), card_size);
         draw_scaled(
             artwork, free, &mut content, size,
@@ -359,9 +361,9 @@ fn compose_tile(
             fw, fh,
         );
         pass_through = true;
-    } else if matches_shape(artwork, shape) && solid_bounds(artwork).is_some() {
+    } else if matches_shape(artwork, shape) && solid_bounds_of(source_facts, artwork).is_some() {
         diag.lane = ComposeLane::PassthroughMatch;
-        let solid = solid_bounds(artwork).unwrap();
+        let solid = solid_bounds_of(source_facts, artwork).unwrap();
         let (w, h) = fit(bounds_w(solid), bounds_h(solid), card_size);
         draw_scaled(
             artwork, solid, &mut content, size,
@@ -371,15 +373,15 @@ fn compose_tile(
         );
         pass_through = true;
     } else {
-        let bg = try_detect_background(artwork).or_else(|| segment_subject(artwork).field);
+        let bg = detected_background(source_facts, artwork).or_else(|| segmentation(source_facts, artwork).field);
         if let Some(bg) = bg {
             diag.lane = ComposeLane::PlateDetect;
-            compose_from_plate(artwork, &mut content, size, pad, card_size, shape, plate.unwrap_or(bg), None);
-        } else if has_transparent_edges(artwork) {
+            compose_from_plate(artwork, &mut content, size, pad, card_size, shape, plate.unwrap_or(bg), None, source_facts);
+        } else if transparent_edges(source_facts, artwork) {
             diag.lane = ComposeLane::BareWhite;
             let fill = plate.unwrap_or(WHITE);
             fill_region(&mut content, size, pad, card_size, fill.r, fill.g, fill.b);
-            draw_centred(artwork, find_content_bounds(artwork), &mut content, size, pad, card_size, content_box(shape, card_size));
+            draw_centred(artwork, content_bounds(source_facts, artwork), &mut content, size, pad, card_size, content_box(shape, card_size));
         } else if inscribe_shapes(shape) {
             diag.lane = ComposeLane::InscribeWhite;
             let fill = plate.unwrap_or(WHITE);
@@ -449,7 +451,7 @@ pub fn render_slice_tile(artwork: &Raster, size: usize) -> Raster {
     let mut tile = Raster::new(size, size);
     let box_size = field_content_box(IconShape::Circle, card_size);
     fill_region(&mut tile, size, 0, card_size, WHITE.r, WHITE.g, WHITE.b);
-    field::draw_bare_with_shadow(artwork, &mut tile, size, 0, card_size, box_size, WHITE, field::ShadowMode::Dock);
+    field::draw_bare_with_shadow(artwork, &mut tile, size, 0, card_size, box_size, WHITE, field::ShadowMode::Dock, None);
     let card_mask = shape_mask(IconShape::Circle, size, card_size, 0.0, 0.0);
     clip_to_mask(&mut tile, &card_mask);
     let mut target = Raster::new(size, size);

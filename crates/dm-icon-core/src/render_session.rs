@@ -60,8 +60,14 @@ impl RenderSession {
     /// supplied content hash of the source bytes for cache keying.
     ///
     /// Trust contract: the caller owns `source_hash` correctness. Two different
-    /// rasters sharing a hash collide in the profile cache (one's profile is reused
-    /// for the other); the app derives it from the real source bytes.
+    /// rasters sharing a hash collide in these caches (one's profile / source facts
+    /// reused for the other); the app derives the hash from the real source bytes and
+    /// never reuses one for different bytes. The source-fact cache SELF-HEALS the
+    /// dangerous half of a violation — a reused hash across differently sized rasters
+    /// recomputes instead of indexing a stale mask out of bounds (see
+    /// `source_facts::SourceFacts::backs`). A same-size different-content reuse still
+    /// forks; that residual is root-fixed in Phase 4 (content-digest key). Native
+    /// callers must not reuse a `source_hash` for different bytes before then.
     pub fn register(&mut self, id: impl Into<String>, source_hash: u64, raster: Raster) {
         self.sources.insert(id.into(), Registered { raster, source_hash });
     }
@@ -256,9 +262,36 @@ mod tests {
         r
     }
 
-    fn free_render(src: &Raster, size: usize) -> Vec<u8> {
+    fn mono_flat() -> Config {
+        // The mono-flat lane reaches `mono_subject_layer` — the segmentation-mask
+        // consumer where a stale larger mask would index a smaller raster OOB.
+        Config { subject: Subject::Mono, mono_style: MonoStyle::Flat, ..spectrum() }
+    }
+
+    /// A centred opaque blob on a transparent field at an arbitrary size — a clear,
+    /// non-degenerate subject, so the mono-subject layer proceeds past its 2% guard.
+    fn floating_sized(n: usize) -> Raster {
+        let mut r = Raster::new(n, n);
+        let (lo, hi) = (n / 4, n - n / 4);
+        for y in lo..hi {
+            for x in lo..hi {
+                let i4 = (y * n + x) * 4;
+                r.data[i4] = 200;
+                r.data[i4 + 1] = 60;
+                r.data[i4 + 2] = 40;
+                r.data[i4 + 3] = 255;
+            }
+        }
+        r
+    }
+
+    fn free_render_cfg(src: &Raster, cfg: &Config, size: usize) -> Vec<u8> {
         let mut d = ComposeDiagnostics::default();
-        crate::compose::render_tile(src, &spectrum(), false, false, size, &RenderOpts::default(), &mut d).data
+        crate::compose::render_tile(src, cfg, false, false, size, &RenderOpts::default(), &mut d).data
+    }
+
+    fn free_render(src: &Raster, size: usize) -> Vec<u8> {
+        free_render_cfg(src, &spectrum(), size)
     }
 
     /// Cache-off/on differential: rendering through the session (source facts cached)
@@ -335,5 +368,32 @@ mod tests {
             let _ = s.render("a", false, false, size, &RenderOpts::default(), &mut d).unwrap();
         }
         assert_eq!(s.cached_source_facts_count(), 1, "source facts recomputed instead of reused across 8 renders");
+    }
+
+    /// Contract-violation self-heal end-to-end (the scenario both Phase-2 reviews
+    /// raised): a caller reuses a `source_hash` across differently sized rasters. The
+    /// first render caches the LARGER raster's facts; re-registering the SAME hash
+    /// with a SMALLER raster and rendering must NOT panic — without the accessor
+    /// self-heal the fast build would index the stale larger segmentation mask into
+    /// the smaller raster in `mono_subject_layer` (OOB). The mono-flat lane reaches
+    /// that layer. The healed output equals a fresh render of the small raster; the
+    /// airtight per-fact proof is `source_facts::accessor_self_heals_on_dim_mismatch`.
+    #[test]
+    fn stale_hash_reuse_self_heals_across_sizes() {
+        let mut s = RenderSession::new();
+        s.set_look(mono_flat());
+        s.register("a", 7, floating_sized(512));
+        let mut d = ComposeDiagnostics::default();
+        let _ = s.render("a", false, false, 256, &RenderOpts::default(), &mut d).unwrap(); // caches 512² facts
+
+        let small = floating_sized(128);
+        s.register("a", 7, small.clone()); // SAME hash, smaller raster — the violation
+        let mut d2 = ComposeDiagnostics::default();
+        let after = s.render("a", false, false, 256, &RenderOpts::default(), &mut d2).unwrap(); // must not panic
+        assert_eq!(
+            after.data,
+            free_render_cfg(&small, &mono_flat(), 256),
+            "fast self-heal must equal a fresh render of the small raster",
+        );
     }
 }

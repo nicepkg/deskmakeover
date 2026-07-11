@@ -13,6 +13,18 @@
 //! are gated on the `fast` feature — `fast` returns the cached fact, the default
 //! (scalar) build recomputes it, and the four-way 1487-cell cert diffs the two.
 //!
+//! Cache key + trust contract: `RenderSession` keys these by the caller-supplied
+//! `source_hash + schema`. If a caller REUSES a hash across two different rasters (a
+//! contract violation — the real callers don't; see `RenderSession::register`), the
+//! accessors SELF-HEAL: each serves the cached fact only when it backs a raster of
+//! the current dimensions (`SourceFacts::backs`), otherwise it recomputes. So a
+//! same-hash raster of a DIFFERENT size degrades fast to the scalar path (no OOB from
+//! a stale larger mask, no silent fork). A same-SIZE different-CONTENT reuse still
+//! forks (dimensions match, content differs) — that residual is the documented
+//! trust-contract cost, root-fixed in Phase 4 when the key becomes a content digest
+//! (BLAKE3 of the source bytes → different image ⇒ different key). Until then, native
+//! callers must not reuse a `source_hash` for different bytes.
+//!
 //! Deliberately EXCLUDED (not pure functions of the source alone — honest
 //! annotation, cf. Phase 1's None-shape stamp):
 //!   • `matches_shape(c, shape)` / `max_scale_inside(c, shape)` — depend on the
@@ -42,6 +54,10 @@ pub const SOURCE_FACTS_SCHEMA_VERSION: u32 = 1;
 /// build the accessors recompute and never touch them.
 #[cfg_attr(not(feature = "fast"), allow(dead_code))]
 pub struct SourceFacts {
+    /// Dimensions of the raster these facts were computed for. The accessors serve a
+    /// cached fact only when the raster they are asked about matches — otherwise they
+    /// self-heal (recompute). See `backs`.
+    raster_dims: (usize, usize),
     content_bounds: ContentBounds,
     solid_bounds: Option<ContentBounds>,
     detected_background: Option<Rgba>,
@@ -54,6 +70,7 @@ impl SourceFacts {
     /// Compute every source fact once. Pure — depends only on `c`'s pixels.
     pub fn compute(c: &Raster) -> Self {
         Self {
+            raster_dims: (c.width, c.height),
             content_bounds: find_content_bounds(c),
             solid_bounds: solid_bounds(c),
             detected_background: try_detect_background(c),
@@ -62,18 +79,33 @@ impl SourceFacts {
             transparent_edges: has_transparent_edges(c),
         }
     }
+
+    /// True when these facts back a raster of `c`'s dimensions. When false the caller
+    /// reused a `source_hash` across differently sized rasters — a documented trust-
+    /// contract violation (see `RenderSession::register`) — and the accessors below
+    /// self-heal (recompute) instead of serving stale facts. This is the guard that
+    /// keeps the fast build from indexing a stale, larger cached segmentation mask
+    /// into a smaller raster in `mono_subject_layer` (an OOB panic; scalar already
+    /// recomputes, so this realigns fast with the scalar reference).
+    #[cfg(feature = "fast")]
+    fn backs(&self, c: &Raster) -> bool {
+        self.raster_dims == (c.width, c.height)
+    }
 }
 
 // ── fast-gated accessors ────────────────────────────────────────────────────────
-// `fast` returns the cached fact; the default (scalar) build recomputes it — the
-// determinism reference the cert diffs the `fast` path against. `match sf { .. }`
-// keeps `sf` "used" as the scrutinee under scalar (no unused-arg warning), while the
-// cached arm is compiled out.
+// `fast` returns the cached fact WHEN it backs `c` (same dimensions); otherwise — and
+// always under the default (scalar) build — it recomputes, the determinism reference
+// the cert diffs the `fast` path against. The `if sf.backs(c)` guard self-heals a
+// reused-hash contract violation (see `SourceFacts::backs`): a stale fact for a
+// differently sized raster degrades to a recompute rather than a silent fork or OOB.
+// `match sf { .. }` keeps `sf` "used" as the scrutinee under scalar (no unused-arg
+// warning), while the cached arm is compiled out.
 
 pub(crate) fn content_bounds(sf: Option<&SourceFacts>, c: &Raster) -> ContentBounds {
     match sf {
         #[cfg(feature = "fast")]
-        Some(sf) => sf.content_bounds,
+        Some(sf) if sf.backs(c) => sf.content_bounds,
         _ => find_content_bounds(c),
     }
 }
@@ -81,7 +113,7 @@ pub(crate) fn content_bounds(sf: Option<&SourceFacts>, c: &Raster) -> ContentBou
 pub(crate) fn solid_bounds_of(sf: Option<&SourceFacts>, c: &Raster) -> Option<ContentBounds> {
     match sf {
         #[cfg(feature = "fast")]
-        Some(sf) => sf.solid_bounds,
+        Some(sf) if sf.backs(c) => sf.solid_bounds,
         _ => solid_bounds(c),
     }
 }
@@ -89,7 +121,7 @@ pub(crate) fn solid_bounds_of(sf: Option<&SourceFacts>, c: &Raster) -> Option<Co
 pub(crate) fn detected_background(sf: Option<&SourceFacts>, c: &Raster) -> Option<Rgba> {
     match sf {
         #[cfg(feature = "fast")]
-        Some(sf) => sf.detected_background,
+        Some(sf) if sf.backs(c) => sf.detected_background,
         _ => try_detect_background(c),
     }
 }
@@ -97,7 +129,7 @@ pub(crate) fn detected_background(sf: Option<&SourceFacts>, c: &Raster) -> Optio
 pub(crate) fn foreground(sf: Option<&SourceFacts>, c: &Raster) -> Option<ContentBounds> {
     match sf {
         #[cfg(feature = "fast")]
-        Some(sf) => sf.foreground,
+        Some(sf) if sf.backs(c) => sf.foreground,
         _ => foreground_auto(c),
     }
 }
@@ -105,17 +137,20 @@ pub(crate) fn foreground(sf: Option<&SourceFacts>, c: &Raster) -> Option<Content
 pub(crate) fn transparent_edges(sf: Option<&SourceFacts>, c: &Raster) -> bool {
     match sf {
         #[cfg(feature = "fast")]
-        Some(sf) => sf.transparent_edges,
+        Some(sf) if sf.backs(c) => sf.transparent_edges,
         _ => has_transparent_edges(c),
     }
 }
 
-/// The cached segmentation (`.mask` / `.field`), or a fresh one under scalar. Returns
-/// an `Arc` so the mask is shared read-only without a 64 KB clone on the hot path.
+/// The cached segmentation (`.mask` / `.field`), or a fresh one under scalar / on a
+/// dimension-mismatch self-heal. Returns an `Arc` so the mask is shared read-only
+/// without a 64 KB clone on the hot path. The `backs(c)` guard is load-bearing here:
+/// the returned mask is always sized to `c`, so `mono_subject_layer` never indexes a
+/// stale larger mask into a smaller raster.
 pub(crate) fn segmentation(sf: Option<&SourceFacts>, c: &Raster) -> Arc<Segmentation> {
     match sf {
         #[cfg(feature = "fast")]
-        Some(sf) => Arc::clone(&sf.segmentation),
+        Some(sf) if sf.backs(c) => Arc::clone(&sf.segmentation),
         _ => Arc::new(segment_subject(c)),
     }
 }
@@ -196,6 +231,26 @@ mod facts_cert {
         assert_eq!(on.field, off.field);
         // Sanity: the plate fixture actually exercises non-trivial facts.
         assert!(bounds_w(content_bounds(Some(&f), &c)) > 0 && bounds_h(content_bounds(Some(&f), &c)) > 0);
+    }
+
+    /// Self-heal on a reused-hash contract violation: facts computed for one raster,
+    /// served for a DIFFERENTLY SIZED raster, must recompute (== the `None` path) —
+    /// never serve stale facts. The load-bearing case is `segmentation`: the served
+    /// mask must be sized to the CURRENT raster, so `mono_subject_layer` can't index a
+    /// stale larger mask into a smaller raster (a fast-only OOB). This is the fact-
+    /// level proof of the scenario the session-level test drives end-to-end.
+    #[test]
+    fn accessor_self_heals_on_dim_mismatch() {
+        let stale = SourceFacts::compute(&plated()); // backs a 64×64 raster
+        let small = Raster::new(32, 32); // different size → `stale` must not be served
+        assert_eq!(content_bounds(Some(&stale), &small), content_bounds(None, &small));
+        assert_eq!(solid_bounds_of(Some(&stale), &small), solid_bounds_of(None, &small));
+        assert_eq!(detected_background(Some(&stale), &small), detected_background(None, &small));
+        assert_eq!(foreground(Some(&stale), &small), foreground(None, &small));
+        assert_eq!(transparent_edges(Some(&stale), &small), transparent_edges(None, &small));
+        let healed = segmentation(Some(&stale), &small);
+        assert_eq!(healed.mask, segmentation(None, &small).mask);
+        assert_eq!(healed.mask.len(), small.width * small.height, "healed mask must fit the CURRENT raster");
     }
 }
 

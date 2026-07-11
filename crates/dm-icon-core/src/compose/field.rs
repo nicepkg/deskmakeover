@@ -212,6 +212,9 @@ fn box_blur_in_place(field: &mut [f32], tmp: &mut [f32], w: usize, h: usize, rad
 pub(crate) fn mono_subject_layer(artwork: &Raster, flat_tint: Option<u32>, source_facts: Option<&SourceFacts>) -> Option<Raster> {
     let seg = segmentation(source_facts, artwork);
     let mask = &seg.mask;
+    // Second line behind the accessor's self-heal: the mask indexes `artwork` pixel-
+    // for-pixel below, so a mask sized to a different (stale) raster would read OOB.
+    debug_assert_eq!(mask.len(), artwork.width * artwork.height, "segmentation mask must match the current artwork");
     let solid: usize = mask.iter().map(|&v| v as usize).sum();
     if (solid as f64) < mask.len() as f64 * 0.02 {
         return None;

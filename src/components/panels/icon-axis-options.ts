@@ -1,7 +1,7 @@
 import type { IconShape } from '@/bridge/types'
 import type { StringKey } from '@/lib/i18n'
-import { monoRamp } from '@/icon-compositor/color'
-import { hexToInt } from '@/icon-compositor/raster'
+import { monoRamp } from '@/icon-wasm/mono-ramp'
+import { hexToInt } from '@/icon-wasm/config-abi'
 
 // Shared axis option catalogs — one source for the global Shape section, the
 // per-type accordion and the shortcut uniform-shape picker (ADR-0017; keeping

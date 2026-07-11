@@ -82,11 +82,15 @@ function sceneFor(monitor: LayoutMonitor): string {
   return SECONDARY_WALLPAPERS[monitor.monitorId] ?? '/real-icons/wallpapers/wallpaper-gamer.jpg'
 }
 
+// The mock wallpapers (public/real-icons/wallpapers/*) are all 3840×2400. Report
+// their TRUE dims — NOT the monitor bounds — so the compositor cover-crops to each
+// screen's aspect; reporting the bounds made a landscape image stretch vertically
+// onto a portrait monitor. [WINDOWS-VERIFY] the real host reports each image's true
+// decoded dims (WIC), which likewise must be the image's, not the monitor's.
+const MOCK_WALLPAPER_DIMS = { w: 3840, h: 2400 }
 function sourceFor(monitor: LayoutMonitor): WallpaperSourceDto | null {
   if (!monitor.hasReadableSource) return null
-  // [WINDOWS-VERIFY] real source dims come from the WIC decode; the mock uses the
-  // monitor bounds (the compositor cover-crops either way).
-  return { url: sceneFor(monitor), width: monitor.bounds.w, height: monitor.bounds.h }
+  return { url: sceneFor(monitor), width: MOCK_WALLPAPER_DIMS.w, height: MOCK_WALLPAPER_DIMS.h }
 }
 
 function physicalMonitors(): { monitors: PhysicalMonitor[]; position: WallpaperPosition } {

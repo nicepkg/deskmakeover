@@ -36,6 +36,28 @@ export interface ZoneMeta {
   reserveFirstRow: boolean
 }
 
+/** Cover-fit a sprite over the screen: fill it while PRESERVING the source's
+ *  aspect ratio, centred, letting the stage clip the overflow (Windows "Fill"
+ *  position). Replaces the old stretch-to-fit that squashed a landscape wallpaper
+ *  vertically onto a portrait monitor. `srcW/srcH` are the REAL source image dims. */
+function coverFit(sprite: Sprite, srcW: number, srcH: number, scrW: number, scrH: number): void {
+  const texA = srcW > 0 && srcH > 0 ? srcW / srcH : scrW / scrH
+  const scrA = scrW / scrH
+  if (texA >= scrA) {
+    // source is wider than the screen → match height, overflow + centre width
+    sprite.height = scrH
+    sprite.width = scrH * texA
+    sprite.x = (scrW - sprite.width) / 2
+    sprite.y = 0
+  } else {
+    // source is taller → match width, overflow + centre height
+    sprite.width = scrW
+    sprite.height = scrW / texA
+    sprite.x = 0
+    sprite.y = (scrH - sprite.height) / 2
+  }
+}
+
 export class WallpaperCompositor {
   private app!: Application
   private grid!: WallpaperGridInfoDto
@@ -88,8 +110,7 @@ export class WallpaperCompositor {
     c.setSource(source)
 
     c.sourceSprite = new Sprite(c.sourceTexture)
-    c.sourceSprite.width = grid.screenWidth
-    c.sourceSprite.height = grid.screenHeight
+    coverFit(c.sourceSprite, source.width, source.height, grid.screenWidth, grid.screenHeight)
     c.claritySprite = new Sprite(Texture.EMPTY)
     c.zonesLayer = new Container()
     c.app.stage.addChild(c.sourceSprite, c.claritySprite, c.zonesLayer)
@@ -115,8 +136,7 @@ export class WallpaperCompositor {
     this.samples = buildSampleBuffer(img.data, sw, sh)
     if (this.sourceSprite) {
       this.sourceSprite.texture = this.sourceTexture
-      this.sourceSprite.width = this.grid.screenWidth
-      this.sourceSprite.height = this.grid.screenHeight
+      coverFit(this.sourceSprite, source.width, source.height, this.grid.screenWidth, this.grid.screenHeight)
       for (const node of this.nodes.values()) node.setSourceTexture(this.sourceTexture)
       this.clarityKey = ''
       this.invalidate()

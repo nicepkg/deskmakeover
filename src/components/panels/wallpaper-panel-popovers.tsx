@@ -224,7 +224,10 @@ export function PresetPopover({
   const t = useT()
   const [open, setOpen] = React.useState(false)
   const presets = presetsForOrientation(orientation)
-  const thumbAspect = orientation === 'portrait' ? 'aspect-[9/16]' : 'aspect-video'
+  const isPortrait = orientation === 'portrait'
+  // Portrait thumbs: true 9:16 but height-capped + centred so the popover stays
+  // compact (owner 2026-07-12: 弹窗高度没适配好).
+  const thumbClass = isPortrait ? 'aspect-[9/16] h-[128px] mx-auto' : 'aspect-video w-full'
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -236,7 +239,7 @@ export function PresetPopover({
           <LayoutTemplate size={13} />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="bottom" align="end" className="w-[252px] rounded-[12px] p-2">
+      <PopoverContent side="bottom" align="end" className="max-h-[78vh] w-[252px] overflow-y-auto rounded-[12px] p-2">
         <p className="mb-1.5 px-1 text-[11px] font-medium text-t1">{t('Preset_Gallery')}</p>
         <div className="grid grid-cols-2 gap-1.5">
           {presets.map((preset) => (
@@ -249,7 +252,7 @@ export function PresetPopover({
               }}
               className="group overflow-hidden rounded-[9px] ring-1 ring-hair transition-shadow hover:ring-coral/60"
             >
-              <span className={`relative block ${thumbAspect} w-full overflow-hidden bg-canvas-stage`}>
+              <span className={`relative block ${thumbClass} overflow-hidden bg-canvas-stage`}>
                 {wallpaperUrl && (
                   <img src={wallpaperUrl} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
                 )}
@@ -268,7 +271,7 @@ export function PresetPopover({
                   />
                 ))}
               </span>
-              <span className="block truncate px-1.5 py-1 text-left text-caption text-t2 group-hover:text-t1">
+              <span className={`block truncate px-1.5 py-1 text-caption text-t2 group-hover:text-t1 ${isPortrait ? 'text-center' : 'text-left'}`}>
                 {t(preset.nameKey)}
               </span>
             </button>

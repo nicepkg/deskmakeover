@@ -19,6 +19,8 @@ import { CanvasProgress, CanvasToolbar } from './canvas-toolbar'
 import { MagnetGuideLines, OverlapWash, RubberBand, ZoneView } from './zone-layer'
 import { PaperEmptyState } from './paper-empty'
 import { PaperCoach } from './paper-coach'
+import { ScreenSwitcher } from './screen-switcher'
+import { useScreenSwitchTransition } from './use-screen-switch-transition'
 import { useToasts } from '@/stores/toasts'
 
 // The wallpaper mirror (spec 04 v2.0, ADR-0014): the client COMPOSITOR paints the
@@ -33,6 +35,7 @@ export function WallpaperMirror() {
   const t = useT()
   const state = useWallpaper((s) => s.state)
   const look = useWallpaper((s) => s.look)
+  const activeScreenId = useWallpaper((s) => s.activeScreenId)
   const selected = useWallpaper((s) => s.selected)
   const comparing = useWallpaper((s) => s.comparing)
   const applying = useWallpaper((s) => s.applying)
@@ -105,6 +108,10 @@ export function WallpaperMirror() {
   })
 
   useWallpaperCompositor({ canvasRef, compositorRef, state, setZoneMeta, setReady })
+
+  // On a screen switch: re-fit for the new aspect + a brief opacity dip that masks
+  // the change (§A2). `dip` hides the composed canvas while the new source repaints.
+  const dip = useScreenSwitchTransition({ view, state, activeScreenId })
 
   // Backing-store resolution follows the view zoom (never above native).
   React.useEffect(() => {
@@ -369,16 +376,22 @@ export function WallpaperMirror() {
           }}
         >
           {/* Composed preview — the compositor's WebGL canvas (viewport-res backing,
-              stretched into desktop space). Hidden while comparing. */}
+              stretched into desktop space). Hidden while comparing. Keyed on the grid
+              dims so a different-aspect screen switch mounts a FRESH canvas (the
+              compositor re-inits on the same dims trigger) instead of rebinding pixi
+              to a canvas whose WebGL context was just destroyed. Same-dims switches
+              keep the canvas and swap only the source. */}
           <canvas
+            key={`${grid.screenWidth}x${grid.screenHeight}`}
             ref={canvasRef}
             className={cn(
-              'absolute inset-0 transition-opacity duration-300',
-              comparing || !ready ? 'opacity-0' : 'opacity-100',
+              'absolute inset-0 transition-opacity',
+              dip ? 'duration-[120ms]' : 'duration-[180ms]',
+              comparing || !ready || dip ? 'opacity-0' : 'opacity-100',
             )}
             style={{ width: grid.screenWidth, height: grid.screenHeight }}
           />
-          {(comparing || !ready) && (sourceUrl ?? state.originalUrl) && (
+          {(comparing || !ready || dip) && (sourceUrl ?? state.originalUrl) && (
             <img
               src={sourceUrl ?? state.originalUrl!}
               alt=""
@@ -459,6 +472,10 @@ export function WallpaperMirror() {
 
         {!ready && <ScanShimmer />}
       </div>
+
+      {/* Multi-monitor switcher — floating glass pill, top-left (§B4). Renders
+          nothing with a single screen or in Span mode (single-monitor parity). */}
+      <ScreenSwitcher />
 
       <CanvasProgress active={applying} />
       <CanvasToolbar

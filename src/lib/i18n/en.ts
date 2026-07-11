@@ -322,6 +322,20 @@ export const en = {
   "Paper_TitleLabel": "Title", // PENDING-RESX
   "Paper_ZoneStyle": "Panel style",
   "Paper_Zones": "Zones",
+  // Multi-screen wallpaper (spec 04 §B4–B6 / A4)
+  "Paper_Cta_ApplyScreen": "Apply to screen {0}",
+  "Paper_DynamicChip": "Live",
+  "Paper_DynamicImport": "Import a still image",
+  "Paper_DynamicReplaceConfirm": "Applying replaces this screen's live wallpaper with a still image.",
+  "Paper_DynamicReplaceCta": "Apply anyway",
+  "Paper_DynamicWallpaper": "This screen uses a live or video wallpaper and can't be restyled directly",
+  "Paper_EditingScreen": "Editing · Screen {0}",
+  "Paper_Landscape": "landscape",
+  "Paper_Portrait": "portrait",
+  "Paper_ScreenPrimary": "Primary",
+  "Paper_SelectScreen": "Switch to screen {0}",
+  "Paper_SlideshowWarn": "This screen runs a Windows slideshow; applying stops the rotation.",
+  "Paper_SpanNote": "Spanned wallpaper · one image shared across all screens, can't be designed per screen.",
   "PlanNeedsSnapshot": "Save a snapshot before building an apply plan.",
   "PlanReadyFormat": "Apply plan ready: {0} safe preview steps. Your desktop has not been modified.",
   "Preset_Apply": "Apply layout", // PENDING-RESX

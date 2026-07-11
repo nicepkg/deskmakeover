@@ -13,6 +13,15 @@ import * as React from 'react'
 // full WIDTH fills (centered vertically); 'all' = the whole screen letterboxed.
 export type FitMode = 'height' | 'width' | 'all'
 
+/** Portrait/ultrawide fit pick for a screen (spec 04 §A2): a taller-than-wide
+ *  screen opens filling the viewport VERTICALLY ('height', letterboxed L/R);
+ *  ordinary landscape AND ultrawide (≥21:9) open letterboxed whole ('all', never
+ *  'width' — the whole desktop stays visible for zone placement). Pure so the
+ *  mirror can re-pick on a screen switch or an orientation flip. */
+export function pickFitMode(width: number, height: number): FitMode {
+  return height > width ? 'height' : 'all'
+}
+
 /** Which axes to auto-center when content is smaller than the viewport. Icons pins
  *  content to the top (`x`, its historical behaviour); the paper canvas judges the
  *  whole desktop so it centers both axes (`xy`). */

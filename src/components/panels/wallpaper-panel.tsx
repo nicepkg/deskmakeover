@@ -12,6 +12,7 @@ import { ToggleSwitch } from '@/components/common/toggle-switch'
 import { ZoneList } from '@/components/panels/wallpaper-zone-list'
 import { EmojiPicker, FontPopover, MATERIALS, MATERIAL_KEYS, MaterialSwatch, PresetPopover, TITLE_STYLE_KEYS, TitleStyleSwatch } from '@/components/panels/wallpaper-panel-popovers'
 import { WallpaperDimCard } from '@/components/panels/wallpaper-dim-card'
+import { WallpaperScreenNotices } from '@/components/panels/wallpaper-screen-notices'
 import { ColorSwatchDot, PalettePopover } from '@/components/common/color-controls'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { call } from '@/bridge/client'
@@ -27,6 +28,7 @@ import {
   resolveAccent,
 } from '@/compositor/material'
 import { ZONE_PRESETS, projectPreset } from '@/lib/zone-presets'
+import { activeScreenFacts } from '@/lib/screen-arrange'
 import { firstFreeArea } from '@/lib/zone-math'
 import { format, useT } from '@/lib/i18n'
 import type { StringKey } from '@/lib/i18n'
@@ -58,11 +60,27 @@ export function WallpaperPanel() {
   const [presetPick, setPresetPick] = React.useState<string | null>(null)
   const [restoreOpen, setRestoreOpen] = React.useState(false)
   const [doneOpen, setDoneOpen] = React.useState(false)
+  // First destructive apply over a live (slideshow/dynamic) wallpaper is confirmed
+  // once, then remembered per screen for the session (§A4).
+  const [dynamicConfirmOpen, setDynamicConfirmOpen] = React.useState(false)
+  const [confirmedScreens, setConfirmedScreens] = React.useState<Set<string>>(new Set())
   const { footerRef, clearance } = useFooterClearance()
   const reduced = useReducedMotion()
   const { celebrateKey, celebrate } = useCelebration('wallpaper')
 
-  const runApply = async () => {
+  // Active-screen facts for the CTA rename + dynamic-apply gate (§B5/A4). The
+  // per-screen header + dynamic banners render from the same facts in
+  // WallpaperScreenNotices. A single-monitor host yields multiScreen === false.
+  const { activeIndex, multiScreen, liveWallpaper } = activeScreenFacts(state)
+  const needsDynamicConfirm = !!state && liveWallpaper && !confirmedScreens.has(state.activeScreenId)
+  // The CTA names its target so an apply can never silently hit the wrong monitor
+  // (§B5). Only the actionable phases rename; working/synced keep their own copy.
+  const ctaLabel =
+    multiScreen && activeIndex >= 0 && (phase === 'ready' || phase === 'dirty')
+      ? format(t('Paper_Cta_ApplyScreen'), activeIndex + 1)
+      : ctaText
+
+  const doApply = async () => {
     // Gate the DoneCard on THIS apply's result — hasBackup stays true from any
     // earlier success and would celebrate a failed apply (codex review M6).
     const ok = await apply()
@@ -71,6 +89,14 @@ export function WallpaperPanel() {
     // wallpaper apply of each launch, then the DoneCard.
     celebrate()
     setDoneOpen(true)
+  }
+
+  const runApply = async () => {
+    if (needsDynamicConfirm) {
+      setDynamicConfirmOpen(true)
+      return
+    }
+    await doApply()
   }
 
   // 导出图片 never touches the desktop — it saves the composed PNG locally.
@@ -204,6 +230,9 @@ export function WallpaperPanel() {
           </PopoverContent>
         </Popover>
       </div>
+
+        {/* Per-screen header + Span note + dynamic-wallpaper banners (§B5/A4/B6). */}
+        <WallpaperScreenNotices />
 
         <Reveal show={state.fingerprintMismatch}>
           <button
@@ -487,7 +516,7 @@ export function WallpaperPanel() {
             </div>
           </Reveal>
           <CtaButton phase={phase} onClick={() => void runApply()}>
-            {ctaText}
+            {ctaLabel}
           </CtaButton>
         </div>
       </div>
@@ -515,6 +544,19 @@ export function WallpaperPanel() {
           void restore()
         }}
         onCancel={() => setRestoreOpen(false)}
+      />
+      <ConfirmSheet
+        open={dynamicConfirmOpen}
+        title={t('Paper_DynamicReplaceConfirm')}
+        confirmLabel={t('Paper_DynamicReplaceCta')}
+        cancelLabel={t('ConsentCancel')}
+        destructive
+        onConfirm={() => {
+          setDynamicConfirmOpen(false)
+          if (state) setConfirmedScreens((prev) => new Set(prev).add(state.activeScreenId))
+          void doApply()
+        }}
+        onCancel={() => setDynamicConfirmOpen(false)}
       />
       <DoneCard
         open={doneOpen}

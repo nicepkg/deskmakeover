@@ -95,6 +95,19 @@ let redoStack: LookSnapshot[] = []
 let gestureDepth = 0
 let sourcesLoading = 0
 let readyTimer: ReturnType<typeof setTimeout> | null = null
+/** Single pending retry for a failed initial scan (review P2-2). */
+let scanRetryTimer: ReturnType<typeof setTimeout> | null = null
+let scanRetryMs = 3000
+/** Monotonic counter bumped whenever an authoritative host response sets fresh
+ *  arrow/profile truth (scan/rescan, apply, full restore, overlay restore). A
+ *  slow keep-beautification restore captures the epoch before its round-trip and
+ *  drops its result if a newer op superseded it (review P2-4). */
+let overlayEpoch = 0
+
+// Bridge indirection: production always uses the real `call`; store-behaviour
+// tests inject a controllable bridge to drive deterministic / out-of-order
+// responses (single-flight, cross-op race, scan retry) without a DOM mock.
+let bridge: typeof call = call
 
 /** Await the tile-source load wave (rescan/first load) fully settling. */
 async function sourcesSettled(): Promise<void> {
@@ -253,7 +266,7 @@ export const useIcons = create<IconsState>((set, get) => {
       persistTimer = null
       const s = get()
       if (!s.state) return
-      void call('icons.setLook', { config: s.state.config, overrides: overridesOf(s.items), kindPolicy: s.state.kindPolicy, typeOverrides: s.state.typeOverrides })
+      void bridge('icons.setLook', { config: s.state.config, overrides: overridesOf(s.items), kindPolicy: s.state.kindPolicy, typeOverrides: s.state.typeOverrides })
     }, PERSIST_DEBOUNCE_MS)
   }
 
@@ -370,6 +383,9 @@ export const useIcons = create<IconsState>((set, get) => {
       revision: result.revision,
       renderTick: get().renderTick + 1,
     })
+    // Fresh host truth for the arrow overlay + profile count — supersede any
+    // keep-beautification restore still in flight (review P2-4).
+    overlayEpoch++
     loadSources(result.items)
   }
 
@@ -401,11 +417,26 @@ export const useIcons = create<IconsState>((set, get) => {
       // (mirrors the boot() handshake). Previously the await was uncaught, so a
       // scan failure left loaded=true + state=null forever (review P2-2).
       try {
-        adoptScan(await call('icons.scan'))
+        adoptScan(await bridge('icons.scan'))
       } catch (err) {
         console.error('icons.scan failed', err)
+        // SELF-RECOVER: the sole scan trigger is App.tsx's one-shot mount effect,
+        // so resetting `loaded` alone left the user stranded in "checking" (no
+        // arrow-restore entry) until an app restart. Schedule ONE pending retry
+        // so a transient bridge failure heals without a restart (review P2-2).
         set({ loaded: false })
+        if (scanRetryTimer === null) {
+          scanRetryTimer = setTimeout(() => {
+            scanRetryTimer = null
+            void get().scan()
+          }, scanRetryMs)
+        }
         return
+      }
+      // Scan succeeded — cancel any pending recovery retry.
+      if (scanRetryTimer !== null) {
+        clearTimeout(scanRetryTimer)
+        scanRetryTimer = null
       }
       // The first paint is gated by `ready` (loadSources): the desktop stays
       // veiled until EVERY tile has landed, so there is never a wallpaper-with-
@@ -420,7 +451,7 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     rescan: async () => {
-      adoptScan(await call('icons.scan'))
+      adoptScan(await bridge('icons.scan'))
       useToasts.getState().show(t('Toast_Refreshed'))
     },
 
@@ -576,7 +607,7 @@ export const useIcons = create<IconsState>((set, get) => {
         await sourcesSettled()
         recomputeHueSpread()
         const frozenOpts = new Map(s.items.map((i) => [i.id, fieldRenderOpts(i.id)]))
-        await call('icons.applyBakedBegin', { revision: s.revision, count: jobs.length })
+        await bridge('icons.applyBakedBegin', { revision: s.revision, count: jobs.length })
         for (let at = 0; at < jobs.length; at += APPLY_CHUNK) {
           const chunk = jobs.slice(at, at + APPLY_CHUNK)
           const rendered: { id: string; sourceIndex: number; masterPng: string }[] = []
@@ -586,18 +617,21 @@ export const useIcons = create<IconsState>((set, get) => {
             if (!png) throw new Error(`master missing: ${j.item.id}#${j.sourceIndex}`)
             rendered.push({ id: j.item.id, sourceIndex: j.sourceIndex, masterPng: png })
           }
-          await call('icons.applyBakedChunk', { items: rendered })
+          await bridge('icons.applyBakedChunk', { items: rendered })
           set({ applyProgress: { done: Math.min(at + chunk.length, jobs.length), total: jobs.length } })
           // Yield a frame so the progress UI paints between chunks.
           await new Promise((resolve) => requestAnimationFrame(resolve))
         }
-        const result = await call('icons.applyBakedCommit', {
+        const result = await bridge('icons.applyBakedCommit', {
           config,
           typeOverrides,
           overrides: overridesOf(s.items),
           label: lookLabel(s.state),
         })
         set({ state: result.state, applyProgress: null })
+        // Apply installs the machine-wide overlay (arrow → hidden): fresh
+        // authoritative truth, supersede any restore in flight (review P2-4).
+        overlayEpoch++
         toastOf(result)
         if (result.ok) set({ waveKind: 'bloom', waveStamp: Date.now() })
         return result.ok
@@ -614,8 +648,11 @@ export const useIcons = create<IconsState>((set, get) => {
       if (!s.state) return
       set({ state: { ...s.state, working: true } })
       try {
-        const result = await call('icons.restore')
+        const result = await bridge('icons.restore')
         set({ state: result.state })
+        // Full restore lifts the overlay (arrow → native): fresh authoritative
+        // truth, supersede any keep-beautification restore in flight (P2-4).
+        overlayEpoch++
         toastOf(result)
         if (result.ok) set({ waveKind: 'settle', waveStamp: Date.now() })
       } catch {
@@ -633,8 +670,16 @@ export const useIcons = create<IconsState>((set, get) => {
       const s = get()
       if (!s.state || s.overlayRestoring) return
       set({ overlayRestoring: true })
+      // Capture the authoritative-truth epoch BEFORE the elevated round-trip.
+      const epoch = overlayEpoch
       try {
-        const result = await call('icons.restoreOverlay')
+        const result = await bridge('icons.restoreOverlay')
+        // Cross-operation guard (review P2-4): if an apply / full restore /
+        // rescan landed while this slow round-trip was in flight, THAT op now
+        // owns the authoritative arrow + profile truth. Merging our older
+        // observation would regress the visible state (and a stale profile count
+        // could mis-gate consent), so drop the superseded result — never clobber.
+        if (overlayEpoch !== epoch) return
         const cur = get().state
         if (cur) {
           set({
@@ -645,8 +690,12 @@ export const useIcons = create<IconsState>((set, get) => {
             },
           })
         }
+        overlayEpoch++
         toastOf(result)
       } catch {
+        // A superseded restore that also rejected stays silent — the intervening
+        // op's result already stands; only a still-current failure toasts.
+        if (overlayEpoch !== epoch) return
         useToasts.getState().show(t('Toast_RestoreArrowFailed'), 'warn')
       } finally {
         set({ overlayRestoring: false })
@@ -669,7 +718,7 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     exportCompare: async () => {
-      const result = await call('icons.exportCompare')
+      const result = await bridge('icons.exportCompare')
       set({ state: result.state })
       toastOf(result)
     },
@@ -694,13 +743,29 @@ export const useIcons = create<IconsState>((set, get) => {
   }
 })
 
-/** Test seam: reset module-level history/timers between tests. */
+/** Test seam: reset module-level history/timers between tests. Also heals any
+ *  leaked bridge/epoch/retry override so state can't bleed across test files. */
 export function resetIconsHistoryForTests(): void {
   undoStack = []
   redoStack = []
   gestureDepth = 0
   if (persistTimer) clearTimeout(persistTimer)
   persistTimer = null
+  if (scanRetryTimer) clearTimeout(scanRetryTimer)
+  scanRetryTimer = null
+  scanRetryMs = 3000
+  overlayEpoch = 0
+  bridge = call
+}
+
+/** Test seam: inject a controllable bridge (null restores the real `call`). */
+export function __setBridgeForTests(fn: typeof call | null): void {
+  bridge = fn ?? call
+}
+
+/** Test seam: shorten the failed-scan retry delay so recovery is observable. */
+export function __setScanRetryMsForTests(ms: number): void {
+  scanRetryMs = ms
 }
 
 /** True while any icon source is still decoding (drives the scan shimmer). */

@@ -278,53 +278,46 @@ mod eviction_cert {
 
     #[test]
     fn fifo_eviction_is_deterministic() {
-        // The same access sequence must always leave the same cache state, AND that
-        // state must be the EXACT FIFO outcome. Aggregate counts alone are too weak:
-        // a nondeterministic victim (e.g. HashMap-iteration eviction) can hit the same
-        // len/hits/misses/evictions while leaving a different key resident. So pin the
-        // precise resident/evicted key set via `contains` (audit #10, review P2-2).
+        // Categorically pin the FIFO victim at EVERY eviction, not just the final
+        // state. Final membership + counts are too weak: a deterministic-but-wrong
+        // victim history (the classic A,D,C,A instead of A,C,D,A) lands the SAME final
+        // set {Folder,Circle} and the SAME counts, yet is a wrong policy. So assert the
+        // exact resident set after EACH insert (review P2-2 round-3, audit #10).
         let apple = MaskKey::new(IconShape::Apple, 64, 64, 0.0, 0.0);
         let circle = MaskKey::new(IconShape::Circle, 64, 64, 0.0, 0.0);
         let diamond = MaskKey::new(IconShape::Diamond, 64, 64, 0.0, 0.0);
         let folder = MaskKey::new(IconShape::Folder, 64, 64, 0.0, 0.0);
 
-        // cap holds exactly two 64² masks → every third distinct insert evicts one.
+        // Each row: the shape inserted, and the exact resident set
+        // [apple, circle, diamond, folder] required AFTER that insert. cap holds two
+        // 64² masks, FIFO evicts the oldest, so the victim is fully pinned step by step.
+        let steps: [(IconShape, [bool; 4]); 6] = [
+            (IconShape::Apple, [true, false, false, false]),
+            (IconShape::Circle, [true, true, false, false]),
+            (IconShape::Diamond, [false, true, true, false]), // evict Apple (oldest)
+            (IconShape::Apple, [true, false, true, false]),    // evict Circle; re-insert Apple
+            (IconShape::Folder, [true, false, false, true]),   // evict Diamond
+            (IconShape::Circle, [false, true, false, true]),   // evict Apple; re-insert Circle
+        ];
+
         let cap = entry_bytes(&shape_mask(IconShape::Apple, 64, 64, 0.0, 0.0)) * 2 + 8;
         let run = || {
             let mut c = MaskCache::with_cap(cap);
-            for &s in &[
-                IconShape::Apple,
-                IconShape::Circle,
-                IconShape::Diamond,
-                IconShape::Apple,
-                IconShape::Folder,
-                IconShape::Circle,
-            ] {
+            let mut trace = Vec::new();
+            for &(s, _) in &steps {
                 c.get_or_compute(MaskKey::new(s, 64, 64, 0.0, 0.0), || shape_mask(s, 64, 64, 0.0, 0.0));
+                trace.push([c.contains(&apple), c.contains(&circle), c.contains(&diamond), c.contains(&folder)]);
             }
-            (
-                c.len(),
-                c.bytes(),
-                c.hits,
-                c.misses,
-                c.evictions,
-                [c.contains(&apple), c.contains(&circle), c.contains(&diamond), c.contains(&folder)],
-            )
+            (trace, c.len(), c.hits, c.misses, c.evictions)
         };
 
-        let state = run();
-        assert_eq!(state, run(), "eviction is not deterministic across identical runs");
-
-        // Pin the exact FIFO victim history for [A, C, D, A, F, C] with room for two:
-        // A,C in → D evicts A → A(miss) evicts C → F evicts D → C(miss) evicts A, so
-        // {Circle, Folder} stay resident and every revisit was already gone (all miss).
-        let (len, _, hits, misses, evictions, resident) = state;
+        let (trace, len, hits, misses, evictions) = run();
+        for (i, (_, expected)) in steps.iter().enumerate() {
+            assert_eq!(&trace[i], expected, "resident set diverged from FIFO after step {i} — wrong victim identity");
+        }
         assert_eq!(len, 2, "cap of two masks must hold exactly two");
         assert_eq!((hits, misses, evictions), (0, 6, 4), "every revisit was already evicted → all misses");
-        assert_eq!(
-            resident,
-            [false, true, false, true],
-            "FIFO must evict the oldest (Apple, Diamond) and keep Circle, Folder — a HashMap-order victim would differ"
-        );
+        // Cross-run: the whole per-step victim trace must reproduce bit-for-bit.
+        assert_eq!(run().0, trace, "eviction not deterministic across identical runs");
     }
 }

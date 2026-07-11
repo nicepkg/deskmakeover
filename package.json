@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:ship": "bun run wasm && bun run build",
     "lint": "oxlint",
     "test": "bun test",
     "wasm": "node scripts/build-icon-wasm.mjs",

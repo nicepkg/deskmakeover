@@ -359,3 +359,67 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, feature = "fast"))]
+mod stamp_cache_cert {
+    use super::*;
+    use crate::mask_cache::MaskCache;
+
+    fn none_ctx(silhouette: f64, size: usize) -> MarkContext {
+        MarkContext {
+            size,
+            shape: IconShape::None,
+            luminance: 0.5,
+            mark_color: None,
+            tile_alpha: Arc::from(vec![silhouette; size * size]),
+        }
+    }
+
+    /// P3-1 (Codex round-3 caveat): the corpus has no None+Shadow reuse, so the
+    /// None-branch exclusion is otherwise untested. A None-shape stamp is a function
+    /// of the per-cell `tile_alpha`, NOT geometry, so it must NEVER enter the geometry
+    /// cache — otherwise a second source with the same stamp geometry would read the
+    /// first's cached silhouette. Guards against a future edit caching the None branch.
+    #[test]
+    fn none_shape_stamp_never_enters_the_geometry_cache() {
+        let size = 64;
+        // Two "sources": identical stamp geometry, DIFFERENT silhouettes.
+        let a = none_ctx(1.0, size);
+        let b = none_ctx(0.0, size);
+        let mut masks = MaskCache::new();
+        let sa = stamp_mask(&a, 50, 3.0, 4.0, &mut masks);
+        let sb = stamp_mask(&b, 50, 3.0, 4.0, &mut masks); // SAME geometry key as A
+        // If the None branch were cached by geometry, sb would be A's silhouette.
+        assert_ne!(
+            sa.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            sb.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            "None-shape stamp B read A's cached silhouette — the None branch was wrongly cached"
+        );
+        assert_eq!((masks.misses, masks.hits, masks.len()), (0, 0, 0), "None-shape stamp must never touch the geometry cache");
+    }
+
+    /// P3-1 positive: a `shape != None` stamp IS pure geometry, so repeated identical
+    /// stamps (common: many Shadow cells of the same shape/size) collapse to one
+    /// compute + cache hits, and every hit is bit-identical to the first compute.
+    #[test]
+    fn shadow_stamp_shares_the_cache_on_repeat() {
+        let ctx = MarkContext {
+            size: 256,
+            shape: IconShape::Circle,
+            luminance: 0.5,
+            mark_color: None,
+            tile_alpha: Arc::from(vec![1.0; 256 * 256]),
+        };
+        let mut masks = MaskCache::new();
+        let first = stamp_mask(&ctx, 224, 14.0, 16.0, &mut masks);
+        for _ in 0..7 {
+            let again = stamp_mask(&ctx, 224, 14.0, 16.0, &mut masks);
+            assert_eq!(
+                first.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                again.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                "cached stamp diverged from the first compute"
+            );
+        }
+        assert_eq!((masks.misses, masks.hits, masks.len()), (1, 7, 1), "8 identical Shadow stamps → 1 compute + 7 hits");
+    }
+}

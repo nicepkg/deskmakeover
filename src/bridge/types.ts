@@ -1,6 +1,10 @@
 // Bridge DTOs — mirrors Host/Bridge/Contracts.cs. Bump together with the host
 // (BridgeSchema.Version) so drift fails loudly at startup.
-export const BRIDGE_SCHEMA_VERSION = 4
+// [WINDOWS-VERIFY] v5 widens the wallpaper contract to multi-monitor
+// (WallpaperStateDto.screens[] + per-monitor setLook/applyBaked/restore). The
+// C# host (Host/Bridge/WallpaperContracts.cs + BridgeSchema.Version) MUST mirror
+// this shape and bump to 5 in the Windows batch, or startup asserts a mismatch.
+export const BRIDGE_SCHEMA_VERSION = 5
 
 export interface SettingsDto {
   theme: 'System' | 'Dark' | 'Light'
@@ -360,16 +364,75 @@ export interface WallpaperGridInfoDto {
   rows: number
 }
 
-export interface WallpaperStateDto {
+/** GLOBAL wallpaper positioning (Windows DesktopWallpaperPosition). Only image
+ *  PATHS are per-monitor; position/slideshow/bg-color are whole-desktop. `Span`
+ *  stretches ONE image across every monitor, so per-screen isolation is undefined
+ *  and the UI degrades to a unified canvas (spec 04 §B6). */
+export type WallpaperPosition = 'Center' | 'Tile' | 'Stretch' | 'Fit' | 'Fill' | 'Span'
+
+export type ScreenOrientation = 'portrait' | 'landscape'
+
+/** Virtual-desktop bounds of one monitor, in physical pixels (IDesktopWallpaper
+ *  GetMonitorRECT). The switcher tiles reproduce these relative positions. */
+export interface MonitorBounds {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** One physical monitor's wallpaper look (spec 04 §B1). look + source + grid are
+ *  PER-MONITOR; position/slideshow-mode/bg-color live at the WallpaperStateDto
+ *  top level (global). `monitorId` is the Windows device path
+ *  (GetMonitorDevicePathAt) — durable-ish, not permanent across port/driver/dock/
+ *  EDID changes. [WINDOWS-VERIFY] real EDID/DisplayConfig fingerprinting for the
+ *  bounds-fallback match runs on the owner's Win11 box; the mock matches by path
+ *  then by exact bounds only. */
+export interface MonitorLookDto {
+  monitorId: string
+  name: string
+  bounds: MonitorBounds
+  orientation: ScreenOrientation
   look: LookDto
+  /** Decoded per-screen wallpaper source; null when unreadable — a third-party
+   *  dynamic/video wallpaper is invisible to IDesktopWallpaper (§A4 import CTA). */
+  source: WallpaperSourceDto | null
+  grid: WallpaperGridInfoDto
+  /** Windows slideshow active on this monitor (rotation won't re-arm after apply). */
+  slideshowActive: boolean
+  /** GetWallpaper returned a readable image path (false ⇒ dynamic/video wallpaper). */
+  hasReadableSource: boolean
+}
+
+// Multi-monitor contract (spec 04 §B1). The shape is ADDITIVE: `screens[]` +
+// `activeScreenId` + global `position`/`spanActive` are new, and the legacy
+// top-level `look`/`grid`/`originalUrl`/`wallTint`/`hasBackup`/… fields REMAIN as
+// a mirror of the active screen (+ global flags). A single-monitor host yields
+// `screens.length === 1` with the top-level fields equal to `screens[0]`, so
+// every existing consumer behaves exactly as before (single-monitor parity).
+export interface WallpaperStateDto {
+  // ---- active-screen mirror: top-level == screens[activeScreenId] ----
+  look: LookDto
+  grid: WallpaperGridInfoDto
+  originalUrl: string | null
+  // ---- global desktop state (whole-desktop, not per-monitor) ----
   hasBackup: boolean
   working: boolean
   dirty: boolean
   pale: boolean
   fingerprintMismatch: boolean
   wallTint: string
-  grid: WallpaperGridInfoDto
-  originalUrl: string | null
+  // ---- multi-screen (§B1) ----
+  /** Every present monitor, reconciled by device path (§B3). */
+  screens: MonitorLookDto[]
+  /** The monitor currently being edited; the top-level look/grid/originalUrl
+   *  mirror THIS screen's entry in `screens`. */
+  activeScreenId: string
+  position: WallpaperPosition
+  /** position === 'Span' — the UI degrades to a unified canvas (§B6). Reported
+   *  explicitly (the host detects it) rather than derived, so the web never
+   *  guesses the span state. */
+  spanActive: boolean
 }
 
 export interface FontChoiceDto {
@@ -386,10 +449,14 @@ export interface WallpaperOpDto {
 /** Request/response method map — grows with each controller. */
 export interface BridgeMethods {
   'wallpaper.getState': { params: void; result: WallpaperStateDto }
+  // getSource stays void-param (returns the ACTIVE screen's source) so the
+  // compositor init keeps working; per-monitor sources ride on screens[].source.
   'wallpaper.getSource': { params: void; result: WallpaperSourceDto }
-  'wallpaper.setLook': { params: { look: LookDto }; result: null }
-  'wallpaper.applyBaked': { params: { pngBase64: string; look: LookDto }; result: WallpaperOpDto }
-  'wallpaper.restore': { params: void; result: WallpaperOpDto }
+  // Per-monitor verbs (§B1). `monitorId` is the device path; restore accepts the
+  // 'all' sentinel for the whole-desktop pre-first-apply snapshot revert (§B5).
+  'wallpaper.setLook': { params: { monitorId: string; look: LookDto }; result: null }
+  'wallpaper.applyBaked': { params: { monitorId: string; pngBase64: string; look: LookDto }; result: WallpaperOpDto }
+  'wallpaper.restore': { params: { monitorId: string }; result: WallpaperOpDto }
   'fonts.list': { params: void; result: FontChoiceDto[] }
   // Icons contract v2 (spec 06 §2): sources in ONCE per scan, chunked 256px
   // masters out ONLY on apply; preview traffic never crosses the bridge.

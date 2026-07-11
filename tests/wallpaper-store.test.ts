@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { makeZone, useWallpaper } from '../src/stores/wallpaper'
+import { makeZone, singleScreenSeed, useWallpaper } from '../src/stores/wallpaper'
 import { createFromDrag } from '../src/lib/zone-math'
-import type { LookDto, WallpaperStateDto, ZoneDto } from '../src/bridge/types'
+import type { LookDto, MonitorLookDto, WallpaperGridInfoDto, WallpaperStateDto, ZoneDto } from '../src/bridge/types'
 
 // Session undo/redo over `look` snapshots (spec 04 v2.0, ADR-0014). Seeds the
 // store directly so the tests exercise the history logic without the host or
 // the compositor (registry returns null in tests — commit() tolerates that).
+//
+// SINGLE-MONITOR PARITY: this whole suite seeds ONE screen and its assertions are
+// unchanged from the pre-multi-monitor store. A green run proves screens.length===1
+// behaves exactly as before (spec 04 §B2 acceptance / global regression guard).
 
-const GRID = {
+const GRID: WallpaperGridInfoDto = {
   screenWidth: 1920,
   screenHeight: 1080,
   taskbarHeight: 48,
@@ -19,8 +23,24 @@ const GRID = {
   rows: 11,
 }
 
+const MONITOR_ID = '\\\\?\\DISPLAY#TEST#0'
+
 function zone(cellX: number, title = 'z'): ZoneDto {
   return makeZone({ cellX, cellY: 0.5, cellsWide: 4, cellsTall: 4, title })
+}
+
+function screenDto(look: LookDto): MonitorLookDto {
+  return {
+    monitorId: MONITOR_ID,
+    name: 'Test',
+    bounds: { x: 0, y: 0, w: 1920, h: 1080 },
+    orientation: 'landscape',
+    look,
+    source: null,
+    grid: GRID,
+    slideshowActive: false,
+    hasReadableSource: true,
+  }
 }
 
 function seed(zones: ZoneDto[] = []): void {
@@ -30,16 +50,34 @@ function seed(zones: ZoneDto[] = []): void {
   }
   const state: WallpaperStateDto = {
     look,
+    grid: GRID,
+    originalUrl: null,
     hasBackup: false,
     working: false,
     dirty: false,
     pale: false,
     fingerprintMismatch: false,
     wallTint: '#7A6E62',
-    grid: GRID,
-    originalUrl: null,
+    screens: [screenDto(look)],
+    activeScreenId: MONITOR_ID,
+    position: 'Fill',
+    spanActive: false,
   }
-  useWallpaper.setState({ loaded: true, state, look, selected: null, past: [], future: [], canUndo: false, canRedo: false })
+  const { screens, activeScreenId } = singleScreenSeed(MONITOR_ID, look)
+  useWallpaper.setState({
+    loaded: true,
+    state,
+    screens,
+    activeScreenId,
+    look,
+    selected: null,
+    sourceName: null,
+    sourceUrl: null,
+    past: [],
+    future: [],
+    canUndo: false,
+    canRedo: false,
+  })
   useWallpaper.getState().endInteraction() // clear any leaked gesture-coalescing flag
 }
 

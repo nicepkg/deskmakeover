@@ -1,20 +1,22 @@
 import { create } from 'zustand'
 import { call } from '@/bridge/client'
-import type { FontChoiceDto, LookDto, WallpaperOpDto, WallpaperStateDto, ZoneDto } from '@/bridge/types'
+import type { FontChoiceDto, LookDto, WallpaperOpDto, WallpaperSourceDto, WallpaperStateDto, ZoneDto } from '@/bridge/types'
+import { decodeWallpaperOp, decodeWallpaperState } from '@/bridge/wallpaper-decode'
+import { type ScreenLook, mergeScreenMap, pickActiveScreenId } from '@/lib/monitor-reconcile'
 import { getCompositor } from '@/compositor/registry'
 import { format, t } from '@/lib/i18n'
 import type { StringKey } from '@/lib/i18n'
 import { useToasts } from '@/stores/toasts'
 
-// Wallpaper-module state (spec 04 v2.0, ADR-0014): the WEB owns the working look
-// AND its rendering — the client compositor repaints on every look change (no
-// host round-trip, no debounce). The host is only asked to persist the look and,
-// on apply, to write the baked PNG. apply/restore run ONLY from explicit user
-// clicks (owner gate).
-//
-// Reversibility: a session undo/redo stack over `look` snapshots. Continuous
-// canvas gestures (move / resize) coalesce into ONE snapshot via
-// begin/endInteraction so a single drag is one undo step, not one-per-frame.
+// Wallpaper-module state (spec 04 v2.0, ADR-0014; multi-monitor §B2). The WEB owns
+// the working look AND its rendering (client compositor repaints per look change;
+// host only persists the look per monitor + writes the baked PNG on apply; apply/
+// restore run only from explicit user clicks). Multi-monitor truth = `screens:
+// Record<monitorId, ScreenLook>` + `activeScreenId`; each screen owns its draft
+// look, source, selection AND undo/redo, so editing/undoing one never touches
+// another. The top-level fields (`look`/`selected`/`sourceName`/`sourceUrl`/`past`/
+// `future`/`canUndo`/`canRedo`) MIRROR the active screen — existing consumers read
+// them unchanged and a single-monitor host behaves EXACTLY as before.
 
 const HISTORY_LIMIT = 100
 /** Debounce for persisting the look to the host (pure persistence, not render). */
@@ -23,8 +25,23 @@ const PERSIST_DEBOUNCE_MS = 400
 interface WallpaperState {
   loaded: boolean
   state: WallpaperStateDto | null
+  /** Per-monitor runtime state (source of truth). */
+  screens: Record<string, ScreenLook>
+  /** The monitor currently being edited; the top-level mirror follows it. */
+  activeScreenId: string | null
+
+  // ---- active-screen mirror (UI back-compat + single-monitor parity) ----
   look: LookDto | null
   selected: string | null
+  /** Imported source name (壁纸导入); null = the current desktop wallpaper. */
+  sourceName: string | null
+  /** Object URL of the imported source (compare view + preset thumbs); null = originalUrl. */
+  sourceUrl: string | null
+  past: LookDto[]
+  future: LookDto[]
+  canUndo: boolean
+  canRedo: boolean
+
   comparing: boolean
   /** Baking the native-resolution PNG during apply. */
   applying: boolean
@@ -32,22 +49,15 @@ interface WallpaperState {
   applyWave: number
   fonts: FontChoiceDto[]
 
-  past: LookDto[]
-  future: LookDto[]
-  canUndo: boolean
-  canRedo: boolean
-
   load: () => Promise<void>
+  /** Switch the active monitor; the active-screen mirror + compositor follow it. */
+  selectScreen: (monitorId: string) => void
   mutateLook: (change: (look: LookDto) => LookDto, coalesce?: string) => void
   mutateZone: (id: string, change: (zone: ZoneDto) => ZoneDto, coalesce?: string) => void
   addZone: (zone: ZoneDto) => void
   duplicateZone: (id: string, rect: Pick<ZoneDto, 'cellX' | 'cellY'>) => string | null
   removeZone: (id: string) => void
   select: (id: string | null) => void
-  /** Imported source name (壁纸导入); null = the user's current desktop wallpaper. */
-  sourceName: string | null
-  /** Object URL of the imported source (compare view + preset thumbs); null = originalUrl. */
-  sourceUrl: string | null
   importSource: (file: File) => Promise<boolean>
   /** Opens the native file picker → importSource (shared by header/empty/drop). */
   importSourceViaPicker: () => void
@@ -106,29 +116,85 @@ function clampSelected(selected: string | null, look: LookDto): string | null {
   return look.zones.some((z) => z.id === selected) ? selected : null
 }
 
+function lookDirty(look: LookDto): boolean {
+  return look.zones.length > 0 || look.clarity.level !== 'Off'
+}
+
+/** Dirty if ANY screen carries a non-empty draft (single screen → old behavior). */
+function anyScreenDirty(screens: Record<string, ScreenLook>): boolean {
+  return Object.values(screens).some((s) => lookDirty(s.look))
+}
+
+/** Project a ScreenLook to the top-level mirror fields UI consumers read (the one
+ *  place the active-screen → top-level mapping lives). */
+function mirror(s: ScreenLook) {
+  return {
+    look: s.look,
+    selected: s.selected,
+    sourceName: s.sourceName,
+    sourceUrl: s.sourceUrl,
+    past: s.past,
+    future: s.future,
+    canUndo: s.past.length > 0,
+    canRedo: s.future.length > 0,
+  }
+}
+
 export const useWallpaper = create<WallpaperState>((set, get) => {
-  /** Repaint now (client compositor) + debounce-persist the look to the host. */
-  const commit = (look: LookDto) => {
+  /** Read the active screen's runtime record (null before load / no monitor). */
+  const active = (): { id: string; screen: ScreenLook } | null => {
+    const { activeScreenId, screens } = get()
+    if (!activeScreenId) return null
+    const screen = screens[activeScreenId]
+    return screen ? { id: activeScreenId, screen } : null
+  }
+
+  /** The single funnel: write a partial into the active screen's record AND
+   *  project the mirrored fields to the top level (keeps both coherent). */
+  const setActive = (partial: Partial<ScreenLook>): void => {
+    const a = active()
+    if (!a) return
+    const next: ScreenLook = { ...a.screen, ...partial }
+    set({ screens: { ...get().screens, [a.id]: next }, ...mirror(next) })
+  }
+
+  /** Repaint now + debounce-persist the active screen's look, keyed by monitorId
+   *  (captured so a mid-debounce screen switch still persists the RIGHT monitor).
+   *  `extra` merges more active fields (e.g. the new selection) in one write. */
+  const commit = (look: LookDto, extra?: Partial<ScreenLook>): void => {
+    const a = active()
+    if (!a) return
+    setActive({ look, ...extra })
+    const screens = get().screens
     const state = get().state
-    const dirty = look.zones.length > 0 || look.clarity.level !== 'Off'
-    set({ look, state: state ? { ...state, dirty } : state })
+    if (state) {
+      set({
+        state: {
+          ...state,
+          dirty: anyScreenDirty(screens),
+          look,
+          screens: state.screens.map((s) => (s.monitorId === a.id ? { ...s, look } : s)),
+        },
+      })
+    }
     getCompositor()?.update(look)
     if (persistTimer) clearTimeout(persistTimer)
+    const monitorId = a.id
     persistTimer = setTimeout(() => {
       persistTimer = null
-      void call('wallpaper.setLook', { look: get().look! }).catch(() => {})
+      void call('wallpaper.setLook', { monitorId, look }).catch(() => {})
     }, PERSIST_DEBOUNCE_MS)
   }
 
-  const snapshot = () => {
-    const look = get().look
-    if (!look) return
-    const past = [...get().past, structuredClone(look)]
+  const snapshot = (): void => {
+    const a = active()
+    if (!a) return
+    const past = [...a.screen.past, structuredClone(a.screen.look)]
     if (past.length > HISTORY_LIMIT) past.shift()
-    set({ past, future: [], canUndo: true, canRedo: false })
+    setActive({ past, future: [] })
   }
 
-  const maybeSnapshot = (coalesce?: string) => {
+  const maybeSnapshot = (coalesce?: string): void => {
     if (interactionOpen) {
       if (!snapshotTakenThisGesture) {
         snapshot()
@@ -149,22 +215,57 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
   return {
     loaded: false,
     state: null,
+    screens: {},
+    activeScreenId: null,
     look: null,
     selected: null,
-    comparing: false,
-    applying: false,
-    applyWave: 0,
-    fonts: [],
+    sourceName: null,
+    sourceUrl: null,
     past: [],
     future: [],
     canUndo: false,
     canRedo: false,
+    comparing: false,
+    applying: false,
+    applyWave: 0,
+    fonts: [],
 
     load: async () => {
       if (get().loaded) return
       set({ loaded: true })
-      const state = await call('wallpaper.getState')
-      set({ state, look: state.look })
+      const state = decodeWallpaperState(await call('wallpaper.getState'))
+      // Build the per-screen map from the reconciled DTO. 0-monitor hosts get one
+      // virtual screen from the top-level mirror so the store never crash-empties
+      // (spec 04 §B6; the virtual-screen UI is Task 2).
+      let screens = mergeScreenMap({}, state.screens)
+      let activeId = pickActiveScreenId(null, state.screens, state.activeScreenId)
+      if (Object.keys(screens).length === 0) {
+        const virtualId = state.activeScreenId || 'virtual-screen'
+        screens = {
+          [virtualId]: { look: state.look, source: null, sourceName: null, sourceUrl: null, selected: null, past: [], future: [] },
+        }
+        activeId = virtualId
+      }
+      set({ state, screens, activeScreenId: activeId, ...mirror(screens[activeId]) })
+    },
+
+    selectScreen: (monitorId) => {
+      const { screens, activeScreenId, state } = get()
+      const target = screens[monitorId]
+      if (!target || monitorId === activeScreenId) return
+      // Cross-screen coalescing must not bleed: a slider run on screen A cannot
+      // coalesce into screen B's history.
+      lastCoalesceKey = null
+      const dtoScreen = state?.screens.find((s) => s.monitorId === monitorId)
+      set({
+        activeScreenId: monitorId,
+        ...mirror(target),
+        state:
+          state && dtoScreen
+            ? { ...state, activeScreenId: monitorId, look: target.look, grid: dtoScreen.grid, originalUrl: dtoScreen.source?.url ?? null }
+            : state,
+      })
+      getCompositor()?.update(target.look)
     },
 
     mutateLook: (change, coalesce) => {
@@ -187,8 +288,7 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       const look = get().look
       if (!look) return
       maybeSnapshot()
-      commit({ ...look, zones: [...look.zones, zone] })
-      set({ selected: zone.id })
+      commit({ ...look, zones: [...look.zones, zone] }, { selected: zone.id })
     },
 
     duplicateZone: (id, rect) => {
@@ -202,8 +302,7 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
         title: `${source.title} ${t('Zone_CopySuffix')}`,
         ...rect,
       }
-      commit({ ...look, zones: [...look.zones, copy] })
-      set({ selected: copy.id })
+      commit({ ...look, zones: [...look.zones, copy] }, { selected: copy.id })
       return copy.id
     },
 
@@ -213,8 +312,7 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       if (!look || !victim) return
       maybeSnapshot()
       // Delete clears selection deliberately (spec 04 §3.5) — not a side effect.
-      commit({ ...look, zones: look.zones.filter((z) => z.id !== id) })
-      set({ selected: null })
+      commit({ ...look, zones: look.zones.filter((z) => z.id !== id) }, { selected: null })
       // Aesthetics-first users won't guess Ctrl+Z — hand them the undo (spec 04 §3).
       useToasts.getState().show(format(t('Zone_DeletedToast'), victim.title), 'info', {
         label: t('History_Undo'),
@@ -222,14 +320,9 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       })
     },
 
-    select: (id) => set({ selected: id }),
+    select: (id) => setActive({ selected: id }),
 
-    sourceName: null,
-    sourceUrl: null,
-
-    /** 导入壁纸: design on a picked image instead of the current desktop
-     *  wallpaper. Purely client-side — the source never crosses the bridge;
-     *  apply bakes it into the PNG like any other source. */
+    /** 导入壁纸: design on a picked image (client-side; apply bakes it in). Per-screen. */
     importSource: async (file) => {
       const compositor = getCompositor()
       if (!compositor) return false
@@ -237,13 +330,10 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
         const bitmap = await createImageBitmap(file)
         const prev = get().sourceUrl
         compositor.setSource({ bitmap, width: bitmap.width, height: bitmap.height })
+        // A new source IS a change worth applying/exporting, even with 0 zones.
+        setActive({ sourceName: file.name, sourceUrl: URL.createObjectURL(file) })
         const state = get().state
-        set({
-          sourceName: file.name,
-          sourceUrl: URL.createObjectURL(file),
-          // A new source IS a change worth applying/exporting, even with 0 zones.
-          state: state ? { ...state, dirty: true } : state,
-        })
+        if (state) set({ state: { ...state, dirty: true } })
         if (prev) URL.revokeObjectURL(prev)
         return true
       } catch {
@@ -265,7 +355,7 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       input.click()
     },
 
-    /** Back to the user's current desktop wallpaper as the design source. */
+    /** Back to the active screen's current desktop wallpaper as the design source. */
     resetSource: async () => {
       const compositor = getCompositor()
       if (!compositor) return
@@ -274,17 +364,14 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       const bitmap = await createImageBitmap(await response.blob())
       compositor.setSource({ bitmap, width: bitmap.width, height: bitmap.height })
       const prev = get().sourceUrl
+      setActive({ sourceName: null, sourceUrl: null })
       const state = get().state
-      const look = get().look
-      const dirty = !!look && (look.zones.length > 0 || look.clarity.level !== 'Off')
-      set({ sourceName: null, sourceUrl: null, state: state ? { ...state, dirty } : state })
+      if (state) set({ state: { ...state, dirty: anyScreenDirty(get().screens) } })
       if (prev) URL.revokeObjectURL(prev)
     },
 
     /** 导出壁纸: bake the current look at native res and save the PNG locally
-     *  (a plain image — the receiver needs no app). Never touches the desktop.
-     *  Browser/mock saves via download; the host gets a native Save dialog (F8,
-     *  bridge `wallpaper.exportPng`). */
+     *  (a plain image — the receiver needs no app). Never touches the desktop. */
     exportImage: async () => {
       const compositor = getCompositor()
       if (!compositor) return null
@@ -316,8 +403,7 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       const look = get().look
       if (!look) return
       maybeSnapshot()
-      commit({ ...look, zones })
-      set({ selected: null })
+      commit({ ...look, zones }, { selected: null })
     },
 
     beginInteraction: () => {
@@ -330,49 +416,38 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
     },
 
     undo: () => {
-      const { past, look } = get()
-      if (past.length === 0 || !look) return
-      const previous = past[past.length - 1]
-      const newPast = past.slice(0, -1)
-      set({
-        past: newPast,
-        future: [structuredClone(look), ...get().future],
-        canUndo: newPast.length > 0,
-        canRedo: true,
-        selected: clampSelected(get().selected, previous),
-      })
-      commit(previous)
+      const a = active()
+      if (!a || a.screen.past.length === 0) return
+      const previous = a.screen.past[a.screen.past.length - 1]
+      const newPast = a.screen.past.slice(0, -1)
+      const newFuture = [structuredClone(a.screen.look), ...a.screen.future]
+      commit(previous, { past: newPast, future: newFuture, selected: clampSelected(a.screen.selected, previous) })
     },
 
     redo: () => {
-      const { future, look } = get()
-      if (future.length === 0 || !look) return
-      const next = future[0]
-      const newFuture = future.slice(1)
-      set({
-        past: [...get().past, structuredClone(look)],
-        future: newFuture,
-        canUndo: true,
-        canRedo: newFuture.length > 0,
-        selected: clampSelected(get().selected, next),
-      })
-      commit(next)
+      const a = active()
+      if (!a || a.screen.future.length === 0) return
+      const next = a.screen.future[0]
+      const newFuture = a.screen.future.slice(1)
+      const newPast = [...a.screen.past, structuredClone(a.screen.look)]
+      commit(next, { past: newPast, future: newFuture, selected: clampSelected(a.screen.selected, next) })
     },
 
     apply: async () => {
-      const { look, applying } = get()
+      const { look, applying, activeScreenId } = get()
       const compositor = getCompositor()
-      if (!look || !compositor || applying) return false
+      if (!look || !compositor || applying || !activeScreenId) return false
       set({ applying: true })
-      // Guarantee the CTA's applying shimmer plays at least one calm beat even
-      // when the mock write returns instantly (mirrors CanvasProgress' linger).
+      // Keep the CTA shimmer for one calm beat even when the mock returns instantly.
       const started = Date.now()
       try {
         const blob = await compositor.bake()
         const pngBase64 = await blobToBase64(blob)
-        const result = await call('wallpaper.applyBaked', { pngBase64, look })
+        const result = decodeWallpaperOp(await call('wallpaper.applyBaked', { monitorId: activeScreenId, pngBase64, look }))
         const wait = 550 - (Date.now() - started)
         if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+        // Per-screen drafts survive apply — keep the store's look; adopt only the
+        // host's global flags (hasBackup, …).
         set({ state: { ...result.state, look: get().look ?? result.state.look } })
         toastOf(result)
         if (result.ok) set({ applyWave: get().applyWave + 1 })
@@ -385,10 +460,11 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
     },
 
     restore: async () => {
-      const result = await call('wallpaper.restore')
+      // Whole-desktop restore reverts the pre-first-apply snapshot (§B5); draft
+      // looks survive, so dirty derives from them.
+      const result = decodeWallpaperOp(await call('wallpaper.restore', { monitorId: 'all' }))
       const look = get().look
-      // The draft look survives a desktop restore, so dirty derives from IT.
-      const dirty = !!look && (look.zones.length > 0 || look.clarity.level !== 'Off')
+      const dirty = anyScreenDirty(get().screens)
       set({ state: { ...result.state, look: look ?? result.state.look, dirty } })
       toastOf(result)
     },
@@ -412,3 +488,13 @@ async function blobToBase64(blob: Blob): Promise<string> {
   }
   return btoa(binary)
 }
+
+/** Test seam: single-screen store seed (parity with the pre-multi-monitor tests). */
+export function singleScreenSeed(monitorId: string, look: LookDto, source: WallpaperSourceDto | null = null): {
+  screens: Record<string, ScreenLook>
+  activeScreenId: string
+} {
+  return { screens: { [monitorId]: { look, source, sourceName: null, sourceUrl: null, selected: null, past: [], future: [] } }, activeScreenId: monitorId }
+}
+
+export type { ScreenLook }

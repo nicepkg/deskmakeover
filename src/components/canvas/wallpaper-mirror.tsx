@@ -21,7 +21,7 @@ import { PaperEmptyState } from './paper-empty'
 import { PaperCoach } from './paper-coach'
 import { ScreenSwitcher } from './screen-switcher'
 import { useScreenSwitchTransition } from './use-screen-switch-transition'
-import { useToasts } from '@/stores/toasts'
+import { useDropImport } from './use-drop-import'
 
 // The wallpaper mirror (spec 04 v2.0, ADR-0014): the client COMPOSITOR paints the
 // composed preview (source + 壁纸压暗 + Adaptive Frost zones) on a WebGL canvas at
@@ -60,7 +60,7 @@ export function WallpaperMirror() {
   const [guides, setGuides] = React.useState<MagnetGuide[]>([])
   const [overlaps, setOverlaps] = React.useState<ZoneRect[]>([])
   const [zoneMeta, setZoneMeta] = React.useState<Record<string, ZoneMeta>>({})
-  const [dropActive, setDropActive] = React.useState(false)
+  const { dropActive, dropHandlers } = useDropImport()
 
   const gesture = React.useRef<{
     kind: 'move' | 'resize'
@@ -326,27 +326,6 @@ export function WallpaperMirror() {
     height: grid.screenHeight * view.scale,
   }
 
-  // OS file drag = import (files never fire pointer events, so no gesture clash).
-  const hasImageFile = (e: React.DragEvent) => [...e.dataTransfer.items].some((i) => i.kind === 'file')
-  const onDragOver = (e: React.DragEvent) => {
-    if (!hasImageFile(e)) return
-    e.preventDefault()
-    setDropActive(true)
-  }
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDropActive(false)
-    const file = e.dataTransfer.files[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      useToasts.getState().show(t('Paper_DropReject'), 'warn')
-      return
-    }
-    void useWallpaper.getState().importSource(file).then((ok) => {
-      if (!ok) useToasts.getState().show(t('Toast_ImportFailed'), 'warn')
-    })
-  }
-
   return (
     <div
       data-toast-anchor
@@ -360,9 +339,7 @@ export function WallpaperMirror() {
         onPointerUp={onHostPointerUp}
         onPointerCancel={resetGesture}
         onLostPointerCapture={resetGesture}
-        onDragOver={onDragOver}
-        onDragLeave={() => setDropActive(false)}
-        onDrop={onDrop}
+        {...dropHandlers}
       >
         {/* Desktop space */}
         <div

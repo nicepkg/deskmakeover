@@ -3,6 +3,7 @@ import { call } from '@/bridge/client'
 import type { FontChoiceDto, LookDto, WallpaperOpDto, WallpaperSourceDto, WallpaperStateDto, ZoneDto } from '@/bridge/types'
 import { decodeWallpaperOp, decodeWallpaperState } from '@/bridge/wallpaper-decode'
 import { type ScreenLook, mergeScreenMap, pickActiveScreenId } from '@/lib/monitor-reconcile'
+import { activeScreenSourceUrl } from '@/lib/screen-arrange'
 import { getCompositor } from '@/compositor/registry'
 import { format, t } from '@/lib/i18n'
 import type { StringKey } from '@/lib/i18n'
@@ -355,14 +356,17 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       input.click()
     },
 
-    /** Back to the active screen's current desktop wallpaper as the design source. */
+    /** Drop the import → the ACTIVE screen's OWN desktop wallpaper, resolved from the
+     *  per-screen store (activeScreenSourceUrl), NOT getSource (would hit the wrong monitor). */
     resetSource: async () => {
       const compositor = getCompositor()
       if (!compositor) return
-      const source = await call('wallpaper.getSource')
-      const response = await fetch(source.url)
-      const bitmap = await createImageBitmap(await response.blob())
-      compositor.setSource({ bitmap, width: bitmap.width, height: bitmap.height })
+      const url = activeScreenSourceUrl(get().screens, get().activeScreenId)
+      if (url) {
+        const response = await fetch(url)
+        const bitmap = await createImageBitmap(await response.blob())
+        compositor.setSource({ bitmap, width: bitmap.width, height: bitmap.height })
+      }
       const prev = get().sourceUrl
       setActive({ sourceName: null, sourceUrl: null })
       const state = get().state

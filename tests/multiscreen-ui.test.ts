@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { activeScreenFacts, arrangeTiles, boundsAspect, primaryScreenId, shouldShowSwitcher } from '../src/lib/screen-arrange'
+import { activeScreenFacts, activeScreenSourceUrl, arrangeTiles, boundsAspect, primaryScreenId, shouldShowSwitcher } from '../src/lib/screen-arrange'
 import { pickFitMode } from '../src/lib/canvas-view'
+import type { ScreenLook } from '../src/lib/monitor-reconcile'
 import type { MonitorBounds, MonitorLookDto, WallpaperStateDto } from '../src/bridge/types'
 
 // Task 2 pure UI logic (spec 04 §B4/A2/B6): the switcher's render-gating + OS
@@ -144,6 +145,29 @@ describe('activeScreenFacts (CTA/header/banner truth §B5/A4)', () => {
   })
   test('span degrades multiScreen to false even with two monitors', () => {
     expect(activeScreenFacts(st([scr('a'), scr('b')], 'a', true)).multiScreen).toBe(false)
+  })
+})
+
+describe('activeScreenSourceUrl (resetSource per-screen fix §B2)', () => {
+  const scr = (url: string | null): ScreenLook =>
+    ({ source: url ? { url, width: 100, height: 100 } : null }) as unknown as ScreenLook
+  const screens: Record<string, ScreenLook> = {
+    primary: scr('scene://primary'),
+    portrait: scr('scene://portrait'),
+  }
+  test('resolves the ACTIVE screen’s OWN source (the bug: getSource returned primary)', () => {
+    // resetSource used wallpaper.getSource → the HOST's active screen (primary) → the
+    // wrong monitor's wallpaper when a non-primary screen was active. The fix reads
+    // the per-screen map: a portrait-active reset restores PORTRAIT's source.
+    expect(activeScreenSourceUrl(screens, 'portrait')).toBe('scene://portrait')
+    expect(activeScreenSourceUrl(screens, 'primary')).toBe('scene://primary')
+  })
+  test('a dynamic screen (no readable source) → null (nothing to restore to)', () => {
+    expect(activeScreenSourceUrl({ dyn: scr(null) }, 'dyn')).toBeNull()
+  })
+  test('null / unknown active screen → null', () => {
+    expect(activeScreenSourceUrl(screens, null)).toBeNull()
+    expect(activeScreenSourceUrl(screens, 'ghost')).toBeNull()
   })
 })
 

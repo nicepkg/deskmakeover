@@ -1,4 +1,5 @@
 import type { MonitorBounds, MonitorLookDto, WallpaperStateDto } from '@/bridge/types'
+import type { ScreenLook } from '@/lib/monitor-reconcile'
 
 // Pure, DOM-free geometry for the screen switcher (spec 04 §B4). The switcher
 // reproduces the OS "Displays arrangement": every monitor's real bounds scaled by
@@ -95,4 +96,14 @@ export function activeScreenFacts(state: WallpaperStateDto | null): ActiveScreen
   const noReadableSource = !!activeScreen && !activeScreen.hasReadableSource
   const slideshowActive = !!activeScreen && activeScreen.slideshowActive
   return { activeScreen, activeIndex, multiScreen, noReadableSource, slideshowActive, liveWallpaper: noReadableSource || slideshowActive }
+}
+
+/** The ACTIVE screen's OWN desktop wallpaper source URL (§B2 source-swap seam):
+ *  read from the per-screen map, NEVER wallpaper.getSource — that returns the HOST's
+ *  active screen, which the client-only selectScreen never syncs, so it would resolve
+ *  the WRONG monitor's wallpaper. null ⇒ the screen has no readable desktop source (a
+ *  third-party dynamic/video wallpaper, §A4). */
+export function activeScreenSourceUrl(screens: Record<string, ScreenLook>, activeScreenId: string | null): string | null {
+  if (!activeScreenId) return null
+  return screens[activeScreenId]?.source?.url ?? null
 }

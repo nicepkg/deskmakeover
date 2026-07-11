@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { ConfigDto, IconItemDto, IconsStateDto } from '../src/bridge/types'
-import { effectiveTileConfig, resetIconsHistoryForTests, useIcons } from '../src/stores/icons'
+import { __setBridgeForTests, effectiveTileConfig, resetIconsHistoryForTests, resumeStatusKey, useIcons } from '../src/stores/icons'
 import { DEFAULT_KIND_POLICY } from '../src/lib/kind-policy'
 
 // Undo granularity + override semantics (spec 06 §3.3/§3.4): one step per
@@ -65,6 +65,7 @@ beforeEach(() => {
     canUndo: false,
     canRedo: false,
     hoverConfig: null,
+    bareLook: false,
   })
 })
 
@@ -166,5 +167,80 @@ describe('effective tile config (override folding)', () => {
     const forced = effectiveTileConfig(item('f', { kind: 'Folder', overrideMode: 'tint', overrideTint: '#3FB6A8' }), config, noFolders)
     expect(forced.showOriginal).toBe(false)
     expect(forced.config.subject).toBe('Mono')
+  })
+})
+
+// A1: System Default is a RESET, not a style. Selecting it flips the working
+// design to bare (the mirror's show-original path) with NO host write; the CTA
+// crossing is a restore, and it is undoable + cleared by any real look edit.
+describe('System Default reset preset (A1)', () => {
+  test('selecting it flips to bare and never fires a host apply', async () => {
+    const calls: string[] = []
+    __setBridgeForTests((async (method: unknown) => {
+      calls.push(String(method))
+      return null
+    }) as unknown as Parameters<typeof __setBridgeForTests>[0])
+    useIcons.getState().selectSystemDefault()
+    expect(useIcons.getState().bareLook).toBe(true)
+    // A reset can NEVER bake beautified icons — apply() is a guarded no-op that
+    // reaches no bridge verb (spec A1: "no apply/host write").
+    const applied = await useIcons.getState().apply()
+    expect(applied).toBe(false)
+    expect(calls).toEqual([])
+    __setBridgeForTests(null)
+  })
+
+  test('config is untouched, so the highlight can only come from bareLook', () => {
+    const before = { ...useIcons.getState().state!.config }
+    useIcons.getState().selectSystemDefault()
+    expect(useIcons.getState().state!.config).toEqual(before)
+  })
+
+  test('any real look edit leaves the bare look', () => {
+    const s = useIcons.getState()
+    s.selectSystemDefault()
+    expect(useIcons.getState().bareLook).toBe(true)
+    s.mutate({ shape: 'Circle' })
+    expect(useIcons.getState().bareLook).toBe(false)
+  })
+
+  test('selecting a style preset clears the bare look', () => {
+    useIcons.setState({
+      state: { ...useIcons.getState().state!, presets: [{ id: 'p', config: { ...config, shape: 'Circle' }, typeOverrides: {} }] },
+    })
+    const s = useIcons.getState()
+    s.selectSystemDefault()
+    s.selectPreset('p')
+    expect(useIcons.getState().bareLook).toBe(false)
+    expect(useIcons.getState().state!.config.shape).toBe('Circle')
+  })
+
+  test('the bare look rides undo/redo', () => {
+    const s = useIcons.getState()
+    s.selectSystemDefault()
+    expect(useIcons.getState().bareLook).toBe(true)
+    useIcons.getState().undo()
+    expect(useIcons.getState().bareLook).toBe(false)
+    useIcons.getState().redo()
+    expect(useIcons.getState().bareLook).toBe(true)
+  })
+})
+
+// A3: the resume status line maps the SAME applied/dirty signals every module
+// reads to an honest phrase — an un-applied draft never silently reads "applied".
+describe('resume status line (A3)', () => {
+  test('un-applied draft (fresh OR resumed) reads ready, never applied', () => {
+    expect(resumeStatusKey(false, false, false)).toBe('Hero_ReadyStatus')
+    expect(resumeStatusKey(false, true, false)).toBe('Hero_ReadyStatus')
+  })
+  test('a draft that matches the live desktop reads resumed', () => {
+    expect(resumeStatusKey(true, false, false)).toBe('Hero_ResumedStatus')
+  })
+  test('an applied desktop with a newer draft reads unapplied, never applied', () => {
+    expect(resumeStatusKey(true, true, false)).toBe('Hero_UnappliedStatus')
+  })
+  test('the bare look has its own two-state line', () => {
+    expect(resumeStatusKey(false, false, true)).toBe('Icons_BareStatus')
+    expect(resumeStatusKey(true, true, true)).toBe('Icons_BareDirtyStatus')
   })
 })

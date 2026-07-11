@@ -14,7 +14,7 @@ import { CURATED_SHAPES, MORE_SHAPES, TYPE_PLATE_SWATCHES, paleOf } from '@/comp
 import { CtaButton } from '@/components/common/cta-button'
 import { ArrowGateSheet, ConfirmSheet, ConsentSheet, DoneCard } from '@/components/common/ceremony'
 import { Segmented } from '@/components/common/segmented'
-import { activePresetIdOf, fieldRenderOpts, useIcons } from '@/stores/icons'
+import { activePresetIdOf, fieldRenderOpts, resumeStatusKey, useIcons } from '@/stores/icons'
 import { getIconCompositor } from '@/icon-compositor/icon-renderer'
 import { useIconsHero } from '@/lib/hero'
 import { format, useT } from '@/lib/i18n'
@@ -56,7 +56,8 @@ export const PRESET_NAME: Record<string, { name: StringKey; desc: StringKey }> =
 export function IconsPanel() {
   const t = useT()
   const { state, phase, statusText, ctaText } = useIconsHero()
-  const { mutate, selectPreset, apply, restore, stageVersion, hover } = useIcons.getState()
+  const bareLook = useIcons((s) => s.bareLook)
+  const { mutate, selectPreset, selectSystemDefault, apply, restore, stageVersion, hover } = useIcons.getState()
   const [moreShapes, setMoreShapes] = React.useState(false)
   const [morePresets, setMorePresets] = React.useState(false)
   // Fold-animation hover freeze (owner diagnosis 2026-07-10: hovering a card
@@ -119,6 +120,13 @@ export function IconsPanel() {
       profiles: useIcons.getState().state?.activeUserProfiles ?? 1,
     })
   const onCta = () => {
+    // System Default's crossing is a RESTORE, never an apply (A1). If the desktop
+    // is still styled, offer the existing restore confirm; if it is already bare,
+    // there is nothing to cross.
+    if (bareLook) {
+      if (state?.applied) setRestoreOpen(true)
+      return
+    }
     if (!(phase === 'ready' || phase === 'dirty')) return
     if (!consentOk()) setConsentOpen(true)
     else void runApply()
@@ -162,6 +170,16 @@ export function IconsPanel() {
   if (!state) return <aside className="w-[280px] shrink-0" />
 
   const c = state.config
+  // A3 resume + A1 bare: an honest status line (a resumed draft reads "resumed",
+  // an un-applied one never reads "applied") and a CTA that restores rather than
+  // applies while the System-Default look is active. Scanning/working defer to
+  // the shared hero copy.
+  const statusLine =
+    phase === 'scanning' || phase === 'working'
+      ? statusText
+      : format(t(resumeStatusKey(state.applied, state.dirty, bareLook)), state.styleableCount)
+  const ctaPhase = bareLook ? (state.applied ? 'dirty' : 'synced') : phase
+  const ctaLabel = bareLook ? (state.applied ? t('Cta_RestoreDefault') : t('Cta_Synced')) : ctaText
   const shapeInMore = MORE_SHAPES.some((s) => s.value === c.shape)
   const shortcutShapeInMore = MORE_SHAPES.some((s) => s.value === c.shortcutShape)
   // Pure black/white are redundant with the 黑白 option (owner call 2026-07-09):
@@ -207,7 +225,50 @@ export function IconsPanel() {
           against the overflow edge. The status line lives INSIDE the scroller —
           it rides along with the panel (owner call 2026-07-09), never floats. */}
       <div style={{ paddingBottom: clearance }} className="scrollbar-none -mt-px flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pt-px [&>*]:shrink-0">
-        <p className="truncate px-0.5 text-[11px] text-t3/90" title={statusText}>{statusText}</p>
+        <p className="truncate px-0.5 text-[11px] text-t3/90" title={statusLine}>{statusLine}</p>
+        {/* System Default (A1) — the reset escape hatch, FIRST in the style deck.
+            Not a style: selecting it shows the bare original desktop in the preview
+            with NO host write; the CTA then restores. A full-width row reads as a
+            reset (distinct from the style thumbnails), highlighted only while the
+            bare look is the active design. */}
+        <button
+          type="button"
+          aria-pressed={bareLook}
+          title={`${t('Preset_SystemDefault')} · ${t('Preset_SystemDefault_Desc')}`}
+          onClick={() => {
+            hover(null)
+            selectSystemDefault()
+          }}
+          className={cn(
+            'group relative flex w-full items-center gap-2 overflow-hidden rounded-[10px] border px-2.5 py-2 text-left transition-all duration-150 hover:-translate-y-px hover:shadow-elev-1 active:translate-y-0 active:scale-[0.99]',
+            bareLook ? 'border-coral/50 bg-wash-preset' : 'border-hair-strong bg-raised',
+          )}
+        >
+          <span
+            className={cn(
+              'flex size-7 shrink-0 items-center justify-center rounded-[8px] transition-colors',
+              bareLook ? 'bg-coral text-cta-ink' : 'bg-chip/60 text-t2 group-hover:bg-chip',
+            )}
+          >
+            <RotateCcw size={14} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className={cn('block truncate text-[11px] font-medium', bareLook ? 'text-coral-ink' : 'text-t1')}>
+              {t('Preset_SystemDefault')}
+            </span>
+            <span className="block truncate text-[10.5px] text-t3">{t('Preset_SystemDefault_Desc')}</span>
+          </span>
+          {bareLook && (
+            <motion.span
+              initial={reduced ? false : { scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 520, damping: 26 }}
+              className="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-coral text-[9px] leading-none text-cta-ink"
+            >
+              ✓
+            </motion.span>
+          )}
+        </button>
         {/* 风格 presets — style-card grid (filter-deck grammar): a visual thumbnail
             leads, the name sits on one line below, the description lives in the
             tooltip. Two columns grow downward forever — 4 presets or 40, same UI. */}
@@ -221,8 +282,10 @@ export function IconsPanel() {
           const foldOpen = morePresets || activeHidden
           const renderPresetCard = (p: (typeof state.presets)[number]) => {
             const meta = PRESET_NAME[p.id]
-            // v2: derived client-side — the host no longer refreshes per edit.
-            const selected = activePresetIdOf(state) === p.id
+            // v2: derived client-side — the host no longer refreshes per edit. While
+            // the bare look is active (A1), NO style preset is selected — System
+            // Default owns the highlight even though config still matches a preset.
+            const selected = !bareLook && activePresetIdOf(state) === p.id
             const presetHover = tryOn(p.config, p.typeOverrides)
             return (
               <button
@@ -699,8 +762,8 @@ export function IconsPanel() {
           </div>
         )}
           <div ref={ctaWrapRef}>
-            <CtaButton phase={phase} onClick={onCta}>
-              {ctaText}
+            <CtaButton phase={ctaPhase} onClick={onCta}>
+              {ctaLabel}
             </CtaButton>
           </div>
         </div>

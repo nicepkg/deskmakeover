@@ -118,6 +118,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Cta_Synced": "✓ 已与桌面同步",
   "Cta_Update": "更新桌面",
   "Cta_Working": "正在应用…",
+  "Cta_RestoreDefault": "还原系统默认",
   "Custom_Badge": "自定义中",
   "Dist_Keep": "默认箭头", // PENDING-RESX: was 经典箭头 (owner: name the native artifact)
   "Dist_Mark": "美化标识",
@@ -165,6 +166,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Hero_CleanStatus": "已美化 {0} 个图标 · 快照已保存",
   "Hero_DirtyStatus": "已美化 {0} 个图标 · 有新样式待应用",
   "Hero_ReadyStatus": "可以美化 {0} 个图标 · 全程可还原",
+  "Hero_ResumedStatus": "已恢复你上次的设计",
+  "Hero_UnappliedStatus": "上次未应用的草稿 · {0} 个待应用",
   "Hero_Scanning": "正在扫描桌面…",
   "Hero_Title": "你的桌面，即将焕然一新",
   "Hero_TitleClean": "已经焕然一新",
@@ -180,6 +183,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "History_Undo": "撤销",
   "Icons_ApplyProgress": "正在写入桌面 {0}/{1}", // PENDING-RESX
   "Icons_ClearExceptions": "清除所有例外", // PENDING-RESX
+  "Icons_BareStatus": "系统默认 · 桌面保持原样",
+  "Icons_BareDirtyStatus": "系统默认 · 桌面待还原",
   "KindBucket_App": "程序",
   "KindBucket_Folder": "文件夹",
   "KindBucket_File": "文档",
@@ -363,6 +368,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Preset_white_Desc": "白纸一张，只理形状", // PENDING-RESX
   "Preset_ascast": "本色", // PENDING-RESX
   "Preset_ascast_Desc": "原样保真，只理齐轮廓", // PENDING-RESX
+  "Preset_SystemDefault": "系统默认",
+  "Preset_SystemDefault_Desc": "回到未美化的原始桌面",
   "Preset_MoreN": "更多风格 +{0}", // PENDING-RESX
   "Preset_Collapse": "收起", // PENDING-RESX
   "Preset_field_Desc": "统一外形 · 各自品牌色", // PENDING-RESX

@@ -116,6 +116,7 @@ export const en = {
   "Cta_Synced": "✓ In sync with the desktop",
   "Cta_Update": "Update desktop",
   "Cta_Working": "Applying…",
+  "Cta_RestoreDefault": "Restore system default", // A1: bare look + styled desktop → the crossing is a restore, never an apply
   "Custom_Badge": "Custom",
   "Dist_Keep": "Default arrow", // PENDING-RESX: was "Classic arrow" (owner: name the native artifact)
   "Dist_Mark": "Beautified", // PENDING-RESX: was "Beautified mark" (v3 segmented width)
@@ -163,6 +164,8 @@ export const en = {
   "Hero_CleanStatus": "Beautified {0} icons · snapshot saved",
   "Hero_DirtyStatus": "Beautified {0} icons · new style waiting",
   "Hero_ReadyStatus": "Ready to beautify {0} icons · fully reversible",
+  "Hero_ResumedStatus": "Resumed your last design", // A3: draft matches the live desktop
+  "Hero_UnappliedStatus": "Last unapplied draft · {0} to apply", // A3: draft differs from the desktop — never reads as applied
   "Hero_Scanning": "Scanning the desktop…",
   "Hero_Title": "Your desktop, about to look brand new",
   "Hero_TitleClean": "Looking brand new",
@@ -178,6 +181,8 @@ export const en = {
   "History_Undo": "Undo", // PENDING-RESX
   "Icons_ApplyProgress": "Writing to the desktop {0}/{1}", // PENDING-RESX
   "Icons_ClearExceptions": "Clear all exceptions", // PENDING-RESX
+  "Icons_BareStatus": "System default · desktop untouched", // A1: bare look, desktop already un-styled
+  "Icons_BareDirtyStatus": "System default · restore pending", // A1: bare look, desktop still styled
   "KindBucket_App": "programs",
   "KindBucket_Folder": "folders",
   "KindBucket_File": "files",
@@ -361,6 +366,8 @@ export const en = {
   "Preset_white_Desc": "The quiet white board",
   "Preset_ascast": "As-Cast",
   "Preset_ascast_Desc": "Faithful plates, tidy outlines",
+  "Preset_SystemDefault": "System default", // A1: reset escape hatch, first in the style deck
+  "Preset_SystemDefault_Desc": "Back to the untouched original desktop",
   "Preset_MoreN": "More styles +{0}",
   "Preset_Collapse": "Show less",
   "Preset_field_Desc": "One shape · every brand's colour", // PENDING-RESX

@@ -25,6 +25,10 @@ export function IconsMirror() {
   const scanExhausted = useIcons((s) => s.scanExhausted)
   const items = useIcons((s) => s.items)
   const comparing = useIcons((s) => s.comparing)
+  // System Default (A1): a bare look paints every tile original — the same
+  // show-original path as hold-to-compare — but persistently. A hover try-on
+  // (hoverConfig) still previews over it, so browsing other presets works.
+  const bareLook = useIcons((s) => s.bareLook)
   const hoverConfig = useIcons((s) => s.hoverConfig)
   const renderTick = useIcons((s) => s.renderTick)
   const applyProgress = useIcons((s) => s.applyProgress)
@@ -149,7 +153,7 @@ export function IconsMirror() {
                 item={item}
                 grid={grid}
                 config={activeConfig}
-                showOriginal={comparing}
+                showOriginal={comparing || (bareLook && !hoverConfig)}
                 renderSize={renderSize}
                 renderTick={renderTick}
                 waveKind={waveKind}

@@ -26,6 +26,8 @@ interface LookSnapshot {
   overrides: Map<string, { mode: 'keep' | 'tint'; tint: string | null }>
   kindPolicy: KindPolicy
   typeOverrides: TypeOverrides
+  /** The System-Default reset intent rides history too (undo un-selects it). */
+  bareLook: boolean
 }
 
 interface IconsState {
@@ -34,6 +36,11 @@ interface IconsState {
   items: IconItemDto[]
   revision: number
   comparing: boolean
+  /** System-Default reset (A1): the working design is "bare" — every icon shows
+   *  its original art in the preview (the mirror's show-original path). Purely a
+   *  design intent; selecting it never writes to the host. The real desktop only
+   *  changes at the explicit CTA crossing, which for a bare look is a RESTORE. */
+  bareLook: boolean
   zoom: number
   waveKind: 'bloom' | 'settle' | null
   waveStamp: number
@@ -70,6 +77,9 @@ interface IconsState {
   endGesture: () => void
   hover: (change: Partial<ConfigDto> | null, typeOverrides?: TypeOverrides) => void
   selectPreset: (presetId: string) => void
+  /** System Default (A1): reset the working design to bare (client-only, no host
+   *  write). Highlighted when active; the CTA then restores rather than applies. */
+  selectSystemDefault: () => void
   setOverride: (id: string, mode: 'keep' | 'tint' | 'follow', tint?: string) => void
   clearOverrides: () => void
   setKindPolicy: (bucket: IconKindBucket, styled: boolean) => void
@@ -257,6 +267,24 @@ export function activePresetIdOf(state: IconsStateDto): string | null {
   return null
 }
 
+/**
+ * Resume-aware status line (A3), consistent with the wallpaper module's grammar.
+ * On relaunch the last draft is already rehydrated (config/overrides persist via
+ * the host settings store — [M6-WIRE]); this maps the SAME applied/dirty signals
+ * every module reads to an honest status: a draft that matches the live desktop
+ * reads "resumed", a draft that differs NEVER silently reads as "applied". Pure
+ * (no store access) so the mapping is unit-testable without a DOM. Scanning/
+ * working are handled by the hero upstream and never reach here.
+ */
+export function resumeStatusKey(applied: boolean, dirty: boolean, bareLook: boolean): StringKey {
+  // A bare (System Default) look has its own two-state line: nothing to resume.
+  if (bareLook) return applied ? 'Icons_BareDirtyStatus' : 'Icons_BareStatus'
+  // Un-applied (fresh OR a resumed-but-never-applied draft): honest "ready", never "applied".
+  if (!applied) return 'Hero_ReadyStatus'
+  // Applied + a newer draft on top → last unapplied draft; applied + clean → resumed.
+  return dirty ? 'Hero_UnappliedStatus' : 'Hero_ResumedStatus'
+}
+
 function lookLabel(state: IconsStateDto): string {
   const id = activePresetIdOf(state)
   if (id && PRESET_NAME_KEYS[id]) return t(PRESET_NAME_KEYS[id])
@@ -273,6 +301,7 @@ export const useIcons = create<IconsState>((set, get) => {
       ),
       kindPolicy: { ...s.state!.kindPolicy },
       typeOverrides: structuredClone(s.state!.typeOverrides),
+      bareLook: s.bareLook,
     }
   }
 
@@ -285,6 +314,7 @@ export const useIcons = create<IconsState>((set, get) => {
         const o = snap.overrides.get(i.id)
         return { ...i, overrideMode: o?.mode ?? null, overrideTint: o?.tint ?? null }
       }),
+      bareLook: snap.bareLook,
       canUndo: undoStack.length > 0,
       canRedo: redoStack.length > 0,
     })
@@ -440,6 +470,7 @@ export const useIcons = create<IconsState>((set, get) => {
     items: [],
     revision: 0,
     comparing: false,
+    bareLook: false,
     zoom: 1,
     waveKind: null,
     waveStamp: 0,
@@ -546,7 +577,7 @@ export const useIcons = create<IconsState>((set, get) => {
       const s = get()
       if (!s.state) return
       pushUndo()
-      set({ state: markDirty({ ...s.state, config: { ...s.state.config, ...change } }), hoverConfig: null })
+      set({ state: markDirty({ ...s.state, config: { ...s.state.config, ...change } }), hoverConfig: null, bareLook: false })
       schedulePersist()
       // Pool membership follows the resolved configs (cheap; invalidates only
       // when the seed map actually moves).
@@ -559,7 +590,7 @@ export const useIcons = create<IconsState>((set, get) => {
         undoStack.push(snapshot())
         if (undoStack.length > 60) undoStack.shift()
         redoStack = []
-        set({ canUndo: true, canRedo: false })
+        set({ canUndo: true, canRedo: false, bareLook: false })
       }
       gestureDepth++
     },
@@ -585,9 +616,22 @@ export const useIcons = create<IconsState>((set, get) => {
       set({
         state: markDirty({ ...s.state, config: { ...preset.config }, typeOverrides: structuredClone(preset.typeOverrides) }),
         hoverConfig: null,
+        bareLook: false,
       })
       schedulePersist()
       recomputeHueSpread()
+    },
+
+    // System Default (A1): a RESET, not a style. It flips the working design to
+    // "bare" — the mirror's show-original path paints every icon untouched — with
+    // NO host write (no apply, no restore) at selection. `bareLook` is the design
+    // intent that lights the card and turns the CTA into a restore crossing. It is
+    // undoable (rides the snapshot) and any real look edit clears it.
+    selectSystemDefault: () => {
+      const s = get()
+      if (!s.state || s.bareLook) return
+      pushUndo()
+      set({ bareLook: true, hoverConfig: null })
     },
 
     setOverride: (id, mode, tint) => {
@@ -599,6 +643,7 @@ export const useIcons = create<IconsState>((set, get) => {
             ? { ...i, overrideMode: mode === 'follow' ? null : mode, overrideTint: mode === 'tint' ? (tint ?? null) : null }
             : i,
         ),
+        bareLook: false,
       })
       schedulePersist()
     },
@@ -619,7 +664,7 @@ export const useIcons = create<IconsState>((set, get) => {
       const s = get()
       if (!s.state || s.state.kindPolicy[bucket] === styled) return
       pushUndo()
-      set({ state: markDirty({ ...s.state, kindPolicy: { ...s.state.kindPolicy, [bucket]: styled } }) })
+      set({ state: markDirty({ ...s.state, kindPolicy: { ...s.state.kindPolicy, [bucket]: styled } }), bareLook: false })
       schedulePersist()
     },
 
@@ -633,7 +678,7 @@ export const useIcons = create<IconsState>((set, get) => {
       } else {
         next[bucket] = entry
       }
-      set({ state: markDirty({ ...s.state, typeOverrides: next }), hoverConfig: null })
+      set({ state: markDirty({ ...s.state, typeOverrides: next }), hoverConfig: null, bareLook: false })
       schedulePersist()
       recomputeHueSpread()
     },
@@ -642,7 +687,7 @@ export const useIcons = create<IconsState>((set, get) => {
       const s = get()
       if (!s.state || Object.keys(s.state.typeOverrides).length === 0) return
       pushUndo()
-      set({ state: markDirty({ ...s.state, typeOverrides: {} }), hoverConfig: null })
+      set({ state: markDirty({ ...s.state, typeOverrides: {} }), hoverConfig: null, bareLook: false })
       schedulePersist()
       recomputeHueSpread()
     },
@@ -670,6 +715,10 @@ export const useIcons = create<IconsState>((set, get) => {
     apply: async () => {
       const s = get()
       if (!s.state) return false
+      // System Default is a reset, never an apply (A1): a bare look can NEVER bake
+      // beautified icons onto the desktop. Its CTA crossing is a restore, routed by
+      // the panel; this store invariant guarantees no stray apply slips through.
+      if (s.bareLook) return false
       // Claim a generation so any writer already in flight is superseded, AND so
       // this apply's own late commit self-drops if a newer writer (canvas refresh
       // / Settings restore, both reachable while `working`) started after it
@@ -821,6 +870,7 @@ export const useIcons = create<IconsState>((set, get) => {
       set({
         state: markDirty({ ...s.state, config: { ...entry.config }, typeOverrides: structuredClone(entry.typeOverrides) }),
         hoverConfig: null,
+        bareLook: false,
       })
       schedulePersist()
       recomputeHueSpread()

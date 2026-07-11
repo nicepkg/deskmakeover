@@ -9,8 +9,10 @@ export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
-// M2 slice: settings persistence is real (Rust/rusqlite); the frameless
-// titlebar's window controls drive the real window. Every other verb stays mock.
+// Settings persistence is real (Rust/rusqlite); the frameless titlebar's window
+// controls drive the real window. M6-WIRE Wave A: the wallpaper verbs now route to
+// the real Rust command path (schema 6 thin contract, D1) — get screen info,
+// get/set (bake) wallpaper, restore snapshot. Icons + the rest stay mock until Wave B.
 const HANDLED = new Set([
   'settings.get',
   'settings.set',
@@ -18,6 +20,10 @@ const HANDLED = new Set([
   'shell.maximize',
   'shell.restore',
   'shell.close',
+  'wallpaper.getScreens',
+  'wallpaper.getSource',
+  'wallpaper.applyBaked',
+  'wallpaper.restore',
 ])
 
 export function tauriHandles(method: string): boolean {
@@ -57,6 +63,20 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
       return unwrap(await commands.settingsGet())
     case 'settings.set':
       return unwrap(await commands.settingsSet(params as Parameters<typeof commands.settingsSet>[0]))
+    // Wallpaper (schema 6 thin, D1): the store reconciles + assembles; Rust returns
+    // raw screens (getScreens) / the active source (getSource) / a thin op result.
+    case 'wallpaper.getScreens':
+      return unwrap(await commands.wallpaperGetScreens())
+    case 'wallpaper.getSource':
+      return unwrap(await commands.wallpaperGetSource())
+    case 'wallpaper.applyBaked': {
+      const p = params as { monitorId: string; pngBase64: string }
+      return unwrap(await commands.wallpaperApplyBaked(p.monitorId, p.pngBase64))
+    }
+    case 'wallpaper.restore': {
+      const p = params as { monitorId: string }
+      return unwrap(await commands.wallpaperRestore(p.monitorId))
+    }
     case 'shell.minimize':
       await getCurrentWindow().minimize()
       return null

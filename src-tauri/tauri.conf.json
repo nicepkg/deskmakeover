@@ -30,7 +30,7 @@
         "enable": false,
         "scope": []
       },
-      "csp": "default-src 'self'; img-src 'self' data: blob: dmwallpaper: http://dmwallpaper.localhost; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost blob: data:; object-src 'none'; base-uri 'self'; frame-src 'none'; form-action 'none'; frame-ancestors 'none'"
+      "csp": "default-src 'self'; img-src 'self' data: blob: dmwallpaper: http://dmwallpaper.localhost; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost dmwallpaper: http://dmwallpaper.localhost blob: data:; object-src 'none'; base-uri 'self'; frame-src 'none'; form-action 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {

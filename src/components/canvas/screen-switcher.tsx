@@ -4,8 +4,9 @@ import { format, useT } from '@/lib/i18n'
 import { arrangeTiles, shouldShowSwitcher } from '@/lib/screen-arrange'
 import { cn } from '@/lib/utils'
 
-// The screen switcher (spec 04 §B4): a floating glass pill at the canvas TOP-LEFT
-// (mirrors the bottom-center CanvasToolbar's glass grammar; top-RIGHT is rejected —
+// The screen switcher (spec 04 §B4): a floating glass pill at the canvas BOTTOM-RIGHT
+// (owner 2026-07-11: top-left overlapped the editable zones — most zones sit
+// top/centre, so the bottom-right corner is occluded least; top-RIGHT stays rejected —
 // it collides with the titlebar drag region + caption buttons). Inside is a live
 // mini-map of the OS "Displays arrangement": one tile per monitor, shaped to that
 // screen's real aspect (orientation = shape, no icon), positioned relative to the
@@ -32,7 +33,7 @@ export function ScreenSwitcher() {
   const { tiles, width, height } = arrangeTiles(screens, MAX_W, MAX_H)
 
   return (
-    <div className={cn('absolute left-2.5 top-2.5 z-10 rounded-[12px] p-2', GLASS)}>
+    <div className={cn('absolute bottom-2.5 right-2.5 z-10 rounded-[12px] p-2', GLASS)}>
       <div className="relative" style={{ width, height }}>
         {tiles.map((tile) => {
           const screen = screens[tile.index]

@@ -316,11 +316,15 @@ export function IconsPanel() {
             >
               <span
                 className={cn(
-                  'flex h-11 w-full items-center justify-center transition-colors',
-                  bareLook ? 'bg-wash-preset text-coral' : 'bg-chip/60 text-t2 group-hover:bg-chip',
+                  'flex h-11 w-full items-center justify-center gap-1 transition-colors',
+                  bareLook ? 'bg-wash-preset' : 'bg-chip/60 group-hover:bg-chip',
                 )}
               >
-                <RotateCcw size={16} />
+                {/* The bare/original icons WITH the native shortcut arrow (owner):
+                    same 3-mini grammar as every style card, so System Default reads
+                    as the same category — its content is the ugly desktop the reset
+                    returns to. */}
+                <PresetMinis bare config={state.config} />
               </span>
               <span
                 className={cn(
@@ -850,7 +854,7 @@ export function IconsPanel() {
 /** Preset thumbnails rendered by the LIVE compositor on the user's own icons
  *  (v2: no more host-rendered miniUrls) — badge-free by construction, since
  *  every preset ships Distinction.None (owner decree). */
-function PresetMinis({ config }: { config: ConfigDto }) {
+function PresetMinis({ config, bare = false }: { config: ConfigDto; bare?: boolean }) {
   const items = useIcons((s) => s.items)
   const renderTick = useIcons((s) => s.renderTick)
   const samples = React.useMemo(
@@ -860,7 +864,7 @@ function PresetMinis({ config }: { config: ConfigDto }) {
   return (
     <>
       {samples.map((item) => (
-        <PresetMiniCanvas key={item.id} itemId={item.id} sourceUrl={item.sourceUrls[0] ?? ''} config={config} renderTick={renderTick} />
+        <PresetMiniCanvas key={item.id} itemId={item.id} sourceUrl={item.sourceUrls[0] ?? ''} config={config} renderTick={renderTick} bare={bare} />
       ))}
     </>
   )
@@ -871,17 +875,23 @@ function PresetMiniCanvas({
   sourceUrl,
   config,
   renderTick,
+  bare = false,
 }: {
   itemId: string
   sourceUrl: string
   config: ConfigDto
   renderTick: number
+  /** System Default preview: the ORIGINAL unmodified icon WITH the native Windows
+   *  shortcut arrow (is_shortcut + show_original) — the ugly bare desktop the reset
+   *  returns to. The tile renderer bakes the real arrow asset, so the mini IS the
+   *  outcome. */
+  bare?: boolean
 }) {
   const ref = React.useRef<HTMLCanvasElement>(null)
   React.useEffect(() => {
     const compositor = getIconCompositor()
     if (!sourceUrl || !compositor.hasSource(itemId, sourceUrl)) return // renderTick re-fires once loaded
-    const image = compositor.getTile(itemId, config, false, false, 44, fieldRenderOpts(itemId))
+    const image = compositor.getTile(itemId, config, bare, bare, 44, fieldRenderOpts(itemId))
     const el = ref.current
     if (!el || !image) return // pool render dispatched — next renderTick blits
     el.width = 44

@@ -32,17 +32,21 @@ pub fn display_name(file_name: &str, kind: ItemKind) -> String {
     }
 }
 
-/// Splits an icon location string `"path,index"` into its path and (possibly negative) resource
-/// index. Surrounding quotes are stripped; the index is taken only when the text after the LAST
-/// comma parses as an integer, so paths that themselves contain commas are preserved.
+/// Splits an icon location string `"path",index` into its path and (possibly negative) resource
+/// index. The index is taken only when the text after the LAST comma parses as an integer (so paths
+/// that themselves contain commas are preserved), and quotes are stripped from the PATH afterwards —
+/// the real format quotes only the path, not the whole string (`"C:\a b\i.dll",-7`). Order matters:
+/// split at the last comma FIRST, THEN strip quotes (legacy `SystemArrowInstaller.cs:79`); stripping
+/// the whole string first leaves a trailing quote on the path and lets a quoted value collide with a
+/// malformed unquoted one.
 pub fn parse_icon_location(raw: &str) -> (String, i32) {
-    let trimmed = raw.trim().trim_matches('"');
+    let trimmed = raw.trim();
     if let Some(comma) = trimmed.rfind(',') {
         if let Ok(index) = trimmed[comma + 1..].trim().parse::<i32>() {
-            return (trimmed[..comma].trim().to_string(), index);
+            return (trimmed[..comma].trim().trim_matches('"').to_string(), index);
         }
     }
-    (trimmed.to_string(), 0)
+    (trimmed.trim_matches('"').to_string(), 0)
 }
 
 /// Prefixes a drive-absolute path with the `\\?\` extended-length marker so `IPersistFile`
@@ -192,5 +196,25 @@ mod tests {
         assert_ne!(parse_icon_location(r"C:\gen\full.ico,garbage"), parse_icon_location(r"C:\gen\full.ico,0"));
         // Two distinct comma-bearing values do not collapse to the same (path, 0).
         assert_ne!(parse_icon_location("custom,one.ico"), parse_icon_location("custom,two.ico"));
+    }
+
+    #[test]
+    fn quotes_wrap_the_path_only_and_are_stripped_after_the_comma_split() {
+        // wave-2R final: the real format is `"path",index` — quotes wrap the path, not the whole
+        // string. Split at the last comma FIRST, then strip quotes from the path, so no trailing
+        // quote survives on the path (the old strip-then-split order left one).
+        assert_eq!(
+            parse_icon_location(r#""C:\Program Files\icons.dll",-7"#),
+            (r"C:\Program Files\icons.dll".into(), -7),
+        );
+        // A quoted registry value must normalize to the SAME clean (path, index) as its unquoted
+        // form, so it matches the clean asset path in CAS. The old order left a trailing quote and
+        // broke this equality (revert-sensitive).
+        assert_eq!(
+            parse_icon_location(r#""C:\gen\a.ico",3"#),
+            parse_icon_location(r"C:\gen\a.ico,3"),
+        );
+        // A quoted path with no index still strips its wrapping quotes.
+        assert_eq!(parse_icon_location(r#""C:\a b\i.dll""#), (r"C:\a b\i.dll".into(), 0));
     }
 }

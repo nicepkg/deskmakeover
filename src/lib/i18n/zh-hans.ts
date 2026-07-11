@@ -250,7 +250,6 @@ export const zhHans: Record<keyof typeof en, string> = {
   "MarkColor_Auto": "自动",
   "MarkColor_Label": "标识配色",
   "Mark_Arc": "珐琅光弧",
-  "Mark_ArrowHint": "这些角标都是画上去的。应用后，系统自带的小箭头会隐藏，随时可以在设置里恢复。", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Mark_Halo": "光环",
   "Mark_Shadow": "投影",
   "Mark_Fold": "卷角",

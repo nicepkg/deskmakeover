@@ -226,49 +226,6 @@ export function IconsPanel() {
           it rides along with the panel (owner call 2026-07-09), never floats. */}
       <div style={{ paddingBottom: clearance }} className="scrollbar-none -mt-px flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pt-px [&>*]:shrink-0">
         <p className="truncate px-0.5 text-[11px] text-t3/90" title={statusLine}>{statusLine}</p>
-        {/* System Default (A1) — the reset escape hatch, FIRST in the style deck.
-            Not a style: selecting it shows the bare original desktop in the preview
-            with NO host write; the CTA then restores. A full-width row reads as a
-            reset (distinct from the style thumbnails), highlighted only while the
-            bare look is the active design. */}
-        <button
-          type="button"
-          aria-pressed={bareLook}
-          title={`${t('Preset_SystemDefault')} · ${t('Preset_SystemDefault_Desc')}`}
-          onClick={() => {
-            hover(null)
-            selectSystemDefault()
-          }}
-          className={cn(
-            'group relative flex w-full items-center gap-2 overflow-hidden rounded-[10px] border px-2.5 py-2 text-left transition-all duration-150 hover:-translate-y-px hover:shadow-elev-1 active:translate-y-0 active:scale-[0.99]',
-            bareLook ? 'border-coral/50 bg-wash-preset' : 'border-hair-strong bg-raised',
-          )}
-        >
-          <span
-            className={cn(
-              'flex size-7 shrink-0 items-center justify-center rounded-[8px] transition-colors',
-              bareLook ? 'bg-coral text-cta-ink' : 'bg-chip/60 text-t2 group-hover:bg-chip',
-            )}
-          >
-            <RotateCcw size={14} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className={cn('block truncate text-[11px] font-medium', bareLook ? 'text-coral-ink' : 'text-t1')}>
-              {t('Preset_SystemDefault')}
-            </span>
-            <span className="block truncate text-[10.5px] text-t3">{t('Preset_SystemDefault_Desc')}</span>
-          </span>
-          {bareLook && (
-            <motion.span
-              initial={reduced ? false : { scale: 0.4, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 520, damping: 26 }}
-              className="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-coral text-[9px] leading-none text-cta-ink"
-            >
-              ✓
-            </motion.span>
-          )}
-        </button>
         {/* 风格 presets — style-card grid (filter-deck grammar): a visual thumbnail
             leads, the name sits on one line below, the description lives in the
             tooltip. Two columns grow downward forever — 4 presets or 40, same UI. */}
@@ -278,7 +235,7 @@ export function IconsPanel() {
             the visible cards never reflow. Auto-open when the active preset
             hides behind the fold. */}
         {(() => {
-          const activeHidden = state.presets.slice(4).some((p) => activePresetIdOf(state) === p.id)
+          const activeHidden = state.presets.slice(3).some((p) => activePresetIdOf(state) === p.id)
           const foldOpen = morePresets || activeHidden
           const renderPresetCard = (p: (typeof state.presets)[number]) => {
             const meta = PRESET_NAME[p.id]
@@ -303,8 +260,10 @@ export function IconsPanel() {
                 }}
                 onMouseLeave={() => presetHover(false)}
                 className={cn(
-                  'group relative flex w-full flex-col overflow-hidden rounded-[10px] border bg-raised text-left transition-all duration-150 hover:-translate-y-px hover:shadow-elev-1 active:translate-y-0 active:scale-[0.99]',
-                  selected ? 'border-coral/50' : 'border-hair-strong',
+                  // Native feel (owner): hover changes COLOUR only — never size or
+                  // position. No lift, no scale, no translate.
+                  'group relative flex w-full flex-col overflow-hidden rounded-[10px] border bg-raised text-left transition-colors duration-150',
+                  selected ? 'border-coral/50' : 'border-hair-strong hover:border-hair-strong',
                 )}
               >
                 <span
@@ -336,9 +295,59 @@ export function IconsPanel() {
               </button>
             )
           }
+          // System Default (A1) as the FIRST card in the style grid (owner: not a
+          // separate row). Same card grammar as a style preset — a reset thumbnail
+          // leads, name below — but selecting it shows the bare desktop in the preview
+          // with NO host write (the CTA restores). No hover geometry (native feel).
+          const systemDefaultCard = (
+            <button
+              key="system-default"
+              type="button"
+              aria-pressed={bareLook}
+              title={`${t('Preset_SystemDefault')} · ${t('Preset_SystemDefault_Desc')}`}
+              onClick={() => {
+                hover(null)
+                selectSystemDefault()
+              }}
+              className={cn(
+                'group relative flex w-full flex-col overflow-hidden rounded-[10px] border bg-raised text-left transition-colors duration-150',
+                bareLook ? 'border-coral/50' : 'border-hair-strong',
+              )}
+            >
+              <span
+                className={cn(
+                  'flex h-11 w-full items-center justify-center transition-colors',
+                  bareLook ? 'bg-wash-preset text-coral' : 'bg-chip/60 text-t2 group-hover:bg-chip',
+                )}
+              >
+                <RotateCcw size={16} />
+              </span>
+              <span
+                className={cn(
+                  'w-full truncate whitespace-nowrap px-2 py-1.5 text-center text-[11px] font-medium',
+                  bareLook ? 'text-coral-ink' : 'text-t1',
+                )}
+              >
+                {t('Preset_SystemDefault')}
+              </span>
+              {bareLook && (
+                <motion.span
+                  initial={reduced ? false : { scale: 0.4, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 520, damping: 26 }}
+                  className="absolute right-1 top-1 flex size-3.5 items-center justify-center rounded-full bg-coral text-[9px] leading-none text-cta-ink"
+                >
+                  ✓
+                </motion.span>
+              )}
+            </button>
+          )
           return (
             <div>
-              <div className="grid grid-cols-2 gap-1.5">{state.presets.slice(0, 4).map(renderPresetCard)}</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {systemDefaultCard}
+                {state.presets.slice(0, 3).map(renderPresetCard)}
+              </div>
               {/* The fold EXPANDS, never pops (owner) — and stays SMOOTH
                   (owner jank report): the hidden cards are ALWAYS MOUNTED so
                   their live-renderer minis paint once at load, never inside
@@ -354,7 +363,7 @@ export function IconsPanel() {
                 {...(foldOpen ? {} : { inert: '' as never })}
               >
                 <div className="grid grid-cols-2 gap-1.5 pt-1.5">
-                  {state.presets.slice(4).map((p, i) => (
+                  {state.presets.slice(3).map((p, i) => (
                     <motion.div
                       key={p.id}
                       className="flex"
@@ -651,15 +660,10 @@ export function IconsPanel() {
                 },
               ]}
             />
-            {/* Native-arrow contextual hint (owner ruling, panel record
-                2026-07-11): while the system arrow is still active (pre-first-
-                apply, and again after a restore) explain that marks are drawn
-                and the native arrow hides on apply. It disappears once the
-                overlay is active, so it never nags. Quiet ghost-note grammar —
-                no card, no background, no badge (panel height is precious). */}
-            {state.arrowOverlay === 'native' && (
-              <p className="mt-1.5 text-[11px] leading-relaxed text-t3">{t('Mark_ArrowHint')}</p>
-            )}
+            {/* The native-arrow disclosure lives ONLY in the first-beautify consent
+                dialog + Settings (owner 2026-07-11): the native arrow always goes
+                transparent on apply regardless of the mark choice, so a permanent
+                inline hint here just nags. Removed. */}
           </PropertyRow>
 
           {/* Uniform shortcut shape (ADR-0017 D5; control spec 2026-07-10):

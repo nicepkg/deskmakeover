@@ -248,7 +248,6 @@ export const en = {
   "MarkColor_Auto": "Auto",
   "MarkColor_Label": "Mark colour",
   "Mark_Arc": "Enamel arc",
-  "Mark_ArrowHint": "These badges are all drawn on. After you apply, the default Windows arrow is hidden; you can bring it back any time in Settings.", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Mark_Halo": "Halo",
   "Mark_Shadow": "Drop shadow",
   "Mark_Fold": "Dog-ear",

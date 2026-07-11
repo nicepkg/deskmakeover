@@ -250,7 +250,7 @@ export function PresetPopover({
                 setOpen(false)
                 onPick(preset.id)
               }}
-              className="group overflow-hidden rounded-[9px] ring-1 ring-hair transition-shadow hover:ring-coral/60"
+              className="group overflow-hidden rounded-[9px]"
             >
               <span className={`relative block ${thumbClass} overflow-hidden bg-canvas-stage`}>
                 {wallpaperUrl && (

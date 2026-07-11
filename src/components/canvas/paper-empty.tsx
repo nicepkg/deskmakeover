@@ -61,7 +61,7 @@ export function PaperEmptyState({
                   key={preset.id}
                   type="button"
                   onClick={() => onPreset(preset)}
-                  className="group overflow-hidden rounded-[10px] ring-1 ring-glass-ring transition-shadow hover:ring-coral/70"
+                  className="group overflow-hidden rounded-[10px]"
                 >
                   <span className={`relative block ${thumbClass} overflow-hidden bg-black/20`}>
                     {wallpaperUrl && (

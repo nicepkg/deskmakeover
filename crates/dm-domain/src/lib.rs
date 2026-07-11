@@ -12,15 +12,20 @@ pub mod fingerprint;
 pub mod item;
 pub mod ports;
 pub mod restore;
+pub mod wallpaper;
 
 pub use asset::{ApplyAssets, AssetRef, OwnedFields};
 pub use error::{PortError, PortResult};
 pub use fingerprint::Fingerprint;
 pub use item::{DesktopItem, IconRef, IconSourceKind, ItemId, ItemKind, ItemState, ItemTarget};
 pub use ports::{
-    AssetStore, DesktopScanner, ExplorerRefresher, IconApplier, ItemStateReader, OverlayControl,
-    OverlayOutcome, OverlayStyle,
+    AssetStore, DesktopScanner, ExplorerRefresher, IconApplier, ImageDecoder, ItemStateReader,
+    MonitorTopology, OverlayControl, OverlayOutcome, OverlayStyle, WallpaperApplier,
 };
 pub use restore::{
     DesktopIniAnchor, RecycleBinAnchor, RegistryValue, RestoreAnchor, WrapperAnchor,
+};
+pub use wallpaper::{
+    DecodedImage, MonitorInfo, MonitorRect, MonitorWallpaper, Orientation, WallpaperPosition,
+    WallpaperSnapshot, WallpaperTopology,
 };

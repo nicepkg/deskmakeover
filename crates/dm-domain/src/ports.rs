@@ -11,6 +11,7 @@ use crate::error::PortResult;
 use crate::fingerprint::Fingerprint;
 use crate::item::{DesktopItem, ItemTarget};
 use crate::restore::RestoreAnchor;
+use crate::wallpaper::{DecodedImage, WallpaperSnapshot, WallpaperTopology};
 
 /// Reads the current on-disk/registry state of an item: its fingerprint (the CAS anchor) and
 /// its exact-restore material. Both are captured against the *live* item, so the driver can
@@ -101,4 +102,48 @@ pub enum OverlayOutcome {
     Applied,
     Declined,
     Failed,
+}
+
+// ---- Wallpaper ports (M6-WIRE, owner ruling D1) --------------------------------
+//
+// Rust is thin platform I/O: read the multi-monitor topology, get/set the wallpaper
+// image, and capture/restore the pre-first-apply snapshot. Reconcile, per-monitor
+// draft persistence, and `WallpaperStateDto` assembly are FRONTEND — no port here
+// touches a look, a zone, or a grid.
+
+/// Reads the multi-monitor wallpaper topology: every present monitor's geometry, its
+/// current source path, its slideshow flag, plus the global position. Pure read — no
+/// mutation. (oracle: `IDesktopWallpaper::GetMonitorDevicePathAt`/`GetMonitorRECT`/
+/// `GetPosition`/`GetStatus`/`GetWallpaper`).
+pub trait MonitorTopology {
+    fn enumerate(&self) -> PortResult<WallpaperTopology>;
+}
+
+/// Gets/sets the wallpaper image and captures/restores the pre-first-apply snapshot —
+/// the exact shape `WindowsWallpaper` already has (capture/set/restore), lifted behind
+/// the port so the operations layer's snapshot-once policy drives it and Mac fakes it.
+///
+/// [`capture`](WallpaperApplier::capture) records the byte-level restore material
+/// (global colour + position + per-monitor images) and MUST run before the first
+/// [`set`](WallpaperApplier::set), or the first apply irreversibly destroys the user's
+/// original desktop — the single highest-severity trap in the feature.
+pub trait WallpaperApplier {
+    /// Captures the full restore snapshot (global colour + position, per-monitor
+    /// images) — the pre-first-apply desktop state.
+    fn capture(&self) -> PortResult<WallpaperSnapshot>;
+
+    /// Points `monitor_id` at `image_path` (`SetWallpaper`).
+    fn set(&self, monitor_id: &str, image_path: &str) -> PortResult<()>;
+
+    /// Restores a previously captured snapshot: global colour + position, then each
+    /// monitor's image (or a cleared image so a solid-colour monitor's background
+    /// shows through).
+    fn restore(&self, snapshot: &WallpaperSnapshot) -> PortResult<()>;
+}
+
+/// Decodes a wallpaper image file into its true dims + re-encoded PNG bytes the
+/// compositor renders from (oracle: WIC decode → PNG encode). The I/O happens in the
+/// impl; the trait itself is pure so the operations layer stays msvc-clean and Mac-fakes.
+pub trait ImageDecoder {
+    fn decode(&self, path: &str) -> PortResult<DecodedImage>;
 }

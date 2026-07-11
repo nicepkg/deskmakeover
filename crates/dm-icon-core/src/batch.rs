@@ -15,6 +15,12 @@
 //!     that is byte-neutral (Phase-1 four-way certified: cache-on == cache-off).
 //!   • `collect()` over an indexed parallel iterator returns results in INPUT order,
 //!     so `out[i]` is always `render(jobs[i])` regardless of completion order.
+//!
+//! Downstream integration contract (for the src-tauri apply/background caller): the
+//! byte-safety above relies on `NATIVE_ARROW` staying constant for the whole batch —
+//! it is a boot-once RwLock. Do NOT call `set_native_arrow_raster` while a
+//! `render_icons_par` is in flight; set the arrow once at startup, then render. A
+//! concurrent write would let two icons in the same batch see different arrows.
 
 use rayon::prelude::*;
 

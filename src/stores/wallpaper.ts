@@ -10,14 +10,10 @@ import type { StringKey } from '@/lib/i18n'
 import { useToasts } from '@/stores/toasts'
 
 // Wallpaper-module state (spec 04 v2.0, ADR-0014; multi-monitor §B2). The WEB owns
-// the working look AND its rendering (client compositor repaints per look change;
-// host only persists the look per monitor + writes the baked PNG on apply; apply/
-// restore run only from explicit user clicks). Multi-monitor truth = `screens:
-// Record<monitorId, ScreenLook>` + `activeScreenId`; each screen owns its draft
-// look, source, selection AND undo/redo, so editing/undoing one never touches
-// another. The top-level fields (`look`/`selected`/`sourceName`/`sourceUrl`/`past`/
-// `future`/`canUndo`/`canRedo`) MIRROR the active screen — existing consumers read
-// them unchanged and a single-monitor host behaves EXACTLY as before.
+// the working look + its rendering; the host only persists per-monitor + bakes the
+// PNG on apply (apply/restore only from explicit clicks). Truth = `screens:
+// Record<monitorId, ScreenLook>` + `activeScreenId`, each screen owning its own draft
+// + selection + undo. Top-level fields MIRROR the active screen (single-monitor parity).
 
 const HISTORY_LIMIT = 100
 /** Debounce for persisting the look to the host (pure persistence, not render). */

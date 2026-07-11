@@ -130,6 +130,7 @@ fn derived_plate_field_lane_via_the_render_session_profile_seam() {
         subject_rim_lightness: 0.4,
     };
     let mut diag = ComposeDiagnostics::default();
+    let mut mask_cache = dm_icon_core::mask_cache::MaskCache::new();
     let out = render_tile_cached(
         &artwork,
         &base_config(),
@@ -139,6 +140,7 @@ fn derived_plate_field_lane_via_the_render_session_profile_seam() {
         &RenderOpts::default(),
         &mut diag,
         Some(&forced),
+        &mut mask_cache,
     );
     assert_eq!(diag.lane, ComposeLane::DerivedField);
     assert_eq!(diag.field_lane, Some(ComposeFieldLane::DerivedPlate));

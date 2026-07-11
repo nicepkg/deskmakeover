@@ -24,6 +24,7 @@ pub mod config;
 pub mod filters;
 pub mod hue_spread;
 pub mod js_math;
+pub mod mask_cache;
 pub mod marks;
 pub mod mono;
 pub mod profile;

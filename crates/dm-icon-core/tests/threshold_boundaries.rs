@@ -112,7 +112,7 @@ fn mark_ink_flips_at_the_0_58_adaptive_luminance_threshold() {
             shape: IconShape::Circle,
             luminance,
             mark_color: None,
-            tile_alpha: vec![1.0; size * size],
+            tile_alpha: vec![1.0; size * size].into(),
         };
         let mut target = Raster::new(size, size);
         mark.render(&mut target, &vec![1.0; size * size], &ctx);

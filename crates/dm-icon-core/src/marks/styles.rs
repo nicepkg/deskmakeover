@@ -58,7 +58,7 @@ impl Mark for HaloMark {
     }
     fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext) {
         let size = ctx.size;
-        let sil: &[f64] = if ctx.shape == IconShape::None { &ctx.tile_alpha } else { card_mask };
+        let sil: &[f64] = if ctx.shape == IconShape::None { &ctx.tile_alpha[..] } else { card_mask };
         let dist = outside_distance(sil, size);
         let radius = 3.0_f64.max(size as f64 * 0.1);
         let tone = if ctx.mark_color.is_some() {

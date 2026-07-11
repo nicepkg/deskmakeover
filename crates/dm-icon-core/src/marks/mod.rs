@@ -4,7 +4,7 @@
 
 mod styles;
 
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use crate::analysis::ContentBounds;
 use crate::config::{IconShape, MarkStyle};
@@ -31,7 +31,9 @@ pub struct MarkContext {
     pub shape: IconShape,
     pub luminance: f64,
     pub mark_color: Option<u32>,
-    pub tile_alpha: Vec<f64>,
+    /// The full-tile silhouette coverage. Shared read-only from the session mask
+    /// cache (`Arc<[f64]>`) — marks only read it, so no per-cell copy (M6 Phase 1).
+    pub tile_alpha: Arc<[f64]>,
 }
 
 /// A shortcut mark (marks.ts `Mark`). Defaults mirror the TS `base`.

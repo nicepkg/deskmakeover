@@ -14,9 +14,12 @@ use crate::analysis::{
     try_detect_background, ContentBounds,
 };
 use crate::color::luminance;
+use std::sync::Arc;
+
 use crate::config::{Config, Distinction, FilterStyle, IconShape, MonoStyle, PlateFallback, Subject};
 use crate::filters::apply_filter;
 use crate::marks::{draw_classic_arrow, resolve_mark, MarkContext, Placement};
+use crate::mask_cache::{MaskCache, MaskKey};
 use crate::mono::{mono_map_adaptive, mono_ramp, transform_pixel_in_place};
 use crate::profile::IconProfile;
 use crate::raster::{clip_to_mask, from_rgb_int, over_at, shape_mask, Raster, WHITE};
@@ -98,7 +101,25 @@ pub struct ComposeDiagnostics {
     pub pass_through: bool,
 }
 
-/// Render one styled tile at `size` px (compose.ts `renderTile`).
+/// A card mask that is either shared read-only from the cache (`Arc`) or an owned
+/// copy carved in place (Fold). `as_slice` hands both to the read-only consumers.
+enum MaskRef {
+    Shared(Arc<[f64]>),
+    Owned(Vec<f64>),
+}
+
+impl MaskRef {
+    fn as_slice(&self) -> &[f64] {
+        match self {
+            MaskRef::Shared(a) => a,
+            MaskRef::Owned(v) => v,
+        }
+    }
+}
+
+/// Render one styled tile at `size` px (compose.ts `renderTile`). The free function
+/// owns a throwaway mask cache (within-call tile/card sharing only); the hot path is
+/// `RenderSession::render`, which reuses one session-owned cache across renders.
 #[allow(clippy::too_many_arguments)]
 pub fn render_tile(
     artwork: &Raster,
@@ -109,7 +130,8 @@ pub fn render_tile(
     opts: &RenderOpts,
     diag: &mut ComposeDiagnostics,
 ) -> Raster {
-    render_tile_cached(artwork, config, is_shortcut, show_original, size, opts, diag, None)
+    let mut mask_cache = MaskCache::new();
+    render_tile_cached(artwork, config, is_shortcut, show_original, size, opts, diag, None, &mut mask_cache)
 }
 
 /// `render_tile` with an optional RenderSession-cached profile (same raster →
@@ -125,6 +147,7 @@ pub fn render_tile_cached(
     opts: &RenderOpts,
     diag: &mut ComposeDiagnostics,
     profile: Option<&IconProfile>,
+    mask_cache: &mut MaskCache,
 ) -> Raster {
     assert!(size > 0, "size must be positive");
     let tint = config.tint;
@@ -140,75 +163,91 @@ pub fn render_tile_cached(
     }
 
     let shape = config.shape;
-    let tile_alpha = shape_mask(shape, size, size, 0.0, 0.0);
     let mark = if is_shortcut && config.distinction == Distinction::Mark {
         Some(resolve_mark(config.mark_style))
     } else {
         None
     };
 
-    // Only marks read the geometry context, and building it clones the tile-alpha field
-    // (256 KB at 256²). Skip that allocation entirely on the common no-mark path.
-    let geometry_ctx = mark.map(|_| MarkContext {
+    // The full-tile silhouette is consumed ONLY by marks (the geometry context, the
+    // stamp, the over/behind render). On the common no-mark path it is dead, so skip
+    // computing it — but NEVER skip the final composite_over below (it also
+    // canonicalizes hidden RGB under zero alpha, which is byte-load-bearing).
+    let tile_alpha: Option<Arc<[f64]>> = mark.map(|_| {
+        mask_cache.get_or_compute(MaskKey::new(shape, size, size, 0.0, 0.0), || {
+            shape_mask(shape, size, size, 0.0, 0.0)
+        })
+    });
+    let geometry_ctx = tile_alpha.as_ref().map(|ta| MarkContext {
         size,
         shape,
         luminance: 0.5,
         mark_color: config.mark_color,
-        tile_alpha: tile_alpha.clone(),
+        tile_alpha: Arc::clone(ta),
     });
 
-    // Clamp the mark inset so the inscribed card keeps at least one pixel; without
-    // this a large inset on a tiny tile underflows `size - 2 * pad` (or drives
-    // card_size to 0, tripping the shapeSize assert). At 256² the real insets are a
-    // few px, far below (size - 1) / 2, so the master render is unchanged.
+    // Clamp the mark inset so the inscribed card keeps at least one pixel (frozen
+    // note preserved). No-mark → pad 0 → the card key equals the tile-alpha key, so
+    // the two share one cache entry across cells of the same shape/size.
     let pad = match (mark, &geometry_ctx) {
         (Some(m), Some(gc)) => m.card_inset(gc).min((size - 1) / 2),
         _ => 0,
     };
     let card_size = size - 2 * pad;
-    let mut card_mask = shape_mask(shape, size, card_size, pad as f64, pad as f64);
+    let card_shared = mask_cache.get_or_compute(MaskKey::new(shape, size, card_size, pad as f64, pad as f64), || {
+        shape_mask(shape, size, card_size, pad as f64, pad as f64)
+    });
     let carves = mark.map(|m| m.carves_card()).unwrap_or(false);
-    if carves {
+    // COW: the Fold carve mutates the mask in place, so copy the shared cache entry
+    // before carving; every read-only consumer aliases the cached buffer directly.
+    let card_mask = if carves {
+        let mut carved = card_shared.to_vec();
         if let (Some(m), Some(gc)) = (mark, &geometry_ctx) {
-            m.carve_card(&mut card_mask, gc);
+            m.carve_card(&mut carved, gc);
         }
-    }
+        MaskRef::Owned(carved)
+    } else {
+        MaskRef::Shared(card_shared)
+    };
 
     let (mut tile, pass_through) =
         compose_tile(artwork, size, pad, card_size, shape, config, tint, opts, diag, profile);
     diag.pass_through = pass_through;
 
     if !pass_through || carves {
-        clip_to_mask(&mut tile, &card_mask);
+        clip_to_mask(&mut tile, card_mask.as_slice());
     }
 
     if config.filter != FilterStyle::None {
         apply_filter(&mut tile, size, config.filter, config.subject, tint);
     }
 
-    let mark_alpha = if shape == IconShape::None {
-        alpha_field_of(&tile)
-    } else {
-        tile_alpha
-    };
-    let ctx = MarkContext {
-        size,
-        shape,
-        luminance: composed_luminance(&tile),
-        mark_color: config.mark_color,
-        tile_alpha: mark_alpha,
-    };
-
     let mut target = Raster::new(size, size);
-    if let Some(m) = mark {
-        if m.placement() == Placement::Behind {
-            m.render(&mut target, &card_mask, &ctx);
+    match mark {
+        Some(m) => {
+            // The mark context (composed luminance + mark alpha) is mark-only work.
+            let mark_alpha: Arc<[f64]> = if shape == IconShape::None {
+                Arc::from(alpha_field_of(&tile))
+            } else {
+                Arc::clone(tile_alpha.as_ref().expect("tile_alpha present when mark is Some"))
+            };
+            let ctx = MarkContext {
+                size,
+                shape,
+                luminance: composed_luminance(&tile),
+                mark_color: config.mark_color,
+                tile_alpha: mark_alpha,
+            };
+            if m.placement() == Placement::Behind {
+                m.render(&mut target, card_mask.as_slice(), &ctx);
+            }
+            composite_over(&mut target, &tile);
+            if m.placement() == Placement::Over {
+                m.render(&mut target, card_mask.as_slice(), &ctx);
+            }
         }
-    }
-    composite_over(&mut target, &tile);
-    if let Some(m) = mark {
-        if m.placement() == Placement::Over {
-            m.render(&mut target, &card_mask, &ctx);
+        None => {
+            composite_over(&mut target, &tile);
         }
     }
 

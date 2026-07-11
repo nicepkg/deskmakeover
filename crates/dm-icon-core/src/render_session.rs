@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use crate::compose::{render_tile_cached, ComposeDiagnostics, RenderOpts};
 use crate::config::Config;
+use crate::mask_cache::MaskCache;
 use crate::profile::{icon_profile, IconProfile};
 use crate::raster::Raster;
 
@@ -32,6 +33,10 @@ pub struct RenderSession {
     sources: HashMap<String, Registered>,
     profiles: HashMap<u64, CachedProfile>,
     look: Option<Config>,
+    /// Session-owned geometry mask cache — reused across every `render`, so the
+    /// dominant `shape_mask` recompute collapses to a warm hit (M6 Phase 1). Under
+    /// the default (scalar) build this is a passthrough; `--features fast` caches.
+    mask_cache: MaskCache,
 }
 
 impl RenderSession {
@@ -92,7 +97,7 @@ impl RenderSession {
         let config = self.look.as_ref()?; // None until set_look — align with the Option API
         let raster = &self.sources.get(id)?.raster;
         let profile = self.profiles.get(&hash).map(|c| &c.profile);
-        Some(render_tile_cached(raster, config, is_shortcut, show_original, size, opts, diag, profile))
+        Some(render_tile_cached(raster, config, is_shortcut, show_original, size, opts, diag, profile, &mut self.mask_cache))
     }
 }
 

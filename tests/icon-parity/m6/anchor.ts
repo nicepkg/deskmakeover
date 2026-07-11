@@ -28,6 +28,13 @@ const REPO_ROOT = resolve(import.meta.dir, '../../..')
 /** sha256 over `id:sha256(pngBytes)` lines in id order — pins the exact 124-source
  *  pack the desktop-global tiers depend on (scripts/oracle/manifest.ts setHash). */
 export const SET_HASH = '8a6c19ee69235d95092cf6b593a89b6c334690d1a3b8c71baf7376bb65b773df'
+/** sha256 of the ENTIRE public/real-icons/manifest.json. setHash projects only
+ *  {id, PNG bytes} sorted by id, so it is blind to kind / manifest order / label /
+ *  extraSources — all of which readSourceMetas (desktop-session.ts) consumes to build
+ *  the corpus (a source's `kind` sets isShortcut; extraSources add variants). An alarm
+ *  Shortcut→Folder flip or a reversed manifest keeps setHash yet changes the render.
+ *  Pinning the whole file closes that projection gap (Codex Phase-0 audit #2). */
+export const REAL_MANIFEST_SHA256 = '8519a1043cb247ecf9fb531377ab69dafb1b1360ad94ef9d4ccd1eb8d8bdc68d'
 /** sha256 of public/win-native-arrow.png — the badge the shortcut goldens carry. */
 export const ARROW_PNG_SHA256 = '2432a8e026a6f409d94512f19bc116f4df49fa21fea1fc1c7a3248159eb2c4a0'
 
@@ -127,13 +134,16 @@ export function assertSourcePack(): void {
   eq(corpus.counts.tierBCells, TIER_B, 'manifest counts.tierBCells')
 
   // Recompute from the loader manifest — the pack the corpus is actually built from.
-  const pack = JSON.parse(readFileSync(join(REPO_ROOT, 'public/real-icons/manifest.json'), 'utf8')) as { id: string; file: string }[]
+  const manifestBytes = new Uint8Array(readFileSync(join(REPO_ROOT, 'public/real-icons/manifest.json')))
+  const pack = JSON.parse(new TextDecoder().decode(manifestBytes)) as { id: string; file: string }[]
   eq(pack.length, SOURCE_COUNT, 'public/real-icons/manifest.json entry count')
   const entries = pack.map((e) => ({
     id: e.id,
     sha256: sha256Hex(new Uint8Array(readFileSync(join(REPO_ROOT, 'public/real-icons', e.file)))),
   }))
   eq(setHash(entries), SET_HASH, 'recomputed setHash from the public/real-icons loader pack')
+  // setHash is blind to kind/order/label/extraSources — pin the whole manifest too.
+  eq(sha256Hex(manifestBytes), REAL_MANIFEST_SHA256, 'public/real-icons/manifest.json full projection')
 
   const arrowSha = sha256Hex(new Uint8Array(readFileSync(join(REPO_ROOT, 'public/win-native-arrow.png'))))
   eq(arrowSha, ARROW_PNG_SHA256, 'public/win-native-arrow.png sha256')

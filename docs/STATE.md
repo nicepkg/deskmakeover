@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-11 (replatform executing Mac-first: M2 + M3/M4 blind-write + M5/M5.11/M5.12 DONE — icon core certified byte-exact over the all-real corpus (1487 cells, committed real-icon SSoT); community-standard layout, .NET quarantined under legacy/)
+updated: 2026-07-11 night (wave-2 hardening CLOSED · M6 preview cutover built+verified behind default-OFF flag, FLIP HELD FOR OWNER — WASM is ~3× slower, M6 is single-truth not speed · arrow-restore UX DONE · [M6-STORE-TXN] + P4-flip pending owner. Prior: M2+M3/M4 blind-write + M5.x DONE, icon core byte-exact over 1487-cell all-real corpus)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -122,30 +122,41 @@ plan's DONE blocks, this is the pointer):**
   PNG, parity gate decodes in-process on any platform. bun-only sweep done
   (`node:zlib` kept deliberately — Bun's native zlib; `Bun.*` variants are
   raw-deflate and cannot read/write PNG streams).
-- **In flight:** icon-algorithm deep coverage on dm-icon-core/codec/wasm
-  (degenerate-input families, threshold pairs, property tests, malformed-ICO
-  rejection, wasm ABI smoke). **Next:** M6 dual-target cutover (render_tile wasm
-  export + Config ABI + wasm↔native CI → flip preview to WASM → delete TS pixel
-  modules).
-  **Blocked on the owner's win11:** M1 spikes 1/2/5 (+3 needs him present),
-  workspace-wide msvc check (rusqlite bundled C), all [WINDOWS-VERIFY] items.
-- **Codex full-review + wave-2 hardening (2026-07-11, EXECUTING):** an independent
-  Codex full-review of snapshot `7dc82c1` produced 26 findings; triaged vs HEAD
-  (independent reviewer + lead re-verify) = 6 FIXED · **7 OPEN-CONFIRMED** · 3
-  OUT-OF-SCOPE · 10 OVER-RATED. The 7 open defects all live behind the
-  currently-unwired apply/txn/CAS surface (no live user harm today) and **gate the
-  M6 cutover** — fixing now is the pre-M6 prep. Owner approved the fix docs
-  2026-07-11; two disjoint-crate agents dispatched: **m34** (dm-operations/
-  dm-windows/dm-domain: P1-4 CAS-verify, P1-10 RegularFile-commit, P1-14 empty-ICO,
-  P1-9 fsync, P2-5 error-honesty, P2-2 settings-txn + latent P1-12/7/5, P2-4) ·
-  **m5** (dm-icon-core: P2-7 thread-local arrow → OnceLock, byte-parity re-cert).
-  Brief: `docs/plans/2026-07-11-windows-hardening-wave2.md`. Each fix ships a
-  red→green regression test; Phase-6 Codex review + Phase-7 verify gate the merge.
-- **M6 performance architecture (design input, 2026-07-11):** two converged reviews
-  (senior-eng subagent + Codex 60min) → recommended parallelism = N workers × 1
-  WASM instance, register-once ABI, latest-generation coalescing; ranked byte-safe
-  optimizations (#0 = fix the thread-local arrow, above). Open questions need the
-  owner's win11 + real benchmarks. Doc: `docs/plans/2026-07-11-m6-performance-architecture.md`.
+- **wave-2 hardening — ✅ CLOSED (2026-07-11, HEAD 421bd15).** Independent Codex full-review of
+  snapshot `7dc82c1` → 26 findings → lead-triaged into 3 buckets (host-testable / structure-now /
+  M7-defer) → **4 adversarial rounds + closeout micro-fix**. All host-testable defects fixed with
+  red→green revert-pinned tests (dm-domain 25 · dm-operations 73 · dm-windows 47, msvc `--locked`
+  clean). 8 pure-Windows-runtime items frozen into the `[WINDOWS-VERIFY]` list (tail of
+  `docs/plans/2026-07-11-windows-hardening-wave2.md`) for the owner's win11. P2-4 journal-checkpoint
+  deferred to M7 (recovery owns truncation). Verdict trail: `scratchpad/wave2-*-verdict.md`.
+- **M6 preview cutover — ⚠️ built + verified, FLIP HELD FOR OWNER (2026-07-11).** P1 wasm render_tile
+  worker-pool ABI (7cca7de, 1487-cell wasm↔TS 0/389,808,128 diff) · P2 TS worker pool + latest-gen
+  coalescing + arrow-ready gate (2820b3f/466764a, loader byte-test 0-diff) · P3 browser E2E (145/148
+  canvases painted, WASM path live, TS worker not fetched) · P5 perf. All behind a **default-OFF flag**
+  (`?iconwasm=1`); production preview still TS, nothing flipped/deleted.
+  🚨 **OWNER DECISION — the perf finding inverts a premise:** WASM is **~3× SLOWER** per icon than
+  the frozen TS (V8: 96px 1.27→3.85ms, 256px 6.94→19.2ms; the bun/JSC 40× is a wasm tier-up artifact,
+  read V8). M6 is the "single pixel truth" cutover (one Rust core for preview+bake+background,
+  byte-identical), **NOT a speed win** — the 3× is the determinism kernel's cost (scalar f64+libm, no
+  SIMD), offset by profile-cache + coalescing + ÷6-worker sharding (124-icon cold 96px ≈ 80ms wall vs
+  TS 26ms). Flip default-to-WASM + delete TS pixel modules = **P4, one coupled unit HELD until the
+  owner rules** single-truth-worth-3× vs keep-TS-preview. Ready-to-run plan:
+  `docs/plans/2026-07-11-m6-p4-cutover.md`. Perf/architecture design docs:
+  `docs/plans/2026-07-11-m6-performance-architecture.md`.
+  **Blocked on the owner's win11:** M1 spikes 1/2/5 (+3 needs him present), workspace-wide msvc
+  check, all `[WINDOWS-VERIFY]` items.
+- **Arrow-restore UX — ✅ DONE (2026-07-11, HEAD 1ffaf92, web/mock loop).** Per panel record
+  `docs/reviews/2026-07-11-arrow-restore-panel.md` (owner dispositions RESOLVED): Settings row
+  「快捷方式箭头」 + conditional mark hint + ConsentSheet disclosure + multi-user non-skippable gate +
+  DoneCard line + keep-beautification restore ConfirmSheet. Designer seat 7/7 PASS (Chinese state) +
+  6 Codex rounds closed every user-facing race (start-order generation model, pure decision module,
+  per-guard revert-sensitive integration tests, 398 tests). Restore verb + schema bump are `[M6-WIRE]`
+  (real `dm-elevated RestoreOverlay` wired at the M6 bridge batch).
+  **`[M6-STORE-TXN]` deferred** (lead scope call): the broader icons store was never concurrency-
+  hardened — synchronous look/item writers (undo/redo/presets/overrides/history) don't join the
+  generation, and host-effect ordering (a superseded apply still dispatching to the real desktop)
+  needs the real async elevated contract. This is a dedicated store-transaction task for M6 wiring,
+  not a 1am bolt-on (marker at `src/stores/icons.ts:131`).
 
 **In flight / next (web):**
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all

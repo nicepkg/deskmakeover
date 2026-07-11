@@ -99,6 +99,11 @@ pub fn run() {
         // Decoded wallpaper sources ride this protocol as image/png, so pixel
         // buffers never cross the JSON bridge (M6-WIRE A6). URLs are revisioned
         // (`?rev=N`) and rev changes with the path, so responses are immutable.
+        // The compositor reads them with `fetch()`, which is cross-origin from the
+        // webview (dev: http://localhost:5173; prod: the app origin) — so the
+        // response MUST carry `Access-Control-Allow-Origin` or the browser blocks
+        // the read with a CORS error (compositor init "Load failed"). The bytes are
+        // non-secret decoded wallpaper served only to our own window; `*` is safe.
         .register_uri_scheme_protocol("dmwallpaper", |ctx, request| {
             let key = request.uri().path().trim_start_matches('/');
             let png = ctx
@@ -108,11 +113,13 @@ pub fn run() {
             match png {
                 Some(bytes) => tauri::http::Response::builder()
                     .header("Content-Type", "image/png")
+                    .header("Access-Control-Allow-Origin", "*")
                     .header("Cache-Control", "public, max-age=31536000, immutable")
                     .body(bytes)
                     .expect("static headers cannot fail"),
                 None => tauri::http::Response::builder()
                     .status(404)
+                    .header("Access-Control-Allow-Origin", "*")
                     .body(Vec::new())
                     .expect("static 404 cannot fail"),
             }

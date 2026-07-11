@@ -12,6 +12,7 @@ dm-domain = { path = "../dm-domain" }
 # on Mac. The transaction/ledger machinery below is pure Rust with no rusqlite and no
 # cfg(windows), so its msvc-cleanliness is structural; rusqlite only backs `settings_store`.
 rusqlite = { version = "0.32", features = ["bundled"] }
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

@@ -33,6 +33,26 @@ pub enum OperationError {
     /// A platform port failed while driving a transaction.
     #[error("platform port: {0}")]
     Port(#[from] dm_domain::PortError),
+
+    /// The pre-first-apply wallpaper snapshot file exists but could not be parsed.
+    /// Fail-closed on purpose (same rationale as [`OperationError::CorruptLedger`]):
+    /// a corrupt snapshot must NEVER read as "no backup yet" — the snapshot-once
+    /// guard would then re-capture over the already-styled desktop and permanently
+    /// destroy the user's true original.
+    #[error("wallpaper snapshot is present but unreadable; refusing to treat as absent")]
+    CorruptSnapshot,
+
+    /// A wallpaper restore was requested but no pre-first-apply snapshot exists.
+    #[error("nothing to restore: no wallpaper snapshot has been captured")]
+    NothingToRestore,
+
+    /// A per-monitor restore named a monitor the snapshot does not contain.
+    #[error("monitor {0} is not in the wallpaper snapshot")]
+    UnknownMonitor(String),
+
+    /// The baked payload was not valid base64 / not a PNG.
+    #[error("invalid baked wallpaper payload: {0}")]
+    InvalidPayload(String),
 }
 
 impl From<std::io::Error> for OperationError {

@@ -62,10 +62,16 @@ Tasks:
    the hoist only speeds the 16 cold computes (ROI≈0), and it overlaps #57's just-hardened
    `shapes/mod.rs` (needless collision). Revisit only if the Phase-5 reprofile still shows POLY_CACHE
    material on the cold path.
-   **Landed as commit f312867** (MaskKey = algo+shape+buffer_size+shape_size+offset_x/y raw bits;
-   FIFO byte-cap; eviction_cert co-committed; injection-red verified). Estimated ~58% preview speedup
-   (3×TS → ~1.3×TS near-parity), in the predicted 40-65% band; warmed-app absolute number is the last
-   mile (the CDP bench can't tier wasm past Liftoff — a known artifact).
+   **✅ DONE — double-green (lead cert 0/389,808,128 every round + Codex PASS).** Commits: `f312867`
+   (cache: MaskKey = algo+shape+buffer_size+shape_size+offset_x/y raw bits; FIFO byte-cap;
+   eviction_cert co-committed) · `f8353b5` (ship the fast wasm feature + Shadow stamp routed through the
+   cache with a correct None-shape exclusion + cap 8→16 MiB) · `b5e9de0` (wire `build:ship` = wasm&&build
+   into Tauri `beforeBuildCommand` + regenerate the shipped `public/dm_icon_wasm.wasm` → 6d44b866 fast;
+   per-step FIFO victim trace; permanent None-exclusion regression test). 3 adversarial rounds — byte
+   safety green throughout (no P1 ever); the rounds closed the "does the speedup actually reach the
+   shipped product" gap (the build pipeline wasn't producing the fast artifact). Estimated ~58% preview
+   speedup (3×TS → ~1.3×TS near-parity), in the predicted 40-65% band; warmed-app absolute number is the
+   last mile (the CDP bench can't tier wasm past Liftoff — a known artifact).
 2. Gate mark-only work: when a cell renders no modern mark (1,081 of 1,429 non-original cells), skip
    `tile_alpha` / `MarkContext` / `composed_luminance`. **Do NOT skip final compositing** — it also
    canonicalizes hidden RGB under zero alpha (byte-load-bearing).

@@ -65,6 +65,11 @@ Tasks:
 
 **Byte risk:** very low (pure function). **Certify:** compare raw mask `f64::to_bits()` on
 miss/hit/eviction/random-order; identical-tile/card-key + Fold-COW tests; then the full RGBA cert.
+**HARD GATE (Phase-0 audit #5/#10, folded here — a test can't precede the code it guards):** the SAME
+commit that lands the cache MUST ship a **low-cap forced eviction test** (`f64::to_bits()` assertions
+over miss → hit → forced-evict → reuse-slot → revisit, randomized order) — a stale-key/reused-slot or
+nondeterministic-victim regression must go red. No deferring this past the cache. Plus the synthetic
+shape×mark cross-product sweep (Phase-0 round-3) must stay green.
 **Expected:** 50-75% on the polygon-heavy path; plausibly 40-65% corpus-wide — may alone recover most
 of 3.85→1.27 ms. Commit.
 
@@ -92,6 +97,10 @@ immutable registered inputs or per-task render contexts. Browser keeps its outer
 **no nested wasm threads.**
 
 **Byte risk:** very low per icon. **Certify:** hash outputs at 1/2/4/8 threads + randomized job order.
+**HARD GATE (Phase-0 audit #7, folded here):** the SAME commit that lands the real parallel collector
+MUST wire the determinism scaffold to that ACTUAL collector (not the current per-thread independent-
+session serial stand-in) and assert completion-order → input-order association is correct — a collector
+that returns completion-order pixels labeled in input order must go red.
 **Expected:** ~2.5-6× native render throughput (apply eventually becomes encoder/WAL/disk-bound). Commit.
 
 ## Phase 4 — Persistent content-addressed output cache

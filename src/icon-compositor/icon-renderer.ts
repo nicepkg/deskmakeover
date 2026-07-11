@@ -3,12 +3,8 @@
 
 import type { ConfigDto } from '@/bridge/types'
 const winNativeArrow = '/win-native-arrow.png' // public/ asset SSoT (owner order 2026-07-11)
-import type { Raster } from './raster'
-import { makeRaster } from './raster'
-import type { RenderOpts } from './compose'
-import { renderTile } from './compose'
-import { iconProfile } from './profile'
-import type { FromWorker, ToWorker } from './render.worker'
+import type { FromWorker, RenderOpts, ToWorker } from '../icon-wasm/protocol'
+import { WasmIconRenderer } from '../icon-wasm/wasm-loader'
 
 // The icon-compositor facade: a Web Worker POOL renders tiles off the main
 // thread (spec 06 deps note; owner perf order 2026-07-09). Items shard across
@@ -16,8 +12,9 @@ import type { FromWorker, ToWorker } from './render.worker'
 // analysis caches, so nothing is cloned N times. Results come back as
 // zero-copy ImageBitmaps; the main thread only ever drawImage()s. A newer
 // request for the same tile slot SUPERSEDES the older one (stale responses
-// are dropped, not painted). Falls back to synchronous in-thread rendering
-// where Worker/OffscreenCanvas are unavailable (bun tests).
+// are dropped, not painted). Falls back to an in-thread WASM renderer (the
+// same dm-icon-wasm kernel, run on the main thread) where Worker/OffscreenCanvas
+// are unavailable (bun tests / non-worker envs).
 
 /** The style inputs that change a rendered tile — the cache key. */
 export function tileStyleKey(config: ConfigDto, isShortcut: boolean, showOriginal: boolean, size: number): string {
@@ -85,8 +82,12 @@ export class IconCompositor {
   private onReady: (() => void) | null = null
   private notifyScheduled = false
 
-  // ---- sync fallback (no Worker: bun tests) ----
-  private localSources = new Map<string, Raster>()
+  // ---- main-thread fallback (no Worker: bun tests / non-worker envs) ----
+  // A single in-thread WASM renderer replaces the frozen TS pixel path; brought
+  // up lazily on first source load (async), so getTile/seedOf return the same
+  // not-ready sentinel as the worker path until it is live.
+  private localRenderer: WasmIconRenderer | null = null
+  private localRendererReady: Promise<WasmIconRenderer> | null = null
 
   constructor() {
     if (workersSupported) {
@@ -253,10 +254,11 @@ export class IconCompositor {
     if (hit) return hit
 
     if (!workersSupported) {
-      const source = this.localSources.get(id)
-      if (!source) return null
-      const raster = renderTile(source, config, isShortcut, showOriginal, size, opts)
-      const canvas = rasterToCanvas(raster)
+      const renderer = this.localRenderer
+      if (!renderer || !renderer.hasSource(id)) return null
+      const rgba = renderer.render(id, config, isShortcut, showOriginal, size, opts)
+      if (!rgba) return null
+      const canvas = rgbaToCanvas(rgba, size)
       this.storeInCache(id, fullKey, canvas)
       return canvas
     }
@@ -275,12 +277,9 @@ export class IconCompositor {
    *  null = no-hue tail, undefined = source not decoded yet. */
   seedOf(id: string): string | null | undefined {
     if (!workersSupported) {
-      const source = this.localSources.get(id)
-      if (!source) return undefined
-      const colour = iconProfile(source).subjectRimColour
-      if (!colour) return null
-      const h = (v: number) => v.toString(16).padStart(2, '0')
-      return `#${h(colour.r)}${h(colour.g)}${h(colour.b)}`.toUpperCase()
+      const renderer = this.localRenderer
+      if (!renderer || !renderer.hasSource(id)) return undefined
+      return renderer.seedOf(id)
     }
     return this.seeds.get(id)
   }
@@ -288,10 +287,11 @@ export class IconCompositor {
   /** The 256px bake master as PNG base64 — the ONLY size the bridge accepts. */
   async bakeMasterPng(id: string, config: ConfigDto, isShortcut: boolean, opts?: RenderOpts): Promise<string | null> {
     if (!workersSupported) {
-      const source = this.localSources.get(id)
-      if (!source) return null
-      const raster = renderTile(source, config, isShortcut, false, MASTER_SIZE, opts)
-      return canvasToPngBase64(rasterToCanvas(raster))
+      const renderer = this.localRenderer
+      if (!renderer || !renderer.hasSource(id)) return null
+      const rgba = renderer.render(id, config, isShortcut, false, MASTER_SIZE, opts)
+      if (!rgba) return null
+      return canvasToPngBase64(rgbaToCanvas(rgba, MASTER_SIZE))
     }
     if (!this.ready.has(id)) return null
     const req = ++this.reqSeq
@@ -317,19 +317,27 @@ export class IconCompositor {
 
   // ---- sync fallback internals ----
 
+  /** Lazily bring up the single in-thread WASM renderer and install the real
+   *  Win11 arrow badge — shared by every fallback render. */
+  private ensureLocalRenderer(): Promise<WasmIconRenderer> {
+    if (!this.localRendererReady) {
+      this.localRendererReady = (async () => {
+        const renderer = await WasmIconRenderer.create()
+        const arrow = await decodeRgba(winNativeArrow) // null → Rust's own drawn fallback
+        if (arrow) renderer.setArrow(arrow.data, arrow.width, arrow.height)
+        this.localRenderer = renderer
+        return renderer
+      })()
+    }
+    return this.localRendererReady
+  }
+
   private async loadSourceLocal(id: string, url: string): Promise<void> {
     if (this.ready.get(id) === url) return
-    const response = await fetch(url)
-    const blob = await response.blob()
-    const bitmap = await createImageBitmap(blob)
-    const canvas = document.createElement('canvas')
-    canvas.width = MASTER_SIZE
-    canvas.height = MASTER_SIZE
-    const ctx = canvas.getContext('2d')!
-    ctx.drawImage(bitmap, 0, 0, MASTER_SIZE, MASTER_SIZE)
-    bitmap.close()
-    const data = ctx.getImageData(0, 0, MASTER_SIZE, MASTER_SIZE)
-    this.localSources.set(id, { width: MASTER_SIZE, height: MASTER_SIZE, data: data.data })
+    const renderer = await this.ensureLocalRenderer()
+    const decoded = await decodeRgba(url, MASTER_SIZE)
+    if (!decoded) throw new Error(`source failed: ${id}`)
+    renderer.registerSource(id, decoded.data)
     this.ready.set(id, url)
   }
 }
@@ -341,12 +349,35 @@ function closeAll(perItem: Map<string, CanvasImageSource>): void {
   }
 }
 
-function rasterToCanvas(raster: Raster): HTMLCanvasElement {
+function rgbaToCanvas(data: Uint8ClampedArray<ArrayBuffer>, size: number): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
-  canvas.width = raster.width
-  canvas.height = raster.height
-  canvas.getContext('2d')!.putImageData(new ImageData(raster.data as Uint8ClampedArray<ArrayBuffer>, raster.width, raster.height), 0, 0)
+  canvas.width = size
+  canvas.height = size
+  canvas.getContext('2d')!.putImageData(new ImageData(data, size, size), 0, 0)
   return canvas
+}
+
+/** Fetch + decode a URL to straight-alpha RGBA (main-thread fallback). `size`
+ *  rasterizes to size²; omit it for the asset's native dimensions (the arrow). */
+async function decodeRgba(
+  url: string,
+  size?: number,
+): Promise<{ data: Uint8ClampedArray; width: number; height: number } | null> {
+  try {
+    const blob = await (await fetch(url)).blob()
+    const bitmap = await createImageBitmap(blob)
+    const width = size ?? bitmap.width
+    const height = size ?? bitmap.height
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    bitmap.close()
+    return { data: ctx.getImageData(0, 0, width, height).data, width, height }
+  } catch {
+    return null
+  }
 }
 
 async function canvasToPngBase64(canvas: HTMLCanvasElement): Promise<string | null> {
@@ -359,18 +390,6 @@ async function canvasToPngBase64(canvas: HTMLCanvasElement): Promise<string | nu
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   }
   return btoa(binary)
-}
-
-/** Test seam: a solid synthetic source raster (mirrors C# test canvases). */
-export function solidSource(size: number, r: number, g: number, b: number, a = 255): Raster {
-  const raster = makeRaster(size)
-  for (let i = 0; i < raster.data.length; i += 4) {
-    raster.data[i] = r
-    raster.data[i + 1] = g
-    raster.data[i + 2] = b
-    raster.data[i + 3] = a
-  }
-  return raster
 }
 
 // One shared compositor per web session; the store and the mirror share it.

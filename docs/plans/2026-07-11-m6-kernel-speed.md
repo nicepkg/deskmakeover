@@ -56,8 +56,16 @@ distinct keys at 256px** (99.45% warm-hit potential).
 Tasks:
 1. Session-owned mask cache keyed by `(shape, dims, raw offset bits, algo-version)`; return
    `Arc<[f64]>` / borrowed slices; share tile+card masks when identical; clone **only** before Fold
-   carving (COW). Hoist the polygon resolution to once per cold build (kill the per-test TLS hashmap
-   lookup at `shapes/mod.rs:57`).
+   carving (COW). ~~Hoist the polygon resolution to once per cold build (kill the per-test TLS hashmap
+   lookup at `shapes/mod.rs:57`).~~ **DEFERRED to Phase 5 reprofile (owner-approved 2026-07-11):** the
+   cache absorbs it — 2871/2887 corpus `shape_mask` calls are warm hits that never touch POLY_CACHE, so
+   the hoist only speeds the 16 cold computes (ROI≈0), and it overlaps #57's just-hardened
+   `shapes/mod.rs` (needless collision). Revisit only if the Phase-5 reprofile still shows POLY_CACHE
+   material on the cold path.
+   **Landed as commit f312867** (MaskKey = algo+shape+buffer_size+shape_size+offset_x/y raw bits;
+   FIFO byte-cap; eviction_cert co-committed; injection-red verified). Estimated ~58% preview speedup
+   (3×TS → ~1.3×TS near-parity), in the predicted 40-65% band; warmed-app absolute number is the last
+   mile (the CDP bench can't tier wasm past Liftoff — a known artifact).
 2. Gate mark-only work: when a cell renders no modern mark (1,081 of 1,429 non-original cells), skip
    `tile_alpha` / `MarkContext` / `composed_luminance`. **Do NOT skip final compositing** — it also
    canonicalizes hidden RGB under zero alpha (byte-load-bearing).

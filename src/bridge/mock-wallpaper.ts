@@ -67,41 +67,19 @@ export const MONITOR_LAYOUTS: Record<MonitorScenario, Layout> = {
 const persisted = new Map<string, PersistedLook>()
 const globalState = { hasBackup: false, fingerprintMismatch: false }
 
-// ---- per-monitor scene bitmaps (distinct wallpapers per screen) ----
-const sceneCache = new Map<string, string>()
+// ---- per-monitor scene bitmaps (a distinct REAL wallpaper per screen) ----
+// Owner call: no synthetic gradients for secondary monitors — every screen shows a
+// real image, cover-cropped to its aspect exactly like the primary, so the switcher
+// crop + fit-height preview read as genuine desktops. Picks avoid the primary's blue
+// `wallpaper-default` so the two screens are clearly distinguishable at a glance.
+const SECONDARY_WALLPAPERS: Record<string, string> = {
+  [PORTRAIT]: '/real-icons/wallpapers/wallpaper-dark.jpg',
+  [THIRD]: '/real-icons/wallpapers/wallpaper-office.jpg',
+}
 
 function sceneFor(monitor: LayoutMonitor): string {
   if (monitor.monitorId === PRIMARY) return mockWallpaperUrl()
-  const cached = sceneCache.get(monitor.monitorId)
-  if (cached) return cached
-  const url = generateScene(monitor)
-  sceneCache.set(monitor.monitorId, url)
-  return url
-}
-
-// Distinct warm gradient per secondary monitor (blue/violet accents are banned —
-// this file is colour-scanned). Portrait monitors render at their true aspect so
-// the switcher crop + fit-height preview have a correctly-shaped source.
-const SCENE_PALETTES: Record<string, [string, string, string]> = {
-  [PORTRAIT]: ['#2E2A3A', '#6E4526', '#D9A06B'],
-  [THIRD]: ['#1F2A24', '#3F6E5A', '#A8C9B6'],
-}
-
-function generateScene(monitor: LayoutMonitor): string {
-  if (typeof document === 'undefined') return `mock-scene://${monitor.monitorId}`
-  const canvas = document.createElement('canvas')
-  canvas.width = monitor.bounds.w
-  canvas.height = monitor.bounds.h
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return `mock-scene://${monitor.monitorId}`
-  const [a, b, c] = SCENE_PALETTES[monitor.monitorId] ?? ['#3A322A', '#8A5A33', '#E8C9A0']
-  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height)
-  grad.addColorStop(0, a)
-  grad.addColorStop(0.55, b)
-  grad.addColorStop(1, c)
-  ctx.fillStyle = grad
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  return canvas.toDataURL('image/jpeg', 0.85)
+  return SECONDARY_WALLPAPERS[monitor.monitorId] ?? '/real-icons/wallpapers/wallpaper-gamer.jpg'
 }
 
 function sourceFor(monitor: LayoutMonitor): WallpaperSourceDto | null {
@@ -200,7 +178,6 @@ export async function mockWallpaperCall(method: string, params: unknown): Promis
 /** Test/dev seam: reset the mock's persistence + global flags. */
 export function __resetWallpaperMock(): void {
   persisted.clear()
-  sceneCache.clear()
   globalState.hasBackup = false
   globalState.fingerprintMismatch = false
 }

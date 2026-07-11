@@ -127,6 +127,14 @@ export function scanRetryDelayMs(attempt: number, baseMs: number, capMs: number)
 // applies UNIFORMLY — modal writers (apply / full restore) are NOT exempt: the
 // canvas refresh + Settings export/arrow-restore stay reachable while `working`,
 // so a modal writer's late commit must gate on its generation like any other.
+//
+// [M6-STORE-TXN] Deferred to M6 host wiring, out of scope for arrow-restore: the
+// SYNCHRONOUS look/item writers (undo/redo, mutate, presets, overrides, kind/
+// type policy, history) are NOT generation-aware, and a superseded apply still
+// dispatches its host effect (applyBakedCommit) even though its state write is
+// dropped. Both are store-level concurrency debt to be unified as one proper
+// store transaction when the real elevated contract lands — not bolted onto the
+// mock at 3am. Only the async host-truth writers are gated here.
 let stateGen = 0
 function nextGen(): number {
   return ++stateGen
@@ -468,17 +476,22 @@ export const useIcons = create<IconsState>((set, get) => {
         // transient failure without a restart, but a PERMANENT failure must not
         // spin forever (log spam) — after SCAN_RETRY_MAX attempts it gives up and
         // surfaces a manual re-read entry (icons-mirror).
-        set({ loaded: false })
-        // Gen-guard the FAILURE path too (review item 2): if a newer op superseded
-        // this scan, it owns recovery — scheduling a retry here would claim a fresh
-        // generation and drop that newer op's legitimate response.
+        // Gen-guard the FAILURE path BEFORE touching shared state (review item 2):
+        // a superseded failed scan must not flip `loaded` back to false after a
+        // newer scan already succeeded, nor schedule a retry that would claim a
+        // fresh generation and drop the newer op's response.
         if (!isCurrentGen(gen)) return
+        set({ loaded: false })
         scanRetryCount++
         if (scanRetryCount < SCAN_RETRY_MAX) {
           const delay = scanRetryDelayMs(scanRetryCount, scanRetryBaseMs, SCAN_RETRY_CAP_MS)
           if (scanRetryTimer === null) {
             scanRetryTimer = setTimeout(() => {
               scanRetryTimer = null
+              // The retry belongs to THIS failed scan's generation: if a newer op
+              // superseded it since scheduling, discard the retry rather than claim
+              // a fresh gen that would invalidate that newer op (review timer gen).
+              if (!isCurrentGen(gen)) return
               void get().scan()
             }, delay)
           }
@@ -707,10 +720,14 @@ export const useIcons = create<IconsState>((set, get) => {
           label: lookLabel(s.state),
         })
         // Superseded while baking (a newer writer landed first): drop this stale
-        // commit — clear the progress veil but never write the outdated state or
-        // announce success over the newer writer's truth (P2-4).
+        // commit — never write the outdated state or announce success over the
+        // newer writer's truth (P2-4). Clear the progress veil AND release
+        // `working` on the current state: a superseding delta-merge writer (arrow
+        // restore) leaves apply's optimistic working:true in place, which would
+        // otherwise lock the buttons/veil (review item 1 — modal working hang).
         if (!isCurrentGen(gen)) {
-          set({ applyProgress: null })
+          const cur = get().state
+          set(cur ? { state: { ...cur, working: false }, applyProgress: null } : { applyProgress: null })
           return false
         }
         set({ state: result.state, applyProgress: null })
@@ -736,7 +753,14 @@ export const useIcons = create<IconsState>((set, get) => {
       set({ state: { ...s.state, working: true } })
       try {
         const result = await bridge('icons.restore')
-        if (!isCurrentGen(gen)) return
+        // Superseded: the newer writer's truth stands. Still release `working` on
+        // the current state — a delta-merge superseder (arrow restore) leaves this
+        // restore's optimistic working:true in place, locking the UI (item 1).
+        if (!isCurrentGen(gen)) {
+          const cur = get().state
+          if (cur) set({ state: { ...cur, working: false } })
+          return
+        }
         set({ state: result.state })
         toastOf(result)
         if (result.ok) set({ waveKind: 'settle', waveStamp: Date.now() })

@@ -126,8 +126,12 @@ const setBridge = (fn: FakeBridge) =>
   __setBridgeForTests(fn as unknown as Parameters<typeof __setBridgeForTests>[0])
 const deferred = <T>() => {
   let resolve!: (v: T) => void
-  const promise = new Promise<T>((r) => (resolve = r))
-  return { promise, resolve }
+  let reject!: (e: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 describe('real mock through the store — the mock transitions are pinned', () => {
@@ -316,50 +320,53 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
   })
 
-  test('a modal apply commit self-drops when superseded — its gen guard is load-bearing (review P2 modal)', async () => {
+  test('a modal apply commit self-drops when superseded, and releases working (review P2 modal + item 1)', async () => {
     const commit = deferred<IconsOpResultDto>()
     setBridge((method) => {
       if (method === 'icons.applyBakedBegin' || method === 'icons.applyBakedChunk') return Promise.resolve(null)
       if (method === 'icons.applyBakedCommit') return commit.promise
-      if (method === 'icons.restore') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      // A DELTA-MERGE superseder (arrow restore) that does NOT touch `working`, so
+      // apply's optimistic working:true survives until apply's own branch clears it.
+      if (method === 'icons.restoreOverlay') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
       throw new Error(`unexpected ${method}`)
     })
     seedStore({ arrowOverlay: 'native', activeUserProfiles: 1 }) // no items → apply skips the bake loop
 
-    const pApply = useIcons.getState().apply() // gen claimed; awaiting the commit
-    // A newer writer (full restore, reachable while `working`) lands first.
-    await useIcons.getState().restore()
+    const pApply = useIcons.getState().apply() // gen claimed; awaiting the commit (working:true)
+    await useIcons.getState().restoreOverlay() // newer writer lands first, leaves working:true
     expect(useIcons.getState().state!.arrowOverlay).toBe('native')
     expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
 
     // The stale apply commit now arrives with the OLD look (hidden / 1).
     commit.resolve(opResult({ arrowOverlay: 'hidden', activeUserProfiles: 1 }))
     expect(await pApply).toBe(false) // superseded apply does not claim success
-    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native') // stale look dropped
     expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
     expect(useIcons.getState().applyProgress).toBeNull() // progress veil cleared
+    expect(useIcons.getState().state!.working).toBe(false) // working released (no UI lock)
   })
 
-  test('a modal full-restore self-drops when superseded — its gen guard is load-bearing (review P2 modal)', async () => {
+  test('a modal full-restore self-drops when superseded, and releases working (review P2 modal + item 1)', async () => {
     const full = deferred<IconsOpResultDto>()
     setBridge((method) => {
       if (method === 'icons.restore') return full.promise
+      // Delta-merge superseder leaves this restore's optimistic working:true in place.
       if (method === 'icons.restoreOverlay') return Promise.resolve(opResult({ arrowOverlay: 'hidden', activeUserProfiles: 2 }))
       throw new Error(`unexpected ${method}`)
     })
     seedStore({ arrowOverlay: 'native', activeUserProfiles: 1, applied: true })
 
-    const pFull = useIcons.getState().restore() // gen claimed; awaiting host
-    // A newer writer (keep-beautification restore) lands first with its truth.
-    await useIcons.getState().restoreOverlay()
+    const pFull = useIcons.getState().restore() // gen claimed; awaiting host (working:true)
+    await useIcons.getState().restoreOverlay() // newer writer lands first, leaves working:true
     expect(useIcons.getState().state!.arrowOverlay).toBe('hidden')
     expect(useIcons.getState().state!.activeUserProfiles).toBe(2)
 
     // The stale full-restore now arrives with the OLD truth (native / 1).
     full.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 1 }))
     await pFull
-    expect(useIcons.getState().state!.arrowOverlay).toBe('hidden')
+    expect(useIcons.getState().state!.arrowOverlay).toBe('hidden') // stale truth dropped
     expect(useIcons.getState().state!.activeUserProfiles).toBe(2)
+    expect(useIcons.getState().state!.working).toBe(false) // working released (no UI lock)
   })
 
   test('a stale rescan that lands LAST is dropped — its gen guard is load-bearing (review scan gate)', async () => {
@@ -429,6 +436,60 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     await useIcons.getState().rescan()
     expect(useIcons.getState().scanExhausted).toBe(false)
     expect(useIcons.getState().state).not.toBeNull()
+  })
+
+  test('a scheduled scan retry that was superseded is discarded, not re-fired (review timer gen)', async () => {
+    __setScanRetryMsForTests(30) // long enough to interpose a newer op before the retry fires
+    let scanCalls = 0
+    setBridge((method) => {
+      if (method === 'icons.scan') {
+        scanCalls++
+        return Promise.reject(new Error('down'))
+      }
+      if (method === 'icons.restoreOverlay') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      throw new Error(`unexpected ${method}`)
+    })
+    useIcons.setState({ loaded: false, state: seedState({ arrowOverlay: 'hidden', activeUserProfiles: 1 }), scanExhausted: false, revision: 0 })
+
+    // A failed scan schedules a retry that belongs to its generation.
+    await useIcons.getState().scan()
+    expect(scanCalls).toBe(1)
+    // A newer op supersedes the failed scan BEFORE its retry timer fires.
+    await useIcons.getState().restoreOverlay()
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+
+    // Past the retry delay: the superseded retry must be discarded — no fresh scan
+    // that would claim a newer gen and invalidate the restore's legitimate truth.
+    await new Promise((r) => setTimeout(r, 70))
+    expect(scanCalls).toBe(1) // retry NOT re-fired
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native') // restore's truth intact
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+  })
+
+  test('a superseded failed scan does not flip loaded back to false (review item 2)', async () => {
+    const g1 = deferred<unknown>() // the OLD scan, will reject
+    const g2 = deferred<unknown>() // the NEWER scan, will succeed
+    let n = 0
+    setBridge((method) => {
+      if (method !== 'icons.scan') throw new Error(`unexpected ${method}`)
+      n++
+      return n === 1 ? g1.promise : g2.promise
+    })
+    useIcons.setState({ loaded: false, state: null, scanExhausted: false, revision: 0 })
+
+    const p1 = useIcons.getState().scan() // G1: loaded:true, awaiting g1
+    useIcons.getState().retryScan() // resets gate + starts G2: loaded:true, awaiting g2
+
+    // The NEWER scan succeeds first and owns the loaded state.
+    g2.resolve({ revision: 1, items: [], state: seedState() })
+    await waitUntil(() => useIcons.getState().state !== null)
+    expect(useIcons.getState().loaded).toBe(true)
+
+    // The OLD scan now rejects — it must NOT flip loaded back to false, because
+    // the gen guard runs BEFORE the state write (item 2: order of the two lines).
+    g1.reject(new Error('stale down'))
+    await p1.catch(() => {})
+    expect(useIcons.getState().loaded).toBe(true)
   })
 })
 

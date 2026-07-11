@@ -106,20 +106,27 @@ let readyTimer: ReturnType<typeof setTimeout> | null = null
 let scanRetryTimer: ReturnType<typeof setTimeout> | null = null
 let scanRetryBaseMs = 2000
 let scanRetryCount = 0
-const SCAN_RETRY_MAX = 5
-const SCAN_RETRY_CAP_MS = 30000
+/** Max total scan attempts (initial + retries) before giving up (review P2-2). */
+export const SCAN_RETRY_MAX = 5
+export const SCAN_RETRY_CAP_MS = 30000
 
-// Unified concurrency discipline (review P2-4). EVERY async operation that
-// establishes authoritative host state (arrow overlay, profile count, or a
-// wholesale state replacement — scan/rescan, apply, full restore, keep-
-// beautification restore, export) claims a monotonic generation token at its
-// START. When its response lands it applies ONLY if no LATER-STARTED such
-// operation exists (`gen === stateGen`). Ordering by START, not by arrival,
-// kills both failure modes at once: a late response can neither overwrite a
-// newer op's truth (P2-4a) nor be falsely dropped by an older op that merely
-// landed first (P2-4b). Modal ops (apply / full restore) hold `working`, so the
-// UI can't start a newer op mid-flight — they still claim a gen to supersede
-// anything already in flight, but never self-drop.
+/** Exponential backoff for the Nth failed scan attempt, capped. Pure so the
+ *  interval ladder + cap are unit-testable without real timers (review P2-2). */
+export function scanRetryDelayMs(attempt: number, baseMs: number, capMs: number): number {
+  return Math.min(baseMs * 2 ** (attempt - 1), capMs)
+}
+
+// Unified concurrency discipline (review P2-4). EVERY writer that establishes
+// authoritative host state (arrow overlay, profile count, or a wholesale state
+// replacement — scan/rescan, apply, full restore, keep-beautification restore,
+// export) claims a monotonic generation token at its START and, when its
+// response lands, writes state ONLY if no LATER-STARTED writer exists
+// (`isCurrentGen`). Ordering by START, not arrival, kills both failure modes at
+// once: a late response can neither overwrite a newer writer's truth (P2-4a) nor
+// be falsely dropped by an older writer that merely landed first (P2-4b). This
+// applies UNIFORMLY — modal writers (apply / full restore) are NOT exempt: the
+// canvas refresh + Settings export/arrow-restore stay reachable while `working`,
+// so a modal writer's late commit must gate on its generation like any other.
 let stateGen = 0
 function nextGen(): number {
   return ++stateGen
@@ -399,6 +406,14 @@ export const useIcons = create<IconsState>((set, get) => {
 
   const adoptScan = (result: { revision: number; items: IconItemDto[]; state: IconsStateDto }) => {
     if (result.revision < get().revision) return
+    // Any successful full load clears the scan-recovery state (review P2-2 item 4):
+    // retry budget + pending backoff timer + the exhausted flag, so a rescan (or
+    // manual retry) heals a prior exhaustion.
+    scanRetryCount = 0
+    if (scanRetryTimer !== null) {
+      clearTimeout(scanRetryTimer)
+      scanRetryTimer = null
+    }
     kindBuckets = new Map(result.items.map((i) => [i.id, kindBucket(i.kind)]))
     getIconCompositor().invalidateAll()
     set({
@@ -406,6 +421,7 @@ export const useIcons = create<IconsState>((set, get) => {
       state: result.state,
       revision: result.revision,
       renderTick: get().renderTick + 1,
+      scanExhausted: false,
     })
     loadSources(result.items)
   }
@@ -450,12 +466,16 @@ export const useIcons = create<IconsState>((set, get) => {
         // the sole scan trigger is App.tsx's one-shot mount effect, so resetting
         // `loaded` alone stranded the user in "checking". Auto-retry heals a
         // transient failure without a restart, but a PERMANENT failure must not
-        // spin a fixed 3s scan forever (log spam) — after SCAN_RETRY_MAX attempts
-        // it gives up and surfaces a manual re-read entry (icons-mirror).
+        // spin forever (log spam) — after SCAN_RETRY_MAX attempts it gives up and
+        // surfaces a manual re-read entry (icons-mirror).
         set({ loaded: false })
+        // Gen-guard the FAILURE path too (review item 2): if a newer op superseded
+        // this scan, it owns recovery — scheduling a retry here would claim a fresh
+        // generation and drop that newer op's legitimate response.
+        if (!isCurrentGen(gen)) return
         scanRetryCount++
-        if (scanRetryCount <= SCAN_RETRY_MAX) {
-          const delay = Math.min(scanRetryBaseMs * 2 ** (scanRetryCount - 1), SCAN_RETRY_CAP_MS)
+        if (scanRetryCount < SCAN_RETRY_MAX) {
+          const delay = scanRetryDelayMs(scanRetryCount, scanRetryBaseMs, SCAN_RETRY_CAP_MS)
           if (scanRetryTimer === null) {
             scanRetryTimer = setTimeout(() => {
               scanRetryTimer = null
@@ -467,16 +487,14 @@ export const useIcons = create<IconsState>((set, get) => {
         }
         return
       }
-      // Superseded by a newer operation between dispatch and arrival — drop this
-      // stale scan rather than clobber the newer truth (review P2-4b).
-      if (!isCurrentGen(gen)) return
-      // Scan succeeded — clear the recovery budget + any pending retry.
-      scanRetryCount = 0
-      if (scanRetryTimer !== null) {
-        clearTimeout(scanRetryTimer)
-        scanRetryTimer = null
+      // Superseded by a newer op between dispatch and arrival (review item 1):
+      // don't clobber the newer truth, and DON'T strand at loaded:true/state:null
+      // with no recovery — re-open the load gate so a later trigger can re-read.
+      if (!isCurrentGen(gen)) {
+        set({ loaded: false })
+        return
       }
-      if (get().scanExhausted) set({ scanExhausted: false })
+      // Scan succeeded — adoptScan clears the recovery budget + timer + exhausted.
       adoptScan(result)
       // The first paint is gated by `ready` (loadSources): the desktop stays
       // veiled until EVERY tile has landed, so there is never a wallpaper-with-
@@ -639,10 +657,11 @@ export const useIcons = create<IconsState>((set, get) => {
     apply: async () => {
       const s = get()
       if (!s.state) return false
-      // Modal op: claim a generation so any keep-beautification restore already
-      // in flight is superseded (P2-4). Apply holds `working`, so nothing newer
-      // can start mid-bake — it never self-drops.
-      nextGen()
+      // Claim a generation so any writer already in flight is superseded, AND so
+      // this apply's own late commit self-drops if a newer writer (canvas refresh
+      // / Settings restore, both reachable while `working`) started after it
+      // (P2-4, uniform gating — modal is NOT exempt).
+      const gen = nextGen()
       const compositor = getIconCompositor()
       const config = s.state.config
       const policy = s.state.kindPolicy
@@ -687,6 +706,13 @@ export const useIcons = create<IconsState>((set, get) => {
           overrides: overridesOf(s.items),
           label: lookLabel(s.state),
         })
+        // Superseded while baking (a newer writer landed first): drop this stale
+        // commit — clear the progress veil but never write the outdated state or
+        // announce success over the newer writer's truth (P2-4).
+        if (!isCurrentGen(gen)) {
+          set({ applyProgress: null })
+          return false
+        }
         set({ state: result.state, applyProgress: null })
         toastOf(result)
         if (result.ok) set({ waveKind: 'bloom', waveStamp: Date.now() })
@@ -702,12 +728,15 @@ export const useIcons = create<IconsState>((set, get) => {
     restore: async () => {
       const s = get()
       if (!s.state) return
-      // Modal op (holds `working`): claim a generation to supersede any keep-
-      // beautification restore in flight; applies unconditionally (P2-4).
-      nextGen()
+      // Claim a generation to supersede any writer in flight, and to self-drop
+      // this restore's own late response if a newer writer (canvas refresh /
+      // Settings arrow-restore, reachable while `working`) started after it
+      // (P2-4, uniform gating — modal is NOT exempt).
+      const gen = nextGen()
       set({ state: { ...s.state, working: true } })
       try {
         const result = await bridge('icons.restore')
+        if (!isCurrentGen(gen)) return
         set({ state: result.state })
         toastOf(result)
         if (result.ok) set({ waveKind: 'settle', waveStamp: Date.now() })

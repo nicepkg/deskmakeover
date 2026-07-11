@@ -4,6 +4,9 @@ import {
   __setBridgeForTests,
   __setScanRetryMsForTests,
   resetIconsHistoryForTests,
+  scanRetryDelayMs,
+  SCAN_RETRY_CAP_MS,
+  SCAN_RETRY_MAX,
   useIcons,
 } from '../src/stores/icons'
 import { BASE_CONFIGS, mockIconsCall, probeRealWallpaper } from '../src/bridge/mock-desktop'
@@ -116,6 +119,15 @@ const waitUntil = async (pred: () => boolean, timeoutMs = 3000): Promise<void> =
   while (!pred() && Date.now() - start < timeoutMs) {
     await new Promise((r) => setTimeout(r, 5))
   }
+}
+
+type FakeBridge = (method: string, params?: unknown) => Promise<unknown>
+const setBridge = (fn: FakeBridge) =>
+  __setBridgeForTests(fn as unknown as Parameters<typeof __setBridgeForTests>[0])
+const deferred = <T>() => {
+  let resolve!: (v: T) => void
+  const promise = new Promise<T>((r) => (resolve = r))
+  return { promise, resolve }
 }
 
 describe('real mock through the store — the mock transitions are pinned', () => {
@@ -304,36 +316,130 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
   })
 
-  test('scan retry backs off, terminates into scanExhausted, then retryScan recovers (review P2-2)', async () => {
-    __setScanRetryMsForTests(1) // 1ms base → the whole backoff ladder resolves fast
+  test('a modal apply commit self-drops when superseded — its gen guard is load-bearing (review P2 modal)', async () => {
+    const commit = deferred<IconsOpResultDto>()
+    setBridge((method) => {
+      if (method === 'icons.applyBakedBegin' || method === 'icons.applyBakedChunk') return Promise.resolve(null)
+      if (method === 'icons.applyBakedCommit') return commit.promise
+      if (method === 'icons.restore') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      throw new Error(`unexpected ${method}`)
+    })
+    seedStore({ arrowOverlay: 'native', activeUserProfiles: 1 }) // no items → apply skips the bake loop
+
+    const pApply = useIcons.getState().apply() // gen claimed; awaiting the commit
+    // A newer writer (full restore, reachable while `working`) lands first.
+    await useIcons.getState().restore()
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+
+    // The stale apply commit now arrives with the OLD look (hidden / 1).
+    commit.resolve(opResult({ arrowOverlay: 'hidden', activeUserProfiles: 1 }))
+    expect(await pApply).toBe(false) // superseded apply does not claim success
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+    expect(useIcons.getState().applyProgress).toBeNull() // progress veil cleared
+  })
+
+  test('a modal full-restore self-drops when superseded — its gen guard is load-bearing (review P2 modal)', async () => {
+    const full = deferred<IconsOpResultDto>()
+    setBridge((method) => {
+      if (method === 'icons.restore') return full.promise
+      if (method === 'icons.restoreOverlay') return Promise.resolve(opResult({ arrowOverlay: 'hidden', activeUserProfiles: 2 }))
+      throw new Error(`unexpected ${method}`)
+    })
+    seedStore({ arrowOverlay: 'native', activeUserProfiles: 1, applied: true })
+
+    const pFull = useIcons.getState().restore() // gen claimed; awaiting host
+    // A newer writer (keep-beautification restore) lands first with its truth.
+    await useIcons.getState().restoreOverlay()
+    expect(useIcons.getState().state!.arrowOverlay).toBe('hidden')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(2)
+
+    // The stale full-restore now arrives with the OLD truth (native / 1).
+    full.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 1 }))
+    await pFull
+    expect(useIcons.getState().state!.arrowOverlay).toBe('hidden')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(2)
+  })
+
+  test('a stale rescan that lands LAST is dropped — its gen guard is load-bearing (review scan gate)', async () => {
+    const scan = deferred<unknown>()
+    setBridge((method) => {
+      if (method === 'icons.scan') return scan.promise
+      if (method === 'icons.restoreOverlay') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      throw new Error(`unexpected ${method}`)
+    })
+    seedStore({ arrowOverlay: 'hidden', activeUserProfiles: 1 })
+
+    const pScan = useIcons.getState().rescan() // OLDER gen, in flight
+    // A newer writer lands FIRST and establishes the truth.
+    await useIcons.getState().restoreOverlay()
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+
+    // The OLDER rescan now lands LAST with a stale full-state snapshot — the
+    // guard must drop it (this is the case the reverse-start test could not pin,
+    // because there the late restore masked the transient clobber).
+    scan.resolve({ revision: 1, items: [], state: seedState({ arrowOverlay: 'hidden', activeUserProfiles: 1 }) })
+    await pScan
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+  })
+
+  test('scan backoff terminates after EXACTLY SCAN_RETRY_MAX attempts, then stays terminal (review P2-2 item 3)', async () => {
+    __setScanRetryMsForTests(1) // 1ms base → the whole ladder resolves fast
     let calls = 0
-    let mode: 'fail' | 'ok' = 'fail'
-    __setBridgeForTests(((method: string) => {
+    setBridge((method) => {
       if (method !== 'icons.scan') throw new Error(`unexpected ${method}`)
       calls++
-      if (mode === 'fail') return Promise.reject(new Error('permanently down'))
-      return Promise.resolve({ revision: 1, items: [], state: seedState() })
-    }) as unknown as Parameters<typeof __setBridgeForTests>[0])
+      return Promise.reject(new Error('permanently down'))
+    })
     useIcons.setState({ loaded: false, state: null, scanExhausted: false, revision: 0 })
 
     await useIcons.getState().scan()
-    // Poll until the backoff ladder gives up (robust to a loaded machine).
     await waitUntil(() => useIcons.getState().scanExhausted)
     expect(useIcons.getState().scanExhausted).toBe(true)
-    const callsAtTerminal = calls
-    expect(callsAtTerminal).toBeGreaterThan(1) // it DID retry
-    expect(callsAtTerminal).toBeLessThanOrEqual(8) // but a bounded number of times
-
-    // Terminal means TERMINAL: no more auto-retries spinning (no 3s log spam).
+    // Exactly SCAN_RETRY_MAX total attempts (initial + retries), no off-by-one.
+    expect(calls).toBe(SCAN_RETRY_MAX)
+    // Terminal is TERMINAL: no more auto-retries spinning (no log spam).
     await new Promise((r) => setTimeout(r, 40))
-    expect(calls).toBe(callsAtTerminal)
+    expect(calls).toBe(SCAN_RETRY_MAX)
+  })
 
-    // The manual re-read entry recovers without a restart.
+  test('a successful rescan clears a prior scanExhausted (review P2-2 item 4)', async () => {
+    __setScanRetryMsForTests(1)
+    let calls = 0
+    let mode: 'fail' | 'ok' = 'fail'
+    setBridge((method) => {
+      if (method !== 'icons.scan') throw new Error(`unexpected ${method}`)
+      calls++
+      if (mode === 'fail') return Promise.reject(new Error('down'))
+      return Promise.resolve({ revision: calls, items: [], state: seedState() })
+    })
+    useIcons.setState({ loaded: false, state: null, scanExhausted: false, revision: 0 })
+
+    // Exhaust the budget into the terminal state.
+    await useIcons.getState().scan()
+    await waitUntil(() => useIcons.getState().scanExhausted)
+    expect(useIcons.getState().scanExhausted).toBe(true)
+
+    // A successful full load through ANY path (here a rescan, which does not go
+    // through retryScan's own reset) must heal the exhausted flag — adoptScan owns
+    // the reset so every successful load clears it, not just the manual button.
     mode = 'ok'
-    useIcons.getState().retryScan()
+    await useIcons.getState().rescan()
     expect(useIcons.getState().scanExhausted).toBe(false)
-    await waitUntil(() => useIcons.getState().state !== null)
-    expect(useIcons.getState().loaded).toBe(true)
     expect(useIcons.getState().state).not.toBeNull()
+  })
+})
+
+describe('scanRetryDelayMs — exponential backoff ladder + cap (review P2-2)', () => {
+  test('doubles each attempt then saturates at the cap', () => {
+    expect(scanRetryDelayMs(1, 2000, SCAN_RETRY_CAP_MS)).toBe(2000)
+    expect(scanRetryDelayMs(2, 2000, SCAN_RETRY_CAP_MS)).toBe(4000)
+    expect(scanRetryDelayMs(3, 2000, SCAN_RETRY_CAP_MS)).toBe(8000)
+    expect(scanRetryDelayMs(4, 2000, SCAN_RETRY_CAP_MS)).toBe(16000)
+    // 2000 * 2^4 = 32000 > 30000 cap → clamped.
+    expect(scanRetryDelayMs(5, 2000, SCAN_RETRY_CAP_MS)).toBe(SCAN_RETRY_CAP_MS)
+    expect(scanRetryDelayMs(9, 2000, SCAN_RETRY_CAP_MS)).toBe(SCAN_RETRY_CAP_MS)
   })
 })

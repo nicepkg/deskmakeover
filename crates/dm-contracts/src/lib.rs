@@ -7,8 +7,15 @@
 //! The rest of bridge schema 4 keeps living in `bridge/types.ts` until later
 //! phases migrate it here.
 
+mod common;
 mod diagnostics;
 mod settings;
+mod wallpaper;
 
+pub use common::ToastDto;
 pub use diagnostics::DiagnosticsPing;
 pub use settings::{Language, SettingsDto, SettingsPatch, Theme};
+pub use wallpaper::{
+    MonitorBounds, ScreenInfoDto, ScreenOrientation, WallpaperPosition, WallpaperResultDto,
+    WallpaperScreensDto, WallpaperSourceDto,
+};

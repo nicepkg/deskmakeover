@@ -46,19 +46,6 @@ const STYLE_LRU_CAPACITY = 20
 const workersSupported =
   typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && typeof createImageBitmap !== 'undefined'
 
-/** M6 cutover seam: opt into the WASM-backed render worker (dm-icon-wasm) via
- *  `?iconwasm=1` or `VITE_ICON_WASM=1`. Default OFF — the frozen TS worker still
- *  ships until the flip (P3). Both workers speak the identical message protocol,
- *  so this only swaps which script the pool spawns. */
-function useWasmRenderer(): boolean {
-  try {
-    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('iconwasm') === '1') return true
-  } catch {
-    /* no location (worker/test context) */
-  }
-  return import.meta.env?.VITE_ICON_WASM === '1'
-}
-
 export class IconCompositor {
   // ---- worker pool ----
   private workers: Worker[] = []
@@ -92,15 +79,9 @@ export class IconCompositor {
   constructor() {
     if (workersSupported) {
       this.poolSize = Math.min(6, Math.max(2, (navigator.hardwareConcurrency || 4) - 2))
-      const wasm = useWasmRenderer()
       for (let i = 0; i < this.poolSize; i++) {
-        // Both URLs are static so vite bundles each worker; the flag only picks one.
-        const worker = new Worker(
-          wasm
-            ? new URL('../icon-wasm/render-wasm.worker.ts', import.meta.url)
-            : new URL('./render.worker.ts', import.meta.url),
-          { type: 'module' },
-        )
+        // Single-truth (ADR-0019): the pool always spawns the dm-icon-wasm worker.
+        const worker = new Worker(new URL('../icon-wasm/render-wasm.worker.ts', import.meta.url), { type: 'module' })
         worker.onmessage = (e: MessageEvent<FromWorker>) => this.onWorkerMessage(e.data)
         // FIRST message: the real Win11 shortcut-arrow badge. The worker's
         // sequential dispatch guarantees it lands before any render.

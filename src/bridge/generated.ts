@@ -153,6 +153,13 @@ export type WallpaperScreensDto = {
 	 *  `spanActive`.
 	 */
 	spanActive: boolean,
+	/**
+	 *  Whether a durable pre-first-apply snapshot exists on disk. Carried on
+	 *  getScreens (not only on mutating-op results) so a COLD START surfaces the
+	 *  whole-desktop "restore to original" affordance when a snapshot persists —
+	 *  without it, a restart after an apply hides the only path back.
+	 */
+	hasBackup: boolean,
 };
 
 /**

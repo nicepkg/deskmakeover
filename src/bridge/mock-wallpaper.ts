@@ -100,7 +100,7 @@ function screenInfos(): WallpaperScreensDto {
     slideshowActive: m.slideshowActive,
     hasReadableSource: m.hasReadableSource,
   }))
-  return { screens, position: layout.position, spanActive: layout.position === 'Span' }
+  return { screens, position: layout.position, spanActive: layout.position === 'Span', hasBackup }
 }
 
 // Whole-desktop pre-first-apply snapshot flag (host-side truth on Windows; here an

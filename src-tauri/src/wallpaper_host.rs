@@ -79,7 +79,17 @@ impl WallpaperHost {
                 has_readable_source: m.has_readable_source,
             });
         }
-        Ok(WallpaperScreensDto { screens, position: map_position(topo.position), span_active })
+        // The durable snapshot flag rides getScreens so a COLD START surfaces the
+        // whole-desktop restore affordance. A corrupt snapshot reads as no-backup
+        // here (a restore of it would fail anyway; hiding the affordance is safer
+        // than offering a broken one — the corruption still fails closed in apply).
+        let has_backup = matches!(self.snapshot.load(), Ok(Some(_)));
+        Ok(WallpaperScreensDto {
+            screens,
+            position: map_position(topo.position),
+            span_active,
+            has_backup,
+        })
     }
 
     /// `wallpaper.getSource`: the first screen with a decoded source (compositor
@@ -214,12 +224,29 @@ mod tests {
     }
 
     #[test]
+    fn screens_reports_has_backup_across_the_snapshot_lifecycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = host(dir.path());
+        // Cold start: no snapshot yet → restore affordance stays hidden.
+        assert!(!h.screens().unwrap().has_backup);
+        let m0 = h.screens().unwrap().screens[0].monitor_id.clone();
+        // Apply captures the pre-first-apply snapshot → getScreens now advertises it,
+        // so a RESTART would still surface the whole-desktop restore (the fixed gap).
+        h.apply_baked(&m0, &baked_png_base64()).unwrap();
+        assert!(h.screens().unwrap().has_backup);
+        // restore('all') consumes + clears the snapshot → back to no-backup.
+        h.restore("all").unwrap();
+        assert!(!h.screens().unwrap().has_backup);
+    }
+
+    #[test]
     fn screens_decodes_real_dev_wallpapers_with_protocol_urls() {
         let dir = tempfile::tempdir().unwrap();
         let h = host(dir.path());
         let dto = h.screens().unwrap();
         assert_eq!(dto.screens.len(), 2);
         assert!(!dto.span_active);
+        assert!(!dto.has_backup, "a fresh host has no snapshot");
         for s in &dto.screens {
             let src = s.source.as_ref().expect("dev screens start with a wallpaper");
             assert!(src.url.starts_with("dmwallpaper://localhost/"), "{}", src.url);

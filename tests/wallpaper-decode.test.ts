@@ -20,12 +20,12 @@ function screen(id: string, portrait = false): ScreenInfoDto {
 }
 
 function validScreens(): WallpaperScreensDto {
-  return { screens: [screen('A'), screen('B', true)], position: 'Fill', spanActive: false }
+  return { screens: [screen('A'), screen('B', true)], position: 'Fill', spanActive: false, hasBackup: false }
 }
 
 describe('decodeWallpaperScreens — round-trip', () => {
   test('a single-monitor payload round-trips unchanged', () => {
-    const dto = { screens: [screen('A')], position: 'Fill' as const, spanActive: false }
+    const dto = { screens: [screen('A')], position: 'Fill' as const, spanActive: false, hasBackup: false }
     expect(decodeWallpaperScreens(dto)).toEqual(dto)
   })
 
@@ -46,7 +46,7 @@ describe('decodeWallpaperScreens — round-trip', () => {
   })
 
   test('an empty screens[] round-trips (0-monitor host, never a throw)', () => {
-    const dto = { screens: [], position: 'Fill' as const, spanActive: false }
+    const dto = { screens: [], position: 'Fill' as const, spanActive: false, hasBackup: false }
     expect(decodeWallpaperScreens(dto)).toEqual(dto)
   })
 
@@ -65,6 +65,12 @@ describe('decodeWallpaperScreens — loud failure (never a silent empty)', () =>
 
   test('a bad position enum throws', () => {
     expect(() => decodeWallpaperScreens({ ...validScreens(), position: 'Sideways' })).toThrow(WallpaperDecodeError)
+  })
+
+  test('a missing hasBackup throws (never silently hides the restore affordance)', () => {
+    const bad = { ...validScreens() } as Record<string, unknown>
+    delete bad.hasBackup
+    expect(() => decodeWallpaperScreens(bad)).toThrow(/hasBackup/)
   })
 
   test('a bad orientation enum throws', () => {

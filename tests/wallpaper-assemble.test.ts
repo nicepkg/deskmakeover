@@ -32,8 +32,8 @@ function info(id: string, bounds: MonitorBounds): ScreenInfoDto {
   }
 }
 
-function screensDto(screens: ScreenInfoDto[], position: WallpaperPosition = 'Fill', spanActive = false): WallpaperScreensDto {
-  return { screens, position, spanActive }
+function screensDto(screens: ScreenInfoDto[], position: WallpaperPosition = 'Fill', spanActive = false, hasBackup = false): WallpaperScreensDto {
+  return { screens, position, spanActive, hasBackup }
 }
 
 function liveScreen(l: LookDto): ScreenLook {
@@ -66,7 +66,7 @@ class MemoryStorage {
 describe('assembleWallpaperState — reconcile on load', () => {
   test('a persisted look is restored onto its screen; a new screen defaults', () => {
     const persisted = new Map<string, PersistedLook>([[A, { look: look(true), bounds: LAND }]])
-    const state = assembleWallpaperState(screensDto([info(A, LAND), info(B, PORT)]), persisted, {}, { prevActiveId: null, hasBackup: false })
+    const state = assembleWallpaperState(screensDto([info(A, LAND), info(B, PORT)]), persisted, {}, { prevActiveId: null })
     const a = state.screens.find((s) => s.monitorId === A)!
     const b = state.screens.find((s) => s.monitorId === B)!
     expect(a.look.clarity.level).toBe('Soft') // restored from persistence
@@ -78,7 +78,7 @@ describe('assembleWallpaperState — reconcile on load', () => {
   })
 
   test('derives per-screen grid from bounds (portrait taller/narrower)', () => {
-    const state = assembleWallpaperState(screensDto([info(A, LAND), info(B, PORT)]), new Map(), {}, { prevActiveId: null, hasBackup: false })
+    const state = assembleWallpaperState(screensDto([info(A, LAND), info(B, PORT)]), new Map(), {}, { prevActiveId: null })
     const a = state.screens.find((s) => s.monitorId === A)!
     const b = state.screens.find((s) => s.monitorId === B)!
     expect(a.grid.columns).toBeGreaterThan(a.grid.rows)
@@ -86,7 +86,7 @@ describe('assembleWallpaperState — reconcile on load', () => {
   })
 
   test('threads hasBackup + global position/span from the DTO', () => {
-    const state = assembleWallpaperState(screensDto([info(A, LAND), info(B, PORT)], 'Span', true), new Map(), {}, { prevActiveId: null, hasBackup: true })
+    const state = assembleWallpaperState(screensDto([info(A, LAND), info(B, PORT)], 'Span', true, true), new Map(), {}, { prevActiveId: null })
     expect(state.hasBackup).toBe(true)
     expect(state.position).toBe('Span')
     expect(state.spanActive).toBe(true)
@@ -95,12 +95,12 @@ describe('assembleWallpaperState — reconcile on load', () => {
   test('a bounds-fingerprint fallback restores a look across a new device path', () => {
     // Same bounds, new device path (replug on a different port) → bounds match.
     const persisted = new Map<string, PersistedLook>([['OLD-PATH', { look: look(true), bounds: LAND }]])
-    const state = assembleWallpaperState(screensDto([info(A, LAND)]), persisted, {}, { prevActiveId: null, hasBackup: false })
+    const state = assembleWallpaperState(screensDto([info(A, LAND)]), persisted, {}, { prevActiveId: null })
     expect(state.screens[0].look.clarity.level).toBe('Soft')
   })
 
   test('an empty payload assembles a clean, screen-less state (never throws)', () => {
-    const state = assembleWallpaperState(screensDto([]), new Map(), {}, { prevActiveId: null, hasBackup: false })
+    const state = assembleWallpaperState(screensDto([]), new Map(), {}, { prevActiveId: null })
     expect(state.screens).toHaveLength(0)
     expect(state.dirty).toBe(false)
   })
@@ -111,7 +111,7 @@ describe('assembleWallpaperState — re-fetch flow (apply / restore)', () => {
     // localStorage still holds the OLD (empty) look for A; the live store holds a dirtied draft.
     const persisted = new Map<string, PersistedLook>([[A, { look: look(false), bounds: LAND }]])
     const live = { [A]: liveScreen(look(true)) }
-    const state = assembleWallpaperState(screensDto([info(A, LAND)]), persisted, live, { prevActiveId: A, hasBackup: true })
+    const state = assembleWallpaperState(screensDto([info(A, LAND)], 'Fill', false, true), persisted, live, { prevActiveId: A })
     expect(state.screens[0].look.clarity.level).toBe('Soft') // live draft, not the stale persisted 'Off'
     expect(state.hasBackup).toBe(true)
     expect(state.dirty).toBe(true)
@@ -119,14 +119,14 @@ describe('assembleWallpaperState — re-fetch flow (apply / restore)', () => {
 
   test('keeps the user on their active screen across a re-fetch', () => {
     const live = { [A]: liveScreen(look()), [B]: liveScreen(look()) }
-    const state = assembleWallpaperState(screensDto([info(A, LAND), info(B, PORT)]), new Map(), live, { prevActiveId: B, hasBackup: false })
+    const state = assembleWallpaperState(screensDto([info(A, LAND), info(B, PORT)]), new Map(), live, { prevActiveId: B })
     expect(state.activeScreenId).toBe(B)
     expect(state.grid.screenHeight).toBeGreaterThan(state.grid.screenWidth) // active mirror = portrait B
   })
 
   test('a restore-shaped re-fetch (hasBackup false) re-derives dirty from the surviving drafts', () => {
     const live = { [A]: liveScreen(look(true)) }
-    const state = assembleWallpaperState(screensDto([info(A, LAND)]), new Map(), live, { prevActiveId: A, hasBackup: false })
+    const state = assembleWallpaperState(screensDto([info(A, LAND)]), new Map(), live, { prevActiveId: A })
     expect(state.hasBackup).toBe(false) // snapshot reverted
     expect(state.dirty).toBe(true) // the draft survives the restore
   })
@@ -174,7 +174,7 @@ describe('persisted-look localStorage round-trip', () => {
 
   test('the round-tripped map drives an assemble end-to-end (persist → load → restore)', () => {
     savePersistedLook(A, look(true), LAND)
-    const state = assembleWallpaperState(screensDto([info(A, LAND)]), loadPersistedLooks(), {}, { prevActiveId: null, hasBackup: false })
+    const state = assembleWallpaperState(screensDto([info(A, LAND)]), loadPersistedLooks(), {}, { prevActiveId: null })
     expect(state.screens[0].look.clarity.level).toBe('Soft')
     expect(state.dirty).toBe(true)
   })

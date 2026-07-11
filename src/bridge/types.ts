@@ -463,6 +463,11 @@ export interface WallpaperScreensDto {
   /** position === 'Span' — the UI degrades to a unified canvas (§B6). Reported
    *  explicitly by the host (never derived) so the web never guesses the span state. */
   spanActive: boolean
+  /** Whether a durable pre-first-apply snapshot exists. Carried here (not only on
+   *  mutating-op results) so a COLD START surfaces the whole-desktop restore
+   *  affordance when a snapshot persists — a restart after an apply otherwise hides
+   *  the only path back. */
+  hasBackup: boolean
 }
 
 /** The THIN result of a mutating wallpaper op (`applyBaked` / `restore`) — schema 6

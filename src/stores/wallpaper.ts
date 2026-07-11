@@ -216,14 +216,13 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
 
   /** Re-fetch the thin getScreens payload and re-assemble the store state, preserving
    *  every in-progress per-screen draft + undo stack (mergeScreenMap keeps live
-   *  ScreenLook refs). `hasBackup` threads through from the caller (load: false; a thin
-   *  op result: its reported flag) since getScreens does not carry it. */
-  const syncFromHost = async (hasBackup: boolean): Promise<void> => {
+   *  ScreenLook refs). `hasBackup` now rides getScreens itself (the host's durable
+   *  snapshot truth), so it is correct on cold start AND after every mutating op. */
+  const syncFromHost = async (): Promise<void> => {
     const dto = decodeWallpaperScreens(await call('wallpaper.getScreens'))
     const persisted = loadPersistedLooks()
     const state = assembleWallpaperState(dto, persisted, get().screens, {
       prevActiveId: get().activeScreenId,
-      hasBackup,
     })
     let screens = mergeScreenMap(get().screens, state.screens)
     let activeId = state.activeScreenId
@@ -259,13 +258,13 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
     load: async () => {
       if (get().loaded) return
       set({ loaded: true })
-      // Cold load: getScreens carries no snapshot flag, so hasBackup starts false and
-      // turns true only after this session's first apply reports it (schema 6 D1).
-      await syncFromHost(false)
+      // Cold load: getScreens now reports whether a durable snapshot persists, so the
+      // whole-desktop restore affordance is correct across a restart (schema 6 D1).
+      await syncFromHost()
     },
 
     refresh: async () => {
-      await syncFromHost(get().state?.hasBackup ?? false)
+      await syncFromHost()
     },
 
     selectScreen: (monitorId) => {
@@ -470,9 +469,10 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
         const wait = 550 - (Date.now() - started)
         if (wait > 0) await new Promise((r) => setTimeout(r, wait))
         // Re-fetch getScreens + re-assemble; the live per-screen drafts survive (they
-        // are kept by reference), only the global hasBackup moves. Then fire the wave.
+        // are kept by reference), and the re-fetched getScreens carries the now-true
+        // hasBackup (the apply just captured the snapshot). Then fire the wave.
         if (result.ok) {
-          await syncFromHost(result.hasBackup)
+          await syncFromHost()
           set({ applyWave: get().applyWave + 1 })
         }
         toastOf(result)
@@ -488,7 +488,7 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       // Whole-desktop restore reverts the pre-first-apply snapshot (§B5); draft looks
       // survive, so dirty re-derives from them on the getScreens re-assemble.
       const result = decodeWallpaperResult(await call('wallpaper.restore', { monitorId: 'all' }))
-      await syncFromHost(result.hasBackup)
+      await syncFromHost()
       toastOf(result)
     },
 

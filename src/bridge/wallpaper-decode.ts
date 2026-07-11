@@ -106,6 +106,7 @@ export function decodeWallpaperScreens(raw: unknown): WallpaperScreensDto {
   asArray(o.screens, 'screens').forEach((s, i) => decodeScreenInfo(s, `screens[${i}]`))
   oneOf(o.position, POSITIONS, 'position')
   asBool(o.spanActive, 'spanActive')
+  asBool(o.hasBackup, 'hasBackup')
   return raw as WallpaperScreensDto
 }
 

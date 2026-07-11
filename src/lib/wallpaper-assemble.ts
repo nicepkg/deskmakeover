@@ -81,12 +81,13 @@ export function savePersistedLook(monitorId: string, look: LookDto, bounds: Moni
  *  2. let a LIVE per-screen draft (mid-edit, ahead of the debounced localStorage write)
  *     win over the persisted look;
  *  3. mirror the active screen to the top-level fields (single-monitor parity).
- *  `hasBackup` is threaded from the caller (thin ops report it; getScreens does not). */
+ *  `hasBackup` comes straight off the getScreens payload (the host's durable-snapshot
+ *  truth), so it is fresh on cold start AND after every mutating op's re-fetch. */
 export function assembleWallpaperState(
   dto: WallpaperScreensDto,
   persisted: Map<string, PersistedLook>,
   liveScreens: Record<string, ScreenLook>,
-  opts: { prevActiveId: string | null; hasBackup: boolean },
+  opts: { prevActiveId: string | null },
 ): WallpaperStateDto {
   const reconciled = reconcileScreens(dto.screens, persisted)
   const screens: MonitorLookDto[] = reconciled.map((m) => {
@@ -99,7 +100,7 @@ export function assembleWallpaperState(
     look: active?.look ?? emptyLook(),
     grid: active?.grid ?? gridForBounds(FALLBACK_BOUNDS),
     originalUrl: active?.source?.url ?? null,
-    hasBackup: opts.hasBackup,
+    hasBackup: dto.hasBackup,
     working: false,
     dirty: screens.some((s) => lookDirty(s.look)),
     pale: false,

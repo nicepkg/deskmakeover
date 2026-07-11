@@ -98,6 +98,11 @@ pub struct WallpaperScreensDto {
     /// explicitly (the host detects it) rather than derived. Mirrors the TS
     /// `spanActive`.
     pub span_active: bool,
+    /// Whether a durable pre-first-apply snapshot exists on disk. Carried on
+    /// getScreens (not only on mutating-op results) so a COLD START surfaces the
+    /// whole-desktop "restore to original" affordance when a snapshot persists —
+    /// without it, a restart after an apply hides the only path back.
+    pub has_backup: bool,
 }
 
 /// The THIN result of a mutating wallpaper op (`applyBaked` / `restore`). Per D1 the
@@ -201,9 +206,11 @@ mod tests {
             }],
             position: WallpaperPosition::Fill,
             span_active: false,
+            has_backup: true,
         };
         let json = serde_json::to_string(&dto).unwrap();
         assert!(json.contains("\"spanActive\""), "got {json}");
+        assert!(json.contains("\"hasBackup\":true"), "got {json}");
         let back: WallpaperScreensDto = serde_json::from_str(&json).unwrap();
         assert_eq!(back, dto);
     }

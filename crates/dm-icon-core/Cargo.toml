@@ -8,3 +8,13 @@ publish.workspace = true
 # Transcendentals route through libm on both wasm and native for bit-exactness
 # (ADR-0019); std math / FMA / SIMD are banned in the core.
 libm = "0.2"
+
+[features]
+# `fast` gates the byte-safe kernel optimizations (M6 kernel-speed plan). The
+# DEFAULT (scalar) build is the determinism reference/oracle — it recomputes
+# everything, so the four-way cert can diff the fast path against it at ANY size,
+# not only where a TS golden exists (256px). `fast` must stay byte-identical to
+# scalar over the full corpus; the cert enforces it. Empty until Phase 1 fills it
+# with the geometry mask cache.
+default = []
+fast = []

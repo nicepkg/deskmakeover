@@ -1,2 +1,9 @@
 [toolchain]
-channel = "stable"
+# Pinned for byte-reproducible builds (M6 kernel-speed plan Phase 0). A moving
+# `stable` can shift codegen between machines/CI runs; the icon-parity cert
+# certifies the kernel's output under THIS toolchain, so the toolchain is part of
+# the anchor. Bump deliberately, then re-run `bun tests/icon-parity/m6/run.ts`.
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

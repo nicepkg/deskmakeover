@@ -10,6 +10,10 @@ coverage/
 
 # dm-icon-wasm release artifact copied into public/ by scripts/build-icon-wasm.mjs
 public/dm_icon_wasm.wasm
+# per-kernel artifacts + generated page for the WebView2 scalar-vs-fast bench (tests/icon-parity/m6/bench.ts)
+public/dm_icon_wasm.scalar.wasm
+public/dm_icon_wasm.fast.wasm
+public/icon-kernel-bench.html
 
 # ── Tauri (build-time generated ACL schemas, regenerated every build) ──
 src-tauri/gen/

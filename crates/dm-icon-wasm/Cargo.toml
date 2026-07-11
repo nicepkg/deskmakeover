@@ -10,3 +10,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 dm-icon-core = { path = "../dm-icon-core" }
+
+[features]
+# Propagate the kernel toggle: `--features fast` builds the WASM preview artifact
+# on the fast (cached) core; default builds the scalar reference (M6 kernel-speed
+# plan Phase 0). Both must pass the 1487-cell byte cert.
+default = []
+fast = ["dm-icon-core/fast"]

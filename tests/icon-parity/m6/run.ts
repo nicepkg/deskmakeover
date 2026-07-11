@@ -1,38 +1,38 @@
 #!/usr/bin/env bun
-// M6 byte-parity gate — drives the FULL `dm-icon-wasm` render_tile ABI (the M6
-// worker-pool adapter, not the Spike-4 slice) over the real 1487-cell M5 corpus
-// and asserts every cell is byte-identical to the frozen TS golden. This is the
-// hard flip gate: the preview path may only move to WASM once this is 1487/1487.
+// M6 byte-parity CERTIFICATE — the flip-grade gate that pins the icon kernel's
+// output to the certified anchor across every target and kernel variant.
 //
-//   bun tests/icon-parity/m6/run.ts
+//   bun tests/icon-parity/m6/run.ts            # four-way: {scalar,fast} × {native,wasm} vs TS
+//   KERNEL=scalar bun tests/icon-parity/m6/run.ts   # scalar lane only
+//   KERNEL=fast   bun tests/icon-parity/m6/run.ts   # fast lane only
 //
-// It reuses the M5 pixel corpus (target/m5/pixels: cells.jsonl + sources/ +
-// expected/ + the genuine Win11 arrow), regenerating it via the M5 dumper if
-// absent, and (re)builds the release wasm. The config encoder here is the exact
-// 24-byte packed record `dm-icon-wasm/src/abi.rs` decodes — it becomes the P2
-// worker's encoder.
+// What Phase 0 hardened (M6 kernel-speed plan; Codex audit of the prior harness):
+//   1. Anchor safety net (anchor.ts): recompute the setHash from public/real-icons,
+//      pin 1487 cells / 124 sources / tier split, per-lane + per-field histograms,
+//      every file length, the goldens/sources content digests, and the exact
+//      389,808,128-byte compared total. Any drift → red BEFORE a byte is diffed.
+//   2. Four-way differential: scalar-native, fast-native, scalar-wasm, fast-wasm —
+//      each vs the frozen TS golden at 256px. `fast` is the byte-safe optimized
+//      core (empty until Phase 1); it must equal scalar over the whole corpus.
+//   3. Off-golden size sweep (sizes.ts): fast vs scalar at small/odd/preview/large
+//      sizes — the only guard against a cache-key bug that passes at 256 but
+//      corrupts sizes with no golden.
+//   4. --locked builds on a pinned toolchain (rust-toolchain.toml).
+//
+// The old gate accepted any non-empty corpus and passed on any all-equal subset —
+// a 1-cell corpus read as a full green. It no longer can.
 
 import { existsSync, readFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 
-import type { ConfigDto } from '../../../src/bridge/types'
-import { CONFIG_BYTES, encodeConfig, hexToInt } from '../../../src/icon-wasm/config-abi'
+import { assertCorpusAnchor, CELL_BYTES, CELL_COUNT, LANE_HISTOGRAM, TOTAL_BYTES } from './anchor'
+import { buildWasm, type Kernel, loadArrow, loadCells, PIXELS, REPO_ROOT, WasmDriver } from './harness'
+import { sizeSweep } from './sizes'
 
-const REPO_ROOT = resolve(import.meta.dir, '../../..')
-const PIXELS = join(REPO_ROOT, 'target/m5/pixels')
-const WASM = join(REPO_ROOT, 'target/wasm32-unknown-unknown/release/dm_icon_wasm.wasm')
-const CORPUS_SIZE = 256 // every corpus cell renders at 256² (xtask CORPUS_SIZE)
+const CORPUS_SIZE = 256
 
-// ---- wasm harness -----------------------------------------------------------
-
-interface M6Exports {
-  memory: WebAssembly.Memory
-  dm_alloc(len: number): number
-  dm_set_native_arrow(ptr: number, w: number, h: number): number
-  dm_session_new(): number
-  dm_session_register(s: number, idPtr: number, idLen: number, sourceHash: bigint, srcPtr: number, w: number, h: number): number
-  dm_session_set_config(s: number, cfgPtr: number, cfgLen: number): number
-  dm_session_render(s: number, idPtr: number, idLen: number, isShortcut: number, showOriginal: number, size: number, hasFieldSeed: number, fieldSeed: number, out: number): number
+function must(cond: boolean, msg: string): void {
+  if (!cond) throw new Error(`CERT FAIL — ${msg}`)
 }
 
 function ensureCorpus(): void {
@@ -42,132 +42,128 @@ function ensureCorpus(): void {
   if (r.exitCode !== 0) process.exit(r.exitCode ?? 1)
 }
 
-function buildWasm(): void {
-  console.log('== build wasm: cargo build --target wasm32-unknown-unknown --release -p dm-icon-wasm')
-  const r = Bun.spawnSync(
-    ['cargo', 'build', '--target', 'wasm32-unknown-unknown', '--release', '-p', 'dm-icon-wasm'],
-    { cwd: REPO_ROOT, stdout: 'inherit', stderr: 'inherit' },
-  )
-  if (r.exitCode !== 0) process.exit(r.exitCode ?? 1)
-}
-
 interface LaneStat {
   cells: number
   equal: number
   diffBytes: number
-  totalBytes: number
 }
 
-function main(): void {
-  ensureCorpus()
-  buildWasm()
-
-  const instance = new WebAssembly.Instance(new WebAssembly.Module(readFileSync(WASM)), {})
-  const wasm = instance.exports as unknown as M6Exports
-  const mem = () => new Uint8Array(wasm.memory.buffer) // re-view: alloc/register may grow + detach
-
-  // Install the genuine Win11 arrow badge, exactly as the corpus dumper does.
-  const arrowMeta = JSON.parse(readFileSync(join(PIXELS, 'arrow.json'), 'utf8')) as { width: number; height: number }
-  const arrowBytes = readFileSync(join(PIXELS, 'arrow.rgba'))
-  const arrowPtr = wasm.dm_alloc(arrowMeta.width * arrowMeta.height * 4)
-  mem().set(arrowBytes, arrowPtr)
-  if (wasm.dm_set_native_arrow(arrowPtr, arrowMeta.width, arrowMeta.height) !== 0) throw new Error('dm_set_native_arrow failed')
-
-  const session = wasm.dm_session_new()
-  const srcPtr = wasm.dm_alloc(CORPUS_SIZE * CORPUS_SIZE * 4)
-  const outPtr = wasm.dm_alloc(CORPUS_SIZE * CORPUS_SIZE * 4)
-  const cfgPtr = wasm.dm_alloc(CONFIG_BYTES)
-  const idPtr = wasm.dm_alloc(256)
-  const enc = new TextEncoder()
-
-  // Each distinct sourceId gets a distinct hash so the profile cache never
-  // collides (register's trust contract). Register a source once, on first sight.
-  const registered = new Map<string, bigint>()
-  let nextHash = 1n
-
+// ── wasm lane: 1487 cells @256 through the render_tile ABI vs the TS golden ──
+function wasmLaneVsGolden(kernel: Kernel): string {
+  const wasmPath = buildWasm(kernel)
+  const driver = WasmDriver.create(wasmPath, loadArrow(), CORPUS_SIZE)
+  const cells = loadCells()
   const perLane = new Map<string, LaneStat>()
-  const total: LaneStat = { cells: 0, equal: 0, diffBytes: 0, totalBytes: 0 }
+  let cellsSeen = 0
+  let equal = 0
+  let diffBytes = 0
+  let totalBytes = 0
   const failures: string[] = []
-  const cellBytes = CORPUS_SIZE * CORPUS_SIZE * 4
 
-  const lines = readFileSync(join(PIXELS, 'cells.jsonl'), 'utf8').split('\n').filter((l) => l.length > 0)
-  for (const line of lines) {
-    const rec = JSON.parse(line)
-    const file: string = rec.file
-    const sourceId: string = rec.sourceId
-    const lane: string = rec.lane
+  for (const cell of cells) {
+    const out = driver.render(cell, CORPUS_SIZE)
+    const expected = new Uint8Array(readFileSync(join(PIXELS, `expected/${cell.file}.rgba`)))
+    must(out.length === CELL_BYTES && expected.length === CELL_BYTES, `${cell.file}: length ${out.length}/${expected.length} != ${CELL_BYTES}`)
 
-    if (!registered.has(sourceId)) {
-      const src = readFileSync(join(PIXELS, `sources/${sourceId}.rgba`))
-      mem().set(src, srcPtr)
-      const hash = nextHash++
-      const idLen = enc.encodeInto(sourceId, mem().subarray(idPtr, idPtr + 256)).written ?? 0
-      const code = wasm.dm_session_register(session, idPtr, idLen, hash, srcPtr, CORPUS_SIZE, CORPUS_SIZE)
-      if (code !== 0) throw new Error(`register(${sourceId}) → ${code}`)
-      registered.set(sourceId, hash)
-    }
-
-    mem().set(encodeConfig(rec.config as ConfigDto), cfgPtr)
-    if (wasm.dm_session_set_config(session, cfgPtr, CONFIG_BYTES) !== 0) throw new Error(`set_config(${file}) failed`)
-
-    const idLen = enc.encodeInto(sourceId, mem().subarray(idPtr, idPtr + 256)).written ?? 0
-    const fieldSeed: string | null = rec.opts?.fieldSeed ?? null
-    const code = wasm.dm_session_render(
-      session,
-      idPtr,
-      idLen,
-      rec.isShortcut ? 1 : 0,
-      rec.showOriginal ? 1 : 0,
-      CORPUS_SIZE,
-      fieldSeed == null ? 0 : 1,
-      fieldSeed == null ? 0 : hexToInt(fieldSeed),
-      outPtr,
-    )
-    if (code !== 0) throw new Error(`render(${file}) → ${code}`)
-
-    const out = mem().subarray(outPtr, outPtr + cellBytes)
-    const expected = readFileSync(join(PIXELS, `expected/${file}.rgba`))
-
-    const s = perLane.get(lane) ?? { cells: 0, equal: 0, diffBytes: 0, totalBytes: 0 }
+    const s = perLane.get(cell.lane) ?? { cells: 0, equal: 0, diffBytes: 0 }
     s.cells++
-    total.cells++
-    s.totalBytes += cellBytes
-    total.totalBytes += cellBytes
+    cellsSeen++
+    totalBytes += CELL_BYTES
 
     let diff = 0
     let firstAt = -1
-    for (let i = 0; i < cellBytes; i++) {
+    for (let i = 0; i < CELL_BYTES; i++) {
       if (out[i] !== expected[i]) {
         diff++
         if (firstAt < 0) firstAt = i
       }
     }
     s.diffBytes += diff
-    total.diffBytes += diff
+    diffBytes += diff
     if (diff === 0) {
       s.equal++
-      total.equal++
+      equal++
     } else if (failures.length < 40) {
       const px = (firstAt / 4) | 0
-      failures.push(`${file} [${lane}]: ${diff} diff bytes, first at (${px % CORPUS_SIZE},${(px / CORPUS_SIZE) | 0}) ch ${firstAt % 4} wasm=${out[firstAt]} ts=${expected[firstAt]}`)
+      failures.push(`${cell.file} [${cell.lane}]: ${diff} diff bytes, first at (${px % CORPUS_SIZE},${(px / CORPUS_SIZE) | 0}) ch ${firstAt % 4} wasm=${out[firstAt]} ts=${expected[firstAt]}`)
     }
-    perLane.set(lane, s)
+    perLane.set(cell.lane, s)
   }
 
-  console.log('\n== M6 full pixel differential — dm-icon-wasm render_tile ↔ TS golden ==')
-  console.log(`${'lane'.padEnd(18)}${'cells'.padStart(6)}${'equal-cells'.padStart(13)}${'diff-bytes'.padStart(19)}`)
+  console.log(`\n== ${kernel}-wasm ↔ TS golden (render_tile ABI, 256px) ==`)
+  console.log(`${'lane'.padEnd(18)}${'cells'.padStart(6)}${'equal'.padStart(8)}${'diff-bytes'.padStart(14)}`)
   for (const [lane, s] of [...perLane].sort(([a], [b]) => (a < b ? -1 : 1))) {
-    console.log(`${lane.padEnd(18)}${String(s.cells).padStart(6)}${String(s.equal).padStart(13)}${`${s.diffBytes}/${s.totalBytes}`.padStart(19)}`)
+    console.log(`${lane.padEnd(18)}${String(s.cells).padStart(6)}${String(s.equal).padStart(8)}${String(s.diffBytes).padStart(14)}`)
   }
-  console.log(`${'TOTAL'.padEnd(18)}${String(total.cells).padStart(6)}${String(total.equal).padStart(13)}${`${total.diffBytes}/${total.totalBytes}`.padStart(19)}`)
+  console.log(`${'TOTAL'.padEnd(18)}${String(cellsSeen).padStart(6)}${String(equal).padStart(8)}${String(diffBytes).padStart(14)}`)
 
-  if (total.equal === total.cells && total.cells > 0) {
-    console.log(`RESULT: PASS — all ${total.cells} cells byte-identical (WASM render_tile ABI == TS golden), 0/${total.totalBytes} diff bytes`)
-    return
+  if (failures.length) for (const f of failures) console.log(`  ${f}`)
+  must(cellsSeen === CELL_COUNT, `${kernel}-wasm rendered ${cellsSeen} cells, expected ${CELL_COUNT}`)
+  must(diffBytes === 0, `${kernel}-wasm has ${diffBytes} diff bytes (expected 0)`)
+  must(equal === CELL_COUNT, `${kernel}-wasm matched ${equal}/${CELL_COUNT} cells`)
+  must(totalBytes === TOTAL_BYTES, `${kernel}-wasm compared ${totalBytes} bytes, expected ${TOTAL_BYTES}`)
+  for (const [lane, expectedCount] of Object.entries(LANE_HISTOGRAM)) {
+    must(perLane.get(lane)?.equal === expectedCount, `${kernel}-wasm lane ${lane}: ${perLane.get(lane)?.equal}/${expectedCount} matched`)
   }
-  console.log('RESULT: FAIL')
-  for (const f of failures) console.log(`  ${f}`)
-  process.exit(1)
+  console.log(`RESULT: PASS — ${kernel}-wasm byte-identical to TS golden, 0/${TOTAL_BYTES}`)
+  return wasmPath
 }
 
-main()
+// ── native lane: xtask m5-pixels renders the corpus natively vs the TS golden ──
+function nativeLaneVsGolden(kernel: Kernel): void {
+  const feat = kernel === 'fast' ? ['--features', 'fast'] : []
+  console.log(`\n== ${kernel}-native ↔ TS golden (xtask m5-pixels) ==`)
+  const r = Bun.spawnSync(
+    ['cargo', 'run', '--locked', '--release', '-q', '-p', 'xtask', ...feat, '--', 'm5-pixels', join(REPO_ROOT, 'target/m5')],
+    { cwd: REPO_ROOT, stdout: 'pipe', stderr: 'inherit' },
+  )
+  const out = new TextDecoder().decode(r.stdout)
+  process.stdout.write(out)
+  must(r.exitCode === 0, `${kernel}-native xtask m5-pixels exit ${r.exitCode}`)
+
+  // TOTAL line: "TOTAL   1487   1487   0/389808128" — pin the count, equal, and total.
+  const line = out.split('\n').find((l) => l.trimStart().startsWith('TOTAL'))
+  must(!!line, `${kernel}-native: no TOTAL line in xtask output`)
+  const cols = line!.trim().split(/\s+/) // [TOTAL, cells, equal, diff/total]
+  const cellsSeen = Number(cols[1])
+  const equal = Number(cols[2])
+  const [diff, total] = cols[3].split('/').map(Number)
+  must(cellsSeen === CELL_COUNT, `${kernel}-native rendered ${cellsSeen} cells, expected ${CELL_COUNT}`)
+  must(equal === CELL_COUNT, `${kernel}-native matched ${equal}/${CELL_COUNT} cells`)
+  must(diff === 0, `${kernel}-native has ${diff} diff bytes (expected 0)`)
+  must(total === TOTAL_BYTES, `${kernel}-native compared ${total} bytes, expected ${TOTAL_BYTES}`)
+  must(out.includes('lane/fieldLane mismatches: 0'), `${kernel}-native reported a lane/fieldLane mismatch`)
+  console.log(`RESULT: PASS — ${kernel}-native byte-identical to TS golden, 0/${TOTAL_BYTES}`)
+}
+
+function main(): void {
+  const arg = (process.env.KERNEL ?? 'all').toLowerCase()
+  const kernels: Kernel[] = arg === 'all' ? ['scalar', 'fast'] : arg === 'scalar' ? ['scalar'] : arg === 'fast' ? ['fast'] : []
+  if (!kernels.length) {
+    console.error(`bad KERNEL=${arg} (use scalar | fast | all)`)
+    process.exit(2)
+  }
+
+  ensureCorpus()
+  console.log('== anchor: setHash + counts + histograms + file lengths + content digests + 389,808,128-byte total')
+  assertCorpusAnchor(PIXELS)
+  console.log('RESULT: PASS — corpus matches the certified anchor')
+
+  const built: Partial<Record<Kernel, string>> = {}
+  for (const k of kernels) {
+    nativeLaneVsGolden(k)
+    built[k] = wasmLaneVsGolden(k)
+  }
+
+  if (built.scalar && built.fast) sizeSweep(built.scalar, built.fast)
+  else console.log('\n== size sweep skipped — needs both kernels (run without KERNEL, or KERNEL=all)')
+
+  console.log(`\nM6 CERTIFICATE: ALL GATES PASS — anchor ✓, ${kernels.join('+')} × {native,wasm} == TS golden, 0/${TOTAL_BYTES}`)
+}
+
+try {
+  main()
+} catch (e) {
+  console.error(`\n${(e as Error).message}`)
+  process.exit(1)
+}

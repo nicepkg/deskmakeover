@@ -1,26 +1,18 @@
-import type {
-  ClarityDto,
-  LookDto,
-  MonitorLookDto,
-  WallpaperGridInfoDto,
-  WallpaperOpDto,
-  WallpaperSourceDto,
-  WallpaperStateDto,
-  ZoneDto,
-} from './types'
+import type { ScreenInfoDto, WallpaperResultDto, WallpaperScreensDto, WallpaperSourceDto } from './types'
 
-// Strict client decoder for the multi-monitor wallpaper contract (spec 04 §B1).
+// Strict client decoders for the SCHEMA-6 thin wallpaper contract (D1). Only two
+// payloads still cross the bridge: `wallpaper.getScreens` (raw screens + globals)
+// and the `applyBaked`/`restore` result (ok/toast/hasBackup). Looks no longer cross
+// the bridge (localStorage-persisted, frontend-assembled), so there is nothing here
+// to decode a look/zone/clarity/grid.
 //
 // The lesson this guards (payload-widening trap): a strict decoder that silently
-// rejects a widened payload collapses the whole module to empty state, and the
-// bug hides because nothing throws. So this decoder is strict about REQUIRED
-// fields (a missing/mistyped field throws LOUDLY — never a silent empty), and
-// tolerant of UNKNOWN extra fields (forward-compatible — a host that adds a field
-// must not brick an older web). It validates in place and returns the same object
-// typed, so ANY valid superset round-trips unchanged.
-//
-// This is the ONLY place the raw `wallpaper.getState`/apply/restore result is
-// trusted into `WallpaperStateDto`; the store decodes here at the bridge boundary.
+// rejects a widened payload collapses the module to empty state, and the bug hides
+// because nothing throws. So these decoders are strict about REQUIRED fields (a
+// missing/mistyped field throws LOUDLY — never a silent empty) and tolerant of
+// UNKNOWN extra fields (forward-compatible — a host that adds a field must not brick
+// an older web). They validate in place and return the same object typed, so ANY
+// valid superset round-trips unchanged.
 
 export class WallpaperDecodeError extends Error {
   constructor(message: string) {
@@ -64,10 +56,6 @@ function nullableString(v: unknown, path: string): string | null {
   return v === null ? null : asString(v, path)
 }
 
-function nullableNumber(v: unknown, path: string): number | null {
-  return v === null ? null : asNumber(v, path)
-}
-
 function oneOf<T extends string>(v: unknown, allowed: readonly T[], path: string): T {
   const s = asString(v, path)
   if (!allowed.includes(s as T)) {
@@ -85,63 +73,6 @@ function describe(v: unknown): string {
 const POSITIONS = ['Center', 'Tile', 'Stretch', 'Fit', 'Fill', 'Span'] as const
 const ORIENTATIONS = ['portrait', 'landscape'] as const
 
-function decodeClarity(v: unknown, path: string): ClarityDto {
-  const o = asObject(v, path)
-  asString(o.level, `${path}.level`)
-  asString(o.gradient, `${path}.gradient`)
-  asNumber(o.angleDeg, `${path}.angleDeg`)
-  nullableNumber(o.dimOverride, `${path}.dimOverride`)
-  asString(o.tone, `${path}.tone`)
-  nullableString(o.customScrim, `${path}.customScrim`)
-  return v as ClarityDto
-}
-
-function decodeZone(v: unknown, path: string): ZoneDto {
-  const o = asObject(v, path)
-  asString(o.id, `${path}.id`)
-  asNumber(o.cellX, `${path}.cellX`)
-  asNumber(o.cellY, `${path}.cellY`)
-  asNumber(o.cellsWide, `${path}.cellsWide`)
-  asNumber(o.cellsTall, `${path}.cellsTall`)
-  asString(o.title, `${path}.title`)
-  nullableString(o.emoji, `${path}.emoji`)
-  nullableString(o.accent, `${path}.accent`)
-  asString(o.tone, `${path}.tone`)
-  asString(o.material, `${path}.material`)
-  asString(o.titleStyle, `${path}.titleStyle`)
-  asBool(o.shadow, `${path}.shadow`)
-  nullableNumber(o.fillOpacity, `${path}.fillOpacity`)
-  asNumber(o.cornerRadius, `${path}.cornerRadius`)
-  asString(o.titleSize, `${path}.titleSize`)
-  nullableString(o.fontFamily, `${path}.fontFamily`)
-  return v as ZoneDto
-}
-
-function decodeLook(v: unknown, path: string): LookDto {
-  const o = asObject(v, path)
-  asArray(o.zones, `${path}.zones`).forEach((z, i) => decodeZone(z, `${path}.zones[${i}]`))
-  decodeClarity(o.clarity, `${path}.clarity`)
-  return v as LookDto
-}
-
-function decodeGrid(v: unknown, path: string): WallpaperGridInfoDto {
-  const o = asObject(v, path)
-  for (const key of [
-    'screenWidth',
-    'screenHeight',
-    'taskbarHeight',
-    'iconPx',
-    'cellWidth',
-    'cellHeight',
-    'inset',
-    'columns',
-    'rows',
-  ] as const) {
-    asNumber(o[key], `${path}.${key}`)
-  }
-  return v as WallpaperGridInfoDto
-}
-
 function decodeSource(v: unknown, path: string): WallpaperSourceDto | null {
   if (v === null) return null
   const o = asObject(v, path)
@@ -151,7 +82,7 @@ function decodeSource(v: unknown, path: string): WallpaperSourceDto | null {
   return v as WallpaperSourceDto
 }
 
-function decodeMonitorLook(v: unknown, path: string): MonitorLookDto {
+function decodeScreenInfo(v: unknown, path: string): ScreenInfoDto {
   const o = asObject(v, path)
   asString(o.monitorId, `${path}.monitorId`)
   asString(o.name, `${path}.name`)
@@ -161,53 +92,32 @@ function decodeMonitorLook(v: unknown, path: string): MonitorLookDto {
   asNumber(b.w, `${path}.bounds.w`)
   asNumber(b.h, `${path}.bounds.h`)
   oneOf(o.orientation, ORIENTATIONS, `${path}.orientation`)
-  decodeLook(o.look, `${path}.look`)
   decodeSource(o.source, `${path}.source`)
-  decodeGrid(o.grid, `${path}.grid`)
   asBool(o.slideshowActive, `${path}.slideshowActive`)
   asBool(o.hasReadableSource, `${path}.hasReadableSource`)
-  return v as MonitorLookDto
+  return v as ScreenInfoDto
 }
 
-/** Strictly validate a raw `wallpaper.getState` result into a WallpaperStateDto.
- *  Throws WallpaperDecodeError on any missing/mistyped required field (loud —
- *  never a silent empty). Unknown extra fields pass through untouched. */
-export function decodeWallpaperState(raw: unknown): WallpaperStateDto {
-  const o = asObject(raw, 'WallpaperStateDto')
-  // Active-screen mirror + global flags (legacy top-level shape).
-  decodeLook(o.look, 'look')
-  decodeGrid(o.grid, 'grid')
-  nullableString(o.originalUrl, 'originalUrl')
-  asBool(o.hasBackup, 'hasBackup')
-  asBool(o.working, 'working')
-  asBool(o.dirty, 'dirty')
-  asBool(o.pale, 'pale')
-  asBool(o.fingerprintMismatch, 'fingerprintMismatch')
-  asString(o.wallTint, 'wallTint')
-  // Multi-screen additions.
-  const screens = asArray(o.screens, 'screens')
-  screens.forEach((s, i) => decodeMonitorLook(s, `screens[${i}]`))
-  const activeScreenId = asString(o.activeScreenId, 'activeScreenId')
-  if (
-    screens.length > 0 &&
-    !screens.some((s) => (s as MonitorLookDto).monitorId === activeScreenId)
-  ) {
-    throw new WallpaperDecodeError(`activeScreenId "${activeScreenId}" is not a present screen`)
-  }
+/** Strictly validate a raw `wallpaper.getScreens` result into a WallpaperScreensDto.
+ *  Throws on any missing/mistyped required field (loud — never a silent empty).
+ *  Unknown extra fields pass through untouched (forward-compat). */
+export function decodeWallpaperScreens(raw: unknown): WallpaperScreensDto {
+  const o = asObject(raw, 'WallpaperScreensDto')
+  asArray(o.screens, 'screens').forEach((s, i) => decodeScreenInfo(s, `screens[${i}]`))
   oneOf(o.position, POSITIONS, 'position')
   asBool(o.spanActive, 'spanActive')
-  return raw as WallpaperStateDto
+  return raw as WallpaperScreensDto
 }
 
-/** Strictly validate a `wallpaper.applyBaked`/`restore` op result. */
-export function decodeWallpaperOp(raw: unknown): WallpaperOpDto {
-  const o = asObject(raw, 'WallpaperOpDto')
-  decodeWallpaperState(o.state)
+/** Strictly validate a `wallpaper.applyBaked`/`restore` thin result. */
+export function decodeWallpaperResult(raw: unknown): WallpaperResultDto {
+  const o = asObject(raw, 'WallpaperResultDto')
   asBool(o.ok, 'ok')
+  asBool(o.hasBackup, 'hasBackup')
   if (o.toast !== null) {
     const t = asObject(o.toast, 'toast')
     asString(t.key, 'toast.key')
     nullableString(t.arg, 'toast.arg')
   }
-  return raw as WallpaperOpDto
+  return raw as WallpaperResultDto
 }

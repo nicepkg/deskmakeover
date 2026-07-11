@@ -9,7 +9,6 @@ import { WallpaperDimCard } from '@/components/panels/wallpaper-dim-card'
 import { WallpaperScreenNotices } from '@/components/panels/wallpaper-screen-notices'
 import { WallpaperZoneInspector } from '@/components/panels/wallpaper-zone-inspector'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { call } from '@/bridge/client'
 import { useToasts } from '@/stores/toasts'
 import { useWallpaper } from '@/stores/wallpaper'
 import { activeScreenFacts } from '@/lib/screen-arrange'
@@ -158,7 +157,7 @@ export function WallpaperPanel() {
         <Reveal show={state.fingerprintMismatch}>
           <button
             type="button"
-            onClick={() => void call('wallpaper.getState').then((s) => useWallpaper.setState({ state: s }))}
+            onClick={() => void useWallpaper.getState().refresh()}
             className="w-full rounded-[10px] bg-amber-wash px-3 py-2 text-left text-caption text-amber"
           >
             {t('Paper_Mismatch')} · {t('Paper_Regenerate')}

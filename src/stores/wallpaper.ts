@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { call } from '@/bridge/client'
-import type { FontChoiceDto, LookDto, WallpaperOpDto, WallpaperSourceDto, WallpaperStateDto, ZoneDto } from '@/bridge/types'
-import { decodeWallpaperOp, decodeWallpaperState } from '@/bridge/wallpaper-decode'
-import { type ScreenLook, mergeScreenMap, pickActiveScreenId } from '@/lib/monitor-reconcile'
+import type { FontChoiceDto, LookDto, WallpaperResultDto, WallpaperSourceDto, WallpaperStateDto, ZoneDto } from '@/bridge/types'
+import { decodeWallpaperResult, decodeWallpaperScreens } from '@/bridge/wallpaper-decode'
+import { type ScreenLook, mergeScreenMap } from '@/lib/monitor-reconcile'
+import { assembleWallpaperState, loadPersistedLooks, lookDirty, savePersistedLook } from '@/lib/wallpaper-assemble'
 import { activeScreenSourceUrl } from '@/lib/screen-arrange'
 import { getCompositor } from '@/compositor/registry'
 import { format, t } from '@/lib/i18n'
@@ -47,6 +48,9 @@ interface WallpaperState {
   fonts: FontChoiceDto[]
 
   load: () => Promise<void>
+  /** Re-fetch getScreens + re-assemble (preserving drafts) — the fingerprint-mismatch
+   *  regenerate affordance and any external re-sync. */
+  refresh: () => Promise<void>
   /** Switch the active monitor; the active-screen mirror + compositor follow it. */
   selectScreen: (monitorId: string) => void
   mutateLook: (change: (look: LookDto) => LookDto, coalesce?: string) => void
@@ -102,7 +106,7 @@ let lastCoalesceKey: string | null = null
 let lastCoalesceAt = 0
 const COALESCE_WINDOW_MS = 1200
 
-function toastOf(dto: WallpaperOpDto): void {
+function toastOf(dto: WallpaperResultDto): void {
   if (dto.toast) {
     useToasts.getState().show(t(dto.toast.key as StringKey), dto.ok ? 'info' : 'warn')
   }
@@ -111,10 +115,6 @@ function toastOf(dto: WallpaperOpDto): void {
 function clampSelected(selected: string | null, look: LookDto): string | null {
   if (selected === null) return null
   return look.zones.some((z) => z.id === selected) ? selected : null
-}
-
-function lookDirty(look: LookDto): boolean {
-  return look.zones.length > 0 || look.clarity.level !== 'Off'
 }
 
 /** Dirty if ANY screen carries a non-empty draft (single screen → old behavior). */
@@ -175,11 +175,16 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       })
     }
     getCompositor()?.update(look)
+    // Persist the draft to localStorage (D1: setLook left the bridge), keyed by
+    // monitorId + captured with its bounds fingerprint (both captured so a mid-debounce
+    // screen switch still persists the RIGHT monitor). A screen with no known bounds
+    // (the 0-monitor virtual screen) is session-only — nothing to reconcile back to.
     if (persistTimer) clearTimeout(persistTimer)
     const monitorId = a.id
+    const bounds = get().state?.screens.find((s) => s.monitorId === monitorId)?.bounds
     persistTimer = setTimeout(() => {
       persistTimer = null
-      void call('wallpaper.setLook', { monitorId, look }).catch(() => {})
+      if (bounds) savePersistedLook(monitorId, look, bounds)
     }, PERSIST_DEBOUNCE_MS)
   }
 
@@ -209,6 +214,30 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
     lastCoalesceAt = now
   }
 
+  /** Re-fetch the thin getScreens payload and re-assemble the store state, preserving
+   *  every in-progress per-screen draft + undo stack (mergeScreenMap keeps live
+   *  ScreenLook refs). `hasBackup` threads through from the caller (load: false; a thin
+   *  op result: its reported flag) since getScreens does not carry it. */
+  const syncFromHost = async (hasBackup: boolean): Promise<void> => {
+    const dto = decodeWallpaperScreens(await call('wallpaper.getScreens'))
+    const persisted = loadPersistedLooks()
+    const state = assembleWallpaperState(dto, persisted, get().screens, {
+      prevActiveId: get().activeScreenId,
+      hasBackup,
+    })
+    let screens = mergeScreenMap(get().screens, state.screens)
+    let activeId = state.activeScreenId
+    // 0-monitor host: keep the store from crash-emptying with one virtual screen from
+    // the top-level mirror (spec 04 §B6; the virtual-screen UI is Task 2).
+    if (Object.keys(screens).length === 0) {
+      activeId = activeId || 'virtual-screen'
+      screens = {
+        [activeId]: { look: state.look, source: null, sourceName: null, sourceUrl: null, selected: null, past: [], future: [] },
+      }
+    }
+    set({ state, screens, activeScreenId: activeId, ...mirror(screens[activeId]) })
+  }
+
   return {
     loaded: false,
     state: null,
@@ -230,20 +259,13 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
     load: async () => {
       if (get().loaded) return
       set({ loaded: true })
-      const state = decodeWallpaperState(await call('wallpaper.getState'))
-      // Build the per-screen map from the reconciled DTO. 0-monitor hosts get one
-      // virtual screen from the top-level mirror so the store never crash-empties
-      // (spec 04 §B6; the virtual-screen UI is Task 2).
-      let screens = mergeScreenMap({}, state.screens)
-      let activeId = pickActiveScreenId(null, state.screens, state.activeScreenId)
-      if (Object.keys(screens).length === 0) {
-        const virtualId = state.activeScreenId || 'virtual-screen'
-        screens = {
-          [virtualId]: { look: state.look, source: null, sourceName: null, sourceUrl: null, selected: null, past: [], future: [] },
-        }
-        activeId = virtualId
-      }
-      set({ state, screens, activeScreenId: activeId, ...mirror(screens[activeId]) })
+      // Cold load: getScreens carries no snapshot flag, so hasBackup starts false and
+      // turns true only after this session's first apply reports it (schema 6 D1).
+      await syncFromHost(false)
+    },
+
+    refresh: async () => {
+      await syncFromHost(get().state?.hasBackup ?? false)
     },
 
     selectScreen: (monitorId) => {
@@ -443,14 +465,17 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       try {
         const blob = await compositor.bake()
         const pngBase64 = await blobToBase64(blob)
-        const result = decodeWallpaperOp(await call('wallpaper.applyBaked', { monitorId: activeScreenId, pngBase64, look }))
+        // Thin result (schema 6): host bakes the desktop + reports hasBackup, NO state.
+        const result = decodeWallpaperResult(await call('wallpaper.applyBaked', { monitorId: activeScreenId, pngBase64 }))
         const wait = 550 - (Date.now() - started)
         if (wait > 0) await new Promise((r) => setTimeout(r, wait))
-        // Per-screen drafts survive apply — keep the store's look; adopt only the
-        // host's global flags (hasBackup, …).
-        set({ state: { ...result.state, look: get().look ?? result.state.look } })
+        // Re-fetch getScreens + re-assemble; the live per-screen drafts survive (they
+        // are kept by reference), only the global hasBackup moves. Then fire the wave.
+        if (result.ok) {
+          await syncFromHost(result.hasBackup)
+          set({ applyWave: get().applyWave + 1 })
+        }
         toastOf(result)
-        if (result.ok) set({ applyWave: get().applyWave + 1 })
         return result.ok
       } catch {
         return false
@@ -460,12 +485,10 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
     },
 
     restore: async () => {
-      // Whole-desktop restore reverts the pre-first-apply snapshot (§B5); draft
-      // looks survive, so dirty derives from them.
-      const result = decodeWallpaperOp(await call('wallpaper.restore', { monitorId: 'all' }))
-      const look = get().look
-      const dirty = anyScreenDirty(get().screens)
-      set({ state: { ...result.state, look: look ?? result.state.look, dirty } })
+      // Whole-desktop restore reverts the pre-first-apply snapshot (§B5); draft looks
+      // survive, so dirty re-derives from them on the getScreens re-assemble.
+      const result = decodeWallpaperResult(await call('wallpaper.restore', { monitorId: 'all' }))
+      await syncFromHost(result.hasBackup)
       toastOf(result)
     },
 

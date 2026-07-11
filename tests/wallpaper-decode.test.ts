@@ -1,115 +1,127 @@
 import { describe, expect, test } from 'bun:test'
-import { WallpaperDecodeError, decodeWallpaperOp, decodeWallpaperState } from '../src/bridge/wallpaper-decode'
-import type { MonitorLookDto, WallpaperGridInfoDto, WallpaperStateDto } from '../src/bridge/types'
+import { WallpaperDecodeError, decodeWallpaperResult, decodeWallpaperScreens } from '../src/bridge/wallpaper-decode'
+import type { ScreenInfoDto, WallpaperScreensDto } from '../src/bridge/types'
 
-// Strict client decoder for the WIDENED multi-monitor DTO (spec 04 §B1). Guards
-// the payload-widening trap: the decoder must ROUND-TRIP the new screens[] shape
-// (never a silent empty collapse) and throw LOUDLY on a genuinely malformed field.
+// Strict client decoders for the SCHEMA-6 thin wallpaper contract (D1): getScreens
+// (raw screens + globals) and the applyBaked/restore result (ok/toast/hasBackup).
+// Guards the payload-widening trap: the decoder must ROUND-TRIP a valid (even widened)
+// payload — never a silent empty collapse — and throw LOUDLY on a malformed field.
 
-const GRID: WallpaperGridInfoDto = {
-  screenWidth: 1920, screenHeight: 1080, taskbarHeight: 48, iconPx: 48,
-  cellWidth: 92, cellHeight: 92, inset: 14, columns: 20, rows: 11,
-}
-
-function monitor(id: string, portrait = false): MonitorLookDto {
+function screen(id: string, portrait = false): ScreenInfoDto {
   return {
     monitorId: id,
     name: id,
     bounds: portrait ? { x: 1920, y: 0, w: 1080, h: 1920 } : { x: 0, y: 0, w: 1920, h: 1080 },
     orientation: portrait ? 'portrait' : 'landscape',
-    look: { zones: [], clarity: { level: 'Off', gradient: 'Linear', angleDeg: 0, dimOverride: null, tone: 'Dark', customScrim: null } },
-    source: { url: 'mock://wall', width: 1920, height: 1080 },
-    grid: GRID,
+    source: { url: 'mock://wall', width: 3840, height: 2400 },
     slideshowActive: false,
     hasReadableSource: true,
   }
 }
 
-function validState(): WallpaperStateDto {
-  return {
-    look: monitor('A').look,
-    grid: GRID,
-    originalUrl: 'mock://wall',
-    hasBackup: false,
-    working: false,
-    dirty: false,
-    pale: false,
-    fingerprintMismatch: false,
-    wallTint: '#7A6E62',
-    screens: [monitor('A'), monitor('B', true)],
-    activeScreenId: 'A',
-    position: 'Fill',
-    spanActive: false,
-  }
+function validScreens(): WallpaperScreensDto {
+  return { screens: [screen('A'), screen('B', true)], position: 'Fill', spanActive: false }
 }
 
-describe('decodeWallpaperState — round-trip', () => {
-  test('a valid single-monitor DTO round-trips unchanged', () => {
-    const dto = { ...validState(), screens: [monitor('A')] }
-    expect(decodeWallpaperState(dto)).toEqual(dto)
+describe('decodeWallpaperScreens — round-trip', () => {
+  test('a single-monitor payload round-trips unchanged', () => {
+    const dto = { screens: [screen('A')], position: 'Fill' as const, spanActive: false }
+    expect(decodeWallpaperScreens(dto)).toEqual(dto)
   })
 
-  test('a valid multi-monitor (landscape + portrait) DTO round-trips unchanged', () => {
-    const dto = validState()
-    expect(decodeWallpaperState(dto)).toEqual(dto)
+  test('a multi-monitor (landscape + portrait) payload round-trips unchanged', () => {
+    const dto = validScreens()
+    expect(decodeWallpaperScreens(dto)).toEqual(dto)
   })
 
-  test('a span DTO round-trips', () => {
-    const dto = { ...validState(), position: 'Span' as const, spanActive: true }
-    expect(decodeWallpaperState(dto)).toEqual(dto)
+  test('a span payload round-trips', () => {
+    const dto = { ...validScreens(), position: 'Span' as const, spanActive: true }
+    expect(decodeWallpaperScreens(dto)).toEqual(dto)
   })
 
   test('an unreadable-source screen round-trips (source null)', () => {
-    const noSource = { ...monitor('B', true), source: null, hasReadableSource: false }
-    const dto = { ...validState(), screens: [monitor('A'), noSource] }
-    expect(decodeWallpaperState(dto)).toEqual(dto)
+    const dyn = { ...screen('B', true), source: null, hasReadableSource: false }
+    const dto = { ...validScreens(), screens: [screen('A'), dyn] }
+    expect(decodeWallpaperScreens(dto)).toEqual(dto)
+  })
+
+  test('an empty screens[] round-trips (0-monitor host, never a throw)', () => {
+    const dto = { screens: [], position: 'Fill' as const, spanActive: false }
+    expect(decodeWallpaperScreens(dto)).toEqual(dto)
   })
 
   test('unknown extra fields are tolerated (forward-compat), not rejected', () => {
-    const dto = { ...validState(), futureField: 42 }
-    expect(() => decodeWallpaperState(dto)).not.toThrow()
+    const dto = { ...validScreens(), futureField: 42 }
+    expect(() => decodeWallpaperScreens(dto)).not.toThrow()
   })
 })
 
-describe('decodeWallpaperState — loud failure (never a silent empty)', () => {
+describe('decodeWallpaperScreens — loud failure (never a silent empty)', () => {
   test('missing screens[] throws', () => {
-    const bad = { ...validState() } as Record<string, unknown>
+    const bad = { ...validScreens() } as Record<string, unknown>
     delete bad.screens
-    expect(() => decodeWallpaperState(bad)).toThrow(WallpaperDecodeError)
-  })
-
-  test('activeScreenId not among screens throws', () => {
-    expect(() => decodeWallpaperState({ ...validState(), activeScreenId: 'NOPE' })).toThrow(/not a present screen/)
+    expect(() => decodeWallpaperScreens(bad)).toThrow(WallpaperDecodeError)
   })
 
   test('a bad position enum throws', () => {
-    expect(() => decodeWallpaperState({ ...validState(), position: 'Sideways' })).toThrow(WallpaperDecodeError)
+    expect(() => decodeWallpaperScreens({ ...validScreens(), position: 'Sideways' })).toThrow(WallpaperDecodeError)
+  })
+
+  test('a bad orientation enum throws', () => {
+    const bad = validScreens()
+    ;(bad.screens[0] as { orientation: unknown }).orientation = 'sideways'
+    expect(() => decodeWallpaperScreens(bad)).toThrow(/orientation/)
   })
 
   test('a mistyped nested field (bounds.w string) throws', () => {
-    const bad = validState()
+    const bad = validScreens()
     ;(bad.screens[0].bounds as { w: unknown }).w = '1920'
-    expect(() => decodeWallpaperState(bad)).toThrow(/bounds\.w/)
+    expect(() => decodeWallpaperScreens(bad)).toThrow(/bounds\.w/)
+  })
+
+  test('a mistyped slideshowActive (not boolean) throws', () => {
+    const bad = validScreens()
+    ;(bad.screens[0] as { slideshowActive: unknown }).slideshowActive = 'no'
+    expect(() => decodeWallpaperScreens(bad)).toThrow(/slideshowActive/)
+  })
+
+  test('a malformed source (width string) throws', () => {
+    const bad = validScreens()
+    ;(bad.screens[0].source as { width: unknown }).width = '3840'
+    expect(() => decodeWallpaperScreens(bad)).toThrow(/source\.width/)
   })
 
   test('a non-object throws rather than collapsing', () => {
-    expect(() => decodeWallpaperState(null)).toThrow(WallpaperDecodeError)
-    expect(() => decodeWallpaperState('oops')).toThrow(WallpaperDecodeError)
+    expect(() => decodeWallpaperScreens(null)).toThrow(WallpaperDecodeError)
+    expect(() => decodeWallpaperScreens('oops')).toThrow(WallpaperDecodeError)
   })
 })
 
-describe('decodeWallpaperOp', () => {
-  test('round-trips a valid op result', () => {
-    const op = { state: validState(), toast: null, ok: true }
-    expect(decodeWallpaperOp(op)).toEqual(op)
+describe('decodeWallpaperResult', () => {
+  test('round-trips a plain success result', () => {
+    const op = { ok: true, toast: null, hasBackup: true }
+    expect(decodeWallpaperResult(op)).toEqual(op)
   })
 
-  test('round-trips a toasted op', () => {
-    const op = { state: validState(), toast: { key: 'Toast_Applied', arg: null }, ok: true }
-    expect(decodeWallpaperOp(op)).toEqual(op)
+  test('round-trips a toasted result', () => {
+    const op = { ok: true, toast: { key: 'Toast_Applied', arg: null }, hasBackup: true }
+    expect(decodeWallpaperResult(op)).toEqual(op)
   })
 
-  test('throws when the nested state is malformed', () => {
-    expect(() => decodeWallpaperOp({ state: { nope: 1 }, toast: null, ok: true })).toThrow(WallpaperDecodeError)
+  test('round-trips a failure (ok false, no backup)', () => {
+    const op = { ok: false, toast: { key: 'Toast_ApplyFailed', arg: null }, hasBackup: false }
+    expect(decodeWallpaperResult(op)).toEqual(op)
+  })
+
+  test('missing hasBackup throws (never silently defaults the safety flag)', () => {
+    expect(() => decodeWallpaperResult({ ok: true, toast: null })).toThrow(/hasBackup/)
+  })
+
+  test('a mistyped ok throws', () => {
+    expect(() => decodeWallpaperResult({ ok: 'yes', toast: null, hasBackup: true })).toThrow(/ok/)
+  })
+
+  test('a malformed toast throws', () => {
+    expect(() => decodeWallpaperResult({ ok: true, toast: { arg: null }, hasBackup: true })).toThrow(/toast\.key/)
   })
 })

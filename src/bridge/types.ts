@@ -1,10 +1,16 @@
-// Bridge DTOs — mirrors Host/Bridge/Contracts.cs. Bump together with the host
-// (BridgeSchema.Version) so drift fails loudly at startup.
-// [WINDOWS-VERIFY] v5 widens the wallpaper contract to multi-monitor
-// (WallpaperStateDto.screens[] + per-monitor setLook/applyBaked/restore). The
-// C# host (Host/Bridge/WallpaperContracts.cs + BridgeSchema.Version) MUST mirror
-// this shape and bump to 5 in the Windows batch, or startup asserts a mismatch.
-export const BRIDGE_SCHEMA_VERSION = 5
+// Bridge DTOs — mirrors the host contracts (Rust dm-contracts on Tauri; the dead
+// C# tree in legacy/). Bump together with the host (BridgeSchema.Version) so drift
+// fails loudly at startup.
+// Schema 6 (owner ruling D1, 2026-07-12): the wallpaper bridge contract SHRINKS to
+// thin platform I/O. Rust does ONLY screen enumeration + get/set wallpaper +
+// capture/restore snapshot; reconcile, per-monitor draft-look persistence and
+// WallpaperStateDto assembly are ALL frontend. So `wallpaper.getState`→`getScreens`
+// (thin ScreenInfoDto[] + globals, NO looks/grids); `setLook` leaves the bridge
+// (frontend localStorage `wallpaper.look.v2::<device-path>`, like `dm.icons.bareLook`);
+// `applyBaked`/`restore` return a THIN WallpaperResultDto (ok/toast/hasBackup — NO
+// state; the store re-fetches getScreens and re-assembles). MonitorLookDto /
+// WallpaperStateDto remain, but as FRONTEND-ASSEMBLED store shapes, not bridge DTOs.
+export const BRIDGE_SCHEMA_VERSION = 6
 
 export interface SettingsDto {
   theme: 'System' | 'Dark' | 'Light'
@@ -381,35 +387,43 @@ export interface MonitorBounds {
   h: number
 }
 
-/** One physical monitor's wallpaper look (spec 04 §B1). look + source + grid are
- *  PER-MONITOR; position/slideshow-mode/bg-color live at the WallpaperStateDto
- *  top level (global). `monitorId` is the Windows device path
+/** One physical monitor's RAW screen info (schema 6 thin bridge DTO — mirrors the
+ *  Rust `ScreenInfoDto`; `wallpaper.getScreens` returns `ScreenInfoDto[]`). NO look,
+ *  NO grid: per D1 the frontend reconciles persisted looks (monitor-reconcile) and
+ *  derives the grid from bounds. `monitorId` is the Windows device path
  *  (GetMonitorDevicePathAt) — durable-ish, not permanent across port/driver/dock/
  *  EDID changes. [WINDOWS-VERIFY] real EDID/DisplayConfig fingerprinting for the
  *  bounds-fallback match runs on the owner's Win11 box; the mock matches by path
  *  then by exact bounds only. */
-export interface MonitorLookDto {
+export interface ScreenInfoDto {
   monitorId: string
   name: string
   bounds: MonitorBounds
   orientation: ScreenOrientation
-  look: LookDto
   /** Decoded per-screen wallpaper source; null when unreadable — a third-party
    *  dynamic/video wallpaper is invisible to IDesktopWallpaper (§A4 import CTA). */
   source: WallpaperSourceDto | null
-  grid: WallpaperGridInfoDto
   /** Windows slideshow active on this monitor (rotation won't re-arm after apply). */
   slideshowActive: boolean
   /** GetWallpaper returned a readable image path (false ⇒ dynamic/video wallpaper). */
   hasReadableSource: boolean
 }
 
-// Multi-monitor contract (spec 04 §B1). The shape is ADDITIVE: `screens[]` +
-// `activeScreenId` + global `position`/`spanActive` are new, and the legacy
-// top-level `look`/`grid`/`originalUrl`/`wallTint`/`hasBackup`/… fields REMAIN as
-// a mirror of the active screen (+ global flags). A single-monitor host yields
-// `screens.length === 1` with the top-level fields equal to `screens[0]`, so
-// every existing consumer behaves exactly as before (single-monitor parity).
+/** One monitor's ASSEMBLED look (spec 04 §B1) — a FRONTEND store shape, NOT a bridge
+ *  DTO (schema 6, D1). Extends the thin `ScreenInfoDto` with the reconciled per-monitor
+ *  `look` (from localStorage `wallpaper.look.v2::<device-path>`) and the `grid` derived
+ *  from bounds; position/slideshow-mode/bg-color stay global on `WallpaperStateDto`. */
+export interface MonitorLookDto extends ScreenInfoDto {
+  look: LookDto
+  grid: WallpaperGridInfoDto
+}
+
+// Multi-monitor state (spec 04 §B1) — a FRONTEND-ASSEMBLED store shape (schema 6, D1),
+// NOT a bridge DTO. The store builds it from `wallpaper.getScreens` + the reconciled
+// per-monitor looks (see lib/wallpaper-assemble). The top-level `look`/`grid`/
+// `originalUrl`/`wallTint`/`hasBackup`/… fields MIRROR the active screen (+ global
+// flags); a single-monitor host yields `screens.length === 1` with the top-level
+// fields equal to `screens[0]`, so every consumer behaves as before (parity).
 export interface WallpaperStateDto {
   // ---- active-screen mirror: top-level == screens[activeScreenId] ----
   look: LookDto
@@ -440,23 +454,45 @@ export interface FontChoiceDto {
   family: string | null
 }
 
-export interface WallpaperOpDto {
-  state: WallpaperStateDto
-  toast: ToastDto | null
+/** The THIN screen enumeration `wallpaper.getScreens` returns (schema 6 bridge DTO,
+ *  mirrors Rust `WallpaperScreensDto`): raw screens + global desktop flags only. NO
+ *  looks, NO grids, NO reconcile, NO `hasBackup` — the frontend owns all of that. */
+export interface WallpaperScreensDto {
+  screens: ScreenInfoDto[]
+  position: WallpaperPosition
+  /** position === 'Span' — the UI degrades to a unified canvas (§B6). Reported
+   *  explicitly by the host (never derived) so the web never guesses the span state. */
+  spanActive: boolean
+}
+
+/** The THIN result of a mutating wallpaper op (`applyBaked` / `restore`) — schema 6
+ *  bridge DTO, mirrors Rust `WallpaperResultDto`. Per D1 the host does NOT assemble
+ *  state; it reports only success, an optional toast, and whether a pre-first-apply
+ *  snapshot now exists (so the frontend can enable the whole-desktop restore
+ *  affordance). After it, the store re-fetches `getScreens` and re-assembles. */
+export interface WallpaperResultDto {
   ok: boolean
+  toast: ToastDto | null
+  /** true once the pre-first-apply snapshot has been captured + persisted — the
+   *  single durable guard against the first apply destroying the original desktop. */
+  hasBackup: boolean
 }
 
 /** Request/response method map — grows with each controller. */
 export interface BridgeMethods {
-  'wallpaper.getState': { params: void; result: WallpaperStateDto }
+  // Schema 6 thin wallpaper contract (D1). getScreens REPLACES getState: raw screen
+  // info + globals only — the store reconciles looks + assembles WallpaperStateDto.
+  'wallpaper.getScreens': { params: void; result: WallpaperScreensDto }
   // getSource stays void-param (returns the ACTIVE screen's source) so the
   // compositor init keeps working; per-monitor sources ride on screens[].source.
   'wallpaper.getSource': { params: void; result: WallpaperSourceDto }
-  // Per-monitor verbs (§B1). `monitorId` is the device path; restore accepts the
-  // 'all' sentinel for the whole-desktop pre-first-apply snapshot revert (§B5).
-  'wallpaper.setLook': { params: { monitorId: string; look: LookDto }; result: null }
-  'wallpaper.applyBaked': { params: { monitorId: string; pngBase64: string; look: LookDto }; result: WallpaperOpDto }
-  'wallpaper.restore': { params: { monitorId: string }; result: WallpaperOpDto }
+  // setLook LEFT the bridge — per-monitor draft looks persist in the frontend's
+  // localStorage (`wallpaper.look.v2::<device-path>`), like `dm.icons.bareLook`.
+  // Per-monitor mutating verbs (§B1). `monitorId` is the device path; the baked PNG
+  // is the WHOLE look (host stays look-agnostic); restore accepts the 'all' sentinel
+  // for the whole-desktop pre-first-apply snapshot revert (§B5).
+  'wallpaper.applyBaked': { params: { monitorId: string; pngBase64: string }; result: WallpaperResultDto }
+  'wallpaper.restore': { params: { monitorId: string }; result: WallpaperResultDto }
   'fonts.list': { params: void; result: FontChoiceDto[] }
   // Icons contract v2 (spec 06 §2): sources in ONCE per scan, chunked 256px
   // masters out ONLY on apply; preview traffic never crosses the bridge.

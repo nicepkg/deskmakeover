@@ -11,6 +11,7 @@
 //! They are GREEN today (no cache, single scalar path) and must STAY green under
 //! `--features fast`. Self-contained: synthetic sources, no target/m5 dependency.
 
+use dm_icon_core::batch::{render_icons_par_with_threads, IconJob};
 use dm_icon_core::compose::{ComposeDiagnostics, RenderOpts};
 use dm_icon_core::config::{
     Band, Config, Distinction, FilterStyle, MarkStyle, MonoStyle, PlateFallback, Subject,
@@ -242,34 +243,29 @@ fn fold_mark_does_not_corrupt_shared_shape_masks() {
 #[test]
 fn parallel_threads_match_single_thread() {
     let (jobs, refs) = references();
+    // Wire the scaffold to the ACTUAL Phase-3 collector (`batch::render_icons_par`),
+    // not a per-thread independent-session serial stand-in: rayon distributes these
+    // independent icons across a bounded pool and `collect` returns them in INPUT
+    // order. Asserting `out[i] == refs[i]` at 1/2/4/8 threads is the completion-order →
+    // input-order ASSOCIATION gate (Codex Phase-0 audit #7): a collector that returned
+    // completion-order pixels labeled in input order would go red here — the jobs are
+    // deliberately different shapes/sizes, so a swap even changes the byte length.
+    let icon_jobs: Vec<IconJob> = jobs
+        .iter()
+        .map(|j| IconJob {
+            source: &j.source,
+            config: &j.config,
+            is_shortcut: j.is_shortcut,
+            show_original: j.show_original,
+            size: j.size,
+            opts: RenderOpts { field_seed: j.seed },
+        })
+        .collect();
     for threads in [1usize, 2, 4, 8] {
-        // A barrier makes every thread enter its render loop at the same instant, so
-        // the concurrent overlap (shared NATIVE_ARROW read lock now; a shared cache
-        // later) is real, not staggered. Each thread renders in a rotated order but
-        // stores results BY JOB INDEX, so a completion-order/index association bug
-        // (the Phase-3 rayon risk) surfaces as a ref mismatch (Codex Phase-0 audit #7).
-        let barrier = std::sync::Barrier::new(threads);
-        std::thread::scope(|scope| {
-            let handles: Vec<_> = (0..threads)
-                .map(|t| {
-                    let (jobs, refs, barrier) = (&jobs, &refs, &barrier);
-                    scope.spawn(move || {
-                        let mut s = fresh_session_with_all(jobs);
-                        let mut out: Vec<Vec<u8>> = vec![Vec::new(); jobs.len()];
-                        barrier.wait();
-                        for k in 0..jobs.len() {
-                            let i = (k + t) % jobs.len();
-                            out[i] = render_in_session(&mut s, &jobs[i]);
-                        }
-                        for (i, job) in jobs.iter().enumerate() {
-                            assert_eq!(out[i], refs[i], "thread {t}/{threads} misassociated or changed {}", job.id);
-                        }
-                    })
-                })
-                .collect();
-            for h in handles {
-                h.join().expect("thread panicked");
-            }
-        });
+        let out = render_icons_par_with_threads(&icon_jobs, threads);
+        assert_eq!(out.len(), jobs.len(), "collector dropped/duplicated a job at {threads} threads");
+        for (i, job) in jobs.iter().enumerate() {
+            assert_eq!(out[i].data, refs[i], "threads={threads} misassociated or changed {}", job.id);
+        }
     }
 }

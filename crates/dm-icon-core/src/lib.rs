@@ -18,6 +18,10 @@
 #![forbid(unsafe_code)]
 
 pub mod analysis;
+// Native rayon batch render across independent icons (M6 Phase 3). Excluded on wasm —
+// the preview parallelizes with outer web workers, never a linked thread pool.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod batch;
 pub mod color;
 pub mod compose;
 pub mod config;

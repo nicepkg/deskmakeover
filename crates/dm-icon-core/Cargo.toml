@@ -9,6 +9,13 @@ publish.workspace = true
 # (ADR-0019); std math / FMA / SIMD are banned in the core.
 libm = "0.2"
 
+# rayon parallelizes native rendering BETWEEN independent icons only (M6 Phase 3) —
+# never within an icon's floating-point math, so it is byte-neutral. NATIVE ONLY: the
+# wasm preview keeps its outer N-worker parallelism and never links a thread pool, so
+# the shipped/certified .wasm (built for wasm32) excludes this entirely.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rayon = "1.12"
+
 [features]
 # `fast` gates the byte-safe kernel optimizations (M6 kernel-speed plan). The
 # DEFAULT (scalar) build is the determinism reference/oracle — it recomputes

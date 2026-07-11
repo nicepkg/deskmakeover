@@ -61,6 +61,8 @@ export const en = {
   "Badge_RowLabel": "Shortcuts",
   "Canvas_Placeholder": "Desktop preview",
   "Canvas_Refresh_Tip": "Re-read the desktop (icons, arrangement, wallpaper)",
+  "Canvas_ScanFailed": "The desktop couldn't be read just yet.", // PENDING-RESX
+  "Canvas_ScanRetry": "Try again", // PENDING-RESX
   "Cap_Close": "Close",
   "Cap_Maximize": "Maximize",
   "Cap_Minimize": "Minimize",

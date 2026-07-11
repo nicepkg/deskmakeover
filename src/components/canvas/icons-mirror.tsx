@@ -22,6 +22,7 @@ type Menu =
 export function IconsMirror() {
   const t = useT()
   const state = useIcons((s) => s.state)
+  const scanExhausted = useIcons((s) => s.scanExhausted)
   const items = useIcons((s) => s.items)
   const comparing = useIcons((s) => s.comparing)
   const hoverConfig = useIcons((s) => s.hoverConfig)
@@ -69,7 +70,26 @@ export function IconsMirror() {
     panIgnoreSelector: '[data-tile]',
   })
 
-  if (!state) return <div className="mb-3 ml-1.5 mr-1 mt-1 flex-1 rounded-[14px] bg-canvas-stage" />
+  // Pre-scan the mirror is a quiet placeholder. Once the scan retry budget is
+  // spent (review P2-2) it surfaces a manual re-read entry so a permanent bridge
+  // failure never strands the user with no way out but a restart.
+  if (!state)
+    return (
+      <div className="mb-3 ml-1.5 mr-1 mt-1 flex flex-1 items-center justify-center rounded-[14px] bg-canvas-stage">
+        {scanExhausted && (
+          <div className="flex flex-col items-center gap-3 text-center">
+            <p className="text-[13px] text-t2">{t('Canvas_ScanFailed')}</p>
+            <button
+              type="button"
+              onClick={() => void useIcons.getState().retryScan()}
+              className="rounded-[9px] bg-chip px-3.5 py-1.5 text-[12px] text-t1 transition-colors hover:bg-raised-hov"
+            >
+              {t('Canvas_ScanRetry')}
+            </button>
+          </div>
+        )}
+      </div>
+    )
 
   const { grid } = state
   const activeConfig = hoverConfig ?? state.config

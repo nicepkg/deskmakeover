@@ -63,6 +63,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Badge_RowLabel": "快捷方式",
   "Canvas_Placeholder": "桌面预览",
   "Canvas_Refresh_Tip": "重新读取桌面（图标、排列与壁纸）",
+  "Canvas_ScanFailed": "桌面暂时没读出来。", // PENDING-RESX
+  "Canvas_ScanRetry": "重新读取", // PENDING-RESX
   "Cap_Close": "关闭",
   "Cap_Maximize": "最大化",
   "Cap_Minimize": "最小化",

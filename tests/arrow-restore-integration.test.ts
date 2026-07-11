@@ -109,6 +109,15 @@ afterEach(() => resetIconsHistoryForTests())
 
 const lastToast = () => useToasts.getState().toasts.at(-1)?.text
 
+// Poll a predicate instead of guessing a fixed wall-clock wait — the retry
+// backoff runs on real timers, so a machine under load must not flake the test.
+const waitUntil = async (pred: () => boolean, timeoutMs = 3000): Promise<void> => {
+  const start = Date.now()
+  while (!pred() && Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 5))
+  }
+}
+
 describe('real mock through the store — the mock transitions are pinned', () => {
   test('restoreOverlay (default applied) flips the arrow to native and shows the restore toast', async () => {
     seedStore({ arrowOverlay: 'hidden' })
@@ -187,8 +196,8 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     }) as unknown as Parameters<typeof __setBridgeForTests>[0])
     seedStore({ arrowOverlay: 'hidden', activeUserProfiles: 1 })
 
-    const p = useIcons.getState().restoreOverlay() // in flight; epoch captured
-    // An intervening authoritative op (full restore) lands first and bumps the epoch.
+    const p = useIcons.getState().restoreOverlay() // in flight; generation claimed
+    // An intervening authoritative op (full restore) starts + lands, taking a newer generation.
     await useIcons.getState().restore()
     expect(useIcons.getState().state!.arrowOverlay).toBe('native')
     expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
@@ -235,10 +244,96 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     expect(useIcons.getState().state).toBeNull()
 
     // The store's OWN scheduled retry fires with no external trigger and recovers.
-    await new Promise((r) => setTimeout(r, 30))
+    await waitUntil(() => useIcons.getState().state !== null)
     expect(calls).toBe(2)
     expect(useIcons.getState().loaded).toBe(true)
     expect(useIcons.getState().state).not.toBeNull()
     expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+  })
+
+  test('a stale exportCompare response does NOT overwrite a newer op (review P2-4a)', async () => {
+    let resolveExport!: (v: IconsOpResultDto) => void
+    const inflight = new Promise<IconsOpResultDto>((r) => (resolveExport = r))
+    __setBridgeForTests(((method: string) => {
+      if (method === 'icons.exportCompare') return inflight
+      if (method === 'icons.restore') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      throw new Error(`unexpected ${method}`)
+    }) as unknown as Parameters<typeof __setBridgeForTests>[0])
+    seedStore({ arrowOverlay: 'hidden', activeUserProfiles: 1 })
+
+    const p = useIcons.getState().exportCompare() // gen claimed, in flight
+    // A newer op (full restore) starts + lands with the authoritative truth.
+    await useIcons.getState().restore()
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+
+    // Export's late response carries a STALE full-state snapshot (hidden / 1).
+    resolveExport(opResult({ arrowOverlay: 'hidden', activeUserProfiles: 1 }))
+    await p
+
+    // Dropped the stale wholesale replace — the newer restore's truth stands.
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+  })
+
+  test('a newer restore is NOT falsely dropped by an older rescan that lands first (review P2-4b)', async () => {
+    let resolveScan!: (v: unknown) => void
+    let resolveRestore!: (v: IconsOpResultDto) => void
+    const scanInflight = new Promise((r) => (resolveScan = r))
+    const restoreInflight = new Promise<IconsOpResultDto>((r) => (resolveRestore = r))
+    __setBridgeForTests(((method: string) => {
+      if (method === 'icons.scan') return scanInflight
+      if (method === 'icons.restoreOverlay') return restoreInflight
+      throw new Error(`unexpected ${method}`)
+    }) as unknown as Parameters<typeof __setBridgeForTests>[0])
+    seedStore({ arrowOverlay: 'hidden', activeUserProfiles: 1 })
+
+    // rescan starts FIRST (older generation), restore starts SECOND (newer).
+    const pScan = useIcons.getState().rescan()
+    const pRestore = useIcons.getState().restoreOverlay()
+
+    // The OLDER rescan lands FIRST with a now-stale full state — must be dropped.
+    resolveScan({ revision: 1, items: [], state: seedState({ arrowOverlay: 'hidden', activeUserProfiles: 1 }) })
+    // The NEWER restore lands second with the truth the user actually wants.
+    resolveRestore(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+    await Promise.all([pScan, pRestore])
+
+    // Ordering by START, not arrival: the newer restore is applied, not falsely
+    // dropped by the older rescan that merely returned first.
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+  })
+
+  test('scan retry backs off, terminates into scanExhausted, then retryScan recovers (review P2-2)', async () => {
+    __setScanRetryMsForTests(1) // 1ms base → the whole backoff ladder resolves fast
+    let calls = 0
+    let mode: 'fail' | 'ok' = 'fail'
+    __setBridgeForTests(((method: string) => {
+      if (method !== 'icons.scan') throw new Error(`unexpected ${method}`)
+      calls++
+      if (mode === 'fail') return Promise.reject(new Error('permanently down'))
+      return Promise.resolve({ revision: 1, items: [], state: seedState() })
+    }) as unknown as Parameters<typeof __setBridgeForTests>[0])
+    useIcons.setState({ loaded: false, state: null, scanExhausted: false, revision: 0 })
+
+    await useIcons.getState().scan()
+    // Poll until the backoff ladder gives up (robust to a loaded machine).
+    await waitUntil(() => useIcons.getState().scanExhausted)
+    expect(useIcons.getState().scanExhausted).toBe(true)
+    const callsAtTerminal = calls
+    expect(callsAtTerminal).toBeGreaterThan(1) // it DID retry
+    expect(callsAtTerminal).toBeLessThanOrEqual(8) // but a bounded number of times
+
+    // Terminal means TERMINAL: no more auto-retries spinning (no 3s log spam).
+    await new Promise((r) => setTimeout(r, 40))
+    expect(calls).toBe(callsAtTerminal)
+
+    // The manual re-read entry recovers without a restart.
+    mode = 'ok'
+    useIcons.getState().retryScan()
+    expect(useIcons.getState().scanExhausted).toBe(false)
+    await waitUntil(() => useIcons.getState().state !== null)
+    expect(useIcons.getState().loaded).toBe(true)
+    expect(useIcons.getState().state).not.toBeNull()
   })
 })

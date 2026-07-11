@@ -8,6 +8,9 @@ dist-ssr/
 coverage/
 *.local
 
+# dm-icon-wasm release artifact copied into public/ by scripts/build-icon-wasm.mjs
+public/dm_icon_wasm.wasm
+
 # ── Tauri (build-time generated ACL schemas, regenerated every build) ──
 src-tauri/gen/
 

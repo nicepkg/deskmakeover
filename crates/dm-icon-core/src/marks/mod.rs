@@ -10,6 +10,7 @@ use crate::analysis::ContentBounds;
 use crate::config::{IconShape, MarkStyle};
 use crate::filters::chamfer_distance;
 use crate::js_math::{clamp_u8_int, js_round, js_trunc};
+use crate::mask_cache::{MaskCache, MaskKey};
 use crate::raster::{
     dist_to_segment, from_rgb_int, in_triangle, paint, shape_mask, smooth_step01, Raster, Rgba,
 };
@@ -46,7 +47,7 @@ pub trait Mark {
         false
     }
     fn carve_card(&self, _card_mask: &mut [f64], _ctx: &MarkContext) {}
-    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext);
+    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext, masks: &mut MaskCache);
 }
 
 pub(crate) fn is_light_tile(ctx: &MarkContext) -> bool {
@@ -58,15 +59,24 @@ pub(crate) fn mark_rgb(ctx: &MarkContext) -> Rgba {
 }
 
 /// A scaled/offset stamp of the mark geometry (marks.ts `stampMask`).
-pub(crate) fn stamp_mask(ctx: &MarkContext, mask_size: usize, off_x: f64, off_y: f64) -> Vec<f64> {
+///
+/// The `shape != None` branch is a pure geometry function (`shape_mask`), so it is
+/// shared through the session mask cache — each offset variant is its own `MaskKey`,
+/// and repeated Shadow renders of the same shape/size/offset collapse to one compute
+/// (M6 Phase 1, review P3-1). The `None` branch reads `ctx.tile_alpha` (the per-cell
+/// composed silhouette — NOT a geometry-only value), so it must NOT be cached by the
+/// geometry key; it is recomputed every call.
+pub(crate) fn stamp_mask(ctx: &MarkContext, mask_size: usize, off_x: f64, off_y: f64, masks: &mut MaskCache) -> Arc<[f64]> {
     // A mark whose inscribed geometry collapses to zero (tiny tiles: `size - 2*pad == 0`)
     // stamps nothing — guard both the shape_mask shapeSize assert and the None-shape
     // `size / mask_size` divide. Never fires at the 256² master (insets are a few px).
     if mask_size == 0 {
-        return vec![0.0; ctx.size * ctx.size];
+        return Arc::from(vec![0.0; ctx.size * ctx.size]);
     }
     if ctx.shape != IconShape::None {
-        return shape_mask(ctx.shape, ctx.size, mask_size, off_x, off_y);
+        return masks.get_or_compute(MaskKey::new(ctx.shape, ctx.size, mask_size, off_x, off_y), || {
+            shape_mask(ctx.shape, ctx.size, mask_size, off_x, off_y)
+        });
     }
     let size = ctx.size;
     let mut out = vec![0.0f64; size * size];
@@ -80,7 +90,7 @@ pub(crate) fn stamp_mask(ctx: &MarkContext, mask_size: usize, off_x: f64, off_y:
             }
         }
     }
-    out
+    Arc::from(out)
 }
 
 /// Outside-distance (px) from a coverage field's silhouette (marks.ts `outsideDistance`).

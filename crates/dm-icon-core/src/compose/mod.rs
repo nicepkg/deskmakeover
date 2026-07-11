@@ -239,11 +239,11 @@ pub fn render_tile_cached(
                 tile_alpha: mark_alpha,
             };
             if m.placement() == Placement::Behind {
-                m.render(&mut target, card_mask.as_slice(), &ctx);
+                m.render(&mut target, card_mask.as_slice(), &ctx, mask_cache);
             }
             composite_over(&mut target, &tile);
             if m.placement() == Placement::Over {
-                m.render(&mut target, card_mask.as_slice(), &ctx);
+                m.render(&mut target, card_mask.as_slice(), &ctx, mask_cache);
             }
         }
         None => {

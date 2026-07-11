@@ -49,8 +49,13 @@ impl MaskKey {
     }
 }
 
-/// Default per-session byte budget (~8 MiB/worker: sixteen 256² f64 masks).
-pub const DEFAULT_CAP_BYTES: usize = 8 * 1024 * 1024;
+/// Default per-session byte budget (16 MiB/worker). A 256² f64 mask + overhead is
+/// 524,352 bytes, so this holds ~31 full-size masks — comfortably above the 256px
+/// working set (geometry tile/card keys PLUS the Shadow stamp keys now routed through
+/// the cache), so the common set never churns. 8 MiB held only 15 — one short of the
+/// ~16-key set — so a 16th key evicted a live entry every render (recompute churn that
+/// silently ate the Phase-1 win). Headroom is cheap; the cap only bounds the worst case.
+pub const DEFAULT_CAP_BYTES: usize = 16 * 1024 * 1024;
 
 /// Approximate fixed per-entry overhead (key + Arc header + map bucket) added to the
 /// mask payload for the byte budget. Small and constant; the payload dominates. Only
@@ -138,6 +143,13 @@ mod imp {
         /// Current resident byte estimate (eviction cert).
         pub fn bytes(&self) -> usize {
             self.bytes
+        }
+
+        /// Whether `key` is currently resident. The eviction cert asserts the EXACT
+        /// resident/evicted key set with this — aggregate counts alone can't catch a
+        /// nondeterministic victim (a HashMap-order eviction can hit the same totals).
+        pub fn contains(&self, key: &MaskKey) -> bool {
+            self.map.contains_key(key)
         }
     }
 
@@ -266,24 +278,53 @@ mod eviction_cert {
 
     #[test]
     fn fifo_eviction_is_deterministic() {
-        // The same access sequence must always leave the same cache state — a
-        // nondeterministic victim would break reproducibility (audit #10).
-        fn run() -> (usize, usize, u64, u64, u64) {
-            let cap = entry_bytes(&shape_mask(IconShape::Apple, 64, 64, 0.0, 0.0)) * 2 + 8;
+        // The same access sequence must always leave the same cache state, AND that
+        // state must be the EXACT FIFO outcome. Aggregate counts alone are too weak:
+        // a nondeterministic victim (e.g. HashMap-iteration eviction) can hit the same
+        // len/hits/misses/evictions while leaving a different key resident. So pin the
+        // precise resident/evicted key set via `contains` (audit #10, review P2-2).
+        let apple = MaskKey::new(IconShape::Apple, 64, 64, 0.0, 0.0);
+        let circle = MaskKey::new(IconShape::Circle, 64, 64, 0.0, 0.0);
+        let diamond = MaskKey::new(IconShape::Diamond, 64, 64, 0.0, 0.0);
+        let folder = MaskKey::new(IconShape::Folder, 64, 64, 0.0, 0.0);
+
+        // cap holds exactly two 64² masks → every third distinct insert evicts one.
+        let cap = entry_bytes(&shape_mask(IconShape::Apple, 64, 64, 0.0, 0.0)) * 2 + 8;
+        let run = || {
             let mut c = MaskCache::with_cap(cap);
-            let seq = [
-                (IconShape::Apple, 64, 64),
-                (IconShape::Circle, 64, 64),
-                (IconShape::Diamond, 64, 64),
-                (IconShape::Apple, 64, 64),
-                (IconShape::Folder, 64, 64),
-                (IconShape::Circle, 64, 64),
-            ];
-            for &(s, b, ss) in &seq {
-                c.get_or_compute(MaskKey::new(s, b, ss, 0.0, 0.0), || shape_mask(s, b, ss, 0.0, 0.0));
+            for &s in &[
+                IconShape::Apple,
+                IconShape::Circle,
+                IconShape::Diamond,
+                IconShape::Apple,
+                IconShape::Folder,
+                IconShape::Circle,
+            ] {
+                c.get_or_compute(MaskKey::new(s, 64, 64, 0.0, 0.0), || shape_mask(s, 64, 64, 0.0, 0.0));
             }
-            (c.len(), c.bytes(), c.hits, c.misses, c.evictions)
-        }
-        assert_eq!(run(), run(), "eviction is not deterministic across identical runs");
+            (
+                c.len(),
+                c.bytes(),
+                c.hits,
+                c.misses,
+                c.evictions,
+                [c.contains(&apple), c.contains(&circle), c.contains(&diamond), c.contains(&folder)],
+            )
+        };
+
+        let state = run();
+        assert_eq!(state, run(), "eviction is not deterministic across identical runs");
+
+        // Pin the exact FIFO victim history for [A, C, D, A, F, C] with room for two:
+        // A,C in → D evicts A → A(miss) evicts C → F evicts D → C(miss) evicts A, so
+        // {Circle, Folder} stay resident and every revisit was already gone (all miss).
+        let (len, _, hits, misses, evictions, resident) = state;
+        assert_eq!(len, 2, "cap of two masks must hold exactly two");
+        assert_eq!((hits, misses, evictions), (0, 6, 4), "every revisit was already evicted → all misses");
+        assert_eq!(
+            resident,
+            [false, true, false, true],
+            "FIFO must evict the oldest (Apple, Diamond) and keep Circle, Folder — a HashMap-order victim would differ"
+        );
     }
 }

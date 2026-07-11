@@ -8,6 +8,7 @@ use super::{
     Mark, MarkContext, Placement, ADAPTIVE_THRESHOLD,
 };
 use crate::config::IconShape;
+use crate::mask_cache::MaskCache;
 use crate::js_math::{clamp_u8_int, js_round, js_trunc};
 use crate::raster::{
     backdrop_blur, box_blur, fade, from_rgb_int, mix, paint, rgba_of, shift, smooth_step01, Raster,
@@ -26,7 +27,7 @@ impl Mark for ShadowMark {
     fn card_inset(&self, ctx: &MarkContext) -> usize {
         1.max(js_round(ctx.size as f64 * 0.06) as usize)
     }
-    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext) {
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, masks: &mut MaskCache) {
         let size = ctx.size;
         let pad = self.card_inset(ctx);
         let card_size = size - 2 * pad;
@@ -35,6 +36,7 @@ impl Mark for ShadowMark {
             card_size,
             pad as f64 + (size as f64 * 0.05).max(1.0),
             pad as f64 + (size as f64 * 0.06).max(1.0),
+            masks,
         );
         let soft = box_blur(&sil, size, 1.max(js_trunc(size as f64 * 0.028) as i64) as i32);
         let ink = Rgba { r: 8, g: 10, b: 14, a: 255 };
@@ -56,7 +58,7 @@ impl Mark for HaloMark {
     fn card_inset(&self, ctx: &MarkContext) -> usize {
         1.max(js_round(ctx.size as f64 * 0.07) as usize)
     }
-    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext) {
+    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
         let size = ctx.size;
         let sil: &[f64] = if ctx.shape == IconShape::None { &ctx.tile_alpha[..] } else { card_mask };
         let dist = outside_distance(sil, size);
@@ -99,7 +101,7 @@ impl Mark for RingMark {
     fn card_inset(&self, ctx: &MarkContext) -> usize {
         ring_stroke(ctx.size)
     }
-    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext) {
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
         let ring = if ctx.mark_color.is_some() {
             mark_rgb(ctx)
         } else if is_light_tile(ctx) {
@@ -137,7 +139,7 @@ impl Mark for SatinMark {
     fn placement(&self) -> Placement {
         Placement::Over
     }
-    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext) {
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
         let size = ctx.size;
         let tone = if ctx.mark_color.is_some() {
             if is_light_tile(ctx) {
@@ -191,7 +193,7 @@ impl Mark for ArcMark {
     fn placement(&self) -> Placement {
         Placement::Over
     }
-    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext) {
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
         let size = ctx.size;
         let arc = if is_light_tile(ctx) {
             mix(mark_rgb(ctx), from_rgb_int(0x141414), 0.78)
@@ -300,7 +302,7 @@ impl Mark for FoldMark {
             }
         }
     }
-    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext) {
+    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
         let size = ctx.size;
         let c0 = fold_depth(ctx);
         let tone = if ctx.mark_color.is_some() {
@@ -364,7 +366,7 @@ impl Mark for GlassMark {
     fn placement(&self) -> Placement {
         Placement::Over
     }
-    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext) {
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
         let size = ctx.size;
         let cs = (size as f64 * 0.34).max(16.0).min(size as f64 * 0.94);
         let sx = (size as f64 * 0.055).max(0.0).min(size as f64 - cs);

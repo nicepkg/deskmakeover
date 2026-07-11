@@ -115,7 +115,8 @@ fn mark_ink_flips_at_the_0_58_adaptive_luminance_threshold() {
             tile_alpha: vec![1.0; size * size].into(),
         };
         let mut target = Raster::new(size, size);
-        mark.render(&mut target, &vec![1.0; size * size], &ctx);
+        let mut masks = dm_icon_core::mask_cache::MaskCache::new();
+        mark.render(&mut target, &vec![1.0; size * size], &ctx, &mut masks);
         [target.data[0], target.data[1], target.data[2], target.data[3]]
     };
     // Exactly at 0.58: NOT a light tile (strict >) → the dark-tile branch → light ink.

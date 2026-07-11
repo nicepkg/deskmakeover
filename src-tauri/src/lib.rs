@@ -4,17 +4,24 @@
 //! logic lives here; those belong to the `dm-*` crates.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use dm_operations::SettingsStore;
+use dm_operations::{RustImageDecoder, SettingsStore};
 use specta_typescript::Typescript;
 use tauri::Manager;
 use tauri_specta::{collect_commands, Builder};
 
 mod commands;
+#[cfg(not(windows))]
+mod devhost;
+mod wallpaper_host;
+
+use wallpaper_host::WallpaperHost;
 
 /// App-wide state managed by Tauri and read by commands.
 pub struct AppState {
     pub settings: SettingsStore,
+    pub wallpaper: WallpaperHost,
 }
 
 /// The single command surface — used both to wire `invoke` at runtime and to
@@ -23,8 +30,37 @@ fn specta_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new().commands(collect_commands![
         commands::settings_get,
         commands::settings_set,
+        commands::wallpaper_get_screens,
+        commands::wallpaper_get_source,
+        commands::wallpaper_apply_baked,
+        commands::wallpaper_restore,
         commands::diagnostics_ping,
     ])
+}
+
+/// Composition root for the wallpaper stack: real COM adapters on Windows, the
+/// dev-host fakes elsewhere; the pure-Rust decoder is the SAME on both platforms.
+fn build_wallpaper_host(data_dir: &Path) -> Result<WallpaperHost, String> {
+    #[cfg(windows)]
+    {
+        let exec = Arc::new(dm_windows::StaExecutor::spawn().map_err(|e| e.to_string())?);
+        Ok(WallpaperHost::new(
+            Arc::new(dm_windows::WindowsMonitorTopology::new(exec.clone())),
+            Arc::new(dm_windows::WindowsWallpaper::new(exec)),
+            Arc::new(RustImageDecoder),
+            data_dir,
+        ))
+    }
+    #[cfg(not(windows))]
+    {
+        let desk = devhost::DevDesktop::new();
+        Ok(WallpaperHost::new(
+            Arc::new(devhost::DevMonitorTopology(desk.clone())),
+            Arc::new(devhost::DevWallpaperApplier(desk)),
+            Arc::new(RustImageDecoder),
+            data_dir,
+        ))
+    }
 }
 
 /// Absolute path to the committed TS bindings, resolved from the crate dir so
@@ -60,6 +96,27 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_log::Builder::new().build())
+        // Decoded wallpaper sources ride this protocol as image/png, so pixel
+        // buffers never cross the JSON bridge (M6-WIRE A6). URLs are revisioned
+        // (`?rev=N`) and rev changes with the path, so responses are immutable.
+        .register_uri_scheme_protocol("dmwallpaper", |ctx, request| {
+            let key = request.uri().path().trim_start_matches('/');
+            let png = ctx
+                .app_handle()
+                .try_state::<AppState>()
+                .and_then(|s| s.wallpaper.png_for(key));
+            match png {
+                Some(bytes) => tauri::http::Response::builder()
+                    .header("Content-Type", "image/png")
+                    .header("Cache-Control", "public, max-age=31536000, immutable")
+                    .body(bytes)
+                    .expect("static headers cannot fail"),
+                None => tauri::http::Response::builder()
+                    .status(404)
+                    .body(Vec::new())
+                    .expect("static 404 cannot fail"),
+            }
+        })
         .invoke_handler(specta.invoke_handler())
         .setup(move |app| {
             #[cfg(desktop)]
@@ -78,7 +135,8 @@ pub fn run() {
 
             let db_path = data_dir.join(SETTINGS_DB_FILE);
             let store = SettingsStore::open(&db_path)?;
-            app.manage(AppState { settings: store });
+            let wallpaper = build_wallpaper_host(&data_dir)?;
+            app.manage(AppState { settings: store, wallpaper });
             log::info!("settings store ready at {}", db_path.display());
             Ok(())
         })

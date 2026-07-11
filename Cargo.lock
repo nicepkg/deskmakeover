@@ -889,9 +889,12 @@ dependencies = [
 name = "deskmakeover-desktop"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "dm-contracts",
+ "dm-domain",
  "dm-operations",
  "dm-windows",
+ "image",
  "log",
  "serde",
  "serde_json",
@@ -903,6 +906,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-window-state",
  "tauri-specta",
+ "tempfile",
 ]
 
 [[package]]

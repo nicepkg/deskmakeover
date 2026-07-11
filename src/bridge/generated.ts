@@ -6,6 +6,10 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 export const commands = {
 	settingsGet: () => typedError<SettingsDto, string>(__TAURI_INVOKE("settings_get")),
 	settingsSet: (patch: SettingsPatch) => typedError<SettingsDto, string>(__TAURI_INVOKE("settings_set", { patch })),
+	wallpaperGetScreens: () => typedError<WallpaperScreensDto, string>(__TAURI_INVOKE("wallpaper_get_screens")),
+	wallpaperGetSource: () => typedError<WallpaperSourceDto, string>(__TAURI_INVOKE("wallpaper_get_source")),
+	wallpaperApplyBaked: (monitorId: string, pngBase64: string) => typedError<WallpaperResultDto, string>(__TAURI_INVOKE("wallpaper_apply_baked", { monitorId, pngBase64 })),
+	wallpaperRestore: (monitorId: string) => typedError<WallpaperResultDto, string>(__TAURI_INVOKE("wallpaper_restore", { monitorId })),
 	diagnosticsPing: (message: string) => __TAURI_INVOKE<DiagnosticsPing>("diagnostics_ping", { message }),
 };
 
@@ -25,6 +29,53 @@ export type DiagnosticsPing = {
  *  the BCP-47 spellings the TS dictionaries key on.
  */
 export type Language = "System" | "zh-Hans" | "en";
+
+/**
+ *  Virtual-desktop bounds of one monitor, in physical pixels (IDesktopWallpaper
+ *  `GetMonitorRECT`). `x`/`y` may be negative (a monitor left of / above the
+ *  primary on the virtual desktop). Mirrors the TS `MonitorBounds`.
+ */
+export type MonitorBounds = {
+	x: number,
+	y: number,
+	w: number,
+	h: number,
+};
+
+/**
+ *  One physical monitor's raw screen info (thin, per D1: NO look, NO grid — the
+ *  frontend reconciles + overlays persisted looks + assembles `WallpaperStateDto`).
+ *  Mirrors the TS `ScreenInfoDto`.
+ */
+export type ScreenInfoDto = {
+	/**
+	 *  Windows device path (`GetMonitorDevicePathAt`) — durable-ish, not permanent
+	 *  across port/driver/dock/EDID changes. The frontend reconciles by this path
+	 *  then by exact bounds.
+	 */
+	monitorId: string,
+	name: string,
+	bounds: MonitorBounds,
+	orientation: ScreenOrientation,
+	/**
+	 *  Decoded per-screen source; `None` when unreadable — a third-party
+	 *  dynamic/video wallpaper is invisible to `IDesktopWallpaper` (import CTA).
+	 */
+	source: WallpaperSourceDto | null,
+	/**  Windows slideshow active on this monitor (rotation won't re-arm after apply). */
+	slideshowActive: boolean,
+	/**
+	 *  `GetWallpaper` returned a readable image path (`false` ⇒ dynamic/video
+	 *  wallpaper — distinct from a solid-colour desktop, which reads readable-empty).
+	 */
+	hasReadableSource: boolean,
+};
+
+/**
+ *  Screen orientation, derived from the bounds aspect (`h > w` ⇒ portrait).
+ *  Serialized lowercase to match the TS `ScreenOrientation` union.
+ */
+export type ScreenOrientation = "portrait" | "landscape";
 
 /**  The full persisted settings row (spec 03 appearance + participation coach). */
 export type SettingsDto = {
@@ -50,6 +101,72 @@ export type SettingsPatch = {
  *  `"Light"`) to match the TS union.
  */
 export type Theme = "System" | "Dark" | "Light";
+
+/**
+ *  A localized toast the host asks the shell to show: `key` is an i18n key and
+ *  `arg` an optional interpolation argument. Mirrors the TS `ToastDto`. Shared:
+ *  the wallpaper module (Wave A) and the icons module (Wave B) both return it
+ *  from mutating ops.
+ */
+export type ToastDto = {
+	key: string,
+	arg: string | null,
+};
+
+/**
+ *  GLOBAL wallpaper positioning (Windows `DesktopWallpaperPosition`). Only image
+ *  PATHS are per-monitor; position/slideshow/bg-color are whole-desktop. `Span`
+ *  stretches ONE image across every monitor. Serialized as the variant name to
+ *  match the TS `WallpaperPosition` union.
+ */
+export type WallpaperPosition = "Center" | "Tile" | "Stretch" | "Fit" | "Fill" | "Span";
+
+/**
+ *  The THIN result of a mutating wallpaper op (`applyBaked` / `restore`). Per D1 the
+ *  host does NOT assemble `WallpaperStateDto`; it reports only success, an optional
+ *  toast, and whether a pre-first-apply snapshot now exists (so the frontend can
+ *  enable the whole-desktop restore affordance). The frontend re-fetches
+ *  `getScreens` and re-assembles state itself. Mirrors the TS `WallpaperResultDto`.
+ */
+export type WallpaperResultDto = {
+	ok: boolean,
+	toast: ToastDto | null,
+	/**
+	 *  `true` once the pre-first-apply snapshot has been captured and persisted —
+	 *  the single durable guard against the first apply destroying the original
+	 *  desktop with no way back.
+	 */
+	hasBackup: boolean,
+};
+
+/**
+ *  The THIN screen enumeration `wallpaper.getScreens` returns: raw screens + global
+ *  desktop flags only. NO looks, NO grids, NO reconcile (D1: all frontend). Mirrors
+ *  the TS `wallpaper.getScreens` result.
+ */
+export type WallpaperScreensDto = {
+	screens: ScreenInfoDto[],
+	position: WallpaperPosition,
+	/**
+	 *  `position == Span` — the UI degrades to a unified canvas. Reported
+	 *  explicitly (the host detects it) rather than derived. Mirrors the TS
+	 *  `spanActive`.
+	 */
+	spanActive: boolean,
+};
+
+/**
+ *  Decoded, cover-cropped source the compositor renders from. On the host `url` is
+ *  the `dmwallpaper://<monitorId>?rev=N` custom-protocol URL (WIC-decoded PNG); in
+ *  the mock it is the scene bitmap URL. `width`/`height` are the DECODED image's
+ *  true pixel dims (NOT the monitor bounds), so the compositor cover-crops to each
+ *  screen's aspect. Mirrors the TS `WallpaperSourceDto`.
+ */
+export type WallpaperSourceDto = {
+	url: string,
+	width: number,
+	height: number,
+};
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

@@ -19,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 dm-contracts = { path = "../crates/dm-contracts" }
+dm-domain = { path = "../crates/dm-domain" }
 dm-operations = { path = "../crates/dm-operations" }
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
@@ -36,7 +37,14 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-window-state = "2"
 
-# The Windows platform adapters — needed only to drive crash recovery at startup (ADR-0019).
-# Windows-only, so the host build carries no dm-windows COM dependency.
+# The Windows platform adapters — crash recovery at startup (ADR-0019) + the
+# wallpaper topology/applier ports (M6-WIRE A6). Windows-only, so the Mac host
+# build carries no dm-windows COM dependency.
 [target.'cfg(windows)'.dependencies]
 dm-windows = { path = "../crates/dm-windows" }
+
+[dev-dependencies]
+tempfile = "3"
+base64 = "0.22"
+# Test-only: generates the baked-PNG fixtures the wallpaper host tests apply.
+image = { version = "0.25", default-features = false, features = ["png"] }

@@ -13,8 +13,14 @@ libm = "0.2"
 # never within an icon's floating-point math, so it is byte-neutral. NATIVE ONLY: the
 # wasm preview keeps its outer N-worker parallelism and never links a thread pool, so
 # the shipped/certified .wasm (built for wasm32) excludes this entirely.
+#
+# blake3 content-addresses the output cache (M6 Phase 4a) — it hashes cache KEYS only,
+# never pixel output, so its internal SIMD is byte-irrelevant to parity. NATIVE ONLY:
+# the wasm preview's exact session repeats are already served by the compositor
+# styleLru, so the shipped .wasm stays lean.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rayon = "1.12"
+blake3 = "1.8"
 
 [features]
 # `fast` gates the byte-safe kernel optimizations (M6 kernel-speed plan). The

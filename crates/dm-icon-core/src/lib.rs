@@ -31,6 +31,10 @@ pub mod js_math;
 pub mod mask_cache;
 pub mod marks;
 pub mod mono;
+// Content-addressed output cache (M6 Phase 4a). Excluded on wasm — the preview's exact
+// session repeats are already free via the compositor styleLru.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod output_cache;
 pub mod profile;
 pub mod raster;
 pub mod render_session;

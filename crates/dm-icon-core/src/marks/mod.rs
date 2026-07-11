@@ -207,7 +207,9 @@ pub fn set_native_arrow_raster(raster: Option<Raster>) {
     *NATIVE_ARROW.write().unwrap() = raster;
 }
 
-fn native_arrow() -> Option<Raster> {
+/// A snapshot of the boot-installed native arrow badge, or None. Used by the output
+/// cache to fold the arrow into the content key (shortcut renders depend on it).
+pub fn native_arrow() -> Option<Raster> {
     NATIVE_ARROW.read().unwrap().clone()
 }
 

@@ -12,53 +12,16 @@
 // 24-byte packed record `dm-icon-wasm/src/abi.rs` decodes — it becomes the P2
 // worker's encoder.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+
+import type { ConfigDto } from '../../../src/bridge/types'
+import { CONFIG_BYTES, encodeConfig, hexToInt } from '../../../src/icon-wasm/config-abi'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const PIXELS = join(REPO_ROOT, 'target/m5/pixels')
 const WASM = join(REPO_ROOT, 'target/wasm32-unknown-unknown/release/dm_icon_wasm.wasm')
 const CORPUS_SIZE = 256 // every corpus cell renders at 256² (xtask CORPUS_SIZE)
-
-// ---- config marshalling (mirrors dm-icon-wasm/src/abi.rs layout) ------------
-
-const CONFIG_BYTES = 24
-const SHAPE = ['Apple', 'Circle', 'Samsung', 'None', 'Bookmark', 'Lemon', 'Tile', 'Teardrop', 'Diamond', 'Flower', 'Pebble', 'Folder']
-const SUBJECT = ['Original', 'BlackWhite', 'Mono']
-const MONO = ['Tonal', 'Flat']
-const BAND = ['Vivid', 'Quiet']
-const DISTINCTION = ['Mark', 'Keep', 'None']
-const MARK = ['Glass', 'Shadow', 'Halo', 'Satin', 'Arc', 'Fold', 'Ring']
-const FILTER = ['None', 'Gloss', 'Glass', 'Pixel', 'Sticker']
-const FALLBACK = ['derived', 'white']
-
-function tag(list: string[], v: string, field: string): number {
-  const i = list.indexOf(v)
-  if (i < 0) throw new Error(`bad ${field}: ${v}`)
-  return i
-}
-function hexToInt(hex: string): number {
-  return parseInt(hex.replace('#', ''), 16) & 0xffffff
-}
-function encodeConfig(c: Record<string, string | null>): Uint8Array {
-  const b = new Uint8Array(CONFIG_BYTES)
-  const dv = new DataView(b.buffer)
-  b[0] = tag(SHAPE, c.shape as string, 'shape')
-  b[1] = tag(SUBJECT, c.subject as string, 'subject')
-  b[2] = tag(MONO, c.monoStyle as string, 'monoStyle')
-  b[3] = tag(BAND, c.plateBand as string, 'plateBand')
-  b[4] = tag(DISTINCTION, c.distinction as string, 'distinction')
-  b[5] = tag(MARK, c.markStyle as string, 'markStyle')
-  b[6] = tag(FILTER, c.filter as string, 'filter')
-  b[7] = tag(FALLBACK, c.plateFallback as string, 'plateFallback')
-  b[8] = c.shortcutShape == null ? 0xff : tag(SHAPE, c.shortcutShape, 'shortcutShape')
-  b[9] = c.markColor == null ? 0 : 1
-  b[10] = c.plateColor == null ? 0 : 1
-  dv.setUint32(12, hexToInt(c.tint as string), true)
-  if (c.markColor != null) dv.setUint32(16, hexToInt(c.markColor), true)
-  if (c.plateColor != null) dv.setUint32(20, hexToInt(c.plateColor), true)
-  return b
-}
 
 // ---- wasm harness -----------------------------------------------------------
 
@@ -144,7 +107,7 @@ function main(): void {
       registered.set(sourceId, hash)
     }
 
-    mem().set(encodeConfig(rec.config), cfgPtr)
+    mem().set(encodeConfig(rec.config as ConfigDto), cfgPtr)
     if (wasm.dm_session_set_config(session, cfgPtr, CONFIG_BYTES) !== 0) throw new Error(`set_config(${file}) failed`)
 
     const idLen = enc.encodeInto(sourceId, mem().subarray(idPtr, idPtr + 256)).written ?? 0

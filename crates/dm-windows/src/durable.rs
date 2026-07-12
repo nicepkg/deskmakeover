@@ -23,12 +23,26 @@ use dm_domain::{PortError, PortResult};
 /// `MoveFileEx(REPLACE_EXISTING)` + `FlushFileBuffers` path.
 pub fn write_atomic(path: &str, bytes: &[u8]) -> PortResult<()> {
     let target = Path::new(path);
-    let tmp = temp_sibling(target);
-    let result = write_then_rename(&tmp, target, bytes);
-    if result.is_err() {
-        let _ = fs::remove_file(&tmp); // never leave a partial temp behind
+    // Open a UNIQUE temp with create_new (O_EXCL): even though the name embeds the pid + a counter,
+    // File::create would still FOLLOW a symlink a hostile process pre-placed at that (predictable)
+    // name and truncate the link's target. O_EXCL refuses to follow/overwrite; on a collision (a
+    // stale temp, or a hostile placement) we retry a fresh name. A non-collision error — notably a
+    // missing parent directory — propagates, preserving P2-4 (fail loudly, never resurrect the tree).
+    for _ in 0..1000 {
+        let tmp = temp_sibling(target);
+        match fs::OpenOptions::new().write(true).create_new(true).open(&tmp) {
+            Ok(file) => {
+                let result = finish_write(file, &tmp, target, bytes);
+                if result.is_err() {
+                    let _ = fs::remove_file(&tmp); // never leave a partial temp behind
+                }
+                return result;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(io(e)),
+        }
     }
-    result
+    Err(PortError::Io("could not allocate a unique temp file for the atomic write".into()))
 }
 
 /// Finalizes a file a COM writer (`IPersistFile::Save`) has written to a temp path: flush its
@@ -54,16 +68,15 @@ fn flush_then_publish(tmp: &Path, target: &Path) -> PortResult<()> {
     Ok(())
 }
 
-fn write_then_rename(tmp: &Path, target: &Path, bytes: &[u8]) -> PortResult<()> {
-    // The caller guarantees the target's parent exists (the writers check `is_dir`/`is_file`
-    // first). We deliberately do NOT create it: writing into a directory the user has deleted must
-    // fail loudly (so rollback recovery kicks in), never silently resurrect the tree (P2-4).
-    {
-        let mut file = fs::File::create(tmp).map_err(io)?;
-        file.write_all(bytes).map_err(io)?;
-        // Durability before the publish. FlushFileBuffers on Windows.
-        file.sync_all().map_err(io)?;
-    }
+/// Writes `bytes` into the already-created (O_EXCL) temp `file`, flushes it, then atomically
+/// publishes it over `target` and makes the namespace change durable. The temp is created by the
+/// caller via create_new so a symlink can never be followed here; the parent dir is NOT created
+/// (P2-4: a write into a user-deleted directory fails loudly, never resurrects the tree).
+fn finish_write(mut file: fs::File, tmp: &Path, target: &Path, bytes: &[u8]) -> PortResult<()> {
+    file.write_all(bytes).map_err(io)?;
+    // Durability before the publish. FlushFileBuffers on Windows.
+    file.sync_all().map_err(io)?;
+    drop(file);
     publish(tmp, target)?;
     sync_parent_dir(target)?;
     Ok(())
@@ -207,6 +220,25 @@ mod tests {
         let ino_after = fs::metadata(&path).unwrap().ino();
         assert_ne!(ino_before, ino_after, "atomic replace must publish a fresh inode, not truncate in place");
         assert_eq!(fs::read(&path).unwrap(), b"replaced");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn never_writes_through_a_symlinked_target() {
+        use std::os::unix::fs::symlink;
+        // A hostile symlink at the target must not let the write reach the user's file: the publish
+        // rename replaces the link itself, and the O_EXCL temp is never a symlink either.
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("victim.dat");
+        fs::write(&victim, b"USER DATA").unwrap();
+        let target = dir.path().join("shortcut.lnk");
+        symlink(&victim, &target).unwrap();
+
+        write_atomic(&target.to_string_lossy(), b"styled").unwrap();
+
+        assert_eq!(fs::read(&victim).unwrap(), b"USER DATA", "the symlink target is untouched");
+        assert_eq!(fs::read(&target).unwrap(), b"styled");
+        assert!(!fs::symlink_metadata(&target).unwrap().file_type().is_symlink());
     }
 
     #[test]

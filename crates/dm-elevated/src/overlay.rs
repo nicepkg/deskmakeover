@@ -62,13 +62,17 @@ mod windows_impl {
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
         let key = hklm.create_subkey(SHELL_ICONS_KEY).map_err(io)?.0;
 
-        // Snapshot the pre-DeskMakeover value exactly once. The state file lives in the hardened,
-        // admin-only data dir, so a standard user cannot pre-plant it to defeat this guard.
+        // Snapshot the pre-DeskMakeover value exactly once, DURABLY, BEFORE touching the registry.
+        // The write must be fsync'd first (codex 2026-07-12): a plain `fs::write` that has not
+        // reached disk when the registry `set_value` below lands means a power loss loses the
+        // snapshot, and the NEXT apply then re-captures OUR OWN value as the "original" — a permanent
+        // loss of the true restore anchor. The state file lives in the hardened, admin-only data dir,
+        // so a standard user cannot pre-plant it to defeat this guard.
         let state = dir.join(STATE_FILE);
         if !state.exists() {
             let original: String =
                 key.get_value(OVERLAY_VALUE).unwrap_or_else(|_| ABSENT_MARKER.to_string());
-            std::fs::write(&state, original).map_err(io)?;
+            write_durable(&dir, STATE_FILE, original.as_bytes()).map_err(io)?;
         }
 
         // Point the registry at the ProgramData copy — NEVER the caller path (LPE guard).
@@ -112,25 +116,52 @@ mod windows_impl {
         let src = source_file
             .ok_or_else(|| format!("--file (a rendered .ico) is required for the {} overlay", style.as_str()))?;
         let bytes = read_capped_ico(Path::new(src))?;
-        let dst = dir.join(format!("{}-overlay.ico", style.as_str()));
-        // Atomic temp+fsync+rename, matching the durability discipline the .lnk/.url/desktop.ini
-        // writers use: this ICO is referenced live by HKLM Shell Icons and read by Explorer's icon
-        // cache, so a crash mid-write must not leave a torn/corrupt icon. (ELEV-2)
-        let tmp = dir.join(format!(".{}-overlay.ico.tmp", style.as_str()));
-        let write_tmp = || -> std::io::Result<()> {
-            let mut f = std::fs::File::create(&tmp)?;
-            std::io::Write::write_all(&mut f, &bytes)?;
-            f.sync_all()
+        // Atomic O_EXCL-temp + fsync + rename, matching the durability discipline the
+        // .lnk/.url/desktop.ini writers use: this ICO is referenced live by HKLM Shell Icons and
+        // read by Explorer's icon cache, so a crash mid-write must not leave a torn/corrupt icon
+        // (ELEV-2), and the temp is create_new so a symlink can't be followed (defense-in-depth atop
+        // the admin-only secure_dir).
+        let name = format!("{}-overlay.ico", style.as_str());
+        write_durable(dir, &name, &bytes).map_err(io)
+    }
+
+    /// Durably writes `bytes` to `dir/name` and returns its path: a UNIQUE `O_EXCL` temp in the same
+    /// directory (create_new refuses to follow a pre-placed symlink), `FlushFileBuffers`, then rename
+    /// over the target. The fsync guarantees the data is on disk before the caller proceeds — the
+    /// property the overlay snapshot depends on (it MUST be durable before the registry is modified).
+    /// A partial temp is cleaned up on any failure. [WINDOWS-VERIFY] the FlushFileBuffers + rename
+    /// durability on NTFS.
+    fn write_durable(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
+        use std::io::{ErrorKind, Write};
+        let target = dir.join(name);
+        let pid = std::process::id();
+        let (tmp, mut file) = {
+            let mut attempt = 0u32;
+            loop {
+                let tmp = dir.join(format!(".{name}.dm-{pid}-{attempt}.tmp"));
+                match std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp) {
+                    Ok(f) => break (tmp, f),
+                    Err(e) if e.kind() == ErrorKind::AlreadyExists && attempt < 1000 => {
+                        attempt += 1;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
         };
-        if let Err(e) = write_tmp() {
+        let written: std::io::Result<()> = (|| {
+            file.write_all(bytes)?;
+            file.sync_all()
+        })();
+        drop(file);
+        if let Err(e) = written {
             let _ = std::fs::remove_file(&tmp);
-            return Err(io(e));
+            return Err(e);
         }
-        if let Err(e) = std::fs::rename(&tmp, &dst) {
+        if let Err(e) = std::fs::rename(&tmp, &target) {
             let _ = std::fs::remove_file(&tmp);
-            return Err(io(e));
+            return Err(e);
         }
-        Ok(dst)
+        Ok(target)
     }
 
     fn notify_shell() {

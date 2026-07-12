@@ -24,6 +24,6 @@ pub use ledger::{JsonLedgerStore, LedgerEntry, LedgerStore, MemLedgerStore, TxnS
 pub use settings_store::SettingsStore;
 pub use wallpaper::{RustImageDecoder, SnapshotStore, WallpaperOps, WallpaperOutcome};
 pub use txn::{
-    recover, recover_from_journal, ApplyOutcome, ApplyRequest, FileJournal, JournalRecord,
-    JournalSink, RecoveryOutcome, TxnDriver, TxnIdAllocator, VecJournal,
+    recover, recover_from_journal, ApplyOutcome, ApplyRequest, FileJournal, FsAssetStore,
+    JournalRecord, JournalSink, RecoveryOutcome, TxnDriver, TxnIdAllocator, VecJournal,
 };

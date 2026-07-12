@@ -39,6 +39,12 @@ const GLOSS_SHEEN_EDGE: f64 = 0.12;
 const GLOSS_DEPTH: f64 = 0.07;
 
 fn gloss(tile: &mut Raster, size: usize) {
+    // A 1×1 tile has no gradient axis: `y / (size - 1)` is `0 / 0 = NaN`, which
+    // propagates through the sheen math to `clamp_byte(NaN)` and silently blacks
+    // out the single opaque pixel. Nothing to shade at that size — leave it. (ICON-2)
+    if size <= 1 {
+        return;
+    }
     let d = &mut tile.data;
     for y in 0..size {
         let v = y as f64 / (size - 1) as f64;
@@ -154,5 +160,15 @@ mod tests {
         let outside = chamfer_distance(&tile, size, false);
         assert_eq!(outside[8 * size + 8], -1.0, "an opaque pixel is -1 for the outside transform");
         assert!(outside[0] > 0.0, "a far transparent corner has a positive outside distance");
+    }
+
+    #[test]
+    fn gloss_leaves_a_1x1_opaque_tile_its_true_colour() {
+        // ICON-2: at size==1 the sheen gradient is `0 / (1-1) = NaN`, which used to
+        // propagate to `clamp_byte(NaN)` and black out the single opaque pixel.
+        let mut tile = Raster::new(1, 1);
+        tile.data.copy_from_slice(&[10, 20, 30, 255]);
+        gloss(&mut tile, 1);
+        assert_eq!(tile.data, [10, 20, 30, 255], "size==1 gloss must not corrupt the pixel to black");
     }
 }

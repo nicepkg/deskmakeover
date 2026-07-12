@@ -30,7 +30,10 @@ pub fn resample_ladder(source: &Raster) -> Vec<Raster> {
     let mut frames: Vec<Raster> = LADDER_SIZES
         .iter()
         .copied()
-        .filter(|&size| size <= source.width)
+        // Both axes must fit: a rung <= width but > height on a non-square source
+        // would drive `downscale`'s scale_y through the box-average path as an
+        // UPSAMPLE, softening the y-axis. Keep only rungs that truly downscale. (ICON-4)
+        .filter(|&size| size <= source.width && size <= source.height)
         .map(|size| downscale(source, size))
         .collect();
     if frames.is_empty() {

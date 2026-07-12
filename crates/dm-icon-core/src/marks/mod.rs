@@ -204,13 +204,16 @@ static NATIVE_ARROW: RwLock<Option<Raster>> = RwLock::new(None);
 
 /// marks.ts `setNativeArrowRaster`.
 pub fn set_native_arrow_raster(raster: Option<Raster>) {
-    *NATIVE_ARROW.write().unwrap() = raster;
+    // Self-heal a poisoned lock (unwrap_or_else → the inner value): a panic on any
+    // one render thread must not cascade into every later shortcut render across the
+    // whole worker fleet. (ICON-3)
+    *NATIVE_ARROW.write().unwrap_or_else(|e| e.into_inner()) = raster;
 }
 
 /// A snapshot of the boot-installed native arrow badge, or None. Used by the output
 /// cache to fold the arrow into the content key (shortcut renders depend on it).
 pub fn native_arrow() -> Option<Raster> {
-    NATIVE_ARROW.read().unwrap().clone()
+    NATIVE_ARROW.read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 /// 经典箭头 — the real system badge when available, else the drawn fallback

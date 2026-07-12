@@ -39,6 +39,14 @@ pub fn segment_subject(c: &Raster) -> Segmentation {
     let h = c.height;
     let n = w * h;
 
+    // A 0-dimension raster has no pixels to segment. Every downstream step (border
+    // seeding at `(h-1)*w`, the flood BFS, `plate_split`, `binary_majority`) assumes
+    // w>0 && h>0 and would underflow / index out of bounds. This is the single
+    // lowest-common guard for RenderSession, batch, and SourceFacts::compute. (ICON-1)
+    if w == 0 || h == 0 {
+        return Segmentation { mask: Vec::new(), mode: SegMode::Alpha, field: None };
+    }
+
     let (sil0, mode) = if has_transparent_edges(c) {
         let mut s = vec![0u8; n];
         for (i, slot) in s.iter_mut().enumerate() {
@@ -267,6 +275,17 @@ mod tests {
         assert_eq!(seg.mode, SegMode::Alpha);
         assert_eq!(seg.mask[8 * 16 + 8], 1);
         assert_eq!(seg.mask[0], 0);
+    }
+
+    #[test]
+    fn tolerates_zero_dimension_rasters() {
+        // ICON-1: a 0-dim raster has no pixels; border seeding `(h-1)*w` / `y*w+w-1`
+        // and the flood BFS would underflow / index OOB. Must return an empty mask,
+        // never panic. Covers RenderSession / batch / SourceFacts / icon_profile.
+        for (w, h) in [(0usize, 0usize), (0, 5), (5, 0)] {
+            let seg = segment_subject(&Raster::new(w, h));
+            assert!(seg.mask.is_empty(), "0-dim raster {w}x{h} → empty mask");
+        }
     }
 
     #[test]

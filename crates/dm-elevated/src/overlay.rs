@@ -113,7 +113,23 @@ mod windows_impl {
             .ok_or_else(|| format!("--file (a rendered .ico) is required for the {} overlay", style.as_str()))?;
         let bytes = read_capped_ico(Path::new(src))?;
         let dst = dir.join(format!("{}-overlay.ico", style.as_str()));
-        std::fs::write(&dst, &bytes).map_err(io)?;
+        // Atomic temp+fsync+rename, matching the durability discipline the .lnk/.url/desktop.ini
+        // writers use: this ICO is referenced live by HKLM Shell Icons and read by Explorer's icon
+        // cache, so a crash mid-write must not leave a torn/corrupt icon. (ELEV-2)
+        let tmp = dir.join(format!(".{}-overlay.ico.tmp", style.as_str()));
+        let write_tmp = || -> std::io::Result<()> {
+            let mut f = std::fs::File::create(&tmp)?;
+            std::io::Write::write_all(&mut f, &bytes)?;
+            f.sync_all()
+        };
+        if let Err(e) = write_tmp() {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(io(e));
+        }
+        if let Err(e) = std::fs::rename(&tmp, &dst) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(io(e));
+        }
         Ok(dst)
     }
 

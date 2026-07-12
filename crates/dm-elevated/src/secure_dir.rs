@@ -20,11 +20,20 @@
 //! The trust *policy* ([`dir_verdict`]) is pure and unit-tested on the host; the Windows glue that
 //! gathers the facts and enforces the DACL ([`secure_data_dir`]) is [WINDOWS-VERIFY].
 
-/// The SDDL for the data directory's DACL: `P`rotected (no ACEs inherited from
-/// `C:\ProgramData`'s CREATOR OWNER grant), SYSTEM + Builtin Administrators full control, Builtin
-/// Users read + execute only (`0x1200A9` = `FILE_GENERIC_READ | FILE_GENERIC_EXECUTE`, so the
-/// shell can read the overlay ICOs to render them, but no non-admin can write).
-pub const DATA_DIR_SDDL: &str = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)";
+/// The SDDL for the data directory. `O:BA` sets the OWNER to Builtin Administrators;
+/// `D:P` is a `P`rotected DACL (no ACEs inherited from `C:\ProgramData`'s CREATOR OWNER
+/// grant), SYSTEM + Builtin Administrators full control, Builtin Users read + execute only
+/// (`0x1200A9` = `FILE_GENERIC_READ | FILE_GENERIC_EXECUTE`, so the shell can read the overlay
+/// ICOs to render them, but no non-admin can write).
+///
+/// The explicit `O:BA` is load-bearing (not cosmetic): `dm-elevated.exe` is a
+/// `requireAdministrator` helper that runs as the *current user* with an elevated token, never
+/// as SYSTEM. Since Vista, `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\NoDefaultAdminOwner`
+/// defaults to 1 ("object creator" owner policy), so `CreateDirectoryW` with an owner-less
+/// descriptor would assign the *user's own SID* as owner — after which [`dir_verdict`]'s
+/// `owner_is_admin_or_system` check fails on every subsequent run and apply/restore break
+/// permanently. Pinning the owner to `BA` matches exactly what that check trusts.
+pub const DATA_DIR_SDDL: &str = "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)";
 
 /// Facts a platform adapter gathers about the existing directory before the helper trusts it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

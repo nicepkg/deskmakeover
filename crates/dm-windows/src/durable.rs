@@ -119,23 +119,45 @@ fn sync_parent_dir(_target: &Path) -> PortResult<()> {
 #[cfg(windows)]
 fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
     use windows::core::HSTRING;
-    use windows::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_WRITE_THROUGH};
+    use windows::Win32::Storage::FileSystem::{
+        MoveFileExW, ReplaceFileW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        REPLACE_FILE_FLAGS,
+    };
 
     if target.exists() {
+        // ReplaceFileW carries the target's DACL, alternate data streams, and compression/encryption
+        // attributes onto the replacement (MoveFileEx would drop them, and the restore anchors
+        // capture only main-stream bytes). We do NOT pass REPLACEFILE_WRITE_THROUGH — MS documents it
+        // as "not supported" (a no-op), so relying on it was misleading; durability of the
+        // same-volume replace rests on the temp's prior FlushFileBuffers + NTFS replace semantics.
+        // [WINDOWS-VERIFY] whether that survives power loss; if not, committed-txn recovery must
+        // re-verify + repair the live state (handoff §8a #2).
         // SAFETY: both paths are valid UTF-16; no buffers are retained past the call.
         unsafe {
             ReplaceFileW(
                 &HSTRING::from(target.as_os_str()),
                 &HSTRING::from(tmp.as_os_str()),
                 windows::core::PCWSTR::null(),
-                REPLACEFILE_WRITE_THROUGH,
+                REPLACE_FILE_FLAGS(0),
                 None,
                 None,
             )
         }
         .map_err(|e| PortError::Io(e.to_string()))
     } else {
-        fs::rename(tmp, target).map_err(io)
+        // Fresh target: nothing to preserve, so a write-through move makes the namespace change
+        // durable before we return — the barrier the journal fsync assumes (a plain rename left the
+        // fresh write non-durable, so a cross-volume item's write could be lost after its txn
+        // committed on another volume, poisoning CAS). [WINDOWS-VERIFY] the write-through on NTFS.
+        // SAFETY: both paths are valid UTF-16; no buffers are retained past the call.
+        unsafe {
+            MoveFileExW(
+                &HSTRING::from(tmp.as_os_str()),
+                &HSTRING::from(target.as_os_str()),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        }
+        .map_err(|e| PortError::Io(e.to_string()))
     }
 }
 
@@ -145,10 +167,26 @@ fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
     fs::rename(tmp, target).map_err(io)
 }
 
-/// A process-unique temp sibling path for `target`, for a COM writer (`IPersistFile::Save`) to save
-/// into before [`finalize_saved`] flushes and publishes it.
-pub fn temp_path_for(target: &str) -> String {
-    temp_sibling(Path::new(target)).to_string_lossy().into_owned()
+/// Creates a UNIQUE, empty temp sibling of `target` with `create_new` (O_EXCL) and returns its path,
+/// for a COM writer (`IPersistFile::Save`) to save into before [`finalize_saved`] flushes + publishes
+/// it. Pre-claiming the temp as a proven-regular file means Save can no longer create/truncate
+/// THROUGH a symlink a hostile process pre-placed at the (predictable) temp name — it opens the
+/// regular file we already own.
+///
+/// [WINDOWS-VERIFY] residual: a delete+symlink swap in the narrow window between this close and
+/// Save's reopen-by-path is a same-user TOCTOU; fully closing it needs an `IPersistStream`-to-memory
+/// save published through [`write_atomic`], deferred to the Windows box (handoff §8a #1).
+pub fn claim_temp_for(target: &str) -> PortResult<String> {
+    let target = Path::new(target);
+    for _ in 0..1000 {
+        let tmp = temp_sibling(target);
+        match fs::OpenOptions::new().write(true).create_new(true).open(&tmp) {
+            Ok(_file) => return Ok(tmp.to_string_lossy().into_owned()),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(io(e)),
+        }
+    }
+    Err(PortError::Io("could not allocate a unique temp for the COM save".into()))
 }
 
 /// A process-unique sibling temp path in the target's own directory, so the rename is

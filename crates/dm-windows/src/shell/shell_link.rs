@@ -40,7 +40,9 @@ pub fn read_icon_location(shortcut_path: &str) -> PortResult<Option<(String, i32
 /// [WINDOWS-VERIFY] runtime.
 pub fn set_icon_location(shortcut_path: &str, icon_path: &str, index: i32) -> PortResult<()> {
     let target = extended_length_path(shortcut_path);
-    let tmp = extended_length_path(&crate::durable::temp_path_for(shortcut_path));
+    // Pre-claim the temp as a proven-regular O_EXCL file so Save can't be tricked into
+    // creating/truncating through a pre-placed symlink (handoff §8a #1).
+    let tmp = extended_length_path(&crate::durable::claim_temp_for(shortcut_path)?);
     // A failed Save can return before finalize_saved runs, leaving a partial temp sibling — never
     // strand it (new-P3). finalize_saved cleans up on ITS own failure.
     let saved = save_icon_to_temp(&target, &tmp, icon_path, index);
@@ -134,7 +136,8 @@ pub fn create_shortcut(
     icon_path: &str,
 ) -> PortResult<()> {
     let out = extended_length_path(out_lnk);
-    let tmp = extended_length_path(&crate::durable::temp_path_for(out_lnk));
+    // Pre-claim the temp as a proven-regular O_EXCL file (handoff §8a #1).
+    let tmp = extended_length_path(&crate::durable::claim_temp_for(out_lnk)?);
     // A failed Save can strand a partial temp sibling before finalize_saved runs — never leave it
     // (new-P3).
     let saved = save_new_shortcut_to_temp(&tmp, target, working_dir, icon_path);

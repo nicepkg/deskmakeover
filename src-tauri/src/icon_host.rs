@@ -366,10 +366,6 @@ impl IconHost {
     /// look stays). Faithful to the elevated Applied|Declined|Failed contract; the OBSERVED
     /// post-op arrow state is authoritative.
     pub fn restore_overlay(&self) -> Result<IconOpResultDto, String> {
-        // A restoreOverlay is a user mutation of the machine-wide arrow: bump the op-epoch so an
-        // in-flight apply that began before it rejects at commit rather than re-hiding the arrow the
-        // user just lifted (codex R2-Block 3).
-        self.mut_state.lock().unwrap().op_epoch += 1;
         let outcome = self.overlay.restore().map_err(|e| e.to_string())?;
         let (arrow, ok, toast_key) = match outcome {
             OverlayOutcome::Applied => (ArrowOverlayDto::Native, true, "Toast_ArrowRestored"),
@@ -377,6 +373,13 @@ impl IconHost {
             OverlayOutcome::Declined => (ArrowOverlayDto::Hidden, false, "Toast_ArrowRestoreDeclined"),
             OverlayOutcome::Failed => (ArrowOverlayDto::Hidden, false, "Toast_RestoreArrowFailed"),
         };
+        // Bump the op-epoch ONLY when the arrow actually flipped to native (a real machine-wide
+        // mutation): an in-flight apply that began before it then rejects rather than re-hiding the
+        // arrow the user just lifted (codex R2-Block 3). A Declined/Failed changed nothing, so it must
+        // NOT invalidate an in-flight apply.
+        if outcome == OverlayOutcome::Applied {
+            self.mut_state.lock().unwrap().op_epoch += 1;
+        }
         self.set_arrow(arrow);
         let persisted = self.get_persisted()?;
         Ok(IconOpResultDto {

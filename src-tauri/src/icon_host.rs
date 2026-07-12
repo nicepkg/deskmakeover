@@ -54,6 +54,11 @@ struct IconMutState {
     scan: Vec<ScannedItem>,
     /// The revision of the last scan; a Begin whose revision differs is a stale apply and is rejected.
     scan_revision: u32,
+    /// Whether `scan`/`scan_revision` describe a REAL, still-valid scan an apply may bind. False
+    /// before the first scan and after a heal FENCE (whose revision is synthetic). A genuinely EMPTY
+    /// desktop scan is VALID (`scan` empty, `scan_valid` true) — an emptiness test cannot express
+    /// this, and rejecting it would break the zero-target policy-only Apply (codex R11-#2).
+    scan_valid: bool,
     /// Monotonic epoch bumped by EVERY user mutation (a committed Apply, a full Reset, AND a
     /// restoreOverlay) so an in-flight apply that began before any of them rejects at commit.
     op_epoch: u64,
@@ -143,6 +148,7 @@ impl IconHost {
                 session_scan: Vec::new(),
                 scan: Vec::new(),
                 scan_revision: 0,
+                scan_valid: false,
                 op_epoch: 0,
             }),
             sources: Mutex::new(SourceCache::new(SOURCE_CACHE_CAP)),
@@ -203,24 +209,27 @@ impl IconHost {
                 .unwrap_or_else(|_| dm_domain::Fingerprint::of_bytes(b""));
             scanned.push(ScannedItem { item, fingerprint });
         }
-        // Every extract succeeded → atomically publish the new cache generation (retiring the prior
-        // one to `previous` so an old frame's in-flight URLs still resolve) + the scan snapshot.
-        self.sources.lock().unwrap().publish(next_sources);
+        // Every extract succeeded → publish atomically, ALL inside one critical section ordered
+        // acceptance-check → source cache → snapshot (codex R10-#B + R11-#1). The revision check runs
+        // FIRST: this scan allocated its revision BEFORE the (slow) extraction and does not hold the
+        // op gate, so a heal FENCE (or a competing scan) may have advanced `scan_revision` past it. A
+        // superseded scan must lose WITHOUT side effects — publishing its cache before erroring could
+        // evict URLs the live generation still serves (the failed-refresh contract promises "当前画面
+        // 保持不变"). Lock order st → sources appears only here and nothing locks sources → st, so no
+        // cycle.
         {
             let mut st = self.mut_state.lock().unwrap();
-            // Monotonic publish (codex R10-#B): this scan allocated its revision BEFORE the (slow)
-            // extraction, and does not hold the op gate — a heal FENCE (or a competing scan) may have
-            // advanced `scan_revision` past it in the meantime. Publishing anyway would overwrite the
-            // fence with PRE-heal fingerprints under an accepted revision, re-opening the ABA. A
-            // superseded scan must lose: fail it and let the caller rescan.
             if rev <= st.scan_revision {
                 return Err(format!(
                     "scan superseded (revision {rev} <= current {}): rescan",
                     st.scan_revision
                 ));
             }
+            self.sources.lock().unwrap().publish(next_sources);
             st.scan = scanned;
             st.scan_revision = rev;
+            // A REAL scan (even of a genuinely empty desktop) is a valid apply target (codex R11-#2).
+            st.scan_valid = true;
         }
         // Observed desktop metrics (the frontend assembles its grid from these, never fabricated
         // dims). [WINDOWS-VERIFY] real SPI_GETWORKAREA + shell icon metrics; the dev host reports a
@@ -255,9 +264,11 @@ impl IconHost {
             ));
         }
         // No valid scan snapshot: either nothing has been scanned yet, or a heal FENCED the previous
-        // one (the fenced revision is synthetic and its snapshot cleared — codex R10-#B). An apply must
-        // bind a REAL, still-valid snapshot's fingerprints; rescan first.
-        if st.scan.is_empty() {
+        // one (the fenced revision is synthetic — codex R10-#B). An apply must bind a REAL,
+        // still-valid snapshot's fingerprints; rescan first. Validity is an EXPLICIT flag, not an
+        // emptiness test: a genuinely empty desktop scan is valid, and its zero-target policy-only
+        // Apply must go through (codex R11-#2).
+        if !st.scan_valid {
             return Err("no valid scan to apply against: rescan first".into());
         }
         // A fresh Begin ABANDONS any prior in-flight session (a bake that errored mid-stream and never
@@ -363,10 +374,11 @@ impl IconHost {
         // a follow-up, but this fence is the structural safety boundary, not the toast.
         if outcome.requires_rescan {
             st.scan_revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
-            // The fenced revision is synthetic — it corresponds to NO real scan. Clear the snapshot so
-            // the fenced state explicitly means "no valid scan": even a Begin somehow carrying the
-            // fenced number cannot bind pre-heal fingerprints (Begin rejects an empty snapshot). Only a
-            // REAL rescan (which republishes both) reopens the gate (codex R10-#B).
+            // The fenced revision is synthetic — it corresponds to NO real scan. Mark the snapshot
+            // INVALID (an explicit flag, not an emptiness sentinel — codex R11-#2) so even a Begin
+            // somehow carrying the fenced number cannot bind pre-heal fingerprints; clear the stale
+            // items too. Only a REAL rescan (which republishes both) reopens the gate (codex R10-#B).
+            st.scan_valid = false;
             st.scan.clear();
         }
         let committed_any = !outcome.committed.is_empty();
@@ -824,6 +836,49 @@ mod tests {
         // getPersisted reads the same truth on a cold call.
         let p = h.get_persisted().unwrap();
         assert!(p.applied && p.saved_style_json.is_some());
+    }
+
+    #[test]
+    fn a_genuinely_empty_desktop_scan_is_a_valid_apply_target() {
+        // codex R11-#2: a real scan of an EMPTY desktop (nothing to style) is still a valid apply
+        // target — the user can submit a policy-only global Apply (kindPolicy/typeOverrides) whose
+        // intent must persist to ②③. Validity is an explicit flag, not `scan.is_empty()`; only the
+        // never-scanned and fenced states reject a Begin.
+        struct EmptyScanner;
+        impl DesktopScanner for EmptyScanner {
+            fn scan(&self) -> dm_domain::PortResult<Vec<dm_domain::DesktopItem>> {
+                Ok(Vec::new())
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let desk = DevIconDesktop::new();
+        let settings = Arc::new(SettingsStore::open(&dir.path().join("settings.sqlite3")).unwrap());
+        let h = IconHost::new(
+            IconHostPorts {
+                scanner: Arc::new(EmptyScanner),
+                extractor: Arc::new(DevIconSourceExtractor),
+                reader: Arc::new(DevIconReader(desk.clone())),
+                applier: Arc::new(DevIconApplier(desk)),
+                overlay: Arc::new(DevOverlayControl),
+                refresher: Arc::new(DevExplorerRefresher),
+            },
+            settings,
+            dir.path(),
+            1,
+        );
+
+        // Before ANY scan: no valid snapshot → Begin rejects.
+        let err = h.apply_baked_begin(0, 0).unwrap_err();
+        assert!(err.contains("no valid scan"), "never-scanned must reject: {err}");
+
+        // A real empty scan: valid target, zero items.
+        let scan = h.scan().unwrap();
+        assert!(scan.items.is_empty());
+        let sid = h.apply_baked_begin(scan.revision, 0).unwrap();
+        let res = h.apply_baked_commit(&sid, style_json(5), vec![], Some("策略".into())).unwrap();
+        assert!(res.ok, "a conflict-free zero-target (policy-only) Apply is a clean success");
+        assert!(res.persisted.saved_style_json.is_some(), "② carries the policy intent");
+        assert_eq!(res.persisted.history.len(), 1, "③ recorded the completed Apply");
     }
 
     #[test]

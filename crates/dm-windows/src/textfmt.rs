@@ -5,13 +5,23 @@
 
 const INTERNET_SHORTCUT_SECTION: &str = "[InternetShortcut]";
 
+/// Strips a leading UTF-8 BOM. Windows Explorer writes `.url` (and `desktop.ini`) files
+/// with a BOM whenever their content has non-ASCII characters — routine for Chinese site
+/// names and paths, which is squarely this product's userbase. `str::trim` does NOT remove
+/// U+FEFF (it is Unicode category `Cf`, not `White_Space`), so a section header behind a BOM
+/// otherwise fails every `trim().eq_ignore_ascii_case(...)` match and the whole file reads as
+/// sectionless. The BOM only ever appears at byte 0, i.e. the start of the first line. (APPLY-1)
+fn strip_bom(s: &str) -> &str {
+    s.strip_prefix('\u{feff}').unwrap_or(s)
+}
+
 /// Upserts `key=value` inside the `[InternetShortcut]` section (case-insensitive), replacing any
 /// existing occurrences in place and inserting at the section end otherwise. Exact port of the
 /// oracle upsert.
 pub fn internet_shortcut_upsert(lines: &mut Vec<String>, key: &str, value: &str) -> Result<(), String> {
     let section_start = lines
         .iter()
-        .position(|l| l.trim().eq_ignore_ascii_case(INTERNET_SHORTCUT_SECTION))
+        .position(|l| strip_bom(l).trim().eq_ignore_ascii_case(INTERNET_SHORTCUT_SECTION))
         .ok_or_else(|| "URL shortcut is missing the [InternetShortcut] section".to_string())?;
     let section_end = section_end(lines, section_start);
 
@@ -37,6 +47,7 @@ pub fn internet_shortcut_upsert(lines: &mut Vec<String>, key: &str, value: &str)
 /// — the icon reference the reader fingerprints so a read-back can be compared to the asset the
 /// applier was asked to point at (P1-1). Returns `None` when the section or key is absent.
 pub fn parse_internet_shortcut_icon(text: &str) -> Option<(String, i32)> {
+    let text = strip_bom(text); // BOM-tolerant, mirroring parse_desktop_ini_icon (APPLY-1)
     let lines: Vec<&str> = text.lines().collect();
     let start = lines
         .iter()
@@ -230,5 +241,23 @@ mod tests {
     #[test]
     fn parse_desktop_ini_icon_absent_is_none() {
         assert_eq!(parse_desktop_ini_icon(b"[.ShellClassInfo]\r\nConfirmFileOp=0\r\n"), None);
+    }
+
+    #[test]
+    fn upsert_finds_the_section_behind_a_utf8_bom_and_preserves_it() {
+        // APPLY-1: Explorer BOM-prefixes .url files whose content has non-ASCII chars
+        // (Chinese sites). The section must be found despite the BOM, and the BOM must
+        // survive the rewrite so the file's encoding marker is not silently dropped.
+        let mut l = lines("\u{feff}[InternetShortcut]\nURL=https://例子.test\nIconFile=old.ico");
+        internet_shortcut_upsert(&mut l, "IconFile", r"C:\gen\a.ico").unwrap();
+        assert!(l[0].starts_with('\u{feff}'), "the file's leading BOM is preserved");
+        assert!(l.contains(&r"IconFile=C:\gen\a.ico".to_string()));
+        assert!(!l.contains(&"IconFile=old.ico".to_string()), "the old key was replaced");
+    }
+
+    #[test]
+    fn parse_internet_shortcut_icon_tolerates_a_leading_bom() {
+        let text = "\u{feff}[InternetShortcut]\r\nURL=https://例子.test\r\nIconFile=C:\\gen\\a.ico\r\nIconIndex=0";
+        assert_eq!(parse_internet_shortcut_icon(text), Some((r"C:\gen\a.ico".to_string(), 0)));
     }
 }

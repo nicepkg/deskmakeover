@@ -72,15 +72,58 @@ pub fn recover_from_journal(
     ledger: &mut dyn LedgerStore,
 ) -> Result<RecoveryOutcome> {
     let records = journal.read_all()?;
-    let outcome = recover(&records, reader, applier, ledger)?;
+    let mut outcome = recover(&records, reader, applier, ledger)?;
     // Truncate the reconciled history ONLY on a clean pass. If recovery degraded (an item's
     // restore/ledger op faulted, codex R4-Block 5), the unreconciled records MUST stay so the next
     // (idempotent) recovery can finish them — checkpointing them away would strand a crashed
-    // transaction forever. A clean truncation failing is itself best-effort (idempotent replay).
+    // transaction forever. A checkpoint that FAILS is surfaced as degraded (codex R6-#4): otherwise a
+    // persistently-failing truncation would silently replay + defer every op forever with no visible
+    // cause. The replay stays safe (idempotent), but the caller now learns it is stuck.
     if outcome.degraded.is_empty() {
-        let _ = journal.checkpoint(&[]);
+        if let Err(e) = journal.checkpoint(&[]) {
+            outcome.degraded.push(format!("recovery checkpoint: {e}"));
+        }
     }
     Ok(outcome)
+}
+
+/// True when the journal holds a transaction that a recovery pass would still need to ACT on — so a
+/// styled desktop may exist that the ledger alone does not reflect, and the restore affordance must
+/// stay reachable (codex R6-#6). Read-only, precise, and NOT the checkpoint-only `active_txns` (which
+/// excludes committed txns): it covers BOTH an incomplete txn (an abort candidate — desktop styled,
+/// no ledger row) AND a committed txn whose ledger upsert never landed (a reconcile candidate — the
+/// driver's `TxnCommitted` is durable but a later `ledger.upsert` faulted, R6-#1). A rolled-back txn
+/// is safe (desktop restored, ledger clean), and a committed txn already reflected in the ledger is
+/// reconciled — neither trips this, so a NORMAL post-apply journal (committed + present ledger rows,
+/// not yet checkpointed) never spuriously shows repair.
+pub fn repair_pending(records: &[JournalRecord], ledger: &dyn LedgerStore) -> Result<bool> {
+    // txn -> (committed, rolled_back, items-in-first-seen-order)
+    let mut txns: HashMap<u64, (bool, bool, Vec<dm_domain::ItemId>)> = HashMap::new();
+    for record in records {
+        let entry = txns.entry(record.txn()).or_default();
+        match record {
+            JournalRecord::TxnCommitted { .. } => entry.0 = true,
+            JournalRecord::TxnRolledBack { .. } => entry.1 = true,
+            JournalRecord::ItemPrepared { item, .. } => entry.2.push(item.clone()),
+            _ => {}
+        }
+    }
+    for (_txn, (committed, rolled_back, items)) in txns {
+        if rolled_back {
+            continue; // terminal, desktop restored, ledger clean → safe
+        }
+        if !committed {
+            return Ok(true); // incomplete → abort candidate → a styled desktop may lack a ledger row
+        }
+        // Committed: pending unless every item is already a committed ledger row (reconciled).
+        for item in items {
+            match ledger.get(&item)? {
+                Some(e) if e.state.is_committed() => {}
+                _ => return Ok(true), // missing / non-committed row → reconcile candidate
+            }
+        }
+    }
+    Ok(false)
 }
 
 /// Replays `records` and reconciles the desktop + ledger. Idempotent: running it twice is a

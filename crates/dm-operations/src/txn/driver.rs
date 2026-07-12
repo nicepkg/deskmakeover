@@ -47,12 +47,15 @@ pub struct ApplyOutcome {
     pub conflicts: Vec<ItemId>,
     /// Items walked back to their original because the batch failed.
     pub rolled_back: Vec<ItemId>,
-    /// True once the transaction entered its durable mutation phase — i.e. a rollback or abandon ran,
-    /// so the desktop WAS touched (an item was styled then restored, or a restore itself faulted and
-    /// left the item in a residual state). A preflight failure or an empty batch never sets this. The
-    /// host uses it to distinguish "the apply failed but truly nothing on the desktop changed" from
-    /// "the apply rolled back AFTER already moving the desktop" (codex R5-#1): the latter must never be
-    /// reported as "nothing changed".
+    /// CONSERVATIVE "the desktop may have been touched" flag: set once the transaction entered its
+    /// durable mutation phase (a rollback or abandon ran). The desktop may actually be changed (an item
+    /// styled then restored to its true original, or a restore that faulted and left a residual state)
+    /// OR still pristine (the very first item's asset-write faulted before any icon-location swap). It
+    /// never UNDER-reports — a preflight failure or an empty batch leaves it false — so the host can
+    /// safely treat it as "possibly changed": distinguishing "failed, truly nothing changed" from
+    /// "possibly moved the desktop" (codex R5-#1), erring toward a repair toast over a false "nothing
+    /// changed". A precise did-mutate fact would need the driver to thread the per-item apply phase; the
+    /// safe over-report is deliberate.
     pub desktop_mutated: bool,
     /// A human-readable failure reason, if the batch did not fully commit.
     pub error: Option<String>,
@@ -240,27 +243,35 @@ impl<'p> TxnDriver<'p> {
         };
 
         let mut existing = ledger.get(&req.target.id)?;
-        // Heal a POISONED lingering row before it can force a permanent CAS conflict (codex R5-#2). A
-        // prior keep/reset restored this item on disk (desktop == its original) but the paired
+        // Heal a POISONED lingering row before it can force a permanent CAS conflict (codex R5-#2,
+        // R6-#3). A prior keep/reset restored this item on disk (desktop == its original) but the paired
         // `ledger.remove` faulted, leaving a stale row whose `last_applied` no longer matches the
         // desktop. If the user now re-styles the item directly (not via keep/reset, so the mod.rs heal
-        // arm never sees it), that stale `last_applied` would be used as the CAS anchor forever, and
-        // `current != expected` would reject the apply every time. Detect it — the row's original
-        // matches the live desktop, yet its last-applied does not — drop the stale row and treat this
-        // as a FRESH apply: `current` equals the scan-time fingerprint (the scan ran after the restore
-        // landed), so it re-captures the true-original anchor and passes CAS below. `remove` here is
+        // arm never sees it), that stale `last_applied` would be used as the CAS anchor forever and
+        // reject the apply every time. Detect it — the row's original matches the live desktop, yet its
+        // last-applied does not. We have PROVEN the desktop is at its true original, so drop the stale
+        // row and anchor this apply on the OBSERVED `current`, NOT on `req.expected_fingerprint`: the
+        // host's cached scan may predate the restore (no rescan between the failed remove and this
+        // re-apply), so its fingerprint could still read as the old styled state. `remove` here is
         // pre-mutation (nothing journaled yet); a fault propagates as a clean, desktop-untouched Err.
+        let mut anchor_on_current = false;
         if let Some(e) = &existing {
             if current == e.original_fingerprint && current != e.last_applied_fingerprint {
                 ledger.remove(&req.target.id)?;
                 existing = None;
+                anchor_on_current = true;
             }
         }
-        // CAS anchor: last-applied on re-apply, the scan-time observation on a fresh apply.
-        let expected = existing
-            .as_ref()
-            .map(|e| e.last_applied_fingerprint)
-            .unwrap_or(req.expected_fingerprint);
+        // CAS anchor: last-applied on re-apply, the OBSERVED current on a healed poison row (proven
+        // original), the scan-time observation on an ordinary fresh apply.
+        let expected = if anchor_on_current {
+            current
+        } else {
+            existing
+                .as_ref()
+                .map(|e| e.last_applied_fingerprint)
+                .unwrap_or(req.expected_fingerprint)
+        };
         if current != expected {
             return Ok(None); // external modification → visible conflict, never overwritten
         }
@@ -377,9 +388,11 @@ impl<'p> TxnDriver<'p> {
         ledger: &mut dyn LedgerStore,
         reason: String,
     ) -> Result<ApplyOutcome> {
-        // `desktop_mutated`: rollback is only ever reached from inside the mutation loop, after at least
-        // one item was styled — so the desktop WAS moved (each item is restored below, and a restore
-        // that faults leaves a residual state). Either way this is not "nothing changed" (codex R5-#1).
+        // `desktop_mutated` = conservative: rollback is reached from inside the mutation loop, so the
+        // desktop MAY have moved (a styled-then-restored item, or a residual state from a faulted
+        // restore) — or, if the very first item's asset-write faulted before its icon swap, still be
+        // pristine. We never under-report, so the host errs toward a repair toast, not "nothing changed"
+        // (codex R5-#1 / R6-#5).
         let mut outcome = ApplyOutcome { error: Some(reason), desktop_mutated: true, ..Default::default() };
         let mut restore_errors: Vec<String> = Vec::new();
         // If a journal append fails MID-rollback the log may now be torn, so we must stop appending
@@ -442,8 +455,9 @@ impl<'p> TxnDriver<'p> {
         ledger: &mut dyn LedgerStore,
         reason: String,
     ) -> Result<ApplyOutcome> {
-        // `desktop_mutated`: abandon, like rollback, is only reached after the mutation phase began, so
-        // the desktop WAS touched (styled then restored, or a residual state if a restore faulted).
+        // `desktop_mutated` = conservative (see rollback): abandon is reached after the mutation phase
+        // began, so the desktop may have moved or (first-item asset-write fault) still be pristine; we
+        // never under-report (codex R5-#1 / R6-#5).
         let mut outcome = ApplyOutcome { error: Some(reason), desktop_mutated: true, ..Default::default() };
         let mut errors: Vec<String> = Vec::new();
         for item in applied.into_iter().rev() {

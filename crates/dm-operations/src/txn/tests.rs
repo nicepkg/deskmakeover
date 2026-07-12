@@ -15,7 +15,7 @@ use super::fakes::{
     RecordingJournal, World,
 };
 use super::journal::{JournalRecord, VecJournal};
-use super::recovery::{recover, recover_from_journal, RecoveryOutcome};
+use super::recovery::{recover, recover_from_journal, repair_pending, RecoveryOutcome};
 use crate::error::{OperationError, Result};
 use crate::ledger::entry::LedgerEntry;
 use crate::ledger::store::{JsonLedgerStore, LedgerStore, MemLedgerStore};
@@ -686,6 +686,63 @@ fn both_terminals_fail_closed_before_any_earlier_incomplete_txn_mutates_the_desk
         world.borrow().get(&a.path).unwrap(),
         styled_a,
         "the earlier incomplete txn must NOT have been aborted — the preflight fails before any mutation"
+    );
+}
+
+#[test]
+fn repair_pending_covers_committed_unreconciled_and_incomplete_but_not_terminal_states() {
+    // codex R6-#6/#1: `repair_pending` is the "a styled desktop may exist that the ledger doesn't yet
+    // reflect" signal that keeps the restore affordance reachable. It must cover BOTH an incomplete txn
+    // (abort candidate) AND a committed txn whose ledger upsert never landed (the driver writes
+    // TxnCommitted BEFORE the ledger upsert, which can then fault) — the latter is exactly what the old
+    // `active_txns` signal missed. A rolled-back txn, and a committed txn already in the ledger, are safe.
+    let a = target("A");
+    let prepared = |txn: u64| JournalRecord::ItemPrepared {
+        txn,
+        item: a.id.clone(),
+        target: a.clone(),
+        anchor: dm_domain::RestoreAnchor::FileBytes { bytes: b"orig".to_vec() },
+        original_fingerprint: Fingerprint::of_bytes(b"orig"),
+        expected_fingerprint: Fingerprint::of_bytes(b"orig"),
+        asset_hash: "h".into(),
+        owned: OwnedFields::icon_only(),
+        pinned_seed: None,
+    };
+    let empty = MemLedgerStore::new();
+
+    // Committed terminal, but the ledger upsert never landed → repair pending (active_txns would miss it).
+    let committed = vec![
+        JournalRecord::TxnBegin { txn: 1, items: vec![a.id.clone()] },
+        prepared(1),
+        JournalRecord::ItemApplied { txn: 1, item: a.id.clone(), new_fingerprint: Fingerprint::of_bytes(b"styled") },
+        JournalRecord::TxnCommitted { txn: 1 },
+    ];
+    assert!(repair_pending(&committed, &empty).unwrap(), "committed-but-unreconciled → pending");
+
+    // Incomplete (no terminal) → repair pending.
+    let incomplete = vec![JournalRecord::TxnBegin { txn: 1, items: vec![a.id.clone()] }, prepared(1)];
+    assert!(repair_pending(&incomplete, &empty).unwrap(), "incomplete → pending");
+
+    // Rolled-back terminal → NOT pending (desktop restored, ledger clean).
+    let rolled_back = vec![
+        JournalRecord::TxnBegin { txn: 1, items: vec![a.id.clone()] },
+        prepared(1),
+        JournalRecord::TxnRolledBack { txn: 1 },
+    ];
+    assert!(!repair_pending(&rolled_back, &empty).unwrap(), "rolled-back → not pending");
+
+    // A committed txn WITH its ledger row present (a normal post-apply journal awaiting checkpoint) is
+    // reconciled → NOT pending, so a healthy desktop never spuriously shows repair.
+    let world = World::shared();
+    seed(&world, &a, b"orig");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+    assert!(
+        !repair_pending(journal.records(), &ledger).unwrap(),
+        "committed + present ledger row → reconciled → not pending"
     );
 }
 

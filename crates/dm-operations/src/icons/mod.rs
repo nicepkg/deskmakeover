@@ -140,6 +140,12 @@ pub struct IconResetOutcome {
     /// (codex R3-Block 4): never a bare `Err` over an already-mutated desktop — `ok:false` + the
     /// authoritative persisted state + this note. `None` = clean.
     pub degraded: Option<String>,
+    /// True when the reset did NOT run its ledger revert because up-front recovery had to heal a prior
+    /// crash first (degraded, or a clean abort that already moved the desktop — codex R6-#4). The host
+    /// must then SKIP the reset-only finalizers (disabling auto-format, lifting the arrow overlay):
+    /// the reset has not actually happened, so applying its side effects would leave a partial state
+    /// (arrow native + auto-format off, yet icons still styled). The user re-syncs and retries.
+    pub deferred: bool,
     pub stores: IconStoreState,
 }
 
@@ -164,16 +170,22 @@ impl<'a> IconOps<'a> {
         Self { platform, settings }
     }
 
-    /// Reads stores ②③ + the active ledger for the persisted snapshot the host reports.
+    /// Reads stores ②③ + the active ledger for the persisted snapshot the host reports. `applied`
+    /// keys the restore affordance: it is true when the ledger has any styled row OR a prior crash's
+    /// recovery left repair pending (an in-flight or committed-but-unreconciled txn in the journal),
+    /// so a styled desktop the ledger does not yet reflect never hides the only way back (codex R6-#6).
     pub fn read_state(
         &self,
         history: &LookHistoryStore,
         ledger: &dyn LedgerStore,
+        journal: &dyn JournalSink,
     ) -> Result<IconStoreState> {
+        let applied = !ledger.all()?.is_empty()
+            || crate::txn::repair_pending(&journal.read_all()?, ledger)?;
         Ok(IconStoreState {
             saved_style: self.settings.get_saved_style()?,
             history: history.all(),
-            applied: !ledger.all()?.is_empty(),
+            applied,
         })
     }
 
@@ -222,7 +234,7 @@ impl<'a> IconOps<'a> {
                     recovery.aborted.len()
                 ));
             }
-            let stores = self.read_state_or_degraded(history, ledger, &mut repair);
+            let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);
             return Ok(IconApplyOutcome {
                 committed: Vec::new(),
                 reverted: Vec::new(),
@@ -342,7 +354,7 @@ impl<'a> IconOps<'a> {
                 // return the authoritative state + a repair note rather than a bare Err over a
                 // half-changed desktop (codex R3-Block 4).
                 repair.push(format!("apply driver: {e}"));
-                let stores = self.read_state_or_degraded(history, ledger, &mut repair);
+                let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);
                 return Ok(IconApplyOutcome {
                     committed: Vec::new(),
                     reverted,
@@ -373,12 +385,14 @@ impl<'a> IconOps<'a> {
         // freshly-styled desktop — codex R3-Block 4): record it into `repair` and press on, so the op
         // returns the authoritative persisted state + ok:false. (A crash BETWEEN these writes is the
         // separately-documented, self-healing finalize crash-window — a distinct, accepted gap.)
-        // ...AND only when this apply actually STYLED at least one icon. An all-conflicts / zero-effect
-        // batch (every item CAS-failed, or every one was a healed-poison re-apply that skipped) leaves
-        // `committed` empty and the desktop unchanged: writing ② then would poison the saved-style with
-        // a look the desktop never wears and grow ③ with a phantom entry, and the host would report a
-        // clean success over a no-op (codex R5-#2). Persist ONLY on a real, committed style change.
-        if apply.error.is_none() && !apply.committed.is_empty() {
+        // ...AND only when this apply had a REAL EFFECT on the desktop — it styled at least one icon
+        // (`committed`) OR it reverted a 「保留原样」 opt-out (`reverted`). A completed global Apply is
+        // the ② writer even when it only reverts (spec 07 §8.2): the new look "everything original" is
+        // still the saved style, and ③ records it. The ONLY case that must NOT write ②③ is a genuinely
+        // zero-effect batch — every item CAS-conflicted, nothing styled AND nothing reverted — where
+        // writing ② would poison the saved-style with a look the desktop never wears and the host would
+        // report a clean success over a no-op (codex R5-#2 / R6-#2).
+        if apply.error.is_none() && (!apply.committed.is_empty() || !reverted.is_empty()) {
             if let Err(e) = self.settings.set_saved_style(Some(&style)) {
                 repair.push(format!("save ② style: {e}"));
             }
@@ -407,7 +421,7 @@ impl<'a> IconOps<'a> {
             Err(e) => repair.push(format!("gc live-set: {e}")),
         }
 
-        let stores = self.read_state_or_degraded(history, ledger, &mut repair);
+        let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);
         Ok(IconApplyOutcome {
             committed: apply.committed,
             reverted,
@@ -426,9 +440,10 @@ impl<'a> IconOps<'a> {
         &self,
         history: &LookHistoryStore,
         ledger: &dyn LedgerStore,
+        journal: &dyn JournalSink,
         repair: &mut Vec<String>,
     ) -> IconStoreState {
-        match self.read_state(history, ledger) {
+        match self.read_state(history, ledger, journal) {
             Ok(s) => s,
             Err(e) => {
                 repair.push(format!("state read-back: {e}"));
@@ -484,11 +499,12 @@ impl<'a> IconOps<'a> {
                     recovery.aborted.len()
                 ));
             }
-            let stores = self.read_state_or_degraded(history, ledger, &mut repair);
+            let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);
             return Ok(IconResetOutcome {
                 restored: Vec::new(),
                 skipped: Vec::new(),
                 degraded: Some(repair.join("; ")),
+                deferred: true,
                 stores,
             });
         }
@@ -554,11 +570,12 @@ impl<'a> IconOps<'a> {
             repair.push(format!("reset clear ②: {e}"));
         }
 
-        let stores = self.read_state_or_degraded(history, ledger, &mut repair);
+        let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);
         Ok(IconResetOutcome {
             restored,
             skipped,
             degraded: (!repair.is_empty()).then(|| repair.join("; ")),
+            deferred: false,
             stores,
         })
     }

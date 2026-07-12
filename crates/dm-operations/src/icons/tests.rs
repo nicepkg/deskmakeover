@@ -292,7 +292,7 @@ fn read_state_reflects_the_stores() {
     {
         let fake = FakePlatform::new(f.world.clone());
         let ops = IconOps::new(IconPlatform::new(&fake, &fake, &f.assets), &f.settings);
-        let cold = ops.read_state(&f.history, &f.ledger).unwrap();
+        let cold = ops.read_state(&f.history, &f.ledger, &f.journal).unwrap();
         assert!(cold.saved_style.is_none() && cold.history.is_empty() && !cold.applied);
     }
     let app = item("app", ItemKind::Shortcut);
@@ -300,7 +300,7 @@ fn read_state_reflects_the_stores() {
     f.apply(&[("app", 0, [1, 2, 3, 255])], style(1), "A", "v1", &[app.clone()]);
     let fake = FakePlatform::new(f.world.clone());
     let ops = IconOps::new(IconPlatform::new(&fake, &fake, &f.assets), &f.settings);
-    let warm = ops.read_state(&f.history, &f.ledger).unwrap();
+    let warm = ops.read_state(&f.history, &f.ledger, &f.journal).unwrap();
     assert!(warm.applied && warm.saved_style.is_some() && warm.history.len() == 1);
 }
 
@@ -743,4 +743,115 @@ fn a_clean_recovery_that_restored_the_desktop_defers_the_current_apply() {
     assert!(out.degraded.is_some(), "it returns a repair/resync note, never a bare Err over a moved desktop");
     assert!(out.degraded.as_deref().unwrap().contains("recovered"), "the note explains the recovery");
     assert_eq!(f.world.borrow().get(&y.path).unwrap(), b"orig-y", "Y was NOT styled this round");
+}
+
+#[test]
+fn a_poisoned_row_re_applied_with_a_stale_scan_still_heals_and_styles() {
+    // codex R6-#3: the host caches the scan. After keep/reset restores an item (desktop→original) but
+    // the paired `ledger.remove` faults, a DIRECT re-apply may run against a scan captured BEFORE the
+    // restore — whose fingerprint still reads the OLD styled state (no rescan happened between). The
+    // heal must anchor on the OBSERVED current (proven original), NOT the stale scan fingerprint, or
+    // the apply CAS-conflicts forever. The earlier fresh-scan test masked this (the fixture re-reads).
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.apply(&[("a", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[a.clone()]);
+    // The fingerprint a PRE-restore scan would still hold (the styled desktop).
+    let stale_fp = dm_domain::Fingerprint::of_bytes(&f.world.borrow().get(&a.path).unwrap());
+    // Poison: desktop reverted to original, but the ledger row lingers (remove faulted).
+    f.world.borrow_mut().put(&a.path, b"orig-a");
+
+    // Re-apply A directly with a STALE scan (styled fingerprint) — NOT the fixture's fresh re-scan.
+    let mut session = IconApplySession::begin(0, 1);
+    session.push("a", 0, master_b64([7, 7, 7, 255]));
+    let stale_scan = vec![ScannedItem { item: a.clone(), fingerprint: stale_fp }];
+    let fake = FakePlatform::new(f.world.clone());
+    let ops = IconOps::new(IconPlatform::new(&fake, &fake, &f.assets), &f.settings);
+    let out = ops
+        .commit_apply(
+            session,
+            style(2),
+            Some("B".into()),
+            "v2",
+            2,
+            &stale_scan,
+            &[],
+            &mut f.txn,
+            &mut f.journal,
+            &mut f.ledger,
+            &mut f.history,
+        )
+        .unwrap();
+
+    assert_eq!(out.committed, vec![ItemId::from_raw("a")], "healed + styled despite the STALE scan fingerprint");
+    assert!(out.conflicts.is_empty(), "the stale scan must NOT cause a permanent conflict");
+    assert_eq!(
+        f.ledger.get(&a.id).unwrap().unwrap().original_fingerprint,
+        dm_domain::Fingerprint::of_bytes(b"orig-a"),
+        "the heal anchored on the true original",
+    );
+}
+
+#[test]
+fn a_revert_only_apply_still_writes_the_saved_style_and_history() {
+    // codex R6-#2: an Apply that only REVERTS (the user opts every styled icon to 「保留原样」 and
+    // styles none) is still a completed global Apply and MUST write ②③ (spec 07 §8.2) — the new look
+    // "everything original" is the saved style. Only a genuinely zero-effect all-conflicts batch skips
+    // ②③. Gating the ②③ write on `committed` alone (R5) wrongly dropped this case.
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.apply(&[("a", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[a.clone()]);
+    let history_before = f.history.all().len();
+
+    // Re-apply with NO masters (nothing to style) and a → 「保留原样」 (revert it).
+    let out = f.apply_reverting(&[], style(2), "B", "v2", &[a.clone()], &["a"]);
+
+    assert_eq!(out.reverted, vec![ItemId::from_raw("a")], "a was reverted");
+    assert!(out.committed.is_empty(), "nothing was styled");
+    assert_eq!(f.settings.get_saved_style().unwrap(), Some(style(2)), "② reflects the revert-only Apply");
+    assert_eq!(f.history.all().len(), history_before + 1, "③ recorded the completed Apply");
+}
+
+#[test]
+fn a_reset_defers_when_up_front_recovery_had_to_heal_a_prior_crash() {
+    // codex R6-#4: a reset whose up-front recovery ABORTS an interrupted txn already moved the desktop;
+    // the ledger reset must NOT run on top (the strict `journal.checkpoint(&[])?` would otherwise bare-
+    // Err over it). The outcome carries `deferred: true` so the host SKIPS the reset-only finalizers
+    // (auto-format off + arrow lift), which would otherwise leave a partial state.
+    use crate::txn::journal::{JournalRecord, JournalSink};
+    let mut f = Fixture::new();
+    let x = item("x", ItemKind::Shortcut);
+    let orig_x = b"orig-x".to_vec();
+    let styled_x = b"styled-x".to_vec();
+    f.world.borrow_mut().put(&x.path, &styled_x);
+    let target = x.target();
+    for rec in [
+        JournalRecord::TxnBegin { txn: 1, items: vec![x.id.clone()] },
+        JournalRecord::ItemPrepared {
+            txn: 1,
+            item: x.id.clone(),
+            target,
+            anchor: dm_domain::RestoreAnchor::FileBytes { bytes: orig_x.clone() },
+            original_fingerprint: dm_domain::Fingerprint::of_bytes(&orig_x),
+            expected_fingerprint: dm_domain::Fingerprint::of_bytes(&orig_x),
+            asset_hash: "h".into(),
+            owned: dm_domain::OwnedFields::icon_only(),
+            pinned_seed: None,
+        },
+        JournalRecord::ItemApplied {
+            txn: 1,
+            item: x.id.clone(),
+            new_fingerprint: dm_domain::Fingerprint::of_bytes(&styled_x),
+        },
+    ] {
+        f.journal.append(&rec).unwrap();
+    }
+
+    let out = f.reset(false);
+
+    assert!(out.deferred, "reset deferred to let recovery heal the prior crash first");
+    assert!(out.restored.is_empty(), "the ledger reset did NOT run this round");
+    assert!(out.degraded.is_some(), "a repair/resync note is returned, never a bare Err");
+    assert_eq!(f.world.borrow().get(&x.path).unwrap(), orig_x, "recovery restored the crashed item's desktop");
 }

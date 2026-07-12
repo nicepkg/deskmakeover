@@ -237,8 +237,11 @@ mod tests {
 
     #[test]
     fn the_dacl_is_protected_and_denies_non_admin_writes() {
-        // Protected DACL blocks C:\ProgramData's inheritable CREATOR OWNER grant.
-        assert!(DATA_DIR_SDDL.starts_with("D:P"));
+        // Owner pinned to Builtin Administrators (O:BA) so the elevated-but-not-SYSTEM helper
+        // never leaves the dir user-owned; Protected DACL (D:P) blocks C:\ProgramData's
+        // inheritable CREATOR OWNER grant.
+        assert!(DATA_DIR_SDDL.starts_with("O:BA"), "owner must be pinned to Administrators");
+        assert!(DATA_DIR_SDDL.contains("D:P("), "the DACL must be protected");
         // SYSTEM and Administrators get full control.
         assert!(DATA_DIR_SDDL.contains("(A;OICI;FA;;;SY)"));
         assert!(DATA_DIR_SDDL.contains("(A;OICI;FA;;;BA)"));

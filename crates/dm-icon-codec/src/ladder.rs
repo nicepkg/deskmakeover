@@ -19,10 +19,11 @@ pub const LADDER_SIZES: [usize; 6] = [256, 48, 32, 24, 20, 16];
 /// transparent global-overlay slot ships every one at true 32-bit alpha.
 pub const OVERLAY_SIZES: [usize; 6] = [16, 20, 24, 32, 48, 256];
 
-/// Build the size ladder from a source render: every ladder size `<= source.width`, each
-/// a linear-light area-average downscale of the source (`GeneratedIconStore.Save` →
-/// `IconResampler.Downscale`). Falls back to `[source]` when the source is smaller than
-/// every ladder rung.
+/// Build the size ladder from a source render: every ladder size that fits BOTH source
+/// dimensions (`<= source.width` AND `<= source.height`, so a non-square source never
+/// upsamples an axis), each a linear-light area-average downscale of the source
+/// (`GeneratedIconStore.Save` → `IconResampler.Downscale`). Falls back to `[source]` when
+/// the source is smaller than every ladder rung.
 pub fn resample_ladder(source: &Raster) -> Vec<Raster> {
     // A zero-dimension source produces a frame the codec's own `parse` rejects
     // (dib_width <= 0); refuse it at the source instead of baking an invalid asset.

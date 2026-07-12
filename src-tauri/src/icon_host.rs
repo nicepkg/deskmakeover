@@ -374,17 +374,25 @@ impl IconHost {
             }
         } else if outcome.degraded.is_some() {
             (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
-        } else if outcome.committed.is_empty()
-            && outcome.reverted.is_empty()
-            && !outcome.conflicts.is_empty()
-        {
-            // No error, nothing styled, nothing reverted, but there WERE conflicts — every icon
-            // CAS-failed (they changed under the user since the scan). The saved-style was deliberately
-            // NOT written (icons/mod.rs), so this is not a clean success: tell the user + keep the draft
-            // dirty for a retry (codex R5-#2 / R6-#2). An intentional-empty apply (nothing selected,
-            // NO conflicts) falls through to the clean-success arm — it is benign, not a "changed
-            // elsewhere" warning.
+        } else if outcome.committed.is_empty() && outcome.reverted.is_empty() {
+            // A ZERO-EFFECT apply: nothing styled AND nothing reverted. This is NOT a completed Apply,
+            // so ②③ was deliberately NOT written (icons/mod.rs uses the SAME `meaningful_apply`
+            // predicate) — report a no-effect and keep the draft dirty, never a clean success that
+            // clears it (codex R8-#2,#3). Covers all-conflicts, a restore-only batch whose every opt-out
+            // was a hand-edit, and a pure no-op alike.
             (false, Some(ToastDto { key: "Toast_ApplyNoEffect".into(), arg: None }))
+        } else if !outcome.conflicts.is_empty() {
+            // A PARTIAL success: some icons styled/reverted, others conflicted (changed under the user
+            // since the scan) or were left as a trust-first hand-edit skip. ②③ WAS written (a real
+            // effect landed). Surface the skipped count so the user knows to rescan + retry them — spec
+            // 01 requires skipped items be visible, never silently swallowed (codex R8-#3).
+            (
+                true,
+                Some(ToastDto {
+                    key: "Toast_ApplySkipped".into(),
+                    arg: Some(outcome.conflicts.len().to_string()),
+                }),
+            )
         } else {
             (true, None)
         };

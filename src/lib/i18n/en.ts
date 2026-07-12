@@ -494,6 +494,7 @@ export const en = {
   "Toast_AppliedNoOverlay": "Icons beautified · the arrow-hide step was skipped (no admin)",
   "Toast_ApplyFailed": "Couldn't apply · nothing changed, your desktop is safe",
   "Toast_ApplyNoEffect": "No icons were beautified · they may have changed elsewhere; refresh and try again",
+  "Toast_ApplySkipped": "Beautified · skipped {0} (they changed elsewhere; refresh to retry them)",
   "Toast_ApplyDegraded": "Partly applied · it didn't fully complete; please apply again to confirm",
   "Toast_ApplySuperseded": "Superseded by a newer change · apply again",
   "Toast_ResetSkipped": "Skipped {0} item(s) you'd edited yourself",

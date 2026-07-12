@@ -643,6 +643,12 @@ export const useIcons = create<IconsState>((set, get) => {
         const wasDirty = get().state?.dirty ?? false
         adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted), keepOverrides, wasDirty)
         useToasts.getState().show(t('Toast_Refreshed'))
+      } catch (err) {
+        // A failed refresh keeps the current view (the source LRU still serves its URLs) and tells the
+        // user, rather than rejecting silently — the host may have advanced its scan revision, but the
+        // next successful rescan reconciles it (codex R4-Major 2).
+        console.error('icons.rescan failed', err)
+        useToasts.getState().show(t('Toast_RefreshFailed'), 'warn')
       } finally {
         scanInFlight = false
       }

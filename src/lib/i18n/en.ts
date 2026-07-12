@@ -514,6 +514,7 @@ export const en = {
   "Toast_PaperRestored": "Your original wallpaper is back",
   "Toast_ExceptionsCleared": "All exceptions cleared", // PENDING-RESX
   "Toast_Refreshed": "Desktop re-read",
+  "Toast_RefreshFailed": "Refresh failed; the current view is unchanged, please try again",
   "Toast_RestoreFailed": "Couldn't fully restore; kept for a retry; your desktop's original is safe",
   "Toast_Restored": "Restored · your desktop is back to normal",
   "Toast_SnapshotExported": "Snapshot exported",

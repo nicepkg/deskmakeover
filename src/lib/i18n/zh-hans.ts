@@ -516,6 +516,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Toast_PaperRestored": "已换回你原来的壁纸",
   "Toast_ExceptionsCleared": "已清除所有例外", // PENDING-RESX
   "Toast_Refreshed": "已重新读取桌面",
+  "Toast_RefreshFailed": "刷新没成功，当前画面保持不变，请稍后再试",
   "Toast_RestoreFailed": "未能完全还原 · 已保留可重试，原始桌面数据安全",
   "Toast_Restored": "已还原 · 桌面回到原来的样子",
   "Toast_SnapshotExported": "快照已导出",

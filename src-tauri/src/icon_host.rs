@@ -8,7 +8,7 @@
 //! session, and the last-scan cache) lives under ONE mutex — the B2 apply/GC lifecycle-lock's
 //! runtime half — so apply and GC never interleave.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -145,7 +145,7 @@ impl IconHost {
                 scan_revision: 0,
                 op_epoch: 0,
             }),
-            sources: Mutex::new(SourceCache::default()),
+            sources: Mutex::new(SourceCache::new(SOURCE_CACHE_CAP)),
             revision: AtomicU32::new(0),
             arrow_overlay: Mutex::new(arrow),
             arrow_marker,
@@ -565,29 +565,61 @@ fn icon_protocol_url(key: &str) -> String {
 /// `immutable` Cache-Control header honest (codex Major 4): identical pixels → identical URL (a
 /// legitimate cache hit); changed pixels → a new URL (never a stale reuse of a prior process's
 /// bytes). Written into a caller-owned local map so the whole cache swaps atomically per scan.
-/// Two generations of the `dmicon://` source cache. A scan swaps in the freshly-extracted map, but
-/// the OLD webview frame keeps requesting the PREVIOUS scan's content-addressed URLs until the
-/// frontend re-renders against the new scan DTO. Serving only the live map would 404 those in-flight
-/// requests during the swap→adopt handoff (codex R3-Major 5). Keeping the prior generation covers
-/// that window; content-addressed keys make it safe — an unchanged icon keeps its key across
-/// generations, and only a changed icon's superseded key lives solely in `previous`, dropped one
-/// scan later when the frontend has certainly adopted the new URLs.
-#[derive(Default)]
+/// The byte cap for the `dmicon://` source cache — generous enough to hold several scan generations
+/// of a large desktop (256px PNGs are small), bounding memory while covering the handoff window.
+const SOURCE_CACHE_CAP: usize = 32 * 1024 * 1024;
+
+/// The `dmicon://` source cache. A scan republishes the freshly-extracted generation, but the OLD
+/// webview frame keeps requesting the PREVIOUS scan's content-addressed URLs until the frontend
+/// re-renders against the new scan DTO — serving only the live generation would 404 those in-flight
+/// requests during the swap→adopt handoff (codex R3-Major 5 / R4-Major 2). A fixed two-generation
+/// window could still evict a URL the UI had not yet adopted (a scan whose adopt failed, then another
+/// scan). Instead this is a byte-bounded, content-keyed LRU: each scan re-inserts its live keys
+/// (refreshing their recency), so an unchanged icon never ages out and a CHANGED icon's superseded
+/// key survives several more generations before the cap evicts it — covering the handoff generously
+/// without unbounded growth. Content addressing dedups (one entry per unique pixel set).
 struct SourceCache {
-    current: HashMap<String, Vec<u8>>,
-    previous: HashMap<String, Vec<u8>>,
+    map: HashMap<String, Vec<u8>>,
+    /// Insertion/refresh order, front = oldest — the LRU eviction queue.
+    order: VecDeque<String>,
+    bytes: usize,
+    cap: usize,
 }
 
 impl SourceCache {
-    /// Publishes the freshly-extracted generation, retiring the prior `current` to `previous` (and
-    /// dropping the older `previous`).
-    fn publish(&mut self, next: HashMap<String, Vec<u8>>) {
-        self.previous = std::mem::replace(&mut self.current, next);
+    fn new(cap_bytes: usize) -> Self {
+        Self { map: HashMap::new(), order: VecDeque::new(), bytes: 0, cap: cap_bytes }
     }
 
-    /// The bytes for a content-addressed key, checking the live generation then the prior one.
+    /// Publishes a freshly-extracted generation: inserts every entry (a re-inserted content key
+    /// refreshes its recency, so live icons never evict), then trims the oldest past the byte cap.
+    fn publish(&mut self, next: HashMap<String, Vec<u8>>) {
+        for (k, v) in next {
+            self.insert(k, v);
+        }
+    }
+
+    fn insert(&mut self, key: String, bytes: Vec<u8>) {
+        if let Some(old) = self.map.remove(&key) {
+            self.bytes -= old.len();
+            self.order.retain(|k| k != &key);
+        }
+        self.bytes += bytes.len();
+        self.order.push_back(key.clone());
+        self.map.insert(key, bytes);
+        // Evict the oldest keys until under the cap, but always keep the just-inserted entry.
+        while self.bytes > self.cap && self.order.len() > 1 {
+            if let Some(oldest) = self.order.pop_front() {
+                if let Some(v) = self.map.remove(&oldest) {
+                    self.bytes -= v.len();
+                }
+            }
+        }
+    }
+
+    /// The bytes for a content-addressed key (read-only; recency is refreshed by re-scan, not by get).
     fn get(&self, key: &str) -> Option<Vec<u8>> {
-        self.current.get(key).or_else(|| self.previous.get(key)).cloned()
+        self.map.get(key).cloned()
     }
 }
 
@@ -765,19 +797,30 @@ mod tests {
     }
 
     #[test]
-    fn source_cache_keeps_the_previous_generation_for_the_swap_handoff() {
-        // codex R3-Major 5: a changed icon's OLD content-addressed URL must still resolve during the
-        // window between a scan's cache swap and the frontend adopting the new URLs.
-        let mut c = SourceCache::default();
-        c.publish(HashMap::from([("a/0/h1".to_string(), vec![1u8])]));
-        // Gen 2: item a's source changed → a NEW key; its old key now lives only in `previous`.
-        c.publish(HashMap::from([("a/0/h2".to_string(), vec![2u8])]));
-        assert_eq!(c.get("a/0/h2"), Some(vec![2]), "the live generation resolves");
-        assert_eq!(c.get("a/0/h1"), Some(vec![1]), "the prior generation still resolves during handoff");
-        // Gen 3: the two-generations-ago key is finally evicted (the frontend has long since adopted).
-        c.publish(HashMap::from([("a/0/h3".to_string(), vec![3u8])]));
-        assert_eq!(c.get("a/0/h1"), None, "two generations back is evicted");
-        assert_eq!(c.get("a/0/h2"), Some(vec![2]), "one generation back still resolves");
-        assert_eq!(c.get("a/0/h3"), Some(vec![3]), "the live generation resolves");
+    fn source_cache_keeps_many_generations_and_never_evicts_a_live_key() {
+        // codex R3-Major 5 / R4-Major 2: a changed icon's OLD content-addressed URL must still resolve
+        // across the swap→adopt handoff — for MORE than one generation, since a scan whose adopt failed
+        // leaves the UI on an even-older generation. The byte-bounded LRU covers it; an unchanged icon
+        // that is re-scanned every generation must NEVER age out.
+        let mut c = SourceCache::new(1024); // small cap, but each entry is tiny → many survive
+        c.publish(HashMap::from([("live/0/h".to_string(), vec![1u8]), ("a/0/h1".to_string(), vec![2u8])]));
+        // Several more generations where `live` is unchanged (re-inserted, same key) and `a` changes.
+        c.publish(HashMap::from([("live/0/h".to_string(), vec![1u8]), ("a/0/h2".to_string(), vec![3u8])]));
+        c.publish(HashMap::from([("live/0/h".to_string(), vec![1u8]), ("a/0/h3".to_string(), vec![4u8])]));
+        // The live key survives every generation; the changed key's older versions survive well past a
+        // single generation (all under the cap here).
+        assert_eq!(c.get("live/0/h"), Some(vec![1]), "an unchanged, re-scanned icon never evicts");
+        assert_eq!(c.get("a/0/h1"), Some(vec![2]), "two generations back still resolves");
+        assert_eq!(c.get("a/0/h3"), Some(vec![4]), "the live generation resolves");
+    }
+
+    #[test]
+    fn source_cache_evicts_oldest_past_the_byte_cap() {
+        let mut c = SourceCache::new(100);
+        // Insert entries that together exceed the cap; the oldest must be evicted, the newest kept.
+        c.publish(HashMap::from([("old/0/h".to_string(), vec![0u8; 60])]));
+        c.publish(HashMap::from([("new/0/h".to_string(), vec![0u8; 60])])); // now 120 > 100 → evict oldest
+        assert_eq!(c.get("old/0/h"), None, "the oldest key was evicted past the cap");
+        assert_eq!(c.get("new/0/h").map(|v| v.len()), Some(60), "the newest key is always kept");
     }
 }

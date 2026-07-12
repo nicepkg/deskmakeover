@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-12 night (full-repo audit + fix run: 11 commits landed, all gates green — docs/reviews/2026-07-12-audit-fix-run.md · M7 常驻设计FINALIZED + 4 owner dispositions APPROVED — ADR-0022, docs/reviews/2026-07-12-m7-resident-panel.md · roadmap: M6-WIRE Wave A(壁纸)DONE → Wave B foundation B6-B9+fs_atomic DONE (storage/identity, Mac-green, under codex review), B1-B5 icon-bridge + B10 watcher REMAINING = M7 build blocker · #7 diagnostics+3 marginal P3 owner-go, not started · ICON-5/9/11 held, owner has not ruled. Prior (swept to journal): M6 kernel-speed Phase 0-4a + single-truth WASM flip EXECUTED, wave-2 hardening CLOSED, arrow-restore UX DONE, M6-WIRE Wave A wallpaper wiring DONE)
+updated: 2026-07-12 night (full-repo audit + fix run: 11 commits landed, all gates green — docs/reviews/2026-07-12-audit-fix-run.md · M7 常驻设计FINALIZED + 4 owner dispositions APPROVED — ADR-0022, docs/reviews/2026-07-12-m7-resident-panel.md · roadmap: M6-WIRE Wave A(壁纸)DONE → Wave B foundation B6-B9+fs_atomic DONE + B1(thin icon DTOs)+B2(icon apply-session/persist/reset ops)DONE (Mac-green, 483 tests), B3-B5 icon bridge(host/devhost/commands/frontend) + B10 watcher REMAINING = M7 build blocker; B3/B4 carry a NEW icon-source-extraction seam (256px sources → webview via a dmicon:// protocol, unbuilt on BOTH platforms) · #7 diagnostics+3 marginal P3 owner-go, not started · ICON-5/9/11 held, owner has not ruled. Prior (swept to journal): M6 kernel-speed Phase 0-4a + single-truth WASM flip EXECUTED, wave-2 hardening CLOSED, arrow-restore UX DONE, M6-WIRE Wave A wallpaper wiring DONE)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -191,14 +191,47 @@ COM `.lnk` temp `claim_temp_for` O_EXCL + `MoveFileExW(WRITE_THROUGH)` publish, 
 `a87dff8` dm-elevated: write-through overlay snapshot + non-replacing snapshot-once claim, **blind-write
 [WINDOWS-VERIFY]** — blake3 blocks its msvc-check). Precise repros + the (deferred) IPersistStream /
 recovery-re-verify / named-mutex follow-ups are in the handoff plan **§8a**. The B2 apply/GC
-lifecycle-lock is recorded as a B2 acceptance criterion. **Foundation COMPLETE — next is B1-B5 icon
-bridge (owner ruled D1-consistent THIN boundary: Rust = scan/apply-package/restore/②③-persist; the
-frontend assembles IconsStateDto with presets/palette/grid).**
-**Still unbuilt in Wave B:** the icon bridge cluster **B1-B5** (`dm-contracts/icons.rs` DTOs,
-the apply-session chunk-buffer + `TxnDriver::apply` wiring to a real Tauri command incl. the
-commit→ledger reconcile gap #5, devhost icon fakes, `src-tauri` 9 icon commands, bridge repoint)
-and **B10** `watcher.rs` (still the M7 SKELETON stub, returns `Err` → `notify`+`notify-debouncer-full`).
-**Roadmap: finish Wave B → M7.** Build M7 only after Wave B lands.
+lifecycle-lock is recorded as a B2 acceptance criterion (its RUNTIME half — serializing apply+gc under
+one mutex — lands with the host, B4).
+
+**B1+B2 DONE (2026-07-12, D1-consistent THIN boundary — `961cc7f` contracts, `1ef2d23` operations).**
+Owner ruling applied: Rust = scan/apply-package/restore/②③-persist; the frontend assembles
+IconsStateDto (presets/palette/grid). Locked design decisions (carry forward to B3-B5):
+- **B1** `dm-contracts/icons.rs` — the thin bridge shrinks like wallpaper's (schema 6→**7**, TS side lands
+  in B5): `scan→IconScanDto{revision,items}` (raw items, NO state), `getState→getPersisted→IconPersistedDto`
+  (② saved-style + ③ history + applied + arrow + profiles), mutating verbs → thin `IconOpResultDto{ok,toast,persisted}`.
+- **`icons.setLook` LEAVES the bridge** (frontend draft) — a config/override/kindPolicy/typeOverrides draft
+  is not intent (spec 07 §8.2: ② written only on a completed global Apply), so it lives in the frontend store
+  like wallpaper's setLook. **Per-icon overrides are frontend draft state** (a `tint` bakes its master
+  frontend-side, a `keep` item is simply never sent), so a scan item carries none and `commit` needs none.
+- **IconStyle rides as an opaque validated JSON STRING** (`styleJson`/`savedStyleJson`) — like the baked
+  wallpaper PNG rides as base64; Rust validates the envelope, never types the recipe internals, keeping the
+  generated bindings free of the recipe shape.
+- **sourceIndex convention: 0 = primary, 1 = paired empty** (Recycle Bin), matching `sourceUrls[0]=primary`.
+- **B2** `dm-operations/src/icons/` — `IconApplySession` (chunk buffer) + `IconOps` (bundles the immutable
+  ports + settings ②; methods take the mutable stores): `commit_apply` (reconciles journal→ledger before
+  prepare = the #5 gap; packages masters via dm-icon-codec; drives TxnDriver.apply; persists ②③; GCs with
+  live = ledger ∪ in-flight journal), `reset_to_original` (CAS-gated trust-first per spec 07 §10 ★; clears ②),
+  `read_state`. `txn::fakes` is now pub(crate) for test reuse. **Documented follow-up:** reset's crash-window
+  (crash between applier.restore and ledger.remove leaves a lingering row; desktop never wrong, self-healing)
+  is NOT journaled yet.
+
+**Still unbuilt in Wave B — B3-B5 icon bridge + B10 watcher:**
+- **B3** devhost icon fakes + a **NEW `IconSourceExtractor` platform port** (extract an item's normalized
+  256px source(s) → `DecodedImage`; [0] primary, [1] empty). ⚠️ Icon source extraction is UNBUILT on BOTH
+  platforms — dm-windows has WindowsScanner/Applier/StateReader/Overlay/Refresher but nothing produces 256px
+  sources. Devhost extracts from repo real-icon PNGs (like wallpaper devhost); the Windows extractor is a new
+  [WV] blind-write (or wire the existing WindowsScanner's [WV] path).
+- **B4** `src-tauri` IconHost (mirrors WallpaperHost) + a **`dmicon://<itemId>/<slot>?rev=N` custom protocol**
+  serving the 256px sources (mirrors `dmwallpaper://`) + 9 icon commands + AppState wiring + the apply/GC
+  mutex (B2 lifecycle-lock runtime half) + `dm-elevated RestoreOverlay` seam for restoreOverlay.
+- **B5** bridge repoint (`tauri.ts` HANDLED += icons.*; `client.ts`) + **the big frontend refactor**: move
+  presets/palette/swatches/grid/`activePresetId`/assembly OUT of `mock-desktop.ts` into a shared store/lib
+  module (like wallpaper's A3f) so mock + real Tauri share ONE IconsStateDto assembly; setLook → frontend draft;
+  Mac-Tauri E2E (scan/apply chunked/restore/keep-beautify). Schema bump 6→7 lands here.
+- **B10** `watcher.rs` (M7 SKELETON `Err` stub → `notify`+`notify-debouncer-full`).
+**Roadmap: finish Wave B (B3-B5+B10) → M7.** Then **codex review** (owner asked: `/multi-ai solo` codex over
+the full B1-B5 diff) before M7.
 
 **In flight / next (web):**
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all

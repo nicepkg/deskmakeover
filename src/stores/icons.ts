@@ -484,9 +484,17 @@ export const useIcons = create<IconsState>((set, get) => {
    *  this blocks the Settings + programmatic paths. */
   const busy = (): boolean => !!get().state?.working || get().overlayRestoring || scanInFlight
 
-  /** Fetches the raw scan + the persisted ②③/native bits (thin, D1) in one round-trip pair. */
+  /** Fetches the persisted ②③/native bits, THEN the raw scan (thin, D1). Sequenced, NOT `Promise.all`
+   *  (codex R5-#5): `icons.scan` publishes the host-side source cache + bumps the scan revision as a
+   *  side effect, while `icons.getPersisted` is a pure read. Under single-flight, a `Promise.all` that
+   *  rejected on a fast `getPersisted` fault would clear `scanInFlight` in the caller's `finally` while
+   *  the still-pending `scan` RPC keeps running — an ORPHAN publish that advances the host revision
+   *  after the lock is released, desyncing it from the UI (and, if two orphans race, regressing it).
+   *  Reading `getPersisted` first means a persisted fault fails BEFORE the publishing scan ever starts;
+   *  once it starts, the scan runs alone and the lock is held until it settles. */
   const fetchScan = async (): Promise<{ scan: IconScanDto; persisted: IconPersistedDto }> => {
-    const [scan, persisted] = await Promise.all([bridge('icons.scan'), bridge('icons.getPersisted')])
+    const persisted = await bridge('icons.getPersisted')
+    const scan = await bridge('icons.scan')
     return { scan, persisted }
   }
 

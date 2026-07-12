@@ -64,15 +64,6 @@ pub enum PlateFallback {
     White,
 }
 
-/// User-facing participation bucket over `IconKind` (`IconKindBucket`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum KindBucket {
-    App,
-    Folder,
-    File,
-    System,
-}
-
 /// The resolved style for one tile (`ConfigDto`, colours pre-parsed).
 #[derive(Clone, Debug)]
 pub struct Config {

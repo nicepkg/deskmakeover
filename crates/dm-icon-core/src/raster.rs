@@ -29,18 +29,7 @@ pub struct Rgba {
     pub a: u8,
 }
 
-pub const TRANSPARENT: Rgba = Rgba { r: 0, g: 0, b: 0, a: 0 };
 pub const WHITE: Rgba = Rgba { r: 255, g: 255, b: 255, a: 255 };
-
-/// `makeRaster` alias with a distinct height (raster.ts `makeRaster(w, h)`).
-pub fn make_raster(width: usize, height: usize) -> Raster {
-    Raster::new(width, height)
-}
-
-/// `cloneRaster` — a fresh copy of the pixel buffer (raster.ts `cloneRaster`).
-pub fn clone_raster(src: &Raster) -> Raster {
-    src.clone()
-}
 
 /// raster.ts `fromRgbInt` — unpack `0xRRGGBB` to an opaque colour.
 pub fn from_rgb_int(rgb: u32) -> Rgba {

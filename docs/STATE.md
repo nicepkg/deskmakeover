@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-12 night (full-repo audit + fix run: 11 commits landed, all gates green — docs/reviews/2026-07-12-audit-fix-run.md · M7 常驻设计FINALIZED + 4 owner dispositions APPROVED — ADR-0022, docs/reviews/2026-07-12-m7-resident-panel.md · roadmap: M6-WIRE Wave A(壁纸)DONE → Wave B(图标接线)NOT STARTED = M7 build blocker · #7 diagnostics+3 marginal P3 owner-go, not started · ICON-5/9/11 held, owner has not ruled. Prior (swept to journal): M6 kernel-speed Phase 0-4a + single-truth WASM flip EXECUTED, wave-2 hardening CLOSED, arrow-restore UX DONE, M6-WIRE Wave A wallpaper wiring DONE)
+updated: 2026-07-12 night (full-repo audit + fix run: 11 commits landed, all gates green — docs/reviews/2026-07-12-audit-fix-run.md · M7 常驻设计FINALIZED + 4 owner dispositions APPROVED — ADR-0022, docs/reviews/2026-07-12-m7-resident-panel.md · roadmap: M6-WIRE Wave A(壁纸)DONE → Wave B foundation B6-B9+fs_atomic DONE (storage/identity, Mac-green, under codex review), B1-B5 icon-bridge + B10 watcher REMAINING = M7 build blocker · #7 diagnostics+3 marginal P3 owner-go, not started · ICON-5/9/11 held, owner has not ruled. Prior (swept to journal): M6 kernel-speed Phase 0-4a + single-truth WASM flip EXECUTED, wave-2 hardening CLOSED, arrow-restore UX DONE, M6-WIRE Wave A wallpaper wiring DONE)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -171,13 +171,18 @@ disabling auto-format + restoring the arrow overlay); auto-format trust model = 
 timeout-auto-apply with native Toast (never silent by default); resident enable requires one
 successful global Apply first.
 
-**Cannot start build.** The whole chain hangs on M6-WIRE **Wave B** (icons wiring,
-`docs/plans/2026-07-12-m6-wire-host.md` §5 Wave B, unbuilt): ② saved-style storage (extend
-SettingsStore; `icons.setLook` still mocked), a real `FsAssetStore` (every platform today has
-fakes only), `TxnDriver::apply` wired to a production Tauri command (zero callers today), the
-apply commit→ledger reconcile gap, ③ `LookHistoryStore` (currently a bare comment), source-
-fingerprint (0% built), and `watcher.rs` (still the M7 SKELETON stub, returns `Err`).
-**Roadmap: Wave B → M7.** Build M7 only after Wave B lands.
+**Wave B foundation IN PROGRESS (2026-07-12 night — pure-Rust storage/identity layer, all Mac-green).**
+Landed on `main` after `70fddf0`: **B6** saved-style column (② `SettingsStore.icon_style_json`,
+`9f4a3c3`), **B7** `FsAssetStore` (the first real `dm_domain::AssetStore`, `97d4bf0`), **B8**
+`LookHistoryStore` (③ `look-history.json`, `4af1e05`), **B9** `SourceIdentity` source fingerprint
+(`517417d`), plus a shared `fs_atomic` crash-atomic-write extraction (`7feae9d`). `cargo test -p
+dm-operations` 118 · `-p dm-domain` 38 · dm-domain msvc-clean. Under adversarial codex review
+(`/multi-ai solo`) before B2 builds on it.
+**Still unbuilt in Wave B:** the icon bridge cluster **B1-B5** (`dm-contracts/icons.rs` DTOs,
+the apply-session chunk-buffer + `TxnDriver::apply` wiring to a real Tauri command incl. the
+commit→ledger reconcile gap #5, devhost icon fakes, `src-tauri` 9 icon commands, bridge repoint)
+and **B10** `watcher.rs` (still the M7 SKELETON stub, returns `Err` → `notify`+`notify-debouncer-full`).
+**Roadmap: finish Wave B → M7.** Build M7 only after Wave B lands.
 
 **In flight / next (web):**
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all

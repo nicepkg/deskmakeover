@@ -485,6 +485,11 @@ export const useIcons = create<IconsState>((set, get) => {
     return s ? { config: s.config, kindPolicy: s.kindPolicy, typeOverrides: s.typeOverrides } : null
   }
 
+  /** True while a real-desktop op (apply / restore / arrow-restore) is in flight. Draft edits and
+   *  rescans are blocked then, so a concurrent op can't race a landed host mutation into a stale UI
+   *  (codex R3-Block 3) — the veil blocks the canvas, this blocks the Settings + programmatic paths. */
+  const busy = (): boolean => !!get().state?.working || get().overlayRestoring
+
   /** Fetches the raw scan + the persisted ②③/native bits (thin, D1) in one round-trip pair. */
   const fetchScan = async (): Promise<{ scan: IconScanDto; persisted: IconPersistedDto }> => {
     const [scan, persisted] = await Promise.all([bridge('icons.scan'), bridge('icons.getPersisted')])
@@ -645,6 +650,7 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     rescan: async () => {
+      if (busy()) return
       const gen = nextGen()
       const fetched = await fetchScan()
       // A rescan superseded by a later op (e.g. an arrow restore started after it)
@@ -664,6 +670,7 @@ export const useIcons = create<IconsState>((set, get) => {
 
     // One undo step per discrete pick; repaint is local and immediate.
     mutate: (change) => {
+      if (busy()) return
       const s = get()
       if (!s.state) return
       pushUndo()
@@ -676,6 +683,7 @@ export const useIcons = create<IconsState>((set, get) => {
 
     // Wheel/continuous gestures: ONE undo step per pointer-down→up (spec 06 §3.3).
     beginGesture: () => {
+      if (busy()) return
       if (gestureDepth === 0) {
         undoStack.push(snapshot())
         if (undoStack.length > 60) undoStack.shift()
@@ -704,6 +712,7 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     selectPreset: (presetId) => {
+      if (busy()) return
       const s = get()
       const preset = s.state?.presets.find((p) => p.id === presetId)
       if (!preset || !s.state) return
@@ -723,6 +732,7 @@ export const useIcons = create<IconsState>((set, get) => {
     // intent that lights the card and turns the CTA into a restore crossing. It is
     // undoable (rides the snapshot) and any real look edit clears it.
     selectSystemDefault: () => {
+      if (busy()) return
       const s = get()
       if (!s.state || s.bareLook) return
       pushUndo()
@@ -731,6 +741,7 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     setOverride: (id, mode, tint) => {
+      if (busy()) return
       const s = get()
       if (!s.state) return
       pushUndo()
@@ -749,6 +760,7 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     clearOverrides: () => {
+      if (busy()) return
       const s = get()
       if (!s.state || !s.items.some((i) => i.overrideMode !== null)) return
       pushUndo()
@@ -764,6 +776,7 @@ export const useIcons = create<IconsState>((set, get) => {
     // the future background auto-format. Persistent — survives when the desktop
     // has no icons of that kind. Per-icon overrides still win (cascade).
     setKindPolicy: (bucket, styled) => {
+      if (busy()) return
       const s = get()
       if (!s.state || s.state.kindPolicy[bucket] === styled) return
       pushUndo()
@@ -772,6 +785,7 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     setTypeOverride: (bucket, entry) => {
+      if (busy()) return
       const s = get()
       if (!s.state) return
       pushUndo()
@@ -787,6 +801,7 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     resetTypeOverrides: () => {
+      if (busy()) return
       const s = get()
       if (!s.state || Object.keys(s.state.typeOverrides).length === 0) return
       pushUndo()
@@ -798,6 +813,7 @@ export const useIcons = create<IconsState>((set, get) => {
     setEditingBucket: (bucket) => set({ editingBucket: bucket }),
 
     undo: () => {
+      if (busy()) return
       const prev = undoStack.pop()
       if (!prev) return
       redoStack.push(snapshot())
@@ -805,6 +821,7 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     redo: () => {
+      if (busy()) return
       const next = redoStack.pop()
       if (!next) return
       undoStack.push(snapshot())
@@ -995,6 +1012,7 @@ export const useIcons = create<IconsState>((set, get) => {
     // 回到此版 stages the entry's config; the panel then runs the SAME
     // ceremonied apply as any other real-desktop crossing (spec 06 §3.7).
     stageVersion: (index) => {
+      if (busy()) return
       const s = get()
       const entry = s.state?.history.find((h) => h.index === index)
       if (!entry || !s.state) return

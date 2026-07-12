@@ -27,7 +27,7 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 | **M6 kernel-speed + WASM cutover** | ✅ EXECUTED (WASM is the only pixel path) | Physical deletion of the frozen TS compositor (`src/icon-compositor/*.ts`, 10 files) held to M8. |
 | **M6-WIRE Wave A (wallpaper)** | DONE **on Mac only** | All Windows COM/WIC/topology (`topology.rs`, `decode.rs`, `wallpaper.rs`) `[WV]`. |
 | **M6-WIRE Wave B foundation (B6-B9 + fs_atomic)** | ✅ DONE (Mac-green) | The four Windows durability defects in `m6-wire-host.md §8a` are **not Mac-fixable** and gate shipping. |
-| **M6-WIRE Wave B icon bridge (B1-B5)** | Mac end-to-end; **R1–R5 all fixed, codex R6 verify pending** | R5's 7 findings (4🔴+3🟠) fixed 2026-07-13 — see §Icon-bridge R4→R5. |
+| **M6-WIRE Wave B icon bridge (B1-B5)** | Mac end-to-end; **R1–R7 all fixed, codex R8 verify pending** | Severity falling each round (R5 4🔴 → R6 1🔴 → R7 0🔴); see §Icon-bridge R4→R7. |
 | **M6-WIRE Wave B B10 (desktop watcher)** | ✅ DONE 2026-07-12 (`37f4b13`) | Real `notify`+`notify-debouncer-full`, Mac-live-verified (FSEvents), msvc-clean. 3 runtime semantics `[WV]` (self-write suppression / restart catch-up / overflow→rescan). |
 | **M6-WIRE Wave C (Windows handoff doc)** | **NOT STARTED** | Spec'd at `docs/references/windows-wiring-handoff/README.md` (m6-wire-host §8); directory does not exist. No systematic Windows verification recipe yet. |
 | **M7 resident auto-format** | **NOT STARTED** (design finalized: ADR-0022 + spec 07 + `m7-resident.md`) | `crates/dm-resident/src/lib.rs` is an empty crate (doc comment only), NOT wired into `src-tauri`. Tasks T1-T12 unbuilt. Precondition gate (B6-B10) is now green. |
@@ -104,16 +104,21 @@ in the (unwritten) Windows handoff doc; the running checklists live in
 - **First-run/onboarding** — welcome-gate built on web; M7 first-format consent strip + resident onboarding unbuilt.
 - Owner-gated release blockers: first version number, making the private repo public, the signing cert, the extracted `public/real-icons/` pack sign-off.
 
-## Icon-bridge R4→R5 status (codex adversarial loop — R6 verify pending)
+## Icon-bridge R4→R7 status (codex adversarial loop — R8 verify pending)
 
-The B1-B5 bridge went through R1(13)+R2(8)+R3(5)+R4(7) fixed; **R5 (2026-07-12) found the R3/R4 fixes
-were directionally right but did not cover the full state space.** Owner decision (A): grind to
-convergence on Mac. **Status 2026-07-13: all 7 R5 findings (4🔴+3🟠) FIXED with regression tests
-(0cecacb/1fdd611/4c18bc7); cargo workspace green (dm-operations 159 · deskmakeover-desktop 24 ·
-dm-windows 53) · tsc · bun 516 · vite · bindings drift-guard; codex R6 verification dispatched.** The
-R4 big one was Major 1 + 1b — the start-ordered generation guard was deleted outright and replaced by
-strict single-flight (at most one host round-trip in flight; scan/rescan/apply/restore/restoreOverlay
-mutually exclusive). R5 then closed the residual state-space gaps that guard had masked:
+The B1-B5 bridge went R1(13)+R2(8)+R3(5)+R4(7)+R5(7) fixed; **R6 then R7 each found residual
+state-space gaps in the prior round's fixes (severity falling: R5 4🔴, R6 1🔴+2🟠, R7 0🔴+3🟠).**
+Owner decision (A): grind to convergence on Mac. **Status 2026-07-13: R5 + R6 + R7 ALL FIXED with
+regression tests (R5 0cecacb/1fdd611/4c18bc7 · R6 901b83f/df0b61a · R7 bcc09c2/ccde4d3); cargo
+workspace 520 green (dm-operations 165 · deskmakeover-desktop 24 · dm-windows 53) · tsc · bun 516 ·
+vite · bindings drift-guard; codex R8 verification dispatched.** R6 highlights: precise `repair_pending`
+(covers committed-but-unreconciled, folded into `read_state` so every DTO is consistent), revert-only
+writes ②③, stale-scan poison heal. R7 highlights: the poison heal no longer bypasses the scan-time CAS
+on an ambiguous (stale-scan) tuple (never overwrites a manual hand-edit), the ②③ write is gated on a
+truly-completed Apply, and a hand-edited revert reports no-effect. The R4 big one was Major 1 + 1b —
+the start-ordered generation guard was deleted outright and replaced by strict single-flight (at most
+one host round-trip in flight; scan/rescan/apply/restore/restoreOverlay mutually exclusive). The R5
+table below records the state-space gaps the guard-removal exposed:
 
 | R5 # | Finding | Fix |
 |---|---|---|

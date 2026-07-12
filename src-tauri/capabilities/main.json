@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Minimal grant for the main window: core defaults plus the frameless-titlebar window controls the web shell drives, window-state persistence, and logging. No shell/opener/fs/dialog access.",
+  "description": "Minimal grant for the main window: core defaults plus the frameless-titlebar window controls the web shell drives, window-state persistence, logging, and the opener (About/support links + the data folder). No fs/dialog access.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -14,6 +14,8 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-title",
     "window-state:default",
-    "log:default"
+    "log:default",
+    "opener:allow-open-url",
+    "opener:allow-open-path"
   ]
 }

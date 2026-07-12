@@ -23,6 +23,8 @@ const HANDLED = new Set([
   'wallpaper.getScreens',
   'wallpaper.applyBaked',
   'wallpaper.restore',
+  'shell.openExternal',
+  'shell.openDataFolder',
 ])
 
 export function tauriHandles(method: string): boolean {
@@ -86,6 +88,19 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
     case 'shell.close':
       await getCurrentWindow().close()
       return null
+    case 'shell.openExternal': {
+      const { openUrl } = await import('@tauri-apps/plugin-opener')
+      await openUrl((params as { url: string }).url)
+      return null
+    }
+    case 'shell.openDataFolder': {
+      const [{ openPath }, { appDataDir }] = await Promise.all([
+        import('@tauri-apps/plugin-opener'),
+        import('@tauri-apps/api/path'),
+      ])
+      await openPath(await appDataDir())
+      return null
+    }
     default:
       throw new Error(`[tauri bridge] unhandled method: ${method}`)
   }

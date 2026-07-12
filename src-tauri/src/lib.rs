@@ -90,6 +90,9 @@ pub fn run() {
                 let _ = window.unminimize();
             }
         }));
+        // Opens About/support links in the default browser + the data folder in the
+        // file manager (shell.openExternal / shell.openDataFolder).
+        builder = builder.plugin(tauri_plugin_opener::init());
     }
 
     builder

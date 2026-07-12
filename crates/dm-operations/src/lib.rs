@@ -20,7 +20,10 @@ pub mod txn;
 pub mod wallpaper;
 
 pub use error::{OperationError, Result};
-pub use ledger::{JsonLedgerStore, LedgerEntry, LedgerStore, MemLedgerStore, TxnState};
+pub use ledger::{
+    JsonLedgerStore, LedgerEntry, LedgerStore, LookHistoryStore, LookVersion, MemLedgerStore,
+    PinResult, PushOutcome, TxnState,
+};
 pub use settings_store::SettingsStore;
 pub use wallpaper::{RustImageDecoder, SnapshotStore, WallpaperOps, WallpaperOutcome};
 pub use txn::{

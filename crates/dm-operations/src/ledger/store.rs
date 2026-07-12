@@ -7,8 +7,9 @@
 //!   but unparseable ledger returns [`OperationError::CorruptLedger`], NEVER an empty list,
 //!   so a corrupt file can't masquerade as "nothing applied" and strand the restore path.
 //!
-//! (The advisory "10 newest looks" history — `LookHistoryStore`, which IS corruption-tolerant
-//! because it's advisory — is a separate, additive store not needed for the M3/M4 exit bar.)
+//! (The advisory "10 newest looks" history — [`super::history::LookHistoryStore`], which IS
+//! corruption-tolerant because it's advisory — is the deliberately-opposite sibling store: its
+//! own physically separate file, empty on corruption rather than fail-closed.)
 
 use std::collections::BTreeMap;
 use std::fs;

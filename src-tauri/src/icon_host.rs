@@ -36,6 +36,11 @@ struct IconMutState {
     txn: TxnIdAllocator,
     /// The in-flight chunk-buffer session (begin → chunk → commit); `None` between applies.
     session: Option<IconApplySession>,
+    /// A monotonic token identifying the CURRENT session. Begin returns it; Chunk + Commit must
+    /// present the matching token, so a stale async request (or a second WebView) whose token is
+    /// older than the current session is rejected — masters + styleJson can never cross applies
+    /// (codex R3-Block 1). 0 means "no session".
+    session_id: u64,
     /// The op-epoch captured when the current session began; the commit rejects if the epoch moved
     /// since (any mutation — Apply, Reset, or restoreOverlay — landed during this apply's bake, so
     /// committing would write over the user's newer intent — codex Block 3 / R2-Block 3).
@@ -125,6 +130,7 @@ impl IconHost {
                 history: LookHistoryStore::new(data_dir.join("look-history.json")),
                 txn: TxnIdAllocator::starting_at(1),
                 session: None,
+                session_id: 0,
                 session_epoch: 0,
                 session_scan: Vec::new(),
                 scan: Vec::new(),
@@ -212,10 +218,10 @@ impl IconHost {
         Ok(self.finish_persisted(self.to_persisted_dto_locked(&stores)))
     }
 
-    /// `icons.applyBakedBegin`: open a chunk-buffer session for scan `revision`. Rejects a stale
-    /// apply whose revision no longer matches the current scan (codex Block 2), and captures the
-    /// look-epoch so the commit can detect an intervening mutation (codex Block 3).
-    pub fn apply_baked_begin(&self, revision: u32, count: u32) -> Result<(), String> {
+    /// `icons.applyBakedBegin`: open a chunk-buffer session for scan `revision`, returning a fresh
+    /// session token. Rejects a stale apply whose revision no longer matches the current scan (codex
+    /// Block 2), and captures the op-epoch so the commit can detect an intervening mutation.
+    pub fn apply_baked_begin(&self, revision: u32, count: u32) -> Result<String, String> {
         let mut st = self.mut_state.lock().unwrap();
         if revision != st.scan_revision {
             return Err(format!(
@@ -223,24 +229,27 @@ impl IconHost {
                 st.scan_revision
             ));
         }
-        // A fresh Begin ABANDONS any prior in-flight session (the frontend serializes applies; a new
-        // Begin unambiguously means "start over", so a bake that errored mid-stream and never
-        // committed must not strand the session and deadlock every future apply — codex R2-Block 1
-        // wanted a reject, but a reject with no abandon path is the worse bug). Mixing is still
-        // prevented: each Begin installs a FRESH empty buffer, binds session_scan to the current
-        // scan, and commit validates the exact count against that buffer under the one mut lock.
+        // A fresh Begin ABANDONS any prior in-flight session (a bake that errored mid-stream and never
+        // committed must not strand the session and deadlock every future apply). Mixing is prevented
+        // by the SESSION TOKEN: the new session gets a new monotonic id, so any still-in-flight Chunk/
+        // Commit carrying the OLD token is rejected — masters never cross applies (codex R3-Block 1).
         if st.session.is_some() {
             log::warn!("icons.applyBakedBegin abandoned a prior uncommitted apply session");
         }
+        st.session_id += 1;
         st.session = Some(IconApplySession::begin(revision, count as usize));
         st.session_epoch = st.op_epoch;
         st.session_scan = st.scan.clone();
-        Ok(())
+        Ok(st.session_id.to_string())
     }
 
-    /// `icons.applyBakedChunk`: buffer a batch of baked masters into the open session.
-    pub fn apply_baked_chunk(&self, items: Vec<IconChunkItemDto>) -> Result<(), String> {
+    /// `icons.applyBakedChunk`: buffer a batch of baked masters into the open session, validating the
+    /// session token so a stale/foreign chunk can never land in the wrong buffer (codex R3-Block 1).
+    pub fn apply_baked_chunk(&self, session_id: &str, items: Vec<IconChunkItemDto>) -> Result<(), String> {
         let mut st = self.mut_state.lock().unwrap();
+        if session_id != st.session_id.to_string() {
+            return Err("apply session token mismatch (a newer apply superseded this one)".into());
+        }
         let session = st
             .session
             .as_mut()
@@ -255,12 +264,25 @@ impl IconHost {
     /// arrow overlay. Serialized under the mut lock (the apply/GC lifecycle-lock).
     pub fn apply_baked_commit(
         &self,
+        session_id: &str,
         style_json: String,
         restore_ids: Vec<String>,
         label: Option<String>,
     ) -> Result<IconOpResultDto, String> {
         let style = parse_style(&style_json)?;
         let mut st = self.mut_state.lock().unwrap();
+        // Reject a commit whose token no longer matches the current session — a newer Begin
+        // superseded it, so its buffer/styleJson belong to a stale apply (codex R3-Block 1).
+        if session_id != st.session_id.to_string() {
+            let stores = self.ops().read_state(&st.history, &st.ledger).map_err(|e| e.to_string())?;
+            let dto = self.to_persisted_dto_locked(&stores);
+            drop(st);
+            return Ok(IconOpResultDto {
+                ok: false,
+                toast: Some(ToastDto { key: "Toast_ApplySuperseded".into(), arg: None }),
+                persisted: self.finish_persisted(dto),
+            });
+        }
         let session = st.session.take().ok_or("no apply session to commit")?;
         // Reject a malformed buffer (short/over) — a stale scan or a dropped chunk (codex Block 2).
         if session.len() != session.expected() {
@@ -582,14 +604,14 @@ mod tests {
         let scan = h.scan().unwrap();
         let edge = scan.items.iter().find(|i| i.id == "edge").unwrap();
 
-        h.apply_baked_begin(scan.revision, 1).unwrap();
-        h.apply_baked_chunk(vec![IconChunkItemDto {
+        let sid = h.apply_baked_begin(scan.revision, 1).unwrap();
+        h.apply_baked_chunk(&sid, vec![IconChunkItemDto {
             id: edge.id.clone(),
             source_index: 0,
             master_png: tiny_master(),
         }])
         .unwrap();
-        let res = h.apply_baked_commit(style_json(1), vec![], Some("第一版".into())).unwrap();
+        let res = h.apply_baked_commit(&sid, style_json(1), vec![], Some("第一版".into())).unwrap();
         assert!(res.ok);
         assert!(res.persisted.applied);
         assert_eq!(res.persisted.arrow_overlay, ArrowOverlayDto::Hidden);
@@ -607,9 +629,9 @@ mod tests {
         let h = host(dir.path());
         let scan = h.scan().unwrap();
         let edge = scan.items.iter().find(|i| i.id == "edge").unwrap();
-        h.apply_baked_begin(scan.revision, 1).unwrap();
-        h.apply_baked_chunk(vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }]).unwrap();
-        h.apply_baked_commit(style_json(1), vec![], Some("A".into())).unwrap();
+        let sid = h.apply_baked_begin(scan.revision, 1).unwrap();
+        h.apply_baked_chunk(&sid, vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }]).unwrap();
+        h.apply_baked_commit(&sid, style_json(1), vec![], Some("A".into())).unwrap();
 
         let res = h.restore().unwrap();
         assert!(res.ok);
@@ -624,9 +646,9 @@ mod tests {
         let h = host(dir.path());
         let scan = h.scan().unwrap();
         let edge = scan.items.iter().find(|i| i.id == "edge").unwrap();
-        h.apply_baked_begin(scan.revision, 1).unwrap();
-        h.apply_baked_chunk(vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }]).unwrap();
-        h.apply_baked_commit(style_json(1), vec![], Some("A".into())).unwrap();
+        let sid = h.apply_baked_begin(scan.revision, 1).unwrap();
+        h.apply_baked_chunk(&sid, vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }]).unwrap();
+        h.apply_baked_commit(&sid, style_json(1), vec![], Some("A".into())).unwrap();
 
         let res = h.restore_overlay().unwrap();
         assert!(res.ok);
@@ -639,8 +661,30 @@ mod tests {
     fn a_chunk_without_a_session_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
         let h = host(dir.path());
+        // No Begin ⇒ session token "0"; any presented token mismatches ⇒ rejected.
         assert!(h
-            .apply_baked_chunk(vec![IconChunkItemDto { id: "edge".into(), source_index: 0, master_png: tiny_master() }])
+            .apply_baked_chunk("1", vec![IconChunkItemDto { id: "edge".into(), source_index: 0, master_png: tiny_master() }])
             .is_err());
+    }
+
+    #[test]
+    fn a_chunk_or_commit_with_a_stale_token_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = host(dir.path());
+        let scan = h.scan().unwrap();
+        let edge = scan.items.iter().find(|i| i.id == "edge").unwrap();
+        // Begin A gets token "1"; Begin B abandons it + gets "2".
+        let sid_a = h.apply_baked_begin(scan.revision, 1).unwrap();
+        let sid_b = h.apply_baked_begin(scan.revision, 1).unwrap();
+        assert_ne!(sid_a, sid_b, "each Begin mints a fresh token");
+        // A's stale chunk is rejected; only B's token is live.
+        assert!(h
+            .apply_baked_chunk(&sid_a, vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }])
+            .is_err());
+        h.apply_baked_chunk(&sid_b, vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }])
+            .unwrap();
+        // A's stale COMMIT is rejected (ok:false), never mutating with B's buffer.
+        let stale = h.apply_baked_commit(&sid_a, style_json(1), vec![], Some("A".into())).unwrap();
+        assert!(!stale.ok, "a stale-token commit must not succeed");
     }
 }

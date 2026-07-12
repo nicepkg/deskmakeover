@@ -269,7 +269,11 @@ interface MockIconsSession {
   revision: number
   bakePending: Map<string, string>
   styleableCount: number
+  /** The current apply session token (mirrors the real host's R3-Block 1 guard). */
+  sessionId: string
 }
+
+let mockSessionCounter = 0
 
 const session: MockIconsSession = {
   applied: false,
@@ -279,6 +283,7 @@ const session: MockIconsSession = {
   revision: 0,
   bakePending: new Map(),
   styleableCount: 0,
+  sessionId: '0',
 }
 
 function persisted(): IconPersistedDto {
@@ -315,6 +320,7 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
     items?: { id: string; sourceIndex: number; masterPng: string }[]
     styleJson?: string
     label?: string | null
+    sessionId?: string
   }
   switch (method) {
     case 'icons.getPersisted':
@@ -336,12 +342,18 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
     }
     case 'icons.applyBakedBegin':
       session.bakePending = new Map()
-      return null
+      session.sessionId = String(++mockSessionCounter)
+      return session.sessionId
     case 'icons.applyBakedChunk': {
+      if (p.sessionId !== session.sessionId) throw new Error('mock: stale apply session token')
       for (const item of p.items ?? []) session.bakePending.set(`${item.id}#${item.sourceIndex}`, item.masterPng)
       return null
     }
     case 'icons.applyBakedCommit': {
+      // A stale token (a newer Begin superseded this apply) → ok:false, never mutate (R3-Block 1).
+      if (p.sessionId !== session.sessionId) {
+        return { ok: false, toast: { key: 'Toast_ApplySuperseded', arg: null }, persisted: persisted() } satisfies IconOpResultDto
+      }
       // Keep the last bake inspectable in the browser loop (debug menu).
       ;(window as { __dmBakedIcons?: Record<string, string> }).__dmBakedIcons = Object.fromEntries(
         [...session.bakePending].map(([id, png]) => [id, `data:image/png;base64,${png}`]),

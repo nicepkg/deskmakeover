@@ -855,7 +855,9 @@ export const useIcons = create<IconsState>((set, get) => {
         await sourcesSettled()
         recomputeHueSpread()
         const frozenOpts = new Map(s.items.map((i) => [i.id, fieldRenderOpts(i.id)]))
-        await bridge('icons.applyBakedBegin', { revision: s.revision, count: jobs.length })
+        // The session token binds every chunk + the commit to THIS begin, so a stale/superseded
+        // apply's masters can never land in another apply's buffer (codex R3-Block 1).
+        const sessionId = await bridge('icons.applyBakedBegin', { revision: s.revision, count: jobs.length })
         for (let at = 0; at < jobs.length; at += APPLY_CHUNK) {
           const chunk = jobs.slice(at, at + APPLY_CHUNK)
           const rendered: { id: string; sourceIndex: number; masterPng: string }[] = []
@@ -865,7 +867,7 @@ export const useIcons = create<IconsState>((set, get) => {
             if (!png) throw new Error(`master missing: ${j.item.id}#${j.sourceIndex}`)
             rendered.push({ id: j.item.id, sourceIndex: j.sourceIndex, masterPng: png })
           }
-          await bridge('icons.applyBakedChunk', { items: rendered })
+          await bridge('icons.applyBakedChunk', { sessionId, items: rendered })
           set({ applyProgress: { done: Math.min(at + chunk.length, jobs.length), total: jobs.length } })
           // Yield a frame so the progress UI paints between chunks.
           await new Promise((resolve) => requestAnimationFrame(resolve))
@@ -874,7 +876,7 @@ export const useIcons = create<IconsState>((set, get) => {
         // is baked into its master. `restoreIds` carries the 「保留原样」 items so Rust reverts any
         // that are currently styled (spec 06 §2). The styleJson is the three global knobs (spec 07 §8.2).
         const styleJson = JSON.stringify({ config, kindPolicy: policy, typeOverrides })
-        const result = await bridge('icons.applyBakedCommit', { styleJson, restoreIds, label: lookLabel(s.state) })
+        const result = await bridge('icons.applyBakedCommit', { sessionId, styleJson, restoreIds, label: lookLabel(s.state) })
         // Superseded while baking (a newer writer landed first): drop this stale
         // commit — never write the outdated state or announce success over the
         // newer writer's truth (P2-4). Clear the progress veil AND release

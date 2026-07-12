@@ -185,7 +185,10 @@ describe('real mock through the store — the mock transitions are pinned', () =
   })
 
   test('applyBakedCommit hides the arrow (machine-wide overlay installed)', async () => {
+    // Begin mints the session token the commit must present (R3-Block 1).
+    const sessionId = (await mockIconsCall('icons.applyBakedBegin', { revision: 1, count: 1 })) as string
     const res = (await mockIconsCall('icons.applyBakedCommit', {
+      sessionId,
       styleJson: JSON.stringify({ config: BASE_CONFIGS.spectrum, kindPolicy: {}, typeOverrides: {} }),
       label: 'x',
     })) as IconOpResultDto

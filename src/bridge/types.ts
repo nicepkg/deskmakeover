@@ -546,12 +546,14 @@ export interface BridgeMethods {
   'icons.scan': { params: void; result: IconScanDto }
   // setLook LEFT the bridge (D1): the config/override/kindPolicy/typeOverrides DRAFT is frontend
   // session state, resumed from ② (savedStyle) on relaunch — spec 07 §8.2 writes ② only on Apply.
-  'icons.applyBakedBegin': { params: { revision: number; count: number }; result: null }
-  'icons.applyBakedChunk': { params: { items: IconChunkItemDto[] }; result: null }
+  // Begin returns a SESSION TOKEN; every Chunk + the Commit must present it, so a stale/foreign
+  // apply's masters can never land in the wrong buffer (a newer Begin mints a new token).
+  'icons.applyBakedBegin': { params: { revision: number; count: number }; result: string }
+  'icons.applyBakedChunk': { params: { sessionId: string; items: IconChunkItemDto[] }; result: null }
   // The full recipe rides as an opaque JSON string (the envelope Rust persists as ②③). A tint
   // override is baked into its master; a 「保留原样」/kindPolicy-excluded item that is CURRENTLY
   // styled rides `restoreIds` so Rust REVERTS it (spec 06 §2 — not sending a master ≠ restoring).
-  'icons.applyBakedCommit': { params: { styleJson: string; restoreIds: string[]; label: string | null }; result: IconOpResultDto }
+  'icons.applyBakedCommit': { params: { sessionId: string; styleJson: string; restoreIds: string[]; label: string | null }; result: IconOpResultDto }
   'icons.restore': { params: void; result: IconOpResultDto }
   /** [M6-WIRE] Keep-beautification restore: brings the native shortcut arrow
    *  back (arrowOverlay → 'native') WITHOUT undoing the icon look — shapes and

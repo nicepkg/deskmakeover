@@ -71,7 +71,7 @@ pub fn icons_apply_baked_begin(
     state: State<'_, AppState>,
     revision: u32,
     count: u32,
-) -> Result<(), String> {
+) -> Result<String, String> {
     state.icons.apply_baked_begin(revision, count)
 }
 
@@ -79,20 +79,22 @@ pub fn icons_apply_baked_begin(
 #[specta::specta]
 pub fn icons_apply_baked_chunk(
     state: State<'_, AppState>,
+    session_id: String,
     items: Vec<IconChunkItemDto>,
 ) -> Result<(), String> {
-    state.icons.apply_baked_chunk(items)
+    state.icons.apply_baked_chunk(&session_id, items)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn icons_apply_baked_commit(
     state: State<'_, AppState>,
+    session_id: String,
     style_json: String,
     restore_ids: Vec<String>,
     label: Option<String>,
 ) -> Result<IconOpResultDto, String> {
-    state.icons.apply_baked_commit(style_json, restore_ids, label)
+    state.icons.apply_baked_commit(&session_id, style_json, restore_ids, label)
 }
 
 #[tauri::command]

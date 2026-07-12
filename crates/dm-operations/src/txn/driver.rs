@@ -254,24 +254,31 @@ impl<'p> TxnDriver<'p> {
         // host's cached scan may predate the restore (no rescan between the failed remove and this
         // re-apply), so its fingerprint could still read as the old styled state. `remove` here is
         // pre-mutation (nothing journaled yet); a fault propagates as a clean, desktop-untouched Err.
-        let mut anchor_on_current = false;
         if let Some(e) = &existing {
             if current == e.original_fingerprint && current != e.last_applied_fingerprint {
+                // A POISON row (a keep/reset restore landed but its `ledger.remove` faulted) OR a user
+                // who MANUALLY restored the icon to its exact original since the scan — the fingerprint
+                // tuple is identical, so we cannot tell them apart without durable provenance. Drop the
+                // stale row EITHER way: the desktop is proven at its original, so a row still claiming
+                // `styled` is wrong. But only proceed to STYLE it when the scan is FRESH
+                // (`current == req.expected_fingerprint`): then the scan reflects the live desktop and
+                // styling is the user's explicit, current intent. If the scan is STALE (the host's
+                // cached scan predates the restore), we must NOT bypass the scan-time CAS and silently
+                // overwrite what could be a user hand-edit (codex R6-#3 + R7-#1) — return conflict and
+                // force a rescan; the dropped row then makes the next attempt an unambiguous fresh apply.
                 ledger.remove(&req.target.id)?;
+                if current != req.expected_fingerprint {
+                    return Ok(None);
+                }
                 existing = None;
-                anchor_on_current = true;
             }
         }
-        // CAS anchor: last-applied on re-apply, the OBSERVED current on a healed poison row (proven
-        // original), the scan-time observation on an ordinary fresh apply.
-        let expected = if anchor_on_current {
-            current
-        } else {
-            existing
-                .as_ref()
-                .map(|e| e.last_applied_fingerprint)
-                .unwrap_or(req.expected_fingerprint)
-        };
+        // CAS anchor: last-applied on re-apply, the scan-time observation on a fresh (or freshly-healed)
+        // apply. A stale scan on any un-ledgered item still fails this and conflicts, never overwriting.
+        let expected = existing
+            .as_ref()
+            .map(|e| e.last_applied_fingerprint)
+            .unwrap_or(req.expected_fingerprint);
         if current != expected {
             return Ok(None); // external modification → visible conflict, never overwritten
         }

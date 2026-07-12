@@ -73,13 +73,16 @@ pub fn recover_from_journal(
 ) -> Result<RecoveryOutcome> {
     let records = journal.read_all()?;
     let mut outcome = recover(&records, reader, applier, ledger)?;
-    // Truncate the reconciled history ONLY on a clean pass. If recovery degraded (an item's
-    // restore/ledger op faulted, codex R4-Block 5), the unreconciled records MUST stay so the next
-    // (idempotent) recovery can finish them — checkpointing them away would strand a crashed
-    // transaction forever. A checkpoint that FAILS is surfaced as degraded (codex R6-#4): otherwise a
-    // persistently-failing truncation would silently replay + defer every op forever with no visible
-    // cause. The replay stays safe (idempotent), but the caller now learns it is stuck.
-    if outcome.degraded.is_empty() {
+    // Truncate the reconciled history ONLY on a clean pass with something to truncate. An EMPTY journal
+    // has nothing to recover, so it must NOT checkpoint (codex R7-#4): an empty checkpoint tries to
+    // DELETE the log file, and a zero-byte log that cannot be deleted (an ACL fault) would otherwise
+    // mark every apply/reset degraded forever despite there being no crash to recover. With records
+    // present: if recovery degraded (an item's restore/ledger op faulted, codex R4-Block 5), the
+    // unreconciled records MUST stay so the next (idempotent) recovery can finish them — checkpointing
+    // them away would strand a crashed transaction. A checkpoint that FAILS is surfaced as degraded
+    // (codex R6-#4): a persistently-failing truncation would otherwise silently replay + defer every op
+    // forever with no visible cause. The replay stays safe (idempotent), but the caller learns it is stuck.
+    if !records.is_empty() && outcome.degraded.is_empty() {
         if let Err(e) = journal.checkpoint(&[]) {
             outcome.degraded.push(format!("recovery checkpoint: {e}"));
         }
@@ -87,15 +90,17 @@ pub fn recover_from_journal(
     Ok(outcome)
 }
 
-/// True when the journal holds a transaction that a recovery pass would still need to ACT on — so a
-/// styled desktop may exist that the ledger alone does not reflect, and the restore affordance must
-/// stay reachable (codex R6-#6). Read-only, precise, and NOT the checkpoint-only `active_txns` (which
-/// excludes committed txns): it covers BOTH an incomplete txn (an abort candidate — desktop styled,
-/// no ledger row) AND a committed txn whose ledger upsert never landed (a reconcile candidate — the
-/// driver's `TxnCommitted` is durable but a later `ledger.upsert` faulted, R6-#1). A rolled-back txn
-/// is safe (desktop restored, ledger clean), and a committed txn already reflected in the ledger is
-/// reconciled — neither trips this, so a NORMAL post-apply journal (committed + present ledger rows,
-/// not yet checkpointed) never spuriously shows repair.
+/// A RESTORE-AFFORDANCE signal (NOT a full reconcile-equivalence predicate): true when the journal
+/// holds a transaction whose styled desktop the ledger may not yet reflect, so the restore affordance
+/// must stay reachable (codex R6-#6). Read-only, and stricter than the checkpoint-only `active_txns`
+/// (which excludes committed txns): it covers BOTH an incomplete txn (an abort candidate — desktop
+/// styled, no ledger row) AND a committed txn with NO committed ledger row for an item (a reconcile
+/// candidate — the driver's `TxnCommitted` is durable but a later `ledger.upsert` faulted, R6-#1). It
+/// deliberately does NOT re-implement recovery's full match (which also compares `last_applied` +
+/// `empty_asset`): a committed txn whose item HAS a committed row that recovery would still rewrite
+/// (a stale-but-present row) does not trip this, but that case is already `applied:true` from the
+/// present row, so the affordance is never wrongly hidden. A rolled-back txn is safe. A normal
+/// post-apply journal (committed + present ledger rows, not yet checkpointed) never spuriously trips.
 pub fn repair_pending(records: &[JournalRecord], ledger: &dyn LedgerStore) -> Result<bool> {
     // txn -> (committed, rolled_back, items-in-first-seen-order)
     let mut txns: HashMap<u64, (bool, bool, Vec<dm_domain::ItemId>)> = HashMap::new();

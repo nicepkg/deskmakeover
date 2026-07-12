@@ -746,19 +746,21 @@ fn a_clean_recovery_that_restored_the_desktop_defers_the_current_apply() {
 }
 
 #[test]
-fn a_poisoned_row_re_applied_with_a_stale_scan_still_heals_and_styles() {
-    // codex R6-#3: the host caches the scan. After keep/reset restores an item (desktop→original) but
-    // the paired `ledger.remove` faults, a DIRECT re-apply may run against a scan captured BEFORE the
-    // restore — whose fingerprint still reads the OLD styled state (no rescan happened between). The
-    // heal must anchor on the OBSERVED current (proven original), NOT the stale scan fingerprint, or
-    // the apply CAS-conflicts forever. The earlier fresh-scan test masked this (the fixture re-reads).
+fn a_poisoned_row_re_applied_with_a_stale_scan_is_healed_but_not_silently_restyled() {
+    // codex R7-#1: a poison row (a restore landed, its `ledger.remove` faulted) and a user's MANUAL
+    // restore-to-exact-original since the scan are INDISTINGUISHABLE by fingerprint (both: current ==
+    // original != last_applied). When the scan is STALE (its fingerprint still reads the old styled
+    // state), a direct re-apply must NOT silently overwrite what could be the user's hand-edit. It
+    // drops the stale row (un-poisoning it, so it can never cause a PERMANENT conflict) and CONFLICTS,
+    // forcing a rescan — after which a fresh apply styles it unambiguously (the fresh-scan path is the
+    // sibling test). The earlier fresh-scan test alone masked this stale/ambiguous case.
     let mut f = Fixture::new();
     let a = item("a", ItemKind::Shortcut);
     f.seed(&a, b"orig-a");
     f.apply(&[("a", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[a.clone()]);
     // The fingerprint a PRE-restore scan would still hold (the styled desktop).
     let stale_fp = dm_domain::Fingerprint::of_bytes(&f.world.borrow().get(&a.path).unwrap());
-    // Poison: desktop reverted to original, but the ledger row lingers (remove faulted).
+    // Poison / or a manual restore: desktop back to original, but the ledger row lingers.
     f.world.borrow_mut().put(&a.path, b"orig-a");
 
     // Re-apply A directly with a STALE scan (styled fingerprint) — NOT the fixture's fresh re-scan.
@@ -783,13 +785,9 @@ fn a_poisoned_row_re_applied_with_a_stale_scan_still_heals_and_styles() {
         )
         .unwrap();
 
-    assert_eq!(out.committed, vec![ItemId::from_raw("a")], "healed + styled despite the STALE scan fingerprint");
-    assert!(out.conflicts.is_empty(), "the stale scan must NOT cause a permanent conflict");
-    assert_eq!(
-        f.ledger.get(&a.id).unwrap().unwrap().original_fingerprint,
-        dm_domain::Fingerprint::of_bytes(b"orig-a"),
-        "the heal anchored on the true original",
-    );
+    assert!(out.committed.is_empty(), "a STALE scan must NOT silently overwrite a possible hand-edit");
+    assert_eq!(out.conflicts, vec![ItemId::from_raw("a")], "it conflicts instead, forcing a rescan");
+    assert!(f.ledger.get(&a.id).unwrap().is_none(), "but the stale poison row WAS dropped (un-poisoned)");
 }
 
 #[test]
@@ -811,6 +809,56 @@ fn a_revert_only_apply_still_writes_the_saved_style_and_history() {
     assert!(out.committed.is_empty(), "nothing was styled");
     assert_eq!(f.settings.get_saved_style().unwrap(), Some(style(2)), "② reflects the revert-only Apply");
     assert_eq!(f.history.all().len(), history_before + 1, "③ recorded the completed Apply");
+}
+
+#[test]
+fn a_partial_revert_failure_does_not_write_the_saved_style() {
+    // codex R7-#2: two icons both opt to 「保留原样」; A's restore lands, B's restore FAULTS (B still
+    // wears the old style). This is NOT a completed Apply — writing ② ("everything original") while B
+    // is still styled would resume from a lie next launch. The `repair.is_empty()` guard blocks ②③.
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    let b = item("b", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.seed(&b, b"orig-b");
+    f.apply(
+        &[("a", 0, [1, 1, 1, 255]), ("b", 0, [2, 2, 2, 255])],
+        style(1),
+        "A",
+        "v1",
+        &[a.clone(), b.clone()],
+    );
+    let saved_after_first = f.settings.get_saved_style().unwrap();
+    // B's revert will fault; opt BOTH to 「保留原样」 (no masters, restore both).
+    f.world.borrow_mut().fail_restore(&b.path);
+    let out = f.apply_reverting(&[], style(2), "B", "v2", &[a.clone(), b.clone()], &["a", "b"]);
+
+    assert_eq!(out.reverted, vec![ItemId::from_raw("a")], "only A reverted");
+    assert!(out.degraded.is_some(), "B's restore fault surfaces as degraded");
+    assert_eq!(
+        f.settings.get_saved_style().unwrap(),
+        saved_after_first,
+        "② was NOT overwritten by the partial (incomplete) revert",
+    );
+}
+
+#[test]
+fn an_apply_whose_only_intent_is_a_hand_edited_revert_reports_no_effect() {
+    // codex R7-#3: the user opts a styled icon to 「保留原样」 but has hand-edited it since the scan.
+    // Trust-first leaves it alone — but the apply then did NOTHING, so it must NOT read as a clean
+    // success (which would clear the draft). The hand-edit skip counts as a conflict → the host's
+    // no-effect branch fires.
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.apply(&[("a", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[a.clone()]);
+    // Hand-edit a since the scan (neither its original nor its last-applied).
+    f.world.borrow_mut().put(&a.path, b"user-hand-edit");
+    // Opt a to 「保留原样」 (no masters, restore a) — but a was hand-edited.
+    let out = f.apply_reverting(&[], style(2), "B", "v2", &[a.clone()], &["a"]);
+
+    assert!(out.committed.is_empty() && out.reverted.is_empty(), "nothing styled, nothing reverted");
+    assert_eq!(out.conflicts, vec![ItemId::from_raw("a")], "the hand-edited revert skip counts as a conflict");
 }
 
 #[test]

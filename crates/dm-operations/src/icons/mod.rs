@@ -269,6 +269,11 @@ impl<'a> IconOps<'a> {
         // ledger for that item, self-heals on the next reset), rather than bailing after having already
         // reverted earlier items and leaving the caller a bare `Err` over a half-changed desktop.
         let mut reverted: Vec<ItemId> = Vec::new();
+        // A restore the user asked for that could NOT be performed because they hand-edited the icon
+        // since the scan (trust-first: we never clobber their edit). It is a "couldn't do what you
+        // asked" outcome, so it counts toward `conflicts` — otherwise an apply whose ONLY intent was
+        // such a revert would report a clean success over a no-op (codex R7-#3).
+        let mut restore_skipped: Vec<ItemId> = Vec::new();
         for id in restore_ids {
             if packaged_ids.contains(id.as_str()) {
                 continue;
@@ -304,7 +309,9 @@ impl<'a> IconOps<'a> {
                         repair.push(format!("keep-restore heal-remove {id}: {e}"));
                     }
                 }
-                Ok(_) => {} // hand-edited since → leave it (trust-first)
+                // Hand-edited since the scan → leave it (trust-first), but record it as a skip so an
+                // apply whose only effect would have been this revert is not reported as a clean no-op.
+                Ok(_) => restore_skipped.push(item_id),
                 Err(PortError::NotFound(_)) => {
                     if let Err(e) = ledger.remove(&item_id) {
                         repair.push(format!("keep-restore ledger drop {id}: {e}"));
@@ -322,7 +329,10 @@ impl<'a> IconOps<'a> {
         let by_id: std::collections::HashMap<&str, &ScannedItem> =
             scan.iter().map(|s| (s.item.id.as_str(), s)).collect();
         let mut requests = Vec::with_capacity(packaged.len());
-        let mut conflicts: Vec<ItemId> = Vec::new();
+        // Hand-edited restore skips count as conflicts so an apply whose only intent was such a revert
+        // reports a no-effect, not a clean success (codex R7-#3). Folded in before the driver so both
+        // the driver-fault early-return and the normal path carry them.
+        let mut conflicts: Vec<ItemId> = std::mem::take(&mut restore_skipped);
         for pkg in &packaged {
             let Some(scanned) = by_id.get(pkg.item_id.as_str()) else {
                 conflicts.push(ItemId::from_raw(&pkg.item_id));
@@ -385,14 +395,17 @@ impl<'a> IconOps<'a> {
         // freshly-styled desktop — codex R3-Block 4): record it into `repair` and press on, so the op
         // returns the authoritative persisted state + ok:false. (A crash BETWEEN these writes is the
         // separately-documented, self-healing finalize crash-window — a distinct, accepted gap.)
-        // ...AND only when this apply had a REAL EFFECT on the desktop — it styled at least one icon
-        // (`committed`) OR it reverted a 「保留原样」 opt-out (`reverted`). A completed global Apply is
-        // the ② writer even when it only reverts (spec 07 §8.2): the new look "everything original" is
-        // still the saved style, and ③ records it. The ONLY case that must NOT write ②③ is a genuinely
-        // zero-effect batch — every item CAS-conflicted, nothing styled AND nothing reverted — where
-        // writing ② would poison the saved-style with a look the desktop never wears and the host would
-        // report a clean success over a no-op (codex R5-#2 / R6-#2).
-        if apply.error.is_none() && (!apply.committed.is_empty() || !reverted.is_empty()) {
+        // ...AND only for a genuinely COMPLETED Apply (codex R5-#2 / R6-#2 / R7-#2). Two guards:
+        //   • `repair.is_empty()` — no keep-restore fault ran. A partial revert (icon A reverted, icon
+        //     B's restore faulted → still styled) is NOT complete: writing ② ("everything original")
+        //     while B still wears the old look would resume from a lie next launch.
+        //   • NOT an all-styling-attempts-failed batch — masters were sent but every one CAS-conflicted
+        //     (`packaged` non-empty, `committed` empty): writing ② would poison the saved-style with a
+        //     look the desktop never wears. A batch with NO masters (a pure revert-only or a policy-only
+        //     Apply that intentionally styles nothing) still writes ②③ — that is the completed Apply's
+        //     saved style, and ③ records it (spec 07 §8.2).
+        let all_styling_attempts_failed = !packaged.is_empty() && apply.committed.is_empty();
+        if apply.error.is_none() && repair.is_empty() && !all_styling_attempts_failed {
             if let Err(e) = self.settings.set_saved_style(Some(&style)) {
                 repair.push(format!("save ② style: {e}"));
             }

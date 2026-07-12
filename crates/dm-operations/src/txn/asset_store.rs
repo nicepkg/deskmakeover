@@ -51,11 +51,29 @@ impl FsAssetStore {
     /// file at the path is atomically overwritten (the rename replaces a symlink rather than
     /// following it), never silently reused.
     fn write(&self, hash: &str, bytes: &[u8]) -> PortResult<AssetRef> {
+        self.ensure_root_not_symlink()?;
         let path = self.asset_path(hash)?;
         if !is_regular_file_with(&path, bytes)? {
             write_atomic(&path, bytes).map_err(|e| PortError::Io(e.to_string()))?;
         }
         Ok(AssetRef::new(hash, path.to_string_lossy().into_owned()))
+    }
+
+    /// The ownership boundary (ADR-0020 data-loss red-line): refuse to write to / collect through a
+    /// symlinked root, so a mispointed or hijacked root (e.g. `assets -> ~/Pictures`) can never let
+    /// the store touch files outside its own app-data directory. A missing root is fine (a write
+    /// creates it). [WINDOWS-VERIFY] a directory junction is a reparse point `is_symlink` may not
+    /// flag — the Windows adapter must also reject `FILE_ATTRIBUTE_REPARSE_POINT`. An ancestor
+    /// symlink is out of scope (it requires write access to the OS app-data tree, i.e. the user is
+    /// already fully compromised).
+    fn ensure_root_not_symlink(&self) -> PortResult<()> {
+        match fs::symlink_metadata(&self.root) {
+            Ok(meta) if meta.file_type().is_symlink() => Err(PortError::Io(format!(
+                "refusing to operate through a symlinked asset root: {}",
+                self.root.display()
+            ))),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -63,8 +81,9 @@ impl AssetStore for FsAssetStore {
     fn put(&self, hash: &str, bytes: &[u8]) -> PortResult<AssetRef> {
         // "-empty" is the reserved suffix for paired empty variants (put_empty_variant). A primary
         // hash ending in it would collide with another asset's empty file, so reject it outright —
-        // a real content hash never ends this way.
-        if hash.ends_with("-empty") {
+        // a real content hash never ends this way. Compared case-insensitively so a mixed-case
+        // "abc-EMPTY" can't slip past on a case-insensitive filesystem (Windows / default macOS).
+        if hash.to_ascii_lowercase().ends_with("-empty") {
             return Err(PortError::Io(format!(
                 "asset hash {hash:?} uses the reserved \"-empty\" suffix"
             )));
@@ -84,23 +103,10 @@ impl AssetStore for FsAssetStore {
     }
 
     fn gc(&self, live: &[String]) -> PortResult<()> {
-        // Ownership boundary (ADR-0020 data-loss red-line): refuse to collect THROUGH a symlink at
-        // the root. A mispointed or hijacked root (e.g. `assets -> ~/Pictures`) must never let gc
-        // delete files outside the store's own app-data directory. [WINDOWS-VERIFY] a directory
-        // junction is a reparse point that `is_symlink` may not flag — the Windows adapter must also
-        // reject `FILE_ATTRIBUTE_REPARSE_POINT` roots.
-        match fs::symlink_metadata(&self.root) {
-            Ok(meta) if meta.file_type().is_symlink() => {
-                return Err(PortError::Io(format!(
-                    "refusing to gc through a symlinked asset root: {}",
-                    self.root.display()
-                )));
-            }
-            Ok(_) => {}
-            // A store directory that was never created has nothing to collect.
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(e) => return Err(PortError::Io(e.to_string())),
-        }
+        // Ownership boundary (ADR-0020 data-loss red-line): refuse to collect THROUGH a symlinked
+        // root, so a mispointed/hijacked root can never let gc delete files outside the store's own
+        // app-data directory.
+        self.ensure_root_not_symlink()?;
         let live: HashSet<&str> = live.iter().map(|s| s.as_str()).collect();
         let entries = match fs::read_dir(&self.root) {
             Ok(e) => e,
@@ -140,10 +146,20 @@ impl AssetStore for FsAssetStore {
 /// classified as a symlink (not followed).
 fn is_regular_file_with(path: &Path, bytes: &[u8]) -> PortResult<bool> {
     match fs::symlink_metadata(path) {
-        Ok(meta) if meta.file_type().is_file() => match fs::read(path) {
-            Ok(existing) => Ok(existing == bytes),
-            Err(_) => Ok(false),
-        },
+        Ok(meta) if meta.file_type().is_file() => {
+            // Length-first: a size mismatch means "not equal" without reading the file, so a hostile
+            // pre-placed huge/sparse `.ico` can never force an unbounded read. Only a same-length
+            // regular file is read for the full byte comparison. (A regular→symlink swap in the
+            // window between this stat and the read is a residual local-write TOCTOU, [WINDOWS-VERIFY]
+            // / documented; it requires app-data write access — full compromise already.)
+            if meta.len() != bytes.len() as u64 {
+                return Ok(false);
+            }
+            match fs::read(path) {
+                Ok(existing) => Ok(existing == bytes),
+                Err(_) => Ok(false),
+            }
+        }
         // A symlink or directory sitting at our path: overwrite it with a fresh regular file.
         Ok(_) => Ok(false),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -305,9 +321,31 @@ mod tests {
     fn put_rejects_the_reserved_empty_suffix_on_a_primary_hash() {
         let (_dir, store) = store();
         assert!(matches!(store.put("abc-empty", b"x"), Err(PortError::Io(_))));
+        // Case-insensitive: a mixed-case variant must also be rejected (a case-insensitive FS would
+        // otherwise collide `abc-EMPTY.ico` with the empty variant `abc-empty.ico`).
+        assert!(matches!(store.put("abc-EMPTY", b"x"), Err(PortError::Io(_))));
+        assert!(matches!(store.put("abc-Empty", b"x"), Err(PortError::Io(_))));
         // But put_empty_variant, which OWNS that suffix, still works.
         let primary = store.put("abc", b"full").unwrap();
         assert!(store.put_empty_variant(&primary, b"empty").is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn put_refuses_a_symlinked_root_never_writing_through_it() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("pictures");
+        fs::create_dir_all(&real).unwrap();
+        fs::write(real.join("wedding.ico"), b"precious").unwrap();
+        let root = dir.path().join("assets");
+        symlink(&real, &root).unwrap();
+
+        let store = FsAssetStore::new(&root);
+        // A write through the symlinked root must be refused, not land inside the user's directory.
+        assert!(matches!(store.put("newhash", b"OURS"), Err(PortError::Io(_))));
+        assert!(!real.join("newhash.ico").exists(), "nothing was written through the symlink");
+        assert!(real.join("wedding.ico").exists());
     }
 
     #[cfg(unix)]

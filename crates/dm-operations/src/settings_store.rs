@@ -400,10 +400,12 @@ mod tests {
             .unwrap();
         assert!(matches!(store.get_saved_style(), Err(OperationError::Corrupt(_))));
 
-        // A non-TEXT cell (e.g. an integer written past the API) is corruption, not None.
+        // A genuinely non-TEXT cell — a BLOB, which TEXT affinity does NOT coerce (an integer would
+        // be coerced to TEXT "42" and only exercise the JSON-parse path) — must hit the non-text
+        // branch as Corrupt, not None.
         store
             .lock()
-            .execute("UPDATE app_settings SET icon_style_json = 42 WHERE id = 1", [])
+            .execute("UPDATE app_settings SET icon_style_json = x'deadbeef' WHERE id = 1", [])
             .unwrap();
         assert!(matches!(store.get_saved_style(), Err(OperationError::Corrupt(_))));
     }

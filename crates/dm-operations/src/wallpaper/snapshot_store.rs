@@ -89,8 +89,14 @@ mod tests {
         let store = SnapshotStore::new(dir.path().join("snap.json"));
         store.save(&snap()).unwrap();
         assert_eq!(store.load().unwrap(), Some(snap()));
-        // No stray temp file survives the rename (write_atomic uses a `<name>.tmp` sibling).
-        assert!(!store.path().with_extension("json.tmp").exists());
+        // No stray temp file of ANY name survives the rename (write_atomic uses a unique
+        // `.<name>.<pid>.<n>.tmp` sibling, so a fixed-name check would be a false pass).
+        let strays: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("tmp"))
+            .collect();
+        assert!(strays.is_empty(), "stray temp: {strays:?}");
     }
 
     #[test]

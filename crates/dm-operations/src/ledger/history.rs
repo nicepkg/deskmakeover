@@ -155,12 +155,15 @@ impl LookHistoryStore {
 
     /// Tolerant load for READS (`all`/`get`): any read/parse failure yields an empty history (see
     /// the type docs), so a corrupt file never blocks apply/restore. Newest-first is the on-disk
-    /// order, preserved verbatim.
+    /// order, preserved verbatim (with the pin invariant normalized, so a tampered file can never
+    /// surface more than [`MAX_PINS`] pins).
     fn load(&self) -> Vec<LookVersion> {
-        match std::fs::read(&self.path) {
+        let mut all: Vec<LookVersion> = match std::fs::read(&self.path) {
             Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
             Err(_) => Vec::new(),
-        }
+        };
+        normalize_pins(&mut all);
+        all
     }
 
     /// Load for MUTATIONS (`push`/`set_pinned`/`set_label`): distinguishes the failure kinds so a
@@ -168,10 +171,15 @@ impl LookHistoryStore {
     /// Present-but-unparseable → empty (self-heal; the corrupt bytes are unrecoverable anyway, and
     /// the write is atomic). But a genuine I/O error (permission denied, the file `chmod 000`, a
     /// transient read failure) → `Err`: the real history may still be intact, so the mutation aborts
-    /// rather than overwriting it with a truncated version.
+    /// rather than overwriting it with a truncated version. The loaded set is pin-normalized so a
+    /// hand-edited/pre-fix file carrying > MAX_PINS pins can't break `evict_to_cap`'s convergence.
     fn load_for_mutation(&self) -> Result<Vec<LookVersion>> {
         match std::fs::read(&self.path) {
-            Ok(bytes) => Ok(serde_json::from_slice(&bytes).unwrap_or_default()),
+            Ok(bytes) => {
+                let mut all: Vec<LookVersion> = serde_json::from_slice(&bytes).unwrap_or_default();
+                normalize_pins(&mut all);
+                Ok(all)
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
             Err(e) => Err(OperationError::Io(e.to_string())),
         }
@@ -187,6 +195,24 @@ impl LookHistoryStore {
 /// is an unlimited label with no eviction effect). A deliberately-pinned favourite is never silently
 /// dropped, even if that means momentarily keeping more than the cap when the whole tail is pinned
 /// (pins are bounded by [`MAX_PINS`] < [`CAP`], so the history still converges to the cap).
+/// Enforces the [`MAX_PINS`] invariant on a loaded set: a hand-edited or pre-fix `look-history.json`
+/// could carry more than [`MAX_PINS`] pinned entries, which would stop [`evict_to_cap`] from ever
+/// converging (and let a `push` return `Added` while silently dropping the new entry). Keeps the pin
+/// flag on only the newest [`MAX_PINS`] pinned entries (newest-first order) and un-pins the older
+/// extras.
+fn normalize_pins(all: &mut [LookVersion]) {
+    let mut kept = 0usize;
+    for v in all.iter_mut() {
+        if v.pinned {
+            if kept < MAX_PINS {
+                kept += 1;
+            } else {
+                v.pinned = false;
+            }
+        }
+    }
+}
+
 fn evict_to_cap(all: &mut Vec<LookVersion>) {
     while all.len() > CAP {
         match all.iter().rposition(|v| !v.pinned) {
@@ -334,6 +360,31 @@ mod tests {
             store.push(p).unwrap();
         }
         assert_eq!(store.all().len(), CAP, "the pin cap can't be bypassed through push");
+    }
+
+    #[test]
+    fn a_loaded_file_with_too_many_pins_is_normalized_not_trusted() {
+        let (_dir, mut store) = store();
+        // Simulate a hand-edited / pre-fix file: 11 entries, ALL pinned — an impossible state via
+        // the API, which would otherwise stall evict_to_cap and let push drop the new entry.
+        let tampered: Vec<LookVersion> = (0..11)
+            .map(|n| {
+                let mut v = ver(&format!("t{n}"), n, n);
+                v.pinned = true;
+                v
+            })
+            .collect();
+        std::fs::write(store.path(), serde_json::to_vec(&tampered).unwrap()).unwrap();
+
+        // A read never surfaces more than MAX_PINS pins.
+        assert_eq!(store.all().iter().filter(|v| v.pinned).count(), MAX_PINS);
+
+        // A push converges to the cap AND actually keeps the new entry (not a silent drop + Added).
+        assert_eq!(store.push(ver("new", 99, 99)).unwrap(), PushOutcome::Added);
+        let all = store.all();
+        assert_eq!(all.len(), CAP, "converged to the cap despite the over-pinned input");
+        assert!(all.iter().any(|v| v.id == "new"), "the new entry survived");
+        assert!(all.iter().filter(|v| v.pinned).count() <= MAX_PINS);
     }
 
     #[cfg(unix)]

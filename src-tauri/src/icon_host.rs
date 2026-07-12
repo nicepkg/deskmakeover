@@ -86,9 +86,9 @@ pub struct IconHost {
     /// (scan / get_persisted) never take it, so a mutation-in-flight never blocks a refresh. Lock
     /// order is ALWAYS op_gate → mut_state; no reader ever takes op_gate, so there is no cycle.
     op_gate: Mutex<()>,
-    /// The `dmicon://` protocol cache: `"<itemId>/<slot>"` → the extracted PNG bytes (overwritten
-    /// each scan; the URL's `?rev` — not this map — cache-busts the webview).
-    sources: Mutex<HashMap<String, Vec<u8>>>,
+    /// The `dmicon://` protocol cache: `"<itemId>/<slot>/<hash>"` → the extracted PNG bytes, kept as
+    /// TWO generations so an old frame's in-flight request survives a scan swap (codex R3-Major 5).
+    sources: Mutex<SourceCache>,
     /// Monotonic revision: bumps each scan, cache-busting every source URL.
     revision: AtomicU32,
     /// The native shortcut-arrow overlay state (ADR-0021), persisted to `arrow_marker` so it
@@ -145,7 +145,7 @@ impl IconHost {
                 scan_revision: 0,
                 op_epoch: 0,
             }),
-            sources: Mutex::new(HashMap::new()),
+            sources: Mutex::new(SourceCache::default()),
             revision: AtomicU32::new(0),
             arrow_overlay: Mutex::new(arrow),
             arrow_marker,
@@ -203,8 +203,9 @@ impl IconHost {
                 .unwrap_or_else(|_| dm_domain::Fingerprint::of_bytes(b""));
             scanned.push(ScannedItem { item, fingerprint });
         }
-        // Every extract succeeded → atomically publish the new cache + scan snapshot.
-        *self.sources.lock().unwrap() = next_sources;
+        // Every extract succeeded → atomically publish the new cache generation (retiring the prior
+        // one to `previous` so an old frame's in-flight URLs still resolve) + the scan snapshot.
+        self.sources.lock().unwrap().publish(next_sources);
         {
             let mut st = self.mut_state.lock().unwrap();
             st.scan = scanned;
@@ -459,9 +460,10 @@ impl IconHost {
         })
     }
 
-    /// Protocol lookup: the PNG bytes for `dmicon://…/<itemId>/<slot>?rev=N`.
+    /// Protocol lookup: the PNG bytes for `dmicon://…/<itemId>/<slot>/<hash>`, resolved against the
+    /// live generation then the prior one so a swap→adopt handoff never 404s (codex R3-Major 5).
     pub fn png_for(&self, key: &str) -> Option<Vec<u8>> {
-        self.sources.lock().unwrap().get(key).cloned()
+        self.sources.lock().unwrap().get(key)
     }
 
     fn ops(&self) -> IconOps<'_> {
@@ -551,6 +553,32 @@ fn icon_protocol_url(key: &str) -> String {
 /// `immutable` Cache-Control header honest (codex Major 4): identical pixels → identical URL (a
 /// legitimate cache hit); changed pixels → a new URL (never a stale reuse of a prior process's
 /// bytes). Written into a caller-owned local map so the whole cache swaps atomically per scan.
+/// Two generations of the `dmicon://` source cache. A scan swaps in the freshly-extracted map, but
+/// the OLD webview frame keeps requesting the PREVIOUS scan's content-addressed URLs until the
+/// frontend re-renders against the new scan DTO. Serving only the live map would 404 those in-flight
+/// requests during the swap→adopt handoff (codex R3-Major 5). Keeping the prior generation covers
+/// that window; content-addressed keys make it safe — an unchanged icon keeps its key across
+/// generations, and only a changed icon's superseded key lives solely in `previous`, dropped one
+/// scan later when the frontend has certainly adopted the new URLs.
+#[derive(Default)]
+struct SourceCache {
+    current: HashMap<String, Vec<u8>>,
+    previous: HashMap<String, Vec<u8>>,
+}
+
+impl SourceCache {
+    /// Publishes the freshly-extracted generation, retiring the prior `current` to `previous` (and
+    /// dropping the older `previous`).
+    fn publish(&mut self, next: HashMap<String, Vec<u8>>) {
+        self.previous = std::mem::replace(&mut self.current, next);
+    }
+
+    /// The bytes for a content-addressed key, checking the live generation then the prior one.
+    fn get(&self, key: &str) -> Option<Vec<u8>> {
+        self.current.get(key).or_else(|| self.previous.get(key)).cloned()
+    }
+}
+
 fn cache_source_into(
     sources: &mut HashMap<String, Vec<u8>>,
     item_id: &str,
@@ -722,5 +750,22 @@ mod tests {
         // A's stale COMMIT is rejected (ok:false), never mutating with B's buffer.
         let stale = h.apply_baked_commit(&sid_a, style_json(1), vec![], Some("A".into())).unwrap();
         assert!(!stale.ok, "a stale-token commit must not succeed");
+    }
+
+    #[test]
+    fn source_cache_keeps_the_previous_generation_for_the_swap_handoff() {
+        // codex R3-Major 5: a changed icon's OLD content-addressed URL must still resolve during the
+        // window between a scan's cache swap and the frontend adopting the new URLs.
+        let mut c = SourceCache::default();
+        c.publish(HashMap::from([("a/0/h1".to_string(), vec![1u8])]));
+        // Gen 2: item a's source changed → a NEW key; its old key now lives only in `previous`.
+        c.publish(HashMap::from([("a/0/h2".to_string(), vec![2u8])]));
+        assert_eq!(c.get("a/0/h2"), Some(vec![2]), "the live generation resolves");
+        assert_eq!(c.get("a/0/h1"), Some(vec![1]), "the prior generation still resolves during handoff");
+        // Gen 3: the two-generations-ago key is finally evicted (the frontend has long since adopted).
+        c.publish(HashMap::from([("a/0/h3".to_string(), vec![3u8])]));
+        assert_eq!(c.get("a/0/h1"), None, "two generations back is evicted");
+        assert_eq!(c.get("a/0/h2"), Some(vec![2]), "one generation back still resolves");
+        assert_eq!(c.get("a/0/h3"), Some(vec![3]), "the live generation resolves");
     }
 }

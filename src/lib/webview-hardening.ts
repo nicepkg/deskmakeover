@@ -1,11 +1,16 @@
-// Web-side WebView2 hardening (docs/references/webview2-pitfalls.md, F6):
-// the host disables the equivalent WebView2 settings, but every guard here also
+// Web-side webview hardening (docs/references/webview2-pitfalls.md, F6):
+// the host disables the equivalent webview settings, but every guard here also
 // protects the plain-browser dev loop AND covers old Runtimes where a host
 // setting is missing or silently ignored. Install once, before first render.
 
-/** True when running inside the WebView2 host (vs a plain dev browser). */
+import { isTauri } from '@/bridge/tauri'
+
+/** True when running inside the packaged app's webview (vs a plain dev browser).
+ *  Uses the Tauri signal, not `window.chrome.webview`: WebView2 (Windows Tauri)
+ *  injects `chrome.webview` on every page, and WKWebView (macOS Tauri) never does,
+ *  so the raw check both mis-fires and misses a platform. */
 export function isHostedInWebView(): boolean {
-  return typeof window !== 'undefined' && 'chrome' in window && !!(window as { chrome?: { webview?: unknown } }).chrome?.webview
+  return isTauri()
 }
 
 export function installWebViewHardening(): void {

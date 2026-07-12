@@ -184,9 +184,16 @@ completed the atomic-write DRY (journal + baked-wallpaper gained fsync); FsAsset
 LookHistoryStore anti-clobber (strict mutation load) + pin-cap normalization; typed IconStyle
 (rejects null/garbage/per-icon); SourceFingerprint newtype + AUMID; a real overlay-snapshot
 durability barrier before the HKLM write (`6aec58d f2437f7 340231f 3e51d41 00a25b6 de3db16`).
-`cargo test --workspace` **457 green**; dm-domain + dm-windows msvc-clean; **dm-elevated is
-blind-write (blake3 blocks msvc on Mac) → [WINDOWS-VERIFY]**. A 3rd codex CERT pass is running; the
-B2 apply/GC lifecycle-lock is recorded as a B2 acceptance criterion in the m6-wire-host plan.
+`cargo test --workspace` **457 green**; dm-domain + dm-windows msvc-clean.
+**3rd codex CERT pass: Mac foundation CERTIFIED (findings 1-4 RESOLVED); 4 remaining defects were all
+Windows-platform durability/atomicity — owner ruled blind-fix-now, all DONE** (`b7a31db` dm-windows:
+COM `.lnk` temp `claim_temp_for` O_EXCL + `MoveFileExW(WRITE_THROUGH)` publish, **msvc-verified**;
+`a87dff8` dm-elevated: write-through overlay snapshot + non-replacing snapshot-once claim, **blind-write
+[WINDOWS-VERIFY]** — blake3 blocks its msvc-check). Precise repros + the (deferred) IPersistStream /
+recovery-re-verify / named-mutex follow-ups are in the handoff plan **§8a**. The B2 apply/GC
+lifecycle-lock is recorded as a B2 acceptance criterion. **Foundation COMPLETE — next is B1-B5 icon
+bridge (owner ruled D1-consistent THIN boundary: Rust = scan/apply-package/restore/②③-persist; the
+frontend assembles IconsStateDto with presets/palette/grid).**
 **Still unbuilt in Wave B:** the icon bridge cluster **B1-B5** (`dm-contracts/icons.rs` DTOs,
 the apply-session chunk-buffer + `TxnDriver::apply` wiring to a real Tauri command incl. the
 commit→ledger reconcile gap #5, devhost icon fakes, `src-tauri` 9 icon commands, bridge repoint)

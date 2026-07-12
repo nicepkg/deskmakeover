@@ -192,7 +192,7 @@ impl<'p> TxnDriver<'p> {
                 if applied.is_empty() {
                     return Err(e);
                 }
-                return self.abandon(applied, ledger, format!("prepare journal append failed: {e}"));
+                return self.abandon(applied, ledger, format!("prepare journal append failed: {e}"), outcome);
             }
             // From here the item is a rollback candidate (a mutation might start below).
             applied.push(Prepared {
@@ -212,9 +212,9 @@ impl<'p> TxnDriver<'p> {
                 // (P1-5). If the applier/asset failed but the journal is healthy, do the normal
                 // journaled rollback so recovery sees a clean TxnRolledBack terminal.
                 return if is_journal_error(&e) {
-                    self.abandon(applied, ledger, format!("apply journal append failed: {e}"))
+                    self.abandon(applied, ledger, format!("apply journal append failed: {e}"), outcome)
                 } else {
-                    self.rollback(txn, applied, journal, ledger, format!("apply failed: {e}"))
+                    self.rollback(txn, applied, journal, ledger, format!("apply failed: {e}"), outcome)
                 };
             }
         }
@@ -410,13 +410,19 @@ impl<'p> TxnDriver<'p> {
         journal: &mut dyn JournalSink,
         ledger: &mut dyn LedgerStore,
         reason: String,
+        // The phase-1 outcome so far — carried through so the preflight's `conflicts` and above all
+        // `healed` survive the batch failure (codex R10-#A): a heal dropped a ledger row, and losing
+        // that fact here would skip the host's scan-revision fence, re-opening the same-revision ABA
+        // on the retry.
+        mut outcome: ApplyOutcome,
     ) -> Result<ApplyOutcome> {
         // `desktop_mutated` = conservative: rollback is reached from inside the mutation loop, so the
         // desktop MAY have moved (a styled-then-restored item, or a residual state from a faulted
         // restore) — or, if the very first item's asset-write faulted before its icon swap, still be
         // pristine. We never under-report, so the host errs toward a repair toast, not "nothing changed"
         // (codex R5-#1 / R6-#5).
-        let mut outcome = ApplyOutcome { error: Some(reason), desktop_mutated: true, ..Default::default() };
+        outcome.error = Some(reason);
+        outcome.desktop_mutated = true;
         let mut restore_errors: Vec<String> = Vec::new();
         // If a journal append fails MID-rollback the log may now be torn, so we must stop appending
         // to it — but never stop restoring: a naive `?` on the per-item append (or ledger remove)
@@ -477,11 +483,14 @@ impl<'p> TxnDriver<'p> {
         applied: Vec<Prepared>,
         ledger: &mut dyn LedgerStore,
         reason: String,
+        // The phase-1 outcome so far — `conflicts`/`healed` must survive (codex R10-#A, see rollback).
+        mut outcome: ApplyOutcome,
     ) -> Result<ApplyOutcome> {
         // `desktop_mutated` = conservative (see rollback): abandon is reached after the mutation phase
         // began, so the desktop may have moved or (first-item asset-write fault) still be pristine; we
         // never under-report (codex R5-#1 / R6-#5).
-        let mut outcome = ApplyOutcome { error: Some(reason), desktop_mutated: true, ..Default::default() };
+        outcome.error = Some(reason);
+        outcome.desktop_mutated = true;
         let mut errors: Vec<String> = Vec::new();
         for item in applied.into_iter().rev() {
             match self.applier.restore(&item.target, &item.anchor) {

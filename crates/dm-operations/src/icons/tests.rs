@@ -820,6 +820,46 @@ fn a_revert_only_apply_still_writes_the_saved_style_and_history() {
 }
 
 #[test]
+fn a_heal_survives_a_same_batch_mutation_failure_and_still_demands_the_fence() {
+    // codex R10-#A: item A is a poison row (heal → drop + conflict in phase 1); item B proceeds but
+    // its mutation FAULTS, so the driver rolls the batch back. rollback/abandon used to rebuild the
+    // outcome from Default, LOSING the phase-1 `healed` (and `conflicts`) — the host then skipped the
+    // scan-revision fence, and a same-revision retry (A now row-less) passed the fresh CAS and
+    // overwrote the possible hand-edit. The phase-1 outcome must survive the batch failure.
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    let b = item("b", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.seed(&b, b"orig-b");
+    f.apply(
+        &[("a", 0, [1, 1, 1, 255]), ("b", 0, [2, 2, 2, 255])],
+        style(1),
+        "A",
+        "v1",
+        &[a.clone(), b.clone()],
+    );
+    // Poison A (desktop back to original, row lingers); B's next apply will fault mid-mutation.
+    f.world.borrow_mut().put(&a.path, b"orig-a");
+    f.world.borrow_mut().fail_apply(&b.path);
+
+    let out = f.apply(
+        &[("a", 0, [7, 7, 7, 255]), ("b", 0, [9, 9, 9, 255])],
+        style(2),
+        "B",
+        "v2",
+        &[a.clone(), b.clone()],
+    );
+
+    assert!(out.error.is_some(), "B's fault rolled the styling batch back");
+    assert!(out.conflicts.contains(&ItemId::from_raw("a")), "A's heal-conflict survives the rollback");
+    assert!(f.ledger.get(&a.id).unwrap().is_none(), "A's poison row was dropped in phase 1");
+    assert!(
+        out.requires_rescan,
+        "the heal must still demand the fence — losing it re-opens the same-revision ABA (codex R10-#A)",
+    );
+}
+
+#[test]
 fn a_policy_only_apply_with_no_current_targets_still_persists_the_intent() {
     // codex R9-#2: the user changes kindPolicy/typeOverrides when NO icon currently needs styling or
     // reverting (zero-target). There is no desktop effect, but the global intent MUST persist to ②③

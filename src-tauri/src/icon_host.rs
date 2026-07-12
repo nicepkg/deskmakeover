@@ -208,6 +208,17 @@ impl IconHost {
         self.sources.lock().unwrap().publish(next_sources);
         {
             let mut st = self.mut_state.lock().unwrap();
+            // Monotonic publish (codex R10-#B): this scan allocated its revision BEFORE the (slow)
+            // extraction, and does not hold the op gate — a heal FENCE (or a competing scan) may have
+            // advanced `scan_revision` past it in the meantime. Publishing anyway would overwrite the
+            // fence with PRE-heal fingerprints under an accepted revision, re-opening the ABA. A
+            // superseded scan must lose: fail it and let the caller rescan.
+            if rev <= st.scan_revision {
+                return Err(format!(
+                    "scan superseded (revision {rev} <= current {}): rescan",
+                    st.scan_revision
+                ));
+            }
             st.scan = scanned;
             st.scan_revision = rev;
         }
@@ -242,6 +253,12 @@ impl IconHost {
                 "stale apply: begin revision {revision} does not match the current scan {}",
                 st.scan_revision
             ));
+        }
+        // No valid scan snapshot: either nothing has been scanned yet, or a heal FENCED the previous
+        // one (the fenced revision is synthetic and its snapshot cleared — codex R10-#B). An apply must
+        // bind a REAL, still-valid snapshot's fingerprints; rescan first.
+        if st.scan.is_empty() {
+            return Err("no valid scan to apply against: rescan first".into());
         }
         // A fresh Begin ABANDONS any prior in-flight session (a bake that errored mid-stream and never
         // committed must not strand the session and deadlock every future apply). Mixing is prevented
@@ -346,6 +363,11 @@ impl IconHost {
         // a follow-up, but this fence is the structural safety boundary, not the toast.
         if outcome.requires_rescan {
             st.scan_revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+            // The fenced revision is synthetic — it corresponds to NO real scan. Clear the snapshot so
+            // the fenced state explicitly means "no valid scan": even a Begin somehow carrying the
+            // fenced number cannot bind pre-heal fingerprints (Begin rejects an empty snapshot). Only a
+            // REAL rescan (which republishes both) reopens the gate (codex R10-#B).
+            st.scan.clear();
         }
         let committed_any = !outcome.committed.is_empty();
         let dto = self.to_persisted_dto_locked(&outcome.stores);
@@ -836,6 +858,19 @@ mod tests {
         // the now-row-less fresh CAS.
         let err = h.apply_baked_begin(scan1.revision, 1).unwrap_err();
         assert!(err.contains("stale apply"), "same-revision retry must be fenced: {err}");
+        // And the fenced state means "NO valid scan" (codex R10-#B): the snapshot was cleared, so even
+        // a Begin that somehow carries the synthetic fenced revision cannot bind pre-heal fingerprints.
+        // Probe the fenced revision by brute force over the small window above scan1.
+        for fenced in scan1.revision + 1..scan1.revision + 4 {
+            if let Err(e) = h.apply_baked_begin(fenced, 1) {
+                assert!(
+                    e.contains("stale apply") || e.contains("no valid scan"),
+                    "a fenced/unknown revision must never bind a snapshot: {e}"
+                );
+            } else {
+                panic!("Begin({fenced}) bound a snapshot inside the fenced window");
+            }
+        }
 
         // A real rescan reopens the gate; styling is now the user's current, unambiguous intent.
         let scan2 = h.scan().unwrap();

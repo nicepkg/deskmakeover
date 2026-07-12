@@ -108,6 +108,10 @@ in the (unwritten) Windows handoff doc; the running checklists live in
 
 The B1-B5 bridge went through R1(13)+R2(8)+R3(5) fixed; **R4 found the R3 error-contract fixes were
 directionally right but incomplete + buggy.** Owner decision (A): grind to convergence on Mac.
+**Status 2026-07-12: all 7 R4 findings below FIXED with regression tests (cargo 507 · bun 516 · tsc ·
+msvc-clean, green); codex R5 verification dispatched.** The big one was Major 1 + 1b — the
+start-ordered generation guard was deleted outright and replaced by strict single-flight (at most one
+host round-trip in flight; scan/rescan/apply/restore/restoreOverlay mutually exclusive).
 
 | # | Finding | Fix size |
 |---|---|---|

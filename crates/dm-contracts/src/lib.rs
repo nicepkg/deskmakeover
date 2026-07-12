@@ -8,11 +8,16 @@
 //! phases migrate it here.
 
 mod common;
+mod icons;
 mod settings;
 mod style;
 mod wallpaper;
 
 pub use common::ToastDto;
+pub use icons::{
+    ArrowOverlayDto, IconItemDto, IconKindDto, IconOpResultDto, IconPersistedDto, IconScanDto,
+    LookVersionDto, OverrideModeDto,
+};
 pub use settings::{Language, SettingsDto, SettingsPatch, Theme};
 pub use style::{IconStyle, IconStyleError};
 pub use wallpaper::{

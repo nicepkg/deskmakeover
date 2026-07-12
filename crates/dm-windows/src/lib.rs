@@ -29,7 +29,9 @@ mod overlay;
 mod refresh;
 #[cfg(windows)]
 pub mod shell;
-#[cfg(windows)]
+// Cross-platform MODULE (the extractor struct/COM body inside is `cfg(windows)`): the pure
+// pixel/parse helpers (premul→straight, icon-location parse, %ENV% expand) are exercised on the
+// Mac host; only the shell/GDI runtime is `[WINDOWS-VERIFY]` — same split as `watcher`.
 mod source;
 #[cfg(windows)]
 mod state_reader;

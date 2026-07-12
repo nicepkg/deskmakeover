@@ -38,12 +38,15 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 
 Ordered by dependency. Tagged **[MAC]** (closable + verifiable here) or **[WIN]** (needs the box).
 
-1. **[MAC] `WindowsIconSourceExtractor::extract` is an `Err` stub** (`crates/dm-windows/src/source.rs:39`).
-   **The single most under-rated gap.** On Windows, `build_icon_host` wires this extractor
-   (`src-tauri/src/lib.rs:95`), so `icons.scan` cannot obtain any real icon pixels — the icon module
-   cannot function on the ship target at all. Masked on Mac by `devhost_icons`. Writing the body
-   (`IShellItemImageFactory::GetImage` → 256px, batch) is blind-writable + msvc-checkable **here**;
-   only the runtime pixels are `[WIN]`. This should arguably rank above finishing the bridge polish.
+1. ~~[MAC] `WindowsIconSourceExtractor::extract` is an `Err` stub~~ → ✅ **BODY BLIND-WRITTEN
+   (2026-07-13), runtime = [WV]**. Full implementation, oracle `ShellIconCanvasSource.cs`:
+   shortcut icon-resources via `PrivateExtractIconsW` (best ≤256 frame, `ExtractIconExW` classic
+   fallback) ⇄ `IShellItemImageFactory::GetImage` (`ICONONLY|BIGGERSIZEOK`, premultiplied→straight
+   un-premultiply) two-way chain; Recycle Bin full+empty pair from the per-user CLSID `DefaultIcon`
+   registry values; HICON via `GetIconInfo` colour plane (straight alpha + AND-mask legacy
+   fallback). Pure helpers (premul math / icon-location parse / %ENV% expand) Mac-unit-tested;
+   msvc-clean, zero warnings. **[WV]: real pixels on the box** — shell image fidelity, Appx logo
+   quality via the shell path, empty-bin pairing, alpha edge cases.
 2. **[WIN] WebView2 bridge-transport** — the `a339196` fix (route via `isTauri()`, not
    `window.chrome.webview`) is itself `[WV]`. If wrong, the app never boots on Windows. #1 thing to
    confirm on the box.

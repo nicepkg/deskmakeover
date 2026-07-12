@@ -165,6 +165,17 @@ x86_64-pc-windows-msvc` green. The full-workspace msvc check stays blocked only 
 8. Wallpaper: `IDesktopWallpaper` capture/set/restore across monitors.
 9. **Stubs to implement on Windows**: `shell/layout.rs` (IFolderView2 `GetItemPosition` /
    SysListView32 positions) still returns an empty `Vec` — real positions unwired.
+   `source.rs` `WindowsIconSourceExtractor` — **BODY BLIND-WRITTEN (2026-07-13), no longer an
+   `Err` stub** (oracle `legacy/.../ShellIconCanvasSource.cs`): shortcut icon-resources via
+   `PrivateExtractIconsW`→`ExtractIconExW`, everything else `IShellItemImageFactory::GetImage`
+   (ICONONLY|BIGGERSIZEOK, premultiplied→straight), Recycle Bin full+empty pair from the per-user
+   CLSID `DefaultIcon` values, HICON via `GetIconInfo` (straight alpha + AND-mask legacy fallback).
+   msvc-clean; pure pixel/parse helpers Mac-tested. **Please [WV] on the box**: (a) `icons.scan`
+   returns real 256px pixels for every item kind (shortcut/folder/file/Appx/RecycleBin) and the
+   webview renders them over `dmicon://`; (b) the bin advertises TWO sources (full+empty) when the
+   per-user DefaultIcon values exist, and degrades to one otherwise; (c) alpha looks right (no
+   dark premultiplied halos, no opaque squares from legacy icons); (d) a shortcut whose icon
+   resource is unreadable (Electron/Store) still gets the shell image.
    `watcher.rs` — **DONE (B10, 2026-07-12): now a real `notify` + `notify-debouncer-full`
    watcher, NOT a `ReadDirectoryChangesW` stub.** The primitive is cross-platform so the
    debounce + event-mapping core is unit-tested + live-verified on the Mac host (a real FSEvents

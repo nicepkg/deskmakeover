@@ -60,13 +60,6 @@ export interface AppInfoDto {
   changelogEn: ChangelogEntryDto[]
 }
 
-export interface FrameMeta {
-  key: string
-  width: number
-  height: number
-  revision: number
-}
-
 /** Host → web event topics. */
 export interface BridgeEvents {
   'window-state': { maximized: boolean }

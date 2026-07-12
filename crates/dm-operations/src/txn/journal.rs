@@ -237,24 +237,16 @@ impl JournalSink for FileJournal {
                 Err(e) => Err(OperationError::Io(e.to_string())),
             };
         }
-        // Atomically rewrite the retained records: temp file + fsync + rename. A crash before the
-        // rename leaves the old (complete) journal for recovery; after it, the retained set — either
-        // way the durable state is consistent.
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)?;
+        // Atomically rewrite the retained records through the shared crash-atomic writer (temp +
+        // fsync + rename + parent-dir fsync, unique anti-symlink temp). A crash before the rename
+        // leaves the old (complete) journal for recovery; after it, the retained set — either way
+        // the durable state is consistent.
+        let mut buf = Vec::new();
+        for record in &kept {
+            buf.extend_from_slice(&serde_json::to_vec(record)?);
+            buf.push(b'\n');
         }
-        let tmp = self.path.with_extension("log.tmp");
-        {
-            let mut file = fs::File::create(&tmp)?;
-            for record in &kept {
-                let mut line = serde_json::to_vec(record)?;
-                line.push(b'\n');
-                file.write_all(&line)?;
-            }
-            file.sync_all()?;
-        }
-        fs::rename(&tmp, &self.path)?;
-        Ok(())
+        crate::fs_atomic::write_atomic(&self.path, &buf)
     }
 }
 

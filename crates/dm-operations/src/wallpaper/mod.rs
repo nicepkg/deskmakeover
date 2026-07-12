@@ -74,12 +74,12 @@ impl<'a> WallpaperOps<'a> {
             self.store.save(&original)?;
         }
 
-        // ③ materialize the baked PNG (atomic temp + rename).
+        // ③ materialize the baked PNG crash-atomically (temp + fsync + rename via the shared
+        // writer, which also creates the baked dir). The earlier fs::write + rename skipped fsync,
+        // so a power loss between the write and the SetWallpaper reference could leave a torn or
+        // missing file the desktop then points at.
         let path = self.baked_path(monitor_id, &png);
-        fs::create_dir_all(&self.baked_dir)?;
-        let tmp = path.with_extension("tmp");
-        fs::write(&tmp, &png)?;
-        fs::rename(&tmp, &path)?;
+        crate::fs_atomic::write_atomic(&path, &png)?;
 
         // ④ point the monitor at it.
         self.applier.set(monitor_id, &path.to_string_lossy())?;

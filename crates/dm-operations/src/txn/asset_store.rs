@@ -44,13 +44,15 @@ impl FsAssetStore {
         Ok(self.root.join(format!("{hash}.{ASSET_EXT}")))
     }
 
-    /// Materializes `bytes` under `hash`, returning its reference. Content-addressed + crash-atomic:
-    /// an already-present file was fully written (the rename is atomic), so it is byte-identical by
-    /// construction and is reused rather than rewritten (the trait's idempotency contract). Absent
-    /// → write temp + fsync + rename.
+    /// Materializes `bytes` under `hash`, returning its reference. Idempotent + crash-atomic, but
+    /// "already present" is NOT blindly trusted: content-addressing only holds for a REGULAR file
+    /// WE wrote atomically, so the store reuses the existing file only when it is a regular file
+    /// whose bytes already equal `bytes`. A symlink, directory, zero-byte/torn, or wrong-content
+    /// file at the path is atomically overwritten (the rename replaces a symlink rather than
+    /// following it), never silently reused.
     fn write(&self, hash: &str, bytes: &[u8]) -> PortResult<AssetRef> {
         let path = self.asset_path(hash)?;
-        if !path.exists() {
+        if !is_regular_file_with(&path, bytes)? {
             write_atomic(&path, bytes).map_err(|e| PortError::Io(e.to_string()))?;
         }
         Ok(AssetRef::new(hash, path.to_string_lossy().into_owned()))
@@ -59,6 +61,14 @@ impl FsAssetStore {
 
 impl AssetStore for FsAssetStore {
     fn put(&self, hash: &str, bytes: &[u8]) -> PortResult<AssetRef> {
+        // "-empty" is the reserved suffix for paired empty variants (put_empty_variant). A primary
+        // hash ending in it would collide with another asset's empty file, so reject it outright —
+        // a real content hash never ends this way.
+        if hash.ends_with("-empty") {
+            return Err(PortError::Io(format!(
+                "asset hash {hash:?} uses the reserved \"-empty\" suffix"
+            )));
+        }
         self.write(hash, bytes)
     }
 
@@ -74,6 +84,23 @@ impl AssetStore for FsAssetStore {
     }
 
     fn gc(&self, live: &[String]) -> PortResult<()> {
+        // Ownership boundary (ADR-0020 data-loss red-line): refuse to collect THROUGH a symlink at
+        // the root. A mispointed or hijacked root (e.g. `assets -> ~/Pictures`) must never let gc
+        // delete files outside the store's own app-data directory. [WINDOWS-VERIFY] a directory
+        // junction is a reparse point that `is_symlink` may not flag — the Windows adapter must also
+        // reject `FILE_ATTRIBUTE_REPARSE_POINT` roots.
+        match fs::symlink_metadata(&self.root) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(PortError::Io(format!(
+                    "refusing to gc through a symlinked asset root: {}",
+                    self.root.display()
+                )));
+            }
+            Ok(_) => {}
+            // A store directory that was never created has nothing to collect.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(PortError::Io(e.to_string())),
+        }
         let live: HashSet<&str> = live.iter().map(|s| s.as_str()).collect();
         let entries = match fs::read_dir(&self.root) {
             Ok(e) => e,
@@ -103,6 +130,24 @@ impl AssetStore for FsAssetStore {
             }
         }
         Ok(())
+    }
+}
+
+/// Whether `path` is ALREADY a regular file whose bytes equal `bytes` — the only case the store may
+/// reuse rather than rewrite. A symlink, directory, unreadable, or content-mismatched/torn file
+/// returns `false` (so it is atomically overwritten), never silently trusted: content-addressing
+/// only holds for files the store wrote atomically itself. Uses `symlink_metadata` so a symlink is
+/// classified as a symlink (not followed).
+fn is_regular_file_with(path: &Path, bytes: &[u8]) -> PortResult<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_file() => match fs::read(path) {
+            Ok(existing) => Ok(existing == bytes),
+            Err(_) => Ok(false),
+        },
+        // A symlink or directory sitting at our path: overwrite it with a fresh regular file.
+        Ok(_) => Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(PortError::Io(e.to_string())),
     }
 }
 
@@ -225,5 +270,61 @@ mod tests {
         // No directory, nothing to collect — must succeed, not error.
         store.gc(&["anything".into()]).unwrap();
         assert!(!store.root().exists());
+    }
+
+    #[test]
+    fn put_rewrites_a_preexisting_wrong_or_torn_file_instead_of_trusting_it() {
+        let (_dir, store) = store();
+        fs::create_dir_all(store.root()).unwrap();
+        // A pre-placed zero-byte / wrong-content file at the hash path must NOT be reused.
+        let path = store.root().join("h.ico");
+        fs::write(&path, b"").unwrap();
+        let asset = store.put("h", b"CORRECT-ICO").unwrap();
+        assert_eq!(fs::read(&asset.path).unwrap(), b"CORRECT-ICO", "a torn/wrong file is overwritten");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn put_overwrites_a_symlink_at_the_target_without_following_it() {
+        use std::os::unix::fs::symlink;
+        let (_dir, store) = store();
+        fs::create_dir_all(store.root()).unwrap();
+        let user_file = store.root().parent().unwrap().join("user.dat");
+        fs::write(&user_file, b"USER DATA").unwrap();
+        // A hostile symlink where our asset would live.
+        symlink(&user_file, store.root().join("h.ico")).unwrap();
+
+        let asset = store.put("h", b"OURS").unwrap();
+
+        assert_eq!(fs::read(&user_file).unwrap(), b"USER DATA", "the symlink target is untouched");
+        assert_eq!(fs::read(&asset.path).unwrap(), b"OURS", "our path is now a regular file");
+        assert!(!fs::symlink_metadata(&asset.path).unwrap().file_type().is_symlink());
+    }
+
+    #[test]
+    fn put_rejects_the_reserved_empty_suffix_on_a_primary_hash() {
+        let (_dir, store) = store();
+        assert!(matches!(store.put("abc-empty", b"x"), Err(PortError::Io(_))));
+        // But put_empty_variant, which OWNS that suffix, still works.
+        let primary = store.put("abc", b"full").unwrap();
+        assert!(store.put_empty_variant(&primary, b"empty").is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn gc_refuses_a_symlinked_root() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        // A real directory full of the user's files, and a store root symlinked onto it.
+        let real = dir.path().join("pictures");
+        fs::create_dir_all(&real).unwrap();
+        fs::write(real.join("wedding.ico"), b"precious").unwrap();
+        let root = dir.path().join("assets");
+        symlink(&real, &root).unwrap();
+
+        let store = FsAssetStore::new(&root);
+        // gc must refuse rather than delete through the symlink.
+        assert!(matches!(store.gc(&[]), Err(PortError::Io(_))));
+        assert!(real.join("wedding.ico").exists(), "the user's file survives");
     }
 }

@@ -47,6 +47,18 @@ Ordered by dependency. Tagged **[MAC]** (closable + verifiable here) or **[WIN]*
    fallback). Pure helpers (premul math / icon-location parse / %ENV% expand) Mac-unit-tested;
    msvc-clean, zero warnings. **[WV]: real pixels on the box** — shell image fidelity, Appx logo
    quality via the shell path, empty-bin pairing, alpha edge cases.
+   **codex extractor review (2026-07-13): 2🔴+3🟠+2🟡.** Fixed same-day: UINT_MAX failure sentinel
+   accepted as success (🟡6); the bin now ALWAYS advertises two sources (full stands in for a
+   missing empty — a 1-length shape baked applies the driver must reject, 🟠4). **OPEN — the next
+   Mac work items:** 🔴1 re-scan reads the STYLED output as the raw source (`Style(Style(orig))`
+   compounding; needs ledger-aware extraction — owned items whose fingerprint == last_applied must
+   extract from the ledger's `original_anchor`, not the live icon location); 🔴2 (adjacent,
+   pre-existing) `WindowsScanner` never yields the Recycle Bin — it is a shell-namespace virtual
+   item the oracle injects explicitly (`DesktopPreviewService.cs:96`), so the whole bin path is
+   dead on Windows until the scanner injects it; 🟠3 one bad item's extract Err fails the WHOLE
+   scan (needs per-item degradation via `styleable:false`/statusReason); 🟠5 monochrome HICONs
+   (hbmColor=NULL, double-height mask) unreachable branch → always fail; 🟠7 ≥260-unit resource
+   paths silently skip the 256px extractor (windows-rs projection limit).
 2. **[WIN] WebView2 bridge-transport** — the `a339196` fix (route via `isTauri()`, not
    `window.chrome.webview`) is itself `[WV]`. If wrong, the app never boots on Windows. #1 thing to
    confirm on the box.

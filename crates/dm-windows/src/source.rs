@@ -195,17 +195,18 @@ mod win {
             .and_then(|v| resource_from_value(&v.raw))
             .or_else(|| shell_item_image(&item.path).ok().flatten());
         let empty = anchor.empty.as_ref().and_then(|v| resource_from_value(&v.raw));
-        let mut out = Vec::with_capacity(2);
-        match full {
-            Some(i) => out.push(i),
+        let full = match full {
+            Some(i) => i,
             None => {
                 return Err(PortError::NotFound("recycle-bin: no extractable full-state icon".into()))
             }
-        }
-        if let Some(e) = empty {
-            out.push(e);
-        }
-        Ok(out)
+        };
+        // The bin ALWAYS advertises two sources: the driver's registry mutation is a coupled
+        // full+empty write, so a single-source scan would let the user bake an apply the driver must
+        // then reject wholesale (codex). A missing/unreadable empty value degrades to the full-state
+        // image standing in for both — the oracle's behaviour — never a 1-length shape.
+        let empty = empty.unwrap_or_else(|| full.clone());
+        Ok(vec![full, empty])
     }
 
     fn resource_from_value(value: &str) -> Option<DecodedImage> {
@@ -244,7 +245,9 @@ mod win {
             } else {
                 0
             };
-            let mut icon = if got >= 1 { icons[0] } else { HICON::default() };
+            // Exactly 1 is success: the documented failure sentinel is 0xFFFFFFFF (file vanished /
+            // unreadable), which a naive `>= 1` would treat as success over an unset handle (codex).
+            let mut icon = if got == 1 { icons[0] } else { HICON::default() };
             if icon.is_invalid() {
                 // Classic 32px fallback for resources PrivateExtractIcons cannot read.
                 let mut large = HICON::default();

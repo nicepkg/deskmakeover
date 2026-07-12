@@ -1051,6 +1051,7 @@ dependencies = [
  "dm-contracts",
  "dm-domain",
  "dm-icon-codec",
+ "dm-icon-core",
  "image",
  "rusqlite",
  "serde",
@@ -1062,6 +1063,17 @@ dependencies = [
 [[package]]
 name = "dm-resident"
 version = "0.0.0"
+dependencies = [
+ "dm-contracts",
+ "dm-domain",
+ "dm-icon-core",
+ "dm-operations",
+ "image",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "dm-test-support"

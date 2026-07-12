@@ -14,6 +14,8 @@
 //! `WallpaperHost`).
 
 mod package;
+pub mod native_bake;
+pub mod style_resolve;
 
 pub use package::{package_masters, BufferedMaster, PackagedItem};
 

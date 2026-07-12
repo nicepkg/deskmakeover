@@ -4,4 +4,24 @@ edition.workspace = true
 version.workspace = true
 publish.workspace = true
 
+# The resident auto-format engine (spec 07): reconciler decision core, pending-privileged queue,
+# tray state machine, trust/consent ladder. Pure orchestration over the dm-domain ports — every
+# decision is Mac-unit-testable over fakes; the platform bodies it drives (watcher, activity hook,
+# COM writers) live in dm-windows behind cfg(windows). NO dm-elevated / OverlayControl dependency
+# BY CONSTRUCTION — the type system enforces the spec 07 §14 red line (the background never
+# elevates); privileged work is only ever enqueued.
+
 [dependencies]
+dm-contracts = { path = "../dm-contracts" }
+dm-domain = { path = "../dm-domain" }
+dm-operations = { path = "../dm-operations" }
+# The native render kernel: the reconciler holds one RenderSession so profile analysis stays
+# warm across cycles (spec 07 §5/§15).
+dm-icon-core = { path = "../dm-icon-core" }
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+tempfile = "3"

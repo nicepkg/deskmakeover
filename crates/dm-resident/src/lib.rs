@@ -1,2 +1,27 @@
-//! Resident mode (ADR-0019, ADR-0020): background reconciler, job processor,
-//! privileged queue, and policy for the always-on auto-format path.
+//! Resident auto-format (spec 07, ADR-0019/0020/0022): the background engine that keeps new
+//! desktop icons styled per the user's saved appearance.
+//!
+//! Layering: this crate is the DECISION core — pure orchestration over the `dm-domain` ports and
+//! `dm-operations` primitives, fully unit-tested on the Mac host over fakes. The platform bodies
+//! it drives (desktop watcher, activity WinEventHook, COM writers) live in `dm-windows`; the tray
+//! rendering + notifications live in `src-tauri`. Two structural guarantees ride in the crate
+//! graph itself:
+//!
+//! - **The §14 red line**: no `dm-elevated`/`OverlayControl` dependency exists here, so the
+//!   background CANNOT elevate — privileged work is only ever enqueued
+//!   ([`PendingPrivilegedQueue`]) for the one batched UAC when the user opens the window.
+//! - **One undo surface** (ADR-0020 §2): every background apply goes through the SAME
+//!   `TxnDriver::apply` + ledger the manual flow uses; an incremental run writes ONLY store ①
+//!   (never ② saved-style, never ③ look-history — spec 07 §5/§8).
+
+pub mod consent;
+pub mod pending_privileged;
+pub mod reconciler;
+pub mod stability;
+pub mod tray_state;
+
+pub use consent::{FreshnessInputs, TrustState, PROPOSAL_TIMEOUT_SECS};
+pub use pending_privileged::{PendingPrivilegedQueue, PendingReason};
+pub use reconciler::{ReconcileContext, ReconcileOutcome, Reconciler, ReconcilerPorts};
+pub use stability::{FsStabilityReader, SettleProbe, StabilityReader, StabilitySnapshot};
+pub use tray_state::{transition, TrayEvent, TrayState};

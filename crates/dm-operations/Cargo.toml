@@ -11,6 +11,9 @@ dm-domain = { path = "../dm-domain" }
 # into multi-resolution content-addressed .ico. Pure Rust (compiles natively on Mac); dm-operations
 # is already off the msvc cross-check (rusqlite/bundled), so this adds no msvc regression.
 dm-icon-codec = { path = "../dm-icon-codec" }
+# Native headless render for the resident/version-switch path (spec 07 §15): the resolve
+# ladder port + RenderSession bake live behind icons::style_resolve / icons::native bake.
+dm-icon-core = { path = "../dm-icon-core" }
 # `bundled` builds SQLite from source so the app never depends on a system copy.
 # NOTE (Mac-first): this C-compiling dep is why the *workspace* msvc cross-check is blocked
 # on Mac. The transaction/ledger machinery below is pure Rust with no rusqlite and no

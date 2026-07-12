@@ -118,6 +118,14 @@ pub trait OverlayControl {
     fn restore(&self) -> PortResult<OverlayOutcome>;
 }
 
+/// Whether the desktop is currently busy under the user (spec 07 §11): drag/capture on the
+/// desktop list view, or a desktop-class foreground window with recent input. A UX-layer signal
+/// ONLY — data safety is the driver's CAS check, never timing. The resident reconciler re-checks
+/// this between EVERY icon in a batch; impls err on the side of "busy".
+pub trait ActivityMonitor {
+    fn is_desktop_busy(&self) -> PortResult<bool>;
+}
+
 /// Extracts an item's normalized 256px source image(s) for the compositor to render from (oracle:
 /// the C# shell icon extraction — `SHGetFileInfo`/WIC/package-asset read). Returns `[0]` the
 /// primary source; a two-state item (the Recycle Bin) also returns `[1]` its empty-state source.

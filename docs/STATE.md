@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-11 night (wave-2 hardening CLOSED · M6 preview cutover built+verified behind default-OFF flag, FLIP HELD FOR OWNER — WASM is ~3× slower, M6 is single-truth not speed · arrow-restore UX DONE · [M6-STORE-TXN] + P4-flip pending owner. Prior: M2+M3/M4 blind-write + M5.x DONE, icon core byte-exact over 1487-cell all-real corpus)
+updated: 2026-07-12 night (full-repo audit + fix run: 11 commits landed, all gates green — docs/reviews/2026-07-12-audit-fix-run.md · M7 常驻设计FINALIZED + 4 owner dispositions APPROVED — ADR-0022, docs/reviews/2026-07-12-m7-resident-panel.md · roadmap: M6-WIRE Wave A(壁纸)DONE → Wave B(图标接线)NOT STARTED = M7 build blocker · #7 diagnostics+3 marginal P3 owner-go, not started · ICON-5/9/11 held, owner has not ruled. Prior (swept to journal): M6 kernel-speed Phase 0-4a + single-truth WASM flip EXECUTED, wave-2 hardening CLOSED, arrow-restore UX DONE, M6-WIRE Wave A wallpaper wiring DONE)
 version: Unreleased (Directory.Build.props + Web package.json both 0.0.0; the owner names the first release number; the About-line + in-app changelog narrative is RESTORED per ADR-0013 amendment)
 branch: main — synced with origin/master (repo exists on GitHub but is PRIVATE; making it public is the owner's call)
 ---
@@ -29,6 +29,12 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 - **ADR-0019/0020/0021 + `docs/plans/2026-07-10-tauri-migration.md`** — the
   Tauri 2 + Rust replatform, background-resident v1 (spec 07), arrow default.
+- **ADR-0022** + `docs/specs/07-background-resident.md` (updated) — M7 常驻自动 format 的外观模型
+  /重置/信任模型/常驻前置定稿; panel `docs/reviews/2026-07-12-m7-resident-panel.md`; build plan
+  `docs/plans/2026-07-12-m7-resident.md` (blocked on Wave B, see §Live now).
+- `docs/plans/2026-07-12-m6-wire-host.md` — M6-WIRE host wiring (Wave A wallpaper DONE, Wave B
+  icons NOT started = the M7 blocker); `docs/reviews/2026-07-12-audit-fix-run.md` — tonight's
+  full-repo audit + fix run record.
 - **ADR-0013** + amendments — v3 "Premium Flat": light-first OKLCH, follows system;
   bundled Inter + HarmonyOS Sans SC; version narrative RESTORED (About version line +
   in-app changelog, auto-opens once per UPDATE, never on first install).
@@ -42,13 +48,14 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 ## Bridge state (the P0 reality)
 
-- Web bridge = **schema 4** (`src/bridge/types.ts`,
-  `BRIDGE_SCHEMA_VERSION = 4`, two-axis subject×plate); C# host = **schema 1**
-  (`Contracts.cs`) and will NEVER be wired — the host is replaced by the Tauri/Rust
-  stack (ADR-0019). Only the browser/mock loop runs today.
-- Under Tauri the contract is GENERATED from `dm-contracts` (tauri-specta); the
-  schema-1/4 split is the standing proof that hand-mirrored schemas fail.
-- Spec 05 rewrite (Tauri bridge) happens alongside M2 of the migration plan.
+- Web bridge = **schema 6** (`src/bridge/types.ts`, `BRIDGE_SCHEMA_VERSION = 6`). The C# host
+  is retired (`legacy/`, ADR-0019) — no schema-1 split to track any more.
+- Under Tauri the contract is GENERATED from `dm-contracts` (tauri-specta).
+  **`wallpaper.*` verbs now route through real Rust on Mac-Tauri** (M6-WIRE Wave A,
+  `docs/plans/2026-07-12-m6-wire-host.md`). **`icons.*` verbs still fall through to the browser
+  mock on every platform, including production** — Wave B (icons wiring) has not started; this
+  is also the M7 resident blocker (see §Live now).
+- Spec 05 (Tauri bridge) reflects schema 6.
 
 ## Recently shipped (web side, Mac mock loop → swept to `docs/journal/2026-07.md`)
 
@@ -122,41 +129,55 @@ plan's DONE blocks, this is the pointer):**
   PNG, parity gate decodes in-process on any platform. bun-only sweep done
   (`node:zlib` kept deliberately — Bun's native zlib; `Bun.*` variants are
   raw-deflate and cannot read/write PNG streams).
-- **wave-2 hardening — ✅ CLOSED (2026-07-11, HEAD 421bd15).** Independent Codex full-review of
-  snapshot `7dc82c1` → 26 findings → lead-triaged into 3 buckets (host-testable / structure-now /
-  M7-defer) → **4 adversarial rounds + closeout micro-fix**. All host-testable defects fixed with
-  red→green revert-pinned tests (dm-domain 25 · dm-operations 73 · dm-windows 47, msvc `--locked`
-  clean). 8 pure-Windows-runtime items frozen into the `[WINDOWS-VERIFY]` list (tail of
-  `docs/plans/2026-07-11-windows-hardening-wave2.md`) for the owner's win11. P2-4 journal-checkpoint
-  deferred to M7 (recovery owns truncation). Verdict trail: `scratchpad/wave2-*-verdict.md`.
-- **M6 preview cutover — ⚠️ built + verified, FLIP HELD FOR OWNER (2026-07-11).** P1 wasm render_tile
-  worker-pool ABI (7cca7de, 1487-cell wasm↔TS 0/389,808,128 diff) · P2 TS worker pool + latest-gen
-  coalescing + arrow-ready gate (2820b3f/466764a, loader byte-test 0-diff) · P3 browser E2E (145/148
-  canvases painted, WASM path live, TS worker not fetched) · P5 perf. All behind a **default-OFF flag**
-  (`?iconwasm=1`); production preview still TS, nothing flipped/deleted.
-  🚨 **OWNER DECISION — the perf finding inverts a premise:** WASM is **~3× SLOWER** per icon than
-  the frozen TS (V8: 96px 1.27→3.85ms, 256px 6.94→19.2ms; the bun/JSC 40× is a wasm tier-up artifact,
-  read V8). M6 is the "single pixel truth" cutover (one Rust core for preview+bake+background,
-  byte-identical), **NOT a speed win** — the 3× is the determinism kernel's cost (scalar f64+libm, no
-  SIMD), offset by profile-cache + coalescing + ÷6-worker sharding (124-icon cold 96px ≈ 80ms wall vs
-  TS 26ms). Flip default-to-WASM + delete TS pixel modules = **P4, one coupled unit HELD until the
-  owner rules** single-truth-worth-3× vs keep-TS-preview. Ready-to-run plan:
-  `docs/plans/2026-07-11-m6-p4-cutover.md`. Perf/architecture design docs:
-  `docs/plans/2026-07-11-m6-performance-architecture.md`.
-  **Blocked on the owner's win11:** M1 spikes 1/2/5 (+3 needs him present), workspace-wide msvc
-  check, all `[WINDOWS-VERIFY]` items.
-- **Arrow-restore UX — ✅ DONE (2026-07-11, HEAD 1ffaf92, web/mock loop).** Per panel record
-  `docs/reviews/2026-07-11-arrow-restore-panel.md` (owner dispositions RESOLVED): Settings row
-  「快捷方式箭头」 + conditional mark hint + ConsentSheet disclosure + multi-user non-skippable gate +
-  DoneCard line + keep-beautification restore ConfirmSheet. Designer seat 7/7 PASS (Chinese state) +
-  6 Codex rounds closed every user-facing race (start-order generation model, pure decision module,
-  per-guard revert-sensitive integration tests, 398 tests). Restore verb + schema bump are `[M6-WIRE]`
-  (real `dm-elevated RestoreOverlay` wired at the M6 bridge batch).
-  **`[M6-STORE-TXN]` deferred** (lead scope call): the broader icons store was never concurrency-
-  hardened — synchronous look/item writers (undo/redo/presets/overrides/history) don't join the
-  generation, and host-effect ordering (a superseded apply still dispatching to the real desktop)
-  needs the real async elevated contract. This is a dedicated store-transaction task for M6 wiring,
-  not a 1am bolt-on (marker at `src/stores/icons.ts:131`).
+- **M6 single-truth flip — ✅ EXECUTED (2026-07-11 night, swept to journal).** wave-2 hardening
+  CLOSED, then the M6 preview cutover reached WASM-vs-TS perf parity via the kernel-speed line
+  (Phase 0 cert-hardening → Phase 1 mask cache → Phase 2 source-fact cache → Phase 3 native rayon
+  → Phase 4a content-addressed output cache; `docs/plans/2026-07-11-m6-kernel-speed.md`); the
+  owner then approved the flip ("不保留 ts，冻结 ts，做完没问题就移除") — WASM is now the ONLY
+  preview+bake+background pixel path (frozen TS tree-shaken out of the bundle, physical deletion
+  held). Arrow-restore UX shipped the same window (`docs/reviews/2026-07-11-arrow-restore-panel.md`).
+  Full detail: `docs/journal/2026-07.md`.
+- **M6-WIRE Wave A (wallpaper) — ✅ DONE (2026-07-12, `docs/plans/2026-07-12-m6-wire-host.md`
+  A1-A7).** Per the owner's D1 ruling (Rust wallpaper = thin platform I/O only; rendering/
+  reconcile/state-assembly stay frontend), wallpaper verbs now route through real Rust on
+  Mac-Tauri — bridge **schema 6** (see §Bridge state). **Wave B (icons wiring) has NOT started —
+  this is the hard M7 blocker.**
+- **Tonight's full-repo audit + fix run — ✅ 11 commits landed, ALL GATES GREEN (2026-07-12,
+  `7f7e5c2..HEAD`):** `cargo test` workspace · `cargo check --target x86_64-pc-windows-msvc` ·
+  `tsc -b` · `bun test` 516. 2 P1 (WebView2 bridge transport hang on real Windows Tauri;
+  `secure_dir` SDDL owner missing → permanent apply failure after the FIRST apply) + P2 hardening
+  + dead-code removal + a self-caught test regression. Full findings ledger + verification notes +
+  held/deferred items + the blake3/msvc note + the codex-background-death root cause:
+  `docs/reviews/2026-07-12-audit-fix-run.md`. Archived: `docs/journal/2026-07.md`.
+- **#7 — owner-approved, NOT started:** `diagnostics.getInfo` real system info (Rust, [WIN]) + 3
+  marginal P3 (ELEV-3 elevated command-line escaping / APPLY-3 recyclebin registry value type /
+  CORE-1 `WaitForSingleObject`). Independent of M7/Wave B. Detail:
+  `docs/reviews/2026-07-12-audit-fix-run.md` §3.
+- **Held — owner has NOT ruled, do not touch:** `ICON-5` (`clamp_u8_round_half_even`, suspected
+  dead/rounding issue) / `ICON-9` (mono dead branch) / `ICON-11` (`color.rs`, suspected superseded
+  by the field-plate path) — described to the owner in audit item #6. `SHELL-2 read_target()` is
+  confirmed NOT dead code (the M7 resident scan will need it).
+
+## M7 常驻自动 format — design FINALIZED, build BLOCKED on Wave B
+
+Owner-approved (2026-07-12) three-seat panel (chief-PM/chief-UX/chief-架构师, two rounds) + four
+owner dispositions: `docs/reviews/2026-07-12-m7-resident-panel.md`. Governing docs: ADR
+`docs/decisions/0022-m7-appearance-model-and-consent.md`, spec `docs/specs/07-background-
+resident.md` (updated with the full model), build plan `docs/plans/2026-07-12-m7-resident.md`.
+Core model: `version` = an appearance PRESET (3 orthogonal stores — ① active ledger ② saved-style
+single-truth ③ look-history 10-cap), NOT a desktop snapshot; reset = trust-first (skip items the
+user hand-edited since, never silently clobber; three-way coupled with clearing saved-style +
+disabling auto-format + restoring the arrow overlay); auto-format trust model = batched propose +
+timeout-auto-apply with native Toast (never silent by default); resident enable requires one
+successful global Apply first.
+
+**Cannot start build.** The whole chain hangs on M6-WIRE **Wave B** (icons wiring,
+`docs/plans/2026-07-12-m6-wire-host.md` §5 Wave B, unbuilt): ② saved-style storage (extend
+SettingsStore; `icons.setLook` still mocked), a real `FsAssetStore` (every platform today has
+fakes only), `TxnDriver::apply` wired to a production Tauri command (zero callers today), the
+apply commit→ledger reconcile gap, ③ `LookHistoryStore` (currently a bare comment), source-
+fingerprint (0% built), and `watcher.rs` (still the M7 SKELETON stub, returns `Err`).
+**Roadmap: Wave B → M7.** Build M7 only after Wave B lands.
 
 **In flight / next (web):**
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all
@@ -344,7 +365,7 @@ resident-mode audit (never auto-triggered) —
 
 ## Blockers
 
-- None for web/core development (M0/M2/M5 run on Mac). M1 spikes + M3/M4/M7/M8
-  need the Windows box (SSH/Tailscale, logged-in interactive session). Release
-  gates: signing cert (owner), public repo visibility (owner), first version
-  number (owner).
+- None for web/core development (M0/M2/M5 run on Mac). M1 spikes + M3/M4/M8 need the Windows
+  box (SSH/Tailscale, logged-in interactive session). **M7 is additionally blocked on M6-WIRE
+  Wave B** (Mac-buildable, not a Windows-box blocker — see §Live now). Release gates: signing
+  cert (owner), public repo visibility (owner), first version number (owner).

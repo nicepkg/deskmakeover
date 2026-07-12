@@ -109,18 +109,33 @@ fn bake_master(png_base64: &str, item_id: &str, slot: u32) -> Result<IcoAsset> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(png_base64.as_bytes())
         .map_err(|e| OperationError::Io(format!("icon master {item_id}#{slot}: base64 {e}")))?;
-    if bytes.len() < PNG_MAGIC.len() || bytes[..PNG_MAGIC.len()] != PNG_MAGIC {
+    // The PNG signature (8 bytes) + the IHDR chunk (length 4 + "IHDR" 4 + width 4 + height 4) live at
+    // fixed offsets; the big-endian width/height are bytes 16..20 and 20..24.
+    if bytes.len() < 24 || bytes[..PNG_MAGIC.len()] != PNG_MAGIC {
         return Err(OperationError::Io(format!("icon master {item_id}#{slot}: not a PNG")));
+    }
+    // Reject the wrong size from the IHDR BEFORE decoding (codex R2-Major 4): a decompression bomb
+    // (tiny base64, huge declared dims) would otherwise allocate ~w·h·4 bytes during decode before
+    // the size check could fire.
+    let ihdr_w = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
+    let ihdr_h = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
+    if ihdr_w != MASTER_PX || ihdr_h != MASTER_PX {
+        return Err(OperationError::Io(format!(
+            "icon master {item_id}#{slot}: IHDR {ihdr_w}×{ihdr_h}, expected {MASTER_PX}×{MASTER_PX}"
+        )));
     }
     let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
         .map_err(|e| OperationError::Io(format!("icon master {item_id}#{slot}: decode {e}")))?;
-    let (w, h) = (img.width(), img.height());
-    if w != MASTER_PX || h != MASTER_PX {
+    // Defense-in-depth: the decoded dims must match the validated IHDR (a truncated/edited chunk).
+    if img.width() != MASTER_PX || img.height() != MASTER_PX {
         return Err(OperationError::Io(format!(
-            "icon master {item_id}#{slot}: {w}×{h}, expected {MASTER_PX}×{MASTER_PX}"
+            "icon master {item_id}#{slot}: decoded {}×{}, expected {MASTER_PX}²",
+            img.width(),
+            img.height()
         )));
     }
-    let raster = Raster { width: w as usize, height: h as usize, data: img.to_rgba8().into_raw() };
+    let raster =
+        Raster { width: MASTER_PX as usize, height: MASTER_PX as usize, data: img.to_rgba8().into_raw() };
     Ok(bake_ico(&raster))
 }
 

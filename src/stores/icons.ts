@@ -498,6 +498,7 @@ export const useIcons = create<IconsState>((set, get) => {
     persisted: IconPersistedDto,
     draft: IconStyleRecipe,
     keepOverrides?: Map<string, { mode: 'keep' | 'tint'; tint: string | null }>,
+    keepDirty = false,
   ) => {
     if (scan.revision < get().revision) return
     // Any successful full load clears the scan-recovery state (review P2-2 item 4):
@@ -519,15 +520,18 @@ export const useIcons = create<IconsState>((set, get) => {
     kindBuckets = new Map(items.map((i) => [i.id, kindBucket(i.kind)]))
     lastGridMetrics = scan.grid
     getIconCompositor().invalidateAll()
+    const assembled = assembleIconsState({
+      draft,
+      items,
+      persisted: persistedForAssembly(persisted),
+      wallpaperUrl: currentWallpaperUrl(),
+      gridMetrics: scan.grid,
+    })
     set({
       items,
-      state: assembleIconsState({
-        draft,
-        items,
-        persisted: persistedForAssembly(persisted),
-        wallpaperUrl: currentWallpaperUrl(),
-        gridMetrics: scan.grid,
-      }),
+      // A manual rescan preserves the live draft's dirty (an unapplied edit stays unapplied across
+      // a refresh); only the initial scan starts clean (codex R2-Major 1).
+      state: keepDirty ? { ...assembled, dirty: true } : assembled,
       revision: scan.revision,
       renderTick: get().renderTick + 1,
       scanExhausted: false,
@@ -653,7 +657,8 @@ export const useIcons = create<IconsState>((set, get) => {
           .items.filter((i) => i.overrideMode !== null)
           .map((i) => [i.id, { mode: i.overrideMode as 'keep' | 'tint', tint: i.overrideTint }]),
       )
-      adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted), keepOverrides)
+      const wasDirty = get().state?.dirty ?? false
+      adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted), keepOverrides, wasDirty)
       useToasts.getState().show(t('Toast_Refreshed'))
     },
 
@@ -881,18 +886,20 @@ export const useIcons = create<IconsState>((set, get) => {
           set(cur ? { state: { ...cur, working: false }, applyProgress: null } : { applyProgress: null })
           return false
         }
-        // The applied recipe IS the new draft; assemble the fresh state from it + the persisted ②③.
-        const applied: IconStyleRecipe = { config, kindPolicy: policy, typeOverrides }
-        set({
-          state: assembleIconsState({
-            draft: applied,
-            items: get().items,
-            persisted: persistedForAssembly(result.persisted),
-            wallpaperUrl: currentWallpaperUrl(),
-            gridMetrics: lastGridMetrics,
-          }),
-          applyProgress: null,
+        // The attempted recipe becomes the draft; assemble against the persisted ②③ truth.
+        const attempted: IconStyleRecipe = { config, kindPolicy: policy, typeOverrides }
+        const assembled = assembleIconsState({
+          draft: attempted,
+          items: get().items,
+          persisted: persistedForAssembly(result.persisted),
+          wallpaperUrl: currentWallpaperUrl(),
+          gridMetrics: lastGridMetrics,
         })
+        // A failed OR superseded apply did NOT reach the desktop (host returned ok:false with the
+        // real current truth): keep the attempted recipe as a DIRTY draft so the CTA offers a
+        // re-apply, never a false "synced" (codex R2-Block 4). On success the assembled state is
+        // authoritative (applied + clean).
+        set({ state: result.ok ? assembled : { ...assembled, dirty: true }, applyProgress: null })
         toastOf(result)
         if (result.ok) set({ waveKind: 'bloom', waveStamp: Date.now() })
         return result.ok

@@ -367,7 +367,9 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
       return { ok: res.ok, toast: { key: res.toastKey, arg: null }, persisted: persisted() } satisfies IconOpResultDto
     }
     case 'icons.exportCompare':
-      return { ok: true, toast: null, persisted: persisted() } satisfies IconOpResultDto
+      // The before/after compare sheet is not yet implemented — honest ok:false (matches the real
+      // host), never a phantom success (codex Major 5 / R2-Major 2).
+      return { ok: false, toast: { key: 'Toast_CompareFailed', arg: null }, persisted: persisted() } satisfies IconOpResultDto
     default:
       throw new Error(`[mock desktop] unhandled method: ${method}`)
   }

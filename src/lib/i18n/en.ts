@@ -493,6 +493,8 @@ export const en = {
   "Toast_Applied": "Done · restore snapshot saved",
   "Toast_AppliedNoOverlay": "Icons beautified · the arrow-hide step was skipped (no admin)",
   "Toast_ApplyFailed": "Couldn't apply · nothing changed, your desktop is safe",
+  "Toast_ApplySuperseded": "Superseded by a newer change · apply again",
+  "Toast_ResetSkipped": "Skipped {0} item(s) you'd edited yourself",
   "Toast_ArrowRestored": "System arrow restored", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Toast_ArrowRestoreDeclined": "Cancelled; the little arrow stays hidden", // PENDING-RESX (UAC declined)
   "Toast_RestoreArrowFailed": "Couldn't restore the arrow. Please try again.", // PENDING-RESX (restore-specific failure)

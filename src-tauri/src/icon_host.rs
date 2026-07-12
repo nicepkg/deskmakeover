@@ -36,17 +36,22 @@ struct IconMutState {
     txn: TxnIdAllocator,
     /// The in-flight chunk-buffer session (begin → chunk → commit); `None` between applies.
     session: Option<IconApplySession>,
-    /// The look-mutation epoch captured when the current session began; the commit rejects if the
-    /// epoch moved since (a Restore or another Apply landed during this apply's bake — codex Block 3).
+    /// The op-epoch captured when the current session began; the commit rejects if the epoch moved
+    /// since (any mutation — Apply, Reset, or restoreOverlay — landed during this apply's bake, so
+    /// committing would write over the user's newer intent — codex Block 3 / R2-Block 3).
     session_epoch: u64,
+    /// The scan snapshot (items + scan-time fingerprints) the CURRENT session was begun against —
+    /// captured at Begin so an intervening rescan cannot swap the CAS anchors out from under a
+    /// commit (codex R2-Block 1). The commit resolves against THIS, never the live `scan`.
+    session_scan: Vec<ScannedItem>,
     /// The last scan's items WITH their scan-time fingerprints — the CAS anchor for a fresh apply is
-    /// captured HERE, not re-read at commit (codex Block 2).
+    /// captured HERE, not re-read at commit (codex Block 2). Copied into `session_scan` at Begin.
     scan: Vec<ScannedItem>,
     /// The revision of the last scan; a Begin whose revision differs is a stale apply and is rejected.
     scan_revision: u32,
-    /// Monotonic epoch bumped by every icon-LOOK mutation (a committed Apply or a full Reset); NOT
-    /// by restoreOverlay (arrow-only). Serializes an in-flight apply against an intervening restore.
-    look_epoch: u64,
+    /// Monotonic epoch bumped by EVERY user mutation (a committed Apply, a full Reset, AND a
+    /// restoreOverlay) so an in-flight apply that began before any of them rejects at commit.
+    op_epoch: u64,
 }
 
 /// The platform ports the host drives, bundled for construction.
@@ -121,9 +126,10 @@ impl IconHost {
                 txn: TxnIdAllocator::starting_at(1),
                 session: None,
                 session_epoch: 0,
+                session_scan: Vec::new(),
                 scan: Vec::new(),
                 scan_revision: 0,
-                look_epoch: 0,
+                op_epoch: 0,
             }),
             sources: Mutex::new(HashMap::new()),
             revision: AtomicU32::new(0),
@@ -150,16 +156,17 @@ impl IconHost {
     pub fn scan(&self) -> Result<IconScanDto, String> {
         let items = self.scanner.scan().map_err(|e| e.to_string())?;
         let rev = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
-        // Rebuild the content-addressed source cache from scratch each scan so it stays bounded (a
-        // prior scan's now-abandoned URLs simply 404). The DTO `rev` still gates the apply session.
-        self.sources.lock().unwrap().clear();
+        // Build the new content-addressed source cache in a LOCAL map, then atomically swap it in only
+        // after EVERY extract succeeds (codex R2-Major 3): a mid-scan extract failure must not leave
+        // the previous scan's still-displayed URLs 404-ing against a half-cleared cache.
+        let mut next_sources: HashMap<String, Vec<u8>> = HashMap::new();
         let mut dtos = Vec::with_capacity(items.len());
         let mut scanned = Vec::with_capacity(items.len());
         for (i, item) in items.into_iter().enumerate() {
             let sources = self.extractor.extract(&item).map_err(|e| e.to_string())?;
             let mut urls = Vec::with_capacity(sources.len());
             for (slot, src) in sources.iter().enumerate() {
-                urls.push(self.cache_source(item.id.as_str(), slot as u32, src));
+                urls.push(cache_source_into(&mut next_sources, item.id.as_str(), slot as u32, src));
             }
             let (x, y) = synthetic_layout(i);
             dtos.push(IconItemDto {
@@ -182,6 +189,8 @@ impl IconHost {
                 .unwrap_or_else(|_| dm_domain::Fingerprint::of_bytes(b""));
             scanned.push(ScannedItem { item, fingerprint });
         }
+        // Every extract succeeded → atomically publish the new cache + scan snapshot.
+        *self.sources.lock().unwrap() = next_sources;
         {
             let mut st = self.mut_state.lock().unwrap();
             st.scan = scanned;
@@ -208,6 +217,11 @@ impl IconHost {
     /// look-epoch so the commit can detect an intervening mutation (codex Block 3).
     pub fn apply_baked_begin(&self, revision: u32, count: u32) -> Result<(), String> {
         let mut st = self.mut_state.lock().unwrap();
+        // Never overwrite an in-flight session — a second Begin without a commit is a protocol error
+        // that could otherwise mix one apply's masters with another's styleJson (codex R2-Block 1).
+        if st.session.is_some() {
+            return Err("an apply is already in progress; commit or abandon it first".into());
+        }
         if revision != st.scan_revision {
             return Err(format!(
                 "stale apply: begin revision {revision} does not match the current scan {}",
@@ -215,7 +229,10 @@ impl IconHost {
             ));
         }
         st.session = Some(IconApplySession::begin(revision, count as usize));
-        st.session_epoch = st.look_epoch;
+        st.session_epoch = st.op_epoch;
+        // Bind this apply to the scan it began against: an intervening rescan swaps `scan`, but the
+        // commit resolves against THIS snapshot so the CAS anchors stay the ones the user saw.
+        st.session_scan = st.scan.clone();
         Ok(())
     }
 
@@ -251,29 +268,33 @@ impl IconHost {
                 session.expected()
             ));
         }
-        // Reject a SUPERSEDED apply: a Restore or another Apply landed during this apply's bake, so
-        // committing now would write a stale look OVER the newer truth on the real desktop (codex
-        // Block 3). Fail closed WITHOUT mutating — the store rescans and reassembles.
-        if st.look_epoch != st.session_epoch {
+        // Reject a SUPERSEDED apply: ANY mutation (Restore, another Apply, or a restoreOverlay)
+        // landed during this apply's bake, so committing now would write a stale look OVER the
+        // user's newer intent on the real desktop (codex Block 3 / R2-Block 3). Fail closed WITHOUT
+        // mutating — the store keeps the draft dirty + rescans.
+        if st.op_epoch != st.session_epoch {
             let stores = self.ops().read_state(&st.history, &st.ledger).map_err(|e| e.to_string())?;
             let dto = self.to_persisted_dto_locked(&stores);
             drop(st);
             return Ok(IconOpResultDto {
                 ok: false,
-                toast: Some(ToastDto { key: "icons.applySuperseded".into(), arg: None }),
+                toast: Some(ToastDto { key: "Toast_ApplySuperseded".into(), arg: None }),
                 persisted: self.finish_persisted(dto),
             });
         }
-        // Split the guard into disjoint field borrows so the ops call can hold &mut of several at once.
-        let IconMutState { ledger, journal, history, txn, scan, look_epoch, .. } = &mut *st;
+        // Resolve against the session's OWN scan snapshot (bound at Begin), never the live `scan`,
+        // so an intervening rescan cannot swap the CAS anchors (codex R2-Block 1). Split the guard
+        // into disjoint field borrows so the ops call can hold &mut of several at once.
+        let IconMutState { ledger, journal, history, txn, session_scan, op_epoch, .. } = &mut *st;
         let look_id = format!("look-{}", txn.peek());
         let created_at = now_secs();
         let outcome = self
             .ops()
-            .commit_apply(session, style, label, look_id, created_at, scan, &restore_ids, txn, journal, ledger, history)
+            .commit_apply(session, style, label, look_id, created_at, session_scan, &restore_ids, txn, journal, ledger, history)
             .map_err(|e| e.to_string())?;
-        // This apply changed the icon look → bump the epoch so any concurrent stale apply rejects.
-        *look_epoch += 1;
+        // This apply mutated the desktop → bump the epoch so any concurrent stale apply rejects.
+        *op_epoch += 1;
+        session_scan.clear();
         let committed_any = !outcome.committed.is_empty();
         let dto = self.to_persisted_dto_locked(&outcome.stores);
         drop(st);
@@ -293,7 +314,7 @@ impl IconHost {
         }
         Ok(IconOpResultDto {
             ok: outcome.error.is_none(),
-            toast: outcome.error.map(|e| ToastDto { key: "icons.applyPartial".into(), arg: Some(e) }),
+            toast: outcome.error.map(|e| ToastDto { key: "Toast_ApplyFailed".into(), arg: Some(e) }),
             persisted: self.finish_persisted(dto),
         })
     }
@@ -302,13 +323,13 @@ impl IconHost {
     /// spec 07 §10) AND lift the arrow overlay (icons + arrow back to native).
     pub fn restore(&self) -> Result<IconOpResultDto, String> {
         let mut st = self.mut_state.lock().unwrap();
-        let IconMutState { ledger, history, journal, look_epoch, .. } = &mut *st;
+        let IconMutState { ledger, history, journal, op_epoch, .. } = &mut *st;
         let outcome = self
             .ops()
             .reset_to_original(journal, ledger, history)
             .map_err(|e| e.to_string())?;
-        // A reset changes the icon look → bump the epoch so a concurrent in-flight apply rejects.
-        *look_epoch += 1;
+        // A reset is a mutation → bump the epoch so a concurrent in-flight apply rejects.
+        *op_epoch += 1;
         let dto = self.to_persisted_dto_locked(&outcome.stores);
         let skipped = outcome.skipped.len();
         drop(st);
@@ -318,29 +339,41 @@ impl IconHost {
         let _ = self
             .settings
             .set(&SettingsPatch { keep_new_icons_styled: Some(false), ..Default::default() });
-        // Lift the overlay if it was installed (best-effort; the observed arrow state is authority).
+        // Lift the overlay if it was installed. A helper FAILURE is surfaced (codex R2-Block 3): the
+        // icons reverted but the machine-wide arrow is still hidden, so the op is NOT a clean success.
+        let mut overlay_failed = false;
         if *self.arrow_overlay.lock().unwrap() == ArrowOverlayDto::Hidden {
-            if let Ok(OverlayOutcome::Applied) = self.overlay.restore() {
-                self.set_arrow(ArrowOverlayDto::Native);
+            match self.overlay.restore() {
+                Ok(OverlayOutcome::Applied) => self.set_arrow(ArrowOverlayDto::Native),
+                _ => overlay_failed = true,
             }
         }
         let _ = self.refresher.notify_icons_changed();
-        // Surface the trust-first skips ("已跳过 N 项(你自己改过)") instead of always reporting success.
-        let toast = (skipped > 0)
-            .then(|| ToastDto { key: "icons.resetSkipped".into(), arg: Some(skipped.to_string()) });
-        Ok(IconOpResultDto { ok: true, toast, persisted: self.finish_persisted(dto) })
+        // Surface the trust-first skips, or the arrow-restore failure — never a blanket ok:true.
+        let (ok, toast) = if overlay_failed {
+            (false, Some(ToastDto { key: "Toast_RestoreArrowFailed".into(), arg: None }))
+        } else if skipped > 0 {
+            (true, Some(ToastDto { key: "Toast_ResetSkipped".into(), arg: Some(skipped.to_string()) }))
+        } else {
+            (true, None)
+        };
+        Ok(IconOpResultDto { ok, toast, persisted: self.finish_persisted(dto) })
     }
 
     /// `icons.restoreOverlay`: keep-beautification restore — lift ONLY the arrow overlay (the icon
     /// look stays). Faithful to the elevated Applied|Declined|Failed contract; the OBSERVED
     /// post-op arrow state is authoritative.
     pub fn restore_overlay(&self) -> Result<IconOpResultDto, String> {
+        // A restoreOverlay is a user mutation of the machine-wide arrow: bump the op-epoch so an
+        // in-flight apply that began before it rejects at commit rather than re-hiding the arrow the
+        // user just lifted (codex R2-Block 3).
+        self.mut_state.lock().unwrap().op_epoch += 1;
         let outcome = self.overlay.restore().map_err(|e| e.to_string())?;
         let (arrow, ok, toast_key) = match outcome {
-            OverlayOutcome::Applied => (ArrowOverlayDto::Native, true, "icons.arrowRestored"),
+            OverlayOutcome::Applied => (ArrowOverlayDto::Native, true, "Toast_ArrowRestored"),
             // Declined/Failed leave the arrow hidden so the affordance stays for a retry.
-            OverlayOutcome::Declined => (ArrowOverlayDto::Hidden, false, "icons.restoreDeclined"),
-            OverlayOutcome::Failed => (ArrowOverlayDto::Hidden, false, "icons.restoreFailed"),
+            OverlayOutcome::Declined => (ArrowOverlayDto::Hidden, false, "Toast_ArrowRestoreDeclined"),
+            OverlayOutcome::Failed => (ArrowOverlayDto::Hidden, false, "Toast_RestoreArrowFailed"),
         };
         self.set_arrow(arrow);
         let persisted = self.get_persisted()?;
@@ -358,7 +391,7 @@ impl IconHost {
         let persisted = self.get_persisted()?;
         Ok(IconOpResultDto {
             ok: false,
-            toast: Some(ToastDto { key: "icons.exportUnavailable".into(), arg: None }),
+            toast: Some(ToastDto { key: "Toast_CompareFailed".into(), arg: None }),
             persisted,
         })
     }
@@ -375,17 +408,6 @@ impl IconHost {
         )
     }
 
-    /// Caches an extracted source under a CONTENT-ADDRESSED key `"<itemId>/<slot>/<hash>"` and returns
-    /// its protocol URL. Content-addressing makes the `immutable` Cache-Control header honest (codex
-    /// Major 4): identical pixels → identical URL (a legitimate cache hit); changed pixels → a new URL
-    /// (never a stale reuse of a prior process's bytes). The cache is rebuilt each scan, so it stays
-    /// bounded and a stale URL simply 404s (the webview re-fetches the current one).
-    fn cache_source(&self, item_id: &str, slot: u32, src: &DecodedImage) -> String {
-        let hash = &dm_icon_codec::content_hash(&src.png)[..16];
-        let key = format!("{item_id}/{slot}/{hash}");
-        self.sources.lock().unwrap().insert(key.clone(), src.png.clone());
-        icon_protocol_url(&key)
-    }
 
     /// Maps the ops-layer store snapshot to the wire DTO (recipe as opaque JSON string). Safe to
     /// call while the mut lock is held: it does NOT touch the arrow lock — the caller stamps the
@@ -459,6 +481,23 @@ fn icon_protocol_url(key: &str) -> String {
     } else {
         format!("dmicon://localhost/{key}")
     }
+}
+
+/// Inserts an extracted source into `sources` under a CONTENT-ADDRESSED key
+/// `"<itemId>/<slot>/<hash>"` and returns its protocol URL. Content-addressing makes the
+/// `immutable` Cache-Control header honest (codex Major 4): identical pixels → identical URL (a
+/// legitimate cache hit); changed pixels → a new URL (never a stale reuse of a prior process's
+/// bytes). Written into a caller-owned local map so the whole cache swaps atomically per scan.
+fn cache_source_into(
+    sources: &mut HashMap<String, Vec<u8>>,
+    item_id: &str,
+    slot: u32,
+    src: &DecodedImage,
+) -> String {
+    let hash = &dm_icon_codec::content_hash(&src.png)[..16];
+    let key = format!("{item_id}/{slot}/{hash}");
+    sources.insert(key.clone(), src.png.clone());
+    icon_protocol_url(&key)
 }
 
 fn now_secs() -> i64 {

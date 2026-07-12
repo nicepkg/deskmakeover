@@ -191,13 +191,24 @@ impl<'a> IconOps<'a> {
         // below are computed against a ledger that reflects every durable commit. Idempotent.
         recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
 
+        // Package + VALIDATE every master FIRST, before touching the desktop (codex R2-Block 2): a
+        // malformed PNG must fail the whole commit while the desktop is still untouched, never after
+        // the keep-restore has already reverted some icons.
+        let packaged = package_masters(&session.masters)?;
+        let packaged_ids: std::collections::HashSet<&str> =
+            packaged.iter().map(|p| p.item_id.as_str()).collect();
+
         // The user's 「保留原样」 / kindPolicy opt-out for a CURRENTLY-styled icon is a RESTORE, not a
         // no-op: the frontend excludes it from the bake set, so without this step the icon keeps its
         // old applied style on the real desktop while the UI shows the original (spec 06 §2 breach,
         // codex 2026-07-12). CAS-gated + trust-first: an icon the user hand-edited since is left
-        // alone. An id not in the ledger was never styled — nothing to revert.
+        // alone. An id not in the ledger was never styled — nothing to revert. An id ALSO in the bake
+        // set is being re-styled, so the apply wins — skip its revert (codex R2-Block 2 double-touch).
         let mut reverted: Vec<ItemId> = Vec::new();
         for id in restore_ids {
+            if packaged_ids.contains(id.as_str()) {
+                continue;
+            }
             let item_id = ItemId::from_raw(id.as_str());
             let Some(entry) = ledger.get(&item_id)? else { continue };
             match self.platform.reader.read_fingerprint(&entry.target) {
@@ -211,9 +222,6 @@ impl<'a> IconOps<'a> {
                 Err(e) => return Err(e.into()),
             }
         }
-
-        // Package the baked masters into laddered ICOs (real pixel decode + ladder + hash).
-        let packaged = package_masters(&session.masters)?;
 
         // Resolve each packaged item against the live scan; build the driver's requests. An item no
         // longer in the scan, or not styleable, or already gone is a benign conflict (skipped, never

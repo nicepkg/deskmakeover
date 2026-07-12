@@ -98,6 +98,14 @@ impl DevIconDesktop {
     pub(crate) fn force_original(&self, id: &str) {
         self.put(&dev_path(id), format!("original:{id}").into_bytes());
     }
+
+    /// Test/dev hook: a FOREIGN hand-edit — the surface matches neither our styled output nor the
+    /// seeded original (the `styled:` prefix keeps its rendered look visibly non-original), so a
+    /// ledger-aware scan must fall back to LIVE extraction rather than shadowing the user's edit.
+    #[cfg(test)]
+    pub(crate) fn force_foreign(&self, id: &str) {
+        self.put(&dev_path(id), format!("styled:foreign-hand-edit:{id}").into_bytes());
+    }
 }
 
 /// Enumerates the fixed fake desktop (positions are the host's synthetic layout, [WV] on Windows).
@@ -111,15 +119,36 @@ impl DesktopScanner for DevDesktopScanner {
 
 /// Synthesizes distinct 256px stand-in sources: `[0]` the item's hue, and for the Recycle Bin a
 /// greyed `[1]` empty-state so the paired-asset path is exercised.
-pub struct DevIconSourceExtractor;
+///
+/// Faithful to the Windows extractor's contract: it reads the LIVE surface — a styled surface
+/// yields a visibly DIFFERENT (inverted-hue) source, so the Style(Style(orig)) compounding bug
+/// manifests on Mac exactly as it would on the box. When the host passes the captured `original`
+/// anchor (ledger-owned, unmodified item), synthesis derives from the anchor bytes instead,
+/// which is what makes the ledger-aware re-scan testable end to end here.
+pub struct DevIconSourceExtractor(pub Arc<DevIconDesktop>);
 
 impl IconSourceExtractor for DevIconSourceExtractor {
-    fn extract(&self, item: &DesktopItem) -> PortResult<Vec<DecodedImage>> {
+    fn extract(
+        &self,
+        item: &DesktopItem,
+        original: Option<&RestoreAnchor>,
+    ) -> PortResult<Vec<DecodedImage>> {
         let def = def_of(item.id.as_str())
             .ok_or_else(|| PortError::NotFound(format!("no dev icon for {}", item.id.as_str())))?;
-        let mut sources = vec![synth_source(def.hue)];
+        // The surface the extraction reads: the anchor material when provided (the true
+        // original), else the live virtual desktop (which an apply overwrites with styled bytes).
+        let surface = match original {
+            Some(RestoreAnchor::FileBytes { bytes }) => bytes.clone(),
+            // Any other anchor shape carries no dev-host bytes — fall back to live, mirroring
+            // the Windows impl's stale-anchor degradation.
+            _ => self.0.bytes(&item.path).unwrap_or_default(),
+        };
+        // A styled live surface reads as the styled look — an inverted hue keeps it visibly
+        // distinct from the original so tests can assert which one was served.
+        let hue = if surface.starts_with(b"styled:") { !def.hue & 0x00FF_FFFF } else { def.hue };
+        let mut sources = vec![synth_source(hue)];
         if def.kind == ItemKind::RecycleBin {
-            sources.push(synth_source(0xB0_B0B0)); // the empty bin reads greyed
+            sources.push(synth_source(if hue == def.hue { 0xB0_B0B0 } else { 0x4F_4F4F }));
         }
         Ok(sources)
     }
@@ -235,14 +264,37 @@ mod tests {
 
     #[test]
     fn extract_yields_a_256px_primary_and_a_paired_empty_for_the_bin() {
+        let desk = DevIconDesktop::new();
+        let ex = DevIconSourceExtractor(desk);
         let bin = dev_item(def_of("bin").unwrap());
-        let sources = DevIconSourceExtractor.extract(&bin).unwrap();
+        let sources = ex.extract(&bin, None).unwrap();
         assert_eq!(sources.len(), 2, "the bin ships primary + empty");
         assert_eq!((sources[0].width, sources[0].height), (ICON_PX, ICON_PX));
         assert_eq!(&sources[0].png[0..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
 
         let edge = dev_item(def_of("edge").unwrap());
-        assert_eq!(DevIconSourceExtractor.extract(&edge).unwrap().len(), 1, "a shortcut ships one");
+        assert_eq!(ex.extract(&edge, None).unwrap().len(), 1, "a shortcut ships one");
+    }
+
+    #[test]
+    fn a_styled_surface_extracts_differently_and_the_anchor_restores_the_original_source() {
+        // The Style(Style(orig)) trap: after an apply, the LIVE surface is our styled output, so a
+        // naive re-extract serves the styled look as if it were the raw source. The anchor param is
+        // the fix — extraction from the captured original must equal the pre-apply extraction.
+        let desk = DevIconDesktop::new();
+        let ex = DevIconSourceExtractor(desk.clone());
+        let edge = dev_item(def_of("edge").unwrap());
+
+        let before = ex.extract(&edge, None).unwrap();
+        let anchor = RestoreAnchor::FileBytes { bytes: desk.bytes(&edge.path).unwrap() };
+
+        // Simulate an apply: the live surface becomes styled bytes.
+        desk.put(&edge.path, b"styled:deadbeef".to_vec());
+        let live = ex.extract(&edge, None).unwrap();
+        assert_ne!(live[0].png, before[0].png, "the styled live surface reads differently");
+
+        let original = ex.extract(&edge, Some(&anchor)).unwrap();
+        assert_eq!(original[0].png, before[0].png, "the anchor recovers the true original source");
     }
 
     #[test]

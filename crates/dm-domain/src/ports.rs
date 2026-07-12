@@ -99,7 +99,17 @@ pub trait OverlayControl {
 /// Mac dev host synthesizes distinct stand-in sources so the real scan→render→apply→restore
 /// pipeline is exercised end to end on Mac.
 pub trait IconSourceExtractor {
-    fn extract(&self, item: &DesktopItem) -> PortResult<Vec<DecodedImage>>;
+    /// `original`: when the caller's ledger proves the LIVE surface is this app's own styled
+    /// output (live fingerprint == last-applied), the captured original anchor rides along so the
+    /// impl derives the user's TRUE source from the anchor material instead of re-reading the
+    /// styled icon — otherwise every re-scan compounds `Style(Style(orig))`. `None` means the live
+    /// state IS the source of truth (unowned, externally modified, or never styled). An impl that
+    /// cannot resolve the anchor (stale material) falls back to the live read rather than failing.
+    fn extract(
+        &self,
+        item: &DesktopItem,
+        original: Option<&RestoreAnchor>,
+    ) -> PortResult<Vec<DecodedImage>>;
 }
 
 /// The overlay styles the helper accepts (oracle: `OverlayCommands.Apply` style whitelist).

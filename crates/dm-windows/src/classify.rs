@@ -135,6 +135,7 @@ mod tests {
     #[test]
     fn parses_icon_location_without_index_and_strips_quotes() {
         assert_eq!(parse_icon_location(r#""C:\Program Files\App\app.ico""#), (r"C:\Program Files\App\app.ico".into(), 0));
+        assert_eq!(parse_icon_location(r#""C:\q uoted.ico",3"#), (r"C:\q uoted.ico".into(), 3));
         assert_eq!(parse_icon_location(r"C:\App\icon.ico"), (r"C:\App\icon.ico".into(), 0));
     }
 

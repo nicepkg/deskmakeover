@@ -17,11 +17,17 @@
 //! all-zero-alpha mask fallback for pre-XP resources). Output is a straight-alpha RGBA PNG, the
 //! same contract the dev host synthesizes.
 //!
+//! Ledger-aware re-scan: when the caller proves the live surface is our own styled output, the
+//! captured [`RestoreAnchor`](dm_domain::RestoreAnchor) rides in and extraction derives the TRUE
+//! original from the anchor material (original `.lnk`/`.url` bytes, original `desktop.ini` icon,
+//! original bin registry values) instead of compounding `Style(Style(orig))`.
+//!
 //! Everything COM/GDI runs on the shared STA apartment; the pure pixel/parse helpers are
 //! cross-platform and unit-tested on the Mac host. Runtime behaviour is [WINDOWS-VERIFY].
 
 /// The compositor's master edge: extraction requests this size (the shell may return smaller for
 /// low-res-only resources; the DTO carries real dimensions, so that is honest, not an error).
+#[cfg(windows)]
 const ICON_PX: i32 = 256;
 
 /// Extracts 256px icon sources on the STA apartment (the dev host substitutes its own extractor
@@ -40,9 +46,14 @@ impl WindowsIconSourceExtractor {
 
 #[cfg(windows)]
 impl dm_domain::IconSourceExtractor for WindowsIconSourceExtractor {
-    fn extract(&self, item: &dm_domain::DesktopItem) -> dm_domain::PortResult<Vec<dm_domain::DecodedImage>> {
+    fn extract(
+        &self,
+        item: &dm_domain::DesktopItem,
+        original: Option<&dm_domain::RestoreAnchor>,
+    ) -> dm_domain::PortResult<Vec<dm_domain::DecodedImage>> {
         let item = item.clone();
-        self.exec.run(move || win::extract_blocking(&item))?
+        let original = original.cloned();
+        self.exec.run(move || win::extract_blocking(&item, original.as_ref()))?
     }
 }
 
@@ -53,6 +64,7 @@ impl dm_domain::IconSourceExtractor for WindowsIconSourceExtractor {
 /// Converts top-down PREMULTIPLIED BGRA rows (an `IShellItemImageFactory` HBITMAP) to straight
 /// RGBA, the oracle's exact math: for 0 < a < 255, `c = min(255, c*255/a)`; a==0 keeps the
 /// (necessarily zero) colour, a==255 needs no scaling.
+#[cfg(any(windows, test))]
 fn premul_bgra_to_rgba(bits: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bits.len());
     for px in bits.chunks_exact(4) {
@@ -72,6 +84,7 @@ fn premul_bgra_to_rgba(bits: &[u8]) -> Vec<u8> {
 /// Converts top-down STRAIGHT BGRA rows (an HICON colour plane) to RGBA. If EVERY alpha byte is
 /// zero the resource predates alpha icons — `mask` (top-down 32bpp render of the AND mask, white =
 /// transparent) supplies binary coverage instead.
+#[cfg(any(windows, test))]
 fn straight_bgra_to_rgba(bits: &[u8], mask: Option<&[u8]>) -> Vec<u8> {
     let legacy = bits.chunks_exact(4).all(|px| px[3] == 0);
     let mut out = Vec::with_capacity(bits.len());
@@ -93,21 +106,26 @@ fn straight_bgra_to_rgba(bits: &[u8], mask: Option<&[u8]>) -> Vec<u8> {
     out
 }
 
-/// Splits a registry `DefaultIcon`-style value `"C:\path\icons.dll,-3"` into `(path, index)`;
-/// a value with no comma is the path with index 0. Surrounding quotes are stripped.
-fn parse_icon_location(value: &str) -> (String, i32) {
-    let v = value.trim().trim_matches('"');
-    match v.rsplit_once(',') {
-        Some((path, idx)) => match idx.trim().parse::<i32>() {
-            Ok(i) => (path.trim().trim_matches('"').to_string(), i),
-            Err(_) => (v.to_string(), 0), // a comma inside the path, not an index
-        },
-        None => (v.to_string(), 0),
+/// Rasterizes a monochrome HICON (`hbmColor == NULL`) from its DOUBLE-height mask: the top half
+/// is the AND plane (white = transparent, black = draw), the bottom half the XOR plane carrying
+/// the 1-bit colour. Both arrive as top-down 32bpp BGRA renders of the respective half. An
+/// AND-white + XOR-white "invert screen" pixel has no still-image meaning — rendered transparent.
+#[cfg(any(windows, test))]
+fn mono_planes_to_rgba(and_plane: &[u8], xor_plane: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(xor_plane.len());
+    for (a_px, x_px) in and_plane.chunks_exact(4).zip(xor_plane.chunks_exact(4)) {
+        if a_px[0] < 0x80 {
+            out.extend_from_slice(&[x_px[2], x_px[1], x_px[0], 0xFF]);
+        } else {
+            out.extend_from_slice(&[0, 0, 0, 0]);
+        }
     }
+    out
 }
 
 /// Expands `%VAR%` environment references the way the shell does for `DefaultIcon` values
 /// (`%SystemRoot%\system32\imageres.dll`). An unset variable is left literal.
+#[cfg(any(windows, test))]
 fn expand_env(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
@@ -142,25 +160,43 @@ fn expand_env(value: &str) -> String {
 
 #[cfg(windows)]
 mod win {
-    use dm_domain::{DecodedImage, DesktopItem, ItemKind, PortError, PortResult};
-    use windows::core::HSTRING;
+    use dm_domain::{
+        DecodedImage, DesktopItem, DesktopIniAnchor, ItemKind, PortError, PortResult,
+        RecycleBinAnchor, RestoreAnchor,
+    };
+    use windows::core::{HSTRING, PCWSTR};
     use windows::Win32::Foundation::{HWND, SIZE};
     use windows::Win32::Graphics::Gdi::{
         DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO,
         BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HDC,
     };
     use windows::Win32::UI::Shell::{
-        ExtractIconExW, SHCreateItemFromParsingName, IShellItemImageFactory, SIIGBF_BIGGERSIZEOK,
-        SIIGBF_ICONONLY,
+        ExtractIconExW, SHCreateItemFromParsingName, SHDefExtractIconW, IShellItemImageFactory,
+        SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         DestroyIcon, GetIconInfo, PrivateExtractIconsW, HICON, ICONINFO,
     };
 
-    use super::{expand_env, parse_icon_location, premul_bgra_to_rgba, straight_bgra_to_rgba, ICON_PX};
+    use super::{
+        expand_env, mono_planes_to_rgba, premul_bgra_to_rgba, straight_bgra_to_rgba, ICON_PX,
+    };
     use crate::apply::recyclebin;
+    use crate::classify::parse_icon_location;
 
-    pub(super) fn extract_blocking(item: &DesktopItem) -> PortResult<Vec<DecodedImage>> {
+    pub(super) fn extract_blocking(
+        item: &DesktopItem,
+        original: Option<&RestoreAnchor>,
+    ) -> PortResult<Vec<DecodedImage>> {
+        // Ledger-aware first (codex extractor-review 🔴1): the caller passing an anchor has
+        // PROVEN the live surface is our own styled output — re-reading it would compound
+        // Style(Style(orig)). A stale/unresolvable anchor falls back to the live chain below
+        // rather than failing the scan.
+        if let Some(anchor) = original {
+            if let Some(images) = original_images(item, anchor) {
+                return Ok(images);
+            }
+        }
         if item.kind == ItemKind::RecycleBin {
             return extract_recycle_bin(item);
         }
@@ -180,6 +216,98 @@ mod win {
             Some(i) => Ok(vec![i]),
             None => Err(PortError::NotFound(format!("no icon image extractable for {}", item.path))),
         }
+    }
+
+    // ---- Original-anchor extraction (the user's TRUE source while the live icon is ours) ----
+
+    fn original_images(item: &DesktopItem, anchor: &RestoreAnchor) -> Option<Vec<DecodedImage>> {
+        match anchor {
+            RestoreAnchor::FileBytes { bytes } => {
+                original_from_file_bytes(item, bytes).map(|i| vec![i])
+            }
+            RestoreAnchor::Folder { desktop_ini, .. } => {
+                original_folder_image(desktop_ini.as_ref()).map(|i| vec![i])
+            }
+            // A wrapped loose file: our styling lives on the companion wrapper `.lnk`; the file
+            // itself still carries its own type icon — the live shell read IS the original.
+            RestoreAnchor::RegularFile(_) => {
+                shell_item_image(&item.path).ok().flatten().map(|i| vec![i])
+            }
+            RestoreAnchor::RecycleBin(a) => original_recycle_bin(a),
+            RestoreAnchor::CaptureFailed { .. } => None,
+        }
+    }
+
+    /// A collision-free scratch name for materialized anchor bytes (`%TEMP%` lives per-user).
+    fn scratch_path(stem: &str, ext: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("dm-orig-{stem}-{}-{n}.{ext}", std::process::id()))
+    }
+
+    /// The original `.lnk`/`.url` icon, derived from the CAPTURED file bytes: parse the original
+    /// icon location out of them (a `.url` is INI text; a `.lnk` is materialized as a temp sibling
+    /// so `IShellLink` reads it), falling back to the shell image of the materialized original —
+    /// which resolves the original TARGET's icon exactly as the desktop did before we styled it.
+    fn original_from_file_bytes(item: &DesktopItem, bytes: &[u8]) -> Option<DecodedImage> {
+        if item.kind == ItemKind::UrlShortcut {
+            let text = String::from_utf8_lossy(bytes);
+            if let Some((loc, idx)) = crate::textfmt::parse_internet_shortcut_icon(&text) {
+                if let Some(img) = icon_resource_image(&loc, idx).ok().flatten() {
+                    return Some(img);
+                }
+            }
+        }
+        let ext = if item.kind == ItemKind::UrlShortcut { "url" } else { "lnk" };
+        let tmp = scratch_path("link", ext);
+        let tmp_str = tmp.to_str()?.to_string();
+        std::fs::write(&tmp, bytes).ok()?;
+        let img = (|| {
+            if ext == "lnk" {
+                if let Some((loc, idx)) =
+                    crate::shell::shell_link::read_icon_location(&tmp_str).ok().flatten()
+                {
+                    if let Some(img) = icon_resource_image(&loc, idx).ok().flatten() {
+                        return Some(img);
+                    }
+                }
+            }
+            shell_item_image(&tmp_str).ok().flatten()
+        })();
+        let _ = std::fs::remove_file(&tmp);
+        img
+    }
+
+    /// The original folder icon: the captured `desktop.ini`'s `IconResource`/`IconFile` when one
+    /// existed, else the stock folder icon (a throwaway empty directory gives the shell's
+    /// theme-correct rendering; `shell32.dll,3` is the classic fallback).
+    fn original_folder_image(ini: Option<&DesktopIniAnchor>) -> Option<DecodedImage> {
+        if let Some(ini) = ini {
+            if let Some((loc, idx)) = crate::textfmt::parse_desktop_ini_icon(&ini.content) {
+                if let Some(img) = icon_resource_image(&loc, idx).ok().flatten() {
+                    return Some(img);
+                }
+            }
+        }
+        let tmp = scratch_path("folder", "d");
+        if std::fs::create_dir(&tmp).is_ok() {
+            let img = tmp.to_str().and_then(|p| shell_item_image(p).ok().flatten());
+            let _ = std::fs::remove_dir(&tmp);
+            if img.is_some() {
+                return img;
+            }
+        }
+        icon_resource_image(r"%SystemRoot%\system32\shell32.dll", 3).ok().flatten()
+    }
+
+    /// The original Recycle Bin pair from the CAPTURED registry values (`read_current()` would
+    /// read back our own styled ICOs). Anchor unusable → `None` → the live chain degrades.
+    fn original_recycle_bin(a: &RecycleBinAnchor) -> Option<Vec<DecodedImage>> {
+        let full = a.full.as_ref().or(a.default.as_ref()).and_then(|v| resource_from_value(&v.raw))?;
+        let empty =
+            a.empty.as_ref().and_then(|v| resource_from_value(&v.raw)).unwrap_or_else(|| full.clone());
+        Some(vec![full, empty])
     }
 
     /// Recycle Bin: `[0]` the FULL-state icon, `[1]` the EMPTY-state icon, both resolved from the
@@ -220,14 +348,16 @@ mod win {
         if path.trim().is_empty() || !std::path::Path::new(&path).exists() {
             return Ok(None);
         }
-        // `PrivateExtractIconsW` takes a fixed NUL-terminated MAX_PATH (260) wide buffer; a longer
-        // path cannot ride it — skip straight to the classic fallback / the caller's shell image.
+        // `PrivateExtractIconsW` takes a fixed NUL-terminated MAX_PATH (260) wide buffer — a
+        // windows-rs projection limit, not ours. A longer path skips it and rides
+        // `SHDefExtractIconW` below, which takes a plain PCWSTR at any length (codex 🟠7).
         let mut wide = [0u16; 260];
-        let units: Vec<u16> = path.encode_utf16().collect();
+        let mut units: Vec<u16> = path.encode_utf16().collect();
         let fits = units.len() < wide.len();
         if fits {
             wide[..units.len()].copy_from_slice(&units);
         }
+        units.push(0); // NUL terminator for the PCWSTR callee
         // SAFETY: plain Win32 icon extraction; every returned HICON is destroyed below.
         unsafe {
             let mut icons = [HICON::default(); 1];
@@ -249,7 +379,26 @@ mod win {
             // unreadable), which a naive `>= 1` would treat as success over an unset handle (codex).
             let mut icon = if got == 1 { icons[0] } else { HICON::default() };
             if icon.is_invalid() {
-                // Classic 32px fallback for resources PrivateExtractIcons cannot read.
+                // Size-aware fallback with NO path-length ceiling (`SHDefExtractIconW` still picks
+                // the best frame for the requested edge). S_FALSE = "no icon here" leaves the
+                // handle unset — guard both.
+                let mut best = HICON::default();
+                if SHDefExtractIconW(
+                    PCWSTR(units.as_ptr()),
+                    index,
+                    0,
+                    Some(&mut best),
+                    None,
+                    ICON_PX as u32,
+                )
+                .is_ok()
+                    && !best.is_invalid()
+                {
+                    icon = best;
+                }
+            }
+            if icon.is_invalid() {
+                // Classic 32px fallback for resources neither extractor can read.
                 let mut large = HICON::default();
                 let _ = ExtractIconExW(&HSTRING::from(path.as_str()), index, Some(&mut large), None, 1);
                 icon = large;
@@ -297,18 +446,31 @@ mod win {
         let color = info.hbmColor;
         let mask = info.hbmMask;
         let result = (|| -> PortResult<Option<DecodedImage>> {
-            let Some((w, h, bgra)) = hbitmap_bgra(color)? else { return Ok(None) };
-            let mask_bits = hbitmap_bgra(mask)?.and_then(|(mw, mh, m)| {
-                // A monochrome mask read at the colour size; a double-height XOR+AND legacy mask
-                // (colourless icon) is not handled here — colourless icons take the legacy branch
-                // with the top half, which is the AND plane.
-                if mw == w && mh >= h {
-                    Some(m[..(w * h * 4) as usize].to_vec())
-                } else {
-                    None
+            match hbitmap_bgra(color)? {
+                Some((w, h, bgra)) => {
+                    let mask_bits = hbitmap_bgra(mask)?.and_then(|(mw, mh, m)| {
+                        // A monochrome mask read at the colour size supplies legacy coverage.
+                        if mw == w && mh >= h {
+                            Some(m[..(w * h * 4) as usize].to_vec())
+                        } else {
+                            None
+                        }
+                    });
+                    encode_png(w, h, straight_bgra_to_rgba(&bgra, mask_bits.as_deref())).map(Some)
                 }
-            });
-            encode_png(w, h, straight_bgra_to_rgba(&bgra, mask_bits.as_deref())).map(Some)
+                // Monochrome icon (`hbmColor == NULL`): the mask is DOUBLE-height — the AND plane
+                // stacked on the XOR plane (codex 🟠5). GetDIBits already rendered it as 32bpp
+                // rows, so the split is a pure pixel transform.
+                None => match hbitmap_bgra(mask)? {
+                    Some((w, h2, planes)) if h2 > 0 && h2 % 2 == 0 => {
+                        let h = h2 / 2;
+                        let half = (w * h * 4) as usize;
+                        let rgba = mono_planes_to_rgba(&planes[..half], &planes[half..]);
+                        encode_png(w, h, rgba).map(Some)
+                    }
+                    _ => Ok(None),
+                },
+            }
         })();
         if !color.is_invalid() {
             let _ = DeleteObject(color.into());
@@ -409,12 +571,13 @@ mod tests {
     }
 
     #[test]
-    fn icon_location_values_parse_path_and_index() {
-        assert_eq!(parse_icon_location(r"C:\w\imageres.dll,-55"), (r"C:\w\imageres.dll".into(), -55));
-        assert_eq!(parse_icon_location(r"C:\plain.ico"), (r"C:\plain.ico".into(), 0));
-        assert_eq!(parse_icon_location(r#""C:\q uoted.ico",3"#), (r"C:\q uoted.ico".into(), 3));
-        // A comma inside the path with no numeric tail is NOT an index.
-        assert_eq!(parse_icon_location(r"C:\a,b\i.ico"), (r"C:\a,b\i.ico".into(), 0));
+    fn a_monochrome_double_height_mask_splits_into_and_gated_xor_colour() {
+        // 2×1 icon: AND plane [black, white] gates coverage; XOR plane [white, black] is the ink.
+        let and_plane = [0u8, 0, 0, 255, /* white = transparent */ 255, 255, 255, 255];
+        let xor_plane = [255u8, 255, 255, 255, /* black */ 0, 0, 0, 255];
+        let rgba = mono_planes_to_rgba(&and_plane, &xor_plane);
+        assert_eq!(&rgba[0..4], &[255, 255, 255, 255], "AND black → opaque, XOR white ink");
+        assert_eq!(&rgba[4..8], &[0, 0, 0, 0], "AND white → transparent (invert-screen ignored)");
     }
 
     #[test]

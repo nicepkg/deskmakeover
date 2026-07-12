@@ -66,6 +66,18 @@ fn scan_blocking() -> PortResult<Vec<DesktopItem>> {
                 Some(s) => s.to_string(),
                 None => continue,
             };
+            // Wrapper reunification: a `.lnk` this app created around a loose file (the original
+            // sits beside it, Hidden+System, and IS the link target) re-presents as the ORIGINAL
+            // RegularFile item — same id, same kind — so the ledger row, the CAS surface, and the
+            // restore affordance all keep addressing one item across re-scans. Without this, every
+            // wrapped file mutates into a foreign Shortcut item after its first apply (the oracle
+            // shared this gap). [WINDOWS-VERIFY] runtime.
+            if kind == ItemKind::Shortcut {
+                if let Some(item) = reunify_wrapper(&path_str) {
+                    items.push(item);
+                    continue;
+                }
+            }
             items.push(DesktopItem {
                 id: ItemId::from_source_path("filesystem", &path_str),
                 name: display_name(&file_name, kind),
@@ -78,10 +90,78 @@ fn scan_blocking() -> PortResult<Vec<DesktopItem>> {
             });
         }
     }
+    // The Recycle Bin is a VIRTUAL shell folder the filesystem enumeration can never see — inject
+    // it explicitly so the mirror matches the real desktop 1:1 (oracle:
+    // `DesktopPreviewService.AddRecycleBin`; identity via `RecycleBinProbe`). No display name →
+    // skipped silently rather than failing the scan. [WINDOWS-VERIFY] runtime.
+    if let Some(name) = recycle_bin_display_name() {
+        items.push(DesktopItem {
+            id: ItemId::from_raw("recyclebin"),
+            name,
+            path: RECYCLE_BIN_PARSING.to_string(),
+            kind: ItemKind::RecycleBin,
+            icon: None,
+            state: ItemState::Ready,
+            requires_explicit_consent: false,
+            status_message: None,
+        });
+    }
     // Oracle sorts by name, current-culture case-insensitive; ASCII-lowercase is the closest
     // portable approximation and is corrected on the Windows box if a locale diff surfaces.
     items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     Ok(items)
+}
+
+/// The shell parsing name for the Recycle Bin (the canonical CLSID form; the oracle's
+/// `shell:RecycleBinFolder` resolves to the same folder).
+const RECYCLE_BIN_PARSING: &str = "::{645FF040-5081-101B-9F08-00AA002F954E}";
+
+/// The Recycle Bin's localized display name (回收站 / Recycle Bin / …), or `None` when the shell
+/// item cannot be resolved — in which case the bin is skipped, exactly like the oracle probe.
+fn recycle_bin_display_name() -> Option<String> {
+    use windows::core::HSTRING;
+    use windows::Win32::UI::Shell::{IShellItem, SHCreateItemFromParsingName, SIGDN_NORMALDISPLAY};
+    // SAFETY: COM on the STA thread; the returned PWSTR is CoTaskMem-owned and freed here.
+    unsafe {
+        let item: IShellItem =
+            SHCreateItemFromParsingName(&HSTRING::from(RECYCLE_BIN_PARSING), None).ok()?;
+        let pw = item.GetDisplayName(SIGDN_NORMALDISPLAY).ok()?;
+        let name = pw.to_string().ok();
+        windows::Win32::System::Com::CoTaskMemFree(Some(pw.as_ptr() as *const _));
+        name.filter(|n| !n.trim().is_empty())
+    }
+}
+
+/// If `lnk_path` is one of OUR file wrappers — `<file>.lnk` beside a Hidden+System `<file>` that
+/// the link targets — returns the reunified original RegularFile item. Any read failure or
+/// mismatch means "just an ordinary shortcut" (`None`).
+fn reunify_wrapper(lnk_path: &str) -> Option<DesktopItem> {
+    let original = lnk_path.strip_suffix(".lnk").or_else(|| lnk_path.strip_suffix(".LNK"))?;
+    let meta = std::fs::metadata(original).ok()?;
+    if meta.is_dir() {
+        return None;
+    }
+    use std::os::windows::fs::MetadataExt;
+    const HIDDEN_SYSTEM: u32 = 0x0000_0002 | 0x0000_0004;
+    if meta.file_attributes() & HIDDEN_SYSTEM != HIDDEN_SYSTEM {
+        return None;
+    }
+    // The wrapper must actually POINT at the sibling (case-insensitive: NTFS paths).
+    let target = shell_link::read_target(lnk_path).ok().flatten()?;
+    if !target.eq_ignore_ascii_case(original) {
+        return None;
+    }
+    let file_name = std::path::Path::new(original).file_name()?.to_str()?;
+    Some(DesktopItem {
+        id: ItemId::from_source_path("filesystem", original),
+        name: display_name(file_name, ItemKind::RegularFile),
+        icon: None,
+        path: original.to_string(),
+        kind: ItemKind::RegularFile,
+        state: ItemState::Ready,
+        requires_explicit_consent: false,
+        status_message: None,
+    })
 }
 
 fn read_icon_source(kind: ItemKind, path: &str) -> Option<IconRef> {

@@ -24,7 +24,7 @@ use dm_domain::{
 };
 use dm_operations::{
     FsAssetStore, IconApplySession, IconOps, IconPlatform, IconStoreState, JsonLedgerStore,
-    LookHistoryStore, LookVersion, ScannedItem, SettingsStore, TxnIdAllocator,
+    LedgerStore, LookHistoryStore, LookVersion, ScannedItem, SettingsStore, TxnIdAllocator,
 };
 use dm_operations::txn::FileJournal;
 
@@ -176,37 +176,72 @@ impl IconHost {
     pub fn scan(&self) -> Result<IconScanDto, String> {
         let items = self.scanner.scan().map_err(|e| e.to_string())?;
         let rev = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
-        // Build the new content-addressed source cache in a LOCAL map, then atomically swap it in only
-        // after EVERY extract succeeds (codex R2-Major 3): a mid-scan extract failure must not leave
-        // the previous scan's still-displayed URLs 404-ing against a half-cleared cache.
+        // Ledger-aware extraction (codex extractor-review 🔴1): for an item WE own whose live
+        // surface still equals our last-applied fingerprint, the live icon is this app's styled
+        // output — extracting it as "the source" would compound Style(Style(orig)) on every
+        // re-scan. Snapshot the committed anchors up front (short lock; extraction below is slow
+        // and must not hold `mut_state`).
+        let anchors: HashMap<String, (dm_domain::Fingerprint, dm_domain::RestoreAnchor)> = {
+            let st = self.mut_state.lock().unwrap();
+            st.ledger
+                .all()
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .filter(|e| e.state.is_committed())
+                .map(|e| {
+                    (e.item.as_str().to_string(), (e.last_applied_fingerprint, e.original_anchor))
+                })
+                .collect()
+        };
+        // Build the new content-addressed source cache in a LOCAL map, then atomically swap it in
+        // after extraction (codex R2-Major 3): a failed refresh must not leave the previous scan's
+        // still-displayed URLs 404-ing against a half-cleared cache. One bad item does NOT fail the
+        // whole scan (codex extractor-review 🟠3): it degrades to styleable:false with a reason —
+        // one OneDrive placeholder must not blank a 40-icon desktop.
         let mut next_sources: HashMap<String, Vec<u8>> = HashMap::new();
         let mut dtos = Vec::with_capacity(items.len());
         let mut scanned = Vec::with_capacity(items.len());
         for (i, item) in items.into_iter().enumerate() {
-            let sources = self.extractor.extract(&item).map_err(|e| e.to_string())?;
-            let mut urls = Vec::with_capacity(sources.len());
-            for (slot, src) in sources.iter().enumerate() {
-                urls.push(cache_source_into(&mut next_sources, item.id.as_str(), slot as u32, src));
-            }
+            // Capture the CAS anchor AT SCAN TIME (codex Block 2): a hand-edit during the bake then
+            // fails the driver's CAS instead of being silently overwritten. An unreadable surface
+            // gets a sentinel fingerprint, so a fresh apply of it conflicts (skipped), never forced.
+            // Read BEFORE extraction: the fingerprint decides whether the live surface is our own
+            // styled output (→ extract from the original anchor instead).
+            let fingerprint = self
+                .reader
+                .read_fingerprint(&item.target())
+                .unwrap_or_else(|_| dm_domain::Fingerprint::of_bytes(b""));
+            let original = anchors
+                .get(item.id.as_str())
+                .filter(|(last_applied, _)| last_applied == &fingerprint)
+                .map(|(_, anchor)| anchor);
+            let (urls, extract_err) = match self.extractor.extract(&item, original) {
+                Ok(sources) => {
+                    let mut urls = Vec::with_capacity(sources.len());
+                    for (slot, src) in sources.iter().enumerate() {
+                        urls.push(cache_source_into(
+                            &mut next_sources,
+                            item.id.as_str(),
+                            slot as u32,
+                            src,
+                        ));
+                    }
+                    (urls, None)
+                }
+                Err(e) => (Vec::new(), Some(format!("图标读取失败：{e}"))),
+            };
             let (x, y) = synthetic_layout(i);
             dtos.push(IconItemDto {
                 id: item.id.as_str().into(),
                 label: item.name.clone(),
                 kind: map_kind(item.kind),
                 is_shortcut: item.kind.is_shortcut(),
-                styleable: item.can_style(),
-                status_reason: item.status_message.clone(),
+                styleable: item.can_style() && extract_err.is_none(),
+                status_reason: extract_err.or_else(|| item.status_message.clone()),
                 x,
                 y,
                 source_urls: urls,
             });
-            // Capture the CAS anchor AT SCAN TIME (codex Block 2): a hand-edit during the bake then
-            // fails the driver's CAS instead of being silently overwritten. An unreadable surface
-            // gets a sentinel fingerprint, so a fresh apply of it conflicts (skipped), never forced.
-            let fingerprint = self
-                .reader
-                .read_fingerprint(&item.target())
-                .unwrap_or_else(|_| dm_domain::Fingerprint::of_bytes(b""));
             scanned.push(ScannedItem { item, fingerprint });
         }
         // Every extract succeeded → publish atomically, ALL inside one critical section ordered
@@ -759,7 +794,7 @@ mod tests {
         let host = IconHost::new(
             IconHostPorts {
                 scanner: Arc::new(DevDesktopScanner),
-                extractor: Arc::new(DevIconSourceExtractor),
+                extractor: Arc::new(DevIconSourceExtractor(desk.clone())),
                 reader: Arc::new(DevIconReader(desk.clone())),
                 applier: Arc::new(DevIconApplier(desk.clone())),
                 overlay: Arc::new(DevOverlayControl),
@@ -812,6 +847,109 @@ mod tests {
         assert_eq!(bin.source_urls.len(), 2);
     }
 
+    /// The `dmicon://` PNG a scan currently serves for an item's slot-0 source.
+    fn served_png(h: &IconHost, scan: &IconScanDto, id: &str) -> Vec<u8> {
+        let item = scan.items.iter().find(|i| i.id == id).unwrap();
+        let key =
+            item.source_urls[0].split("localhost/").nth(1).unwrap().split('?').next().unwrap();
+        h.png_for(key).expect("protocol serves the advertised source")
+    }
+
+    #[test]
+    fn a_rescan_of_an_owned_unmodified_item_serves_the_original_source_not_the_styled_output() {
+        // codex extractor-review 🔴1: after an apply, the LIVE icon is our styled output. A naive
+        // re-scan reads it back as "the source", so the next apply styles the styled image —
+        // Style(Style(orig)) compounds forever. The ledger-aware scan must serve the ORIGINAL.
+        let dir = tempfile::tempdir().unwrap();
+        let h = host(dir.path());
+        let scan1 = h.scan().unwrap();
+        let original_png = served_png(&h, &scan1, "edge");
+
+        let sid = h.apply_baked_begin(scan1.revision, 1).unwrap();
+        h.apply_baked_chunk(&sid, vec![IconChunkItemDto {
+            id: "edge".into(),
+            source_index: 0,
+            master_png: tiny_master(),
+        }])
+        .unwrap();
+        assert!(h.apply_baked_commit(&sid, style_json(1), vec![], None).unwrap().ok);
+
+        // Owned + unmodified → the re-scan extracts from the ledger's original anchor.
+        let scan2 = h.scan().unwrap();
+        assert_eq!(
+            served_png(&h, &scan2, "edge"),
+            original_png,
+            "the re-scan must serve the true original source, not the styled surface"
+        );
+
+        // An EXTERNAL hand-edit breaks ownership → the live (foreign) surface is the honest
+        // source again; the anchor must NOT shadow the user's own change.
+        let second = dir.path().join("second");
+        std::fs::create_dir_all(&second).unwrap();
+        let (h2, desk2) = host_with_desk(&second);
+        let s1 = h2.scan().unwrap();
+        let orig2 = served_png(&h2, &s1, "code");
+        let sid2 = h2.apply_baked_begin(s1.revision, 1).unwrap();
+        h2.apply_baked_chunk(&sid2, vec![IconChunkItemDto {
+            id: "code".into(),
+            source_index: 0,
+            master_png: tiny_master(),
+        }])
+        .unwrap();
+        assert!(h2.apply_baked_commit(&sid2, style_json(2), vec![], None).unwrap().ok);
+        desk2.force_foreign("code");
+        let s2 = h2.scan().unwrap();
+        assert_ne!(
+            served_png(&h2, &s2, "code"),
+            orig2,
+            "a hand-edited surface no longer matches last_applied → live extraction wins"
+        );
+    }
+
+    #[test]
+    fn one_failing_extract_degrades_that_item_instead_of_failing_the_whole_scan() {
+        // codex extractor-review 🟠3: one unreadable icon (OneDrive placeholder, vanished file)
+        // must not blank the whole desktop scan — it degrades to styleable:false with a reason.
+        struct OneBadExtractor(Arc<DevIconDesktop>);
+        impl dm_domain::IconSourceExtractor for OneBadExtractor {
+            fn extract(
+                &self,
+                item: &dm_domain::DesktopItem,
+                original: Option<&dm_domain::RestoreAnchor>,
+            ) -> dm_domain::PortResult<Vec<dm_domain::DecodedImage>> {
+                if item.id.as_str() == "edge" {
+                    return Err(dm_domain::PortError::Io("cloud placeholder offline".into()));
+                }
+                DevIconSourceExtractor(self.0.clone()).extract(item, original)
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let desk = DevIconDesktop::new();
+        let settings = Arc::new(SettingsStore::open(&dir.path().join("settings.sqlite3")).unwrap());
+        let h = IconHost::new(
+            IconHostPorts {
+                scanner: Arc::new(DevDesktopScanner),
+                extractor: Arc::new(OneBadExtractor(desk.clone())),
+                reader: Arc::new(DevIconReader(desk.clone())),
+                applier: Arc::new(DevIconApplier(desk)),
+                overlay: Arc::new(DevOverlayControl),
+                refresher: Arc::new(DevExplorerRefresher),
+            },
+            settings,
+            dir.path(),
+            1,
+        );
+        let scan = h.scan().unwrap();
+        let bad = scan.items.iter().find(|i| i.id == "edge").unwrap();
+        assert!(!bad.styleable, "the unreadable item is not offered for styling");
+        assert!(bad.source_urls.is_empty());
+        assert!(bad.status_reason.as_deref().unwrap_or("").contains("图标读取失败"));
+        // Everyone else still scanned + serves sources.
+        let good = scan.items.iter().find(|i| i.id == "code").unwrap();
+        assert!(good.styleable && !good.source_urls.is_empty());
+        assert!(scan.items.len() >= 7, "the rest of the desktop survives one bad item");
+    }
+
     #[test]
     fn apply_then_get_persisted_reads_back_applied_with_saved_style_and_arrow_hidden() {
         let dir = tempfile::tempdir().unwrap();
@@ -856,7 +994,7 @@ mod tests {
         let h = IconHost::new(
             IconHostPorts {
                 scanner: Arc::new(EmptyScanner),
-                extractor: Arc::new(DevIconSourceExtractor),
+                extractor: Arc::new(DevIconSourceExtractor(desk.clone())),
                 reader: Arc::new(DevIconReader(desk.clone())),
                 applier: Arc::new(DevIconApplier(desk)),
                 overlay: Arc::new(DevOverlayControl),

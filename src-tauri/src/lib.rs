@@ -106,7 +106,7 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
         let desk = devhost_icons::DevIconDesktop::new();
         let ports = IconHostPorts {
             scanner: Arc::new(devhost_icons::DevDesktopScanner),
-            extractor: Arc::new(devhost_icons::DevIconSourceExtractor),
+            extractor: Arc::new(devhost_icons::DevIconSourceExtractor(desk.clone())),
             reader: Arc::new(devhost_icons::DevIconReader(desk.clone())),
             applier: Arc::new(devhost_icons::DevIconApplier(desk)),
             overlay: Arc::new(devhost_icons::DevOverlayControl),

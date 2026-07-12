@@ -72,7 +72,9 @@ mod windows_impl {
         if !state.exists() {
             let original: String =
                 key.get_value(OVERLAY_VALUE).unwrap_or_else(|_| ABSENT_MARKER.to_string());
-            write_durable(&dir, STATE_FILE, original.as_bytes()).map_err(io)?;
+            // Non-replacing atomic claim: if another elevated apply raced in between the check above
+            // and here, our publish fails-closed and does NOT overwrite their real-original snapshot.
+            snapshot_once(&dir, STATE_FILE, original.as_bytes())?;
         }
 
         // Point the registry at the ProgramData copy — NEVER the caller path (LPE guard).
@@ -122,18 +124,14 @@ mod windows_impl {
         // (ELEV-2), and the temp is create_new so a symlink can't be followed (defense-in-depth atop
         // the admin-only secure_dir).
         let name = format!("{}-overlay.ico", style.as_str());
-        write_durable(dir, &name, &bytes).map_err(io)
+        write_durable(dir, &name, &bytes)
     }
 
-    /// Durably writes `bytes` to `dir/name` and returns its path: a UNIQUE `O_EXCL` temp in the same
-    /// directory (create_new refuses to follow a pre-placed symlink), `FlushFileBuffers`, then rename
-    /// over the target. The fsync guarantees the data is on disk before the caller proceeds — the
-    /// property the overlay snapshot depends on (it MUST be durable before the registry is modified).
-    /// A partial temp is cleaned up on any failure. [WINDOWS-VERIFY] the FlushFileBuffers + rename
-    /// durability on NTFS.
-    fn write_durable(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
+    /// Writes `bytes` to a UNIQUE `O_EXCL` temp in `dir` (create_new refuses to follow a pre-placed
+    /// symlink — defense-in-depth atop the admin-only secure_dir), `FlushFileBuffers`, and returns
+    /// the temp path for the caller to publish. A partial temp is cleaned up on write failure.
+    fn write_temp(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
         use std::io::{ErrorKind, Write};
-        let target = dir.join(name);
         let pid = std::process::id();
         let (tmp, mut file) = {
             let mut attempt = 0u32;
@@ -157,11 +155,62 @@ mod windows_impl {
             let _ = std::fs::remove_file(&tmp);
             return Err(e);
         }
-        if let Err(e) = std::fs::rename(&tmp, &target) {
+        Ok(tmp)
+    }
+
+    /// Durably + atomically publishes `bytes` to `dir/name`, REPLACING any existing file, and returns
+    /// its path. The temp is fsync'd, then published with `MoveFileEx(WRITE_THROUGH|REPLACE_EXISTING)`
+    /// so the namespace change is durable before returning (the ProgramData ICO, which a re-apply
+    /// legitimately rewrites). [WINDOWS-VERIFY] the write-through move on NTFS.
+    fn write_durable(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, String> {
+        use windows::core::HSTRING;
+        use windows::Win32::Storage::FileSystem::{
+            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        };
+        let tmp = write_temp(dir, name, bytes).map_err(io)?;
+        let target = dir.join(name);
+        // SAFETY: valid UTF-16 paths; no buffers retained past the call.
+        let moved = unsafe {
+            MoveFileExW(
+                &HSTRING::from(tmp.as_os_str()),
+                &HSTRING::from(target.as_os_str()),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if let Err(e) = moved {
             let _ = std::fs::remove_file(&tmp);
-            return Err(e);
+            return Err(e.to_string());
         }
         Ok(target)
+    }
+
+    /// Durably + atomically publishes the pre-first-apply snapshot to `dir/name`, NON-replacing: if
+    /// the target already exists (a concurrent or prior elevated apply already snapshotted the true
+    /// original), the write-through move fails-closed and we DISCARD our copy rather than clobber
+    /// theirs with a possibly-already-modified value — closing the cross-process snapshot-once race
+    /// (handoff §8a #4). WRITE_THROUGH makes the snapshot durable BEFORE the caller modifies HKLM.
+    /// [WINDOWS-VERIFY] the write-through + non-replacing move on NTFS.
+    fn snapshot_once(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
+        use windows::core::HSTRING;
+        use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
+        let tmp = write_temp(dir, name, bytes).map_err(io)?;
+        let target = dir.join(name);
+        // No MOVEFILE_REPLACE_EXISTING: the move fails if the target exists (another process won).
+        // SAFETY: valid UTF-16 paths; no buffers retained past the call.
+        let moved = unsafe {
+            MoveFileExW(
+                &HSTRING::from(tmp.as_os_str()),
+                &HSTRING::from(target.as_os_str()),
+                MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        let _ = std::fs::remove_file(&tmp); // consumed by the move on success; discarded on collision
+        match moved {
+            Ok(()) => Ok(()),
+            // An existing snapshot means another process satisfied snapshot-once — the desired no-op.
+            Err(_) if target.exists() => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
     }
 
     fn notify_shell() {

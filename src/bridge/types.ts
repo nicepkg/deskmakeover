@@ -536,9 +536,10 @@ export interface BridgeMethods {
   // session state, resumed from ② (savedStyle) on relaunch — spec 07 §8.2 writes ② only on Apply.
   'icons.applyBakedBegin': { params: { revision: number; count: number }; result: null }
   'icons.applyBakedChunk': { params: { items: IconChunkItemDto[] }; result: null }
-  // The full recipe rides as an opaque JSON string (the envelope Rust persists as ②③); per-icon
-  // overrides are already baked into the masters (or excluded), so they do not cross here.
-  'icons.applyBakedCommit': { params: { styleJson: string; label: string | null }; result: IconOpResultDto }
+  // The full recipe rides as an opaque JSON string (the envelope Rust persists as ②③). A tint
+  // override is baked into its master; a 「保留原样」/kindPolicy-excluded item that is CURRENTLY
+  // styled rides `restoreIds` so Rust REVERTS it (spec 06 §2 — not sending a master ≠ restoring).
+  'icons.applyBakedCommit': { params: { styleJson: string; restoreIds: string[]; label: string | null }; result: IconOpResultDto }
   'icons.restore': { params: void; result: IconOpResultDto }
   /** [M6-WIRE] Keep-beautification restore: brings the native shortcut arrow
    *  back (arrowOverlay → 'native') WITHOUT undoing the icon look — shapes and

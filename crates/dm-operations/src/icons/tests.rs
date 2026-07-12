@@ -79,6 +79,23 @@ impl Fixture {
     }
 
     /// Runs a commit with the given masters, driving the real engine over the fake platform.
+    /// Converts scanned items into `ScannedItem`s, capturing each one's CURRENT desktop fingerprint
+    /// as its scan-time CAS anchor (what the real host does per scan).
+    fn scanned(&self, items: &[DesktopItem]) -> Vec<ScannedItem> {
+        items
+            .iter()
+            .map(|it| {
+                let fp = self
+                    .world
+                    .borrow()
+                    .get(&it.path)
+                    .map(|b| dm_domain::Fingerprint::of_bytes(&b))
+                    .unwrap_or(dm_domain::Fingerprint::of_bytes(b""));
+                ScannedItem { item: it.clone(), fingerprint: fp }
+            })
+            .collect()
+    }
+
     fn apply(
         &mut self,
         masters: &[(&str, u32, [u8; 4])],
@@ -87,10 +104,25 @@ impl Fixture {
         look_id: &str,
         scan: &[DesktopItem],
     ) -> IconApplyOutcome {
+        self.apply_reverting(masters, style, label, look_id, scan, &[])
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn apply_reverting(
+        &mut self,
+        masters: &[(&str, u32, [u8; 4])],
+        style: IconStyle,
+        label: &str,
+        look_id: &str,
+        scan: &[DesktopItem],
+        restore_ids: &[&str],
+    ) -> IconApplyOutcome {
         let mut session = IconApplySession::begin(0, masters.len());
         for (id, slot, rgba) in masters {
             session.push(*id, *slot, master_b64(*rgba));
         }
+        let scanned = self.scanned(scan);
+        let restore: Vec<String> = restore_ids.iter().map(|s| s.to_string()).collect();
         let fake = FakePlatform::new(self.world.clone());
         let platform = IconPlatform::new(&fake, &fake, &self.assets);
         let ops = IconOps::new(platform, &self.settings);
@@ -100,7 +132,8 @@ impl Fixture {
             Some(label.into()),
             look_id,
             look_id.len() as i64, // a deterministic caller-stamped timestamp
-            scan,
+            &scanned,
+            &restore,
             &mut self.txn,
             &mut self.journal,
             &mut self.ledger,
@@ -114,7 +147,7 @@ impl Fixture {
         let fake = FakePlatform::new(self.world.clone());
         let platform = IconPlatform::new(&fake, &fake, &self.assets);
         let ops = IconOps::new(platform, &self.settings);
-        ops.reset_to_original(&mut self.ledger, &self.history).unwrap()
+        ops.reset_to_original(&mut self.journal, &mut self.ledger, &self.history).unwrap()
     }
 
     fn ico_files(&self) -> Vec<String> {
@@ -346,7 +379,8 @@ fn commit_reconciles_a_committed_but_unledgered_txn_before_preparing() {
         let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
         let mut s = IconApplySession::begin(0, 1);
         s.push("app", 0, master_b64([1, 2, 3, 255]));
-        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &[app.clone()], &mut txn, &mut journal, &mut ledger_a, &mut history)
+        let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()) }];
+        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &mut txn, &mut journal, &mut ledger_a, &mut history)
             .unwrap();
     }
 
@@ -360,12 +394,92 @@ fn commit_reconciles_a_committed_but_unledgered_txn_before_preparing() {
         let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
         let mut s = IconApplySession::begin(0, 1);
         s.push("app", 0, master_b64([9, 9, 9, 255]));
+        let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()) }];
         let out = ops
-            .commit_apply(s, style(2), Some("B".into()), "v2", 2, &[app.clone()], &mut txn, &mut journal, &mut ledger_b, &mut history)
+            .commit_apply(s, style(2), Some("B".into()), "v2", 2, &scan, &[], &mut txn, &mut journal, &mut ledger_b, &mut history)
             .unwrap();
         assert_eq!(out.committed, vec![ItemId::from_raw("app")]);
     }
     // The reconciled original (orig-app) is preserved as the restore anchor, not the styled state.
     let entry = ledger_b.get(&app.id).unwrap().unwrap();
     assert_eq!(entry.original_fingerprint, dm_domain::Fingerprint::of_bytes(b"orig-app"));
+}
+
+#[test]
+fn reset_checkpoints_the_journal_so_a_restart_cannot_revive_the_ledger() {
+    // The revived-ledger bug (codex 2026-07-12): Apply leaves durable `TxnCommitted` records; if
+    // reset deletes the ledger rows WITHOUT emptying the journal, the next launch's startup recovery
+    // re-upserts them — resurrecting a styled ledger entry that points at a GC'd ICO over an original
+    // desktop. This is NOT a crash-window (no crash needed), so reset must reconcile + checkpoint.
+    let dir = tempfile::tempdir().unwrap();
+    let world = World::shared();
+    let app = item("app", ItemKind::Shortcut);
+    world.borrow_mut().put(&app.path, b"orig-app");
+    let assets = FsAssetStore::new(dir.path().join("assets"));
+    let settings = SettingsStore::open(&dir.path().join("s.sqlite3")).unwrap();
+    let mut history = LookHistoryStore::new(dir.path().join("h.json"));
+    let journal_path = dir.path().join("txn.log");
+    let mut journal = crate::txn::FileJournal::new(&journal_path);
+    let mut ledger = MemLedgerStore::new();
+    let mut txn = TxnIdAllocator::starting_at(1);
+
+    // Apply A (durable journal now holds a committed txn), then Reset.
+    {
+        let fake = FakePlatform::new(world.clone());
+        let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
+        let mut s = IconApplySession::begin(0, 1);
+        s.push("app", 0, master_b64([1, 2, 3, 255]));
+        let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()) }];
+        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &mut txn, &mut journal, &mut ledger, &mut history)
+            .unwrap();
+    }
+    assert!(ledger.get(&app.id).unwrap().is_some(), "A is styled");
+    {
+        let fake = FakePlatform::new(world.clone());
+        let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
+        ops.reset_to_original(&mut journal, &mut ledger, &history).unwrap();
+    }
+    assert!(ledger.all().unwrap().is_empty(), "reset emptied the ledger");
+    assert_eq!(world.borrow().get(&app.path).unwrap(), b"orig-app", "desktop reverted to original");
+
+    // Simulate a RESTART: startup recovery over the same on-disk journal into a FRESH ledger. It
+    // must find NOTHING to revive — the reset checkpointed the committed records away.
+    let mut restart_ledger = MemLedgerStore::new();
+    let fake = FakePlatform::new(world.clone());
+    let mut restart_journal = crate::txn::FileJournal::new(&journal_path);
+    crate::txn::recover_from_journal(&mut restart_journal, &fake, &fake, &mut restart_ledger).unwrap();
+    assert!(
+        restart_ledger.all().unwrap().is_empty(),
+        "a restart after reset must NOT revive the deleted ledger rows",
+    );
+}
+
+#[test]
+fn a_kept_icon_that_was_styled_is_reverted_not_left() {
+    // spec 06 §2 / codex 2026-07-12: setting a CURRENTLY-styled icon to 「保留原样」 must REVERT it to
+    // its original — the frontend excludes it from the bake, so without the restore_ids path the real
+    // desktop would keep the old style while the UI shows original.
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    let keep = item("keep", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.seed(&keep, b"orig-keep");
+    // Apply A: both get styled.
+    f.apply(
+        &[("a", 0, [1, 1, 1, 255]), ("keep", 0, [2, 2, 2, 255])],
+        style(1),
+        "A",
+        "v1",
+        &[a.clone(), keep.clone()],
+    );
+    assert!(f.ledger.get(&keep.id).unwrap().is_some());
+    assert_ne!(f.world.borrow().get(&keep.path).unwrap(), b"orig-keep", "keep is styled after A");
+
+    // Re-apply B, but the user set `keep` to 「保留原样」 → it rides restore_ids, NOT the bake set.
+    let out = f.apply_reverting(&[("a", 0, [9, 9, 9, 255])], style(2), "B", "v2", &[a.clone(), keep.clone()], &["keep"]);
+
+    assert_eq!(out.reverted, vec![ItemId::from_raw("keep")]);
+    assert_eq!(f.world.borrow().get(&keep.path).unwrap(), b"orig-keep", "the kept icon is reverted on the real desktop");
+    assert!(f.ledger.get(&keep.id).unwrap().is_none(), "its ledger row is gone");
+    assert!(f.ledger.get(&a.id).unwrap().is_some(), "a is re-styled");
 }

@@ -89,9 +89,10 @@ pub fn icons_apply_baked_chunk(
 pub fn icons_apply_baked_commit(
     state: State<'_, AppState>,
     style_json: String,
+    restore_ids: Vec<String>,
     label: Option<String>,
 ) -> Result<IconOpResultDto, String> {
-    state.icons.apply_baked_commit(style_json, label)
+    state.icons.apply_baked_commit(style_json, restore_ids, label)
 }
 
 #[tauri::command]

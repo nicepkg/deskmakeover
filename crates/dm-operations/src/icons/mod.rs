@@ -21,7 +21,8 @@ use std::collections::HashSet;
 
 use dm_contracts::IconStyle;
 use dm_domain::{
-    AssetStore, DesktopItem, IconApplier, ItemId, ItemStateReader, OwnedFields, PortError,
+    AssetStore, DesktopItem, Fingerprint, IconApplier, ItemId, ItemStateReader, OwnedFields,
+    PortError,
 };
 
 use crate::error::Result;
@@ -37,6 +38,17 @@ pub struct IconPlatform<'a> {
     pub reader: &'a dyn ItemStateReader,
     pub applier: &'a dyn IconApplier,
     pub assets: &'a dyn AssetStore,
+}
+
+/// One item as the scan observed it, WITH the fingerprint captured AT SCAN TIME. The apply's CAS
+/// anchor for a fresh item is this scan-time fingerprint (not a re-read at commit): if the user
+/// hand-edits the icon during the — potentially slow, chunked — bake, `current != scan_fingerprint`
+/// fails the driver's CAS and the edit is left untouched, never overwritten (the driver's documented
+/// "fresh apply uses the scan observation" contract). The host captures it once per scan.
+#[derive(Debug, Clone)]
+pub struct ScannedItem {
+    pub item: DesktopItem,
+    pub fingerprint: Fingerprint,
 }
 
 /// The chunk-buffer for one apply (`begin` → `push`\* → commit). Owns no ports; it just
@@ -100,6 +112,8 @@ pub struct IconStoreState {
 #[derive(Debug, Clone)]
 pub struct IconApplyOutcome {
     pub committed: Vec<ItemId>,
+    /// Currently-styled icons the user set to 「保留原样」 that this apply reverted to their original.
+    pub reverted: Vec<ItemId>,
     pub conflicts: Vec<ItemId>,
     pub error: Option<String>,
     pub stores: IconStoreState,
@@ -165,7 +179,8 @@ impl<'a> IconOps<'a> {
         label: Option<String>,
         look_id: impl Into<String>,
         created_at: i64,
-        scan_items: &[DesktopItem],
+        scan: &[ScannedItem],
+        restore_ids: &[String],
         txn: &mut TxnIdAllocator,
         journal: &mut dyn JournalSink,
         ledger: &mut dyn LedgerStore,
@@ -176,40 +191,51 @@ impl<'a> IconOps<'a> {
         // below are computed against a ledger that reflects every durable commit. Idempotent.
         recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
 
+        // The user's 「保留原样」 / kindPolicy opt-out for a CURRENTLY-styled icon is a RESTORE, not a
+        // no-op: the frontend excludes it from the bake set, so without this step the icon keeps its
+        // old applied style on the real desktop while the UI shows the original (spec 06 §2 breach,
+        // codex 2026-07-12). CAS-gated + trust-first: an icon the user hand-edited since is left
+        // alone. An id not in the ledger was never styled — nothing to revert.
+        let mut reverted: Vec<ItemId> = Vec::new();
+        for id in restore_ids {
+            let item_id = ItemId::from_raw(id.as_str());
+            let Some(entry) = ledger.get(&item_id)? else { continue };
+            match self.platform.reader.read_fingerprint(&entry.target) {
+                Ok(cur) if cur == entry.last_applied_fingerprint => {
+                    self.platform.applier.restore(&entry.target, &entry.original_anchor)?;
+                    ledger.remove(&item_id)?;
+                    reverted.push(item_id);
+                }
+                Ok(_) => {} // hand-edited since → leave it (trust-first)
+                Err(PortError::NotFound(_)) => ledger.remove(&item_id)?, // deleted → drop the row
+                Err(e) => return Err(e.into()),
+            }
+        }
+
         // Package the baked masters into laddered ICOs (real pixel decode + ladder + hash).
         let packaged = package_masters(&session.masters)?;
 
         // Resolve each packaged item against the live scan; build the driver's requests. An item no
         // longer in the scan, or not styleable, or already gone is a benign conflict (skipped, never
-        // forced). The CAS anchor for a FRESH apply is the item's current fingerprint (so a global
-        // apply styles everything); a RE-APPLY's anchor is the ledger's last-applied, which the
-        // driver enforces itself — so a user's hand-edit since the last apply fails CAS and is left
-        // untouched, never overwritten.
-        let by_id: std::collections::HashMap<&str, &DesktopItem> =
-            scan_items.iter().map(|it| (it.id.as_str(), it)).collect();
+        // forced). The CAS anchor for a FRESH apply is the fingerprint captured AT SCAN TIME (so a
+        // hand-edit during the bake fails CAS and is left untouched); a RE-APPLY's anchor is the
+        // ledger's last-applied, which the driver enforces itself.
+        let by_id: std::collections::HashMap<&str, &ScannedItem> =
+            scan.iter().map(|s| (s.item.id.as_str(), s)).collect();
         let mut requests = Vec::with_capacity(packaged.len());
         let mut conflicts: Vec<ItemId> = Vec::new();
         for pkg in &packaged {
-            let Some(item) = by_id.get(pkg.item_id.as_str()) else {
+            let Some(scanned) = by_id.get(pkg.item_id.as_str()) else {
                 conflicts.push(ItemId::from_raw(&pkg.item_id));
                 continue;
             };
-            if !item.can_style() {
-                conflicts.push(item.id.clone());
+            if !scanned.item.can_style() {
+                conflicts.push(scanned.item.id.clone());
                 continue;
             }
-            let target = item.target();
-            let expected = match self.platform.reader.read_fingerprint(&target) {
-                Ok(fp) => fp,
-                Err(PortError::NotFound(_)) => {
-                    conflicts.push(item.id.clone());
-                    continue;
-                }
-                Err(e) => return Err(e.into()),
-            };
             requests.push(ApplyRequest {
-                target,
-                expected_fingerprint: expected,
+                target: scanned.item.target(),
+                expected_fingerprint: scanned.fingerprint,
                 owned: OwnedFields::icon_only(),
                 asset_hash: pkg.primary.content_hash.clone(),
                 asset_bytes: pkg.primary.bytes.clone(),
@@ -223,18 +249,25 @@ impl<'a> IconOps<'a> {
             .apply(txn_id, requests, journal, ledger)?;
         conflicts.extend(apply.conflicts);
 
-        // Persist ② (saved-style) then push ③ (look-history): a completed global Apply is the ONLY
-        // writer of ② (spec 07 §8.2), and the same event pushes one history entry carrying the
-        // apply's name (dedup-before-cap + force-unpinned handled by the store). set_saved_style
-        // borrows the style; the push then consumes it.
-        self.settings.set_saved_style(Some(&style))?;
-        history.push(LookVersion {
-            id: look_id.into(),
-            created_at,
-            label,
-            pinned: false,
-            icon_style: style,
-        })?;
+        // Persist ② (saved-style) + push ③ (look-history) ONLY on a clean apply. A batch that
+        // preflight-failed or rolled back reports `Ok(ApplyOutcome { error: Some(..) })` with the
+        // desktop reverted (driver P2-5); writing ② then would poison the saved-style with a look
+        // the desktop never actually wears and grow ③ with a phantom entry — the next launch would
+        // resume from (and the resident project) a failed style. A completed global Apply is the
+        // ONLY writer of ② (spec 07 §8.2), carrying the apply's name (dedup + force-unpinned handled
+        // by the store). set_saved_style borrows the style; the push then consumes it.
+        // [FOLLOW-UP] the ①→②→③ finalize is three separate writes — a crash between them is not yet
+        // journaled (documented alongside the reset crash-window; both want a finalize record).
+        if apply.error.is_none() {
+            self.settings.set_saved_style(Some(&style))?;
+            history.push(LookVersion {
+                id: look_id.into(),
+                created_at,
+                label,
+                pinned: false,
+                icon_style: style,
+            })?;
+        }
 
         // Collect assets orphaned by this apply (an item's superseded ICO). Live = the ledger's
         // referenced assets UNION the in-flight journal's, so nothing a durable-but-unreconciled
@@ -246,6 +279,7 @@ impl<'a> IconOps<'a> {
         let stores = self.read_state(history, ledger)?;
         Ok(IconApplyOutcome {
             committed: apply.committed,
+            reverted,
             conflicts,
             error: apply.error,
             stores,
@@ -266,9 +300,20 @@ impl<'a> IconOps<'a> {
     /// tracked follow-up, not a correctness gap in the desktop state.
     pub fn reset_to_original(
         &self,
+        journal: &mut dyn JournalSink,
         ledger: &mut dyn LedgerStore,
         history: &LookHistoryStore,
     ) -> Result<IconResetOutcome> {
+        // Reconcile any committed-but-unledgered txn into the ledger, THEN empty the journal, BEFORE
+        // deleting any ledger row (codex 2026-07-12). Without this, an Apply's `TxnCommitted` records
+        // outlive the reset: on the next launch, startup recovery re-upserts the rows this reset just
+        // deleted, resurrecting a styled ledger entry that points at a GC'd ICO while the desktop is
+        // original — and its stale fingerprint then reads as a user hand-edit forever. The checkpoint
+        // is STRICT here (not the recovery path's best-effort): if the journal cannot be emptied we
+        // abort before touching the ledger, so a restart never revives a half-reset state.
+        recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
+        journal.checkpoint(&[])?;
+
         let mut restored = Vec::new();
         let mut skipped = Vec::new();
         for entry in ledger.all()? {

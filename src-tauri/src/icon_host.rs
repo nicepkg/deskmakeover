@@ -9,22 +9,22 @@
 //! runtime half — so apply and GC never interleave.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use dm_contracts::{
     ArrowOverlayDto, IconChunkItemDto, IconItemDto, IconKindDto, IconOpResultDto, IconPersistedDto,
-    IconScanDto, IconStyle, LookVersionDto, ToastDto,
+    IconScanDto, IconStyle, LookVersionDto, SettingsPatch, ToastDto,
 };
 use dm_domain::{
-    DecodedImage, DesktopItem, DesktopScanner, ExplorerRefresher, IconApplier, IconSourceExtractor,
-    ItemKind, ItemStateReader, OverlayControl, OverlayOutcome,
+    DecodedImage, DesktopScanner, ExplorerRefresher, IconApplier, IconSourceExtractor, ItemKind,
+    ItemStateReader, OverlayControl, OverlayOutcome,
 };
 use dm_operations::{
     FsAssetStore, IconApplySession, IconOps, IconPlatform, IconStoreState, JsonLedgerStore,
-    LookHistoryStore, LookVersion, SettingsStore, TxnIdAllocator,
+    LookHistoryStore, LookVersion, ScannedItem, SettingsStore, TxnIdAllocator,
 };
 use dm_operations::txn::FileJournal;
 
@@ -36,9 +36,17 @@ struct IconMutState {
     txn: TxnIdAllocator,
     /// The in-flight chunk-buffer session (begin → chunk → commit); `None` between applies.
     session: Option<IconApplySession>,
-    /// The last scan's items, kept so a commit resolves master ids → targets against the exact
-    /// desktop the user styled (a stale master is skipped, not misapplied).
-    scan: Vec<DesktopItem>,
+    /// The look-mutation epoch captured when the current session began; the commit rejects if the
+    /// epoch moved since (a Restore or another Apply landed during this apply's bake — codex Block 3).
+    session_epoch: u64,
+    /// The last scan's items WITH their scan-time fingerprints — the CAS anchor for a fresh apply is
+    /// captured HERE, not re-read at commit (codex Block 2).
+    scan: Vec<ScannedItem>,
+    /// The revision of the last scan; a Begin whose revision differs is a stale apply and is rejected.
+    scan_revision: u32,
+    /// Monotonic epoch bumped by every icon-LOOK mutation (a committed Apply or a full Reset); NOT
+    /// by restoreOverlay (arrow-only). Serializes an in-flight apply against an intervening restore.
+    look_epoch: u64,
 }
 
 /// The platform ports the host drives, bundled for construction.
@@ -66,8 +74,14 @@ pub struct IconHost {
     sources: Mutex<HashMap<String, Vec<u8>>>,
     /// Monotonic revision: bumps each scan, cache-busting every source URL.
     revision: AtomicU32,
-    /// The native shortcut-arrow overlay state (ADR-0021).
+    /// The native shortcut-arrow overlay state (ADR-0021), persisted to `arrow_marker` so it
+    /// survives a restart (codex Block 5 — the overlay is machine-wide + outlives the process).
     arrow_overlay: Mutex<ArrowOverlayDto>,
+    /// The file the arrow state is persisted to (a tiny marker, no schema migration needed).
+    arrow_marker: PathBuf,
+    /// The materialized transparent overlay ICO the elevated helper points the registry at (the
+    /// helper rejects an empty/absent path — codex Block 5).
+    overlay_ico: PathBuf,
     /// Active user-profile count (host truth; >1 makes the machine-wide arrow disclosure
     /// non-skippable). The dev host reports a single user.
     active_user_profiles: u32,
@@ -80,6 +94,17 @@ impl IconHost {
         data_dir: &Path,
         active_user_profiles: u32,
     ) -> Self {
+        // Materialize the transparent overlay ICO once (best-effort) so the elevated helper always
+        // has a real path to validate + copy into ProgramData (codex Block 5).
+        let overlay_ico = data_dir.join("overlay-transparent.ico");
+        let _ = std::fs::write(&overlay_ico, dm_icon_codec::transparent_ico().bytes);
+        // Resume the persisted arrow state (default Native) — the overlay is machine-wide + survives
+        // process restarts, so a fresh process must not forget an installed overlay.
+        let arrow_marker = data_dir.join("arrow-overlay.txt");
+        let arrow = match std::fs::read_to_string(&arrow_marker).ok().as_deref().map(str::trim) {
+            Some("hidden") => ArrowOverlayDto::Hidden,
+            _ => ArrowOverlayDto::Native,
+        };
         Self {
             scanner: ports.scanner,
             extractor: ports.extractor,
@@ -95,13 +120,29 @@ impl IconHost {
                 history: LookHistoryStore::new(data_dir.join("look-history.json")),
                 txn: TxnIdAllocator::starting_at(1),
                 session: None,
+                session_epoch: 0,
                 scan: Vec::new(),
+                scan_revision: 0,
+                look_epoch: 0,
             }),
             sources: Mutex::new(HashMap::new()),
             revision: AtomicU32::new(0),
-            arrow_overlay: Mutex::new(ArrowOverlayDto::Native),
+            arrow_overlay: Mutex::new(arrow),
+            arrow_marker,
+            overlay_ico,
             active_user_profiles,
         }
+    }
+
+    /// Sets + persists the arrow-overlay state (survives a restart; codex Block 5). Best-effort
+    /// persistence — a failed write leaves the in-memory truth authoritative for this session.
+    fn set_arrow(&self, arrow: ArrowOverlayDto) {
+        *self.arrow_overlay.lock().unwrap() = arrow;
+        let text = match arrow {
+            ArrowOverlayDto::Native => "native",
+            ArrowOverlayDto::Hidden => "hidden",
+        };
+        let _ = std::fs::write(&self.arrow_marker, text);
     }
 
     /// `icons.scan`: enumerate + classify + extract 256px sources (served over `dmicon://`) into raw
@@ -110,8 +151,9 @@ impl IconHost {
         let items = self.scanner.scan().map_err(|e| e.to_string())?;
         let rev = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
         let mut dtos = Vec::with_capacity(items.len());
-        for (i, item) in items.iter().enumerate() {
-            let sources = self.extractor.extract(item).map_err(|e| e.to_string())?;
+        let mut scanned = Vec::with_capacity(items.len());
+        for (i, item) in items.into_iter().enumerate() {
+            let sources = self.extractor.extract(&item).map_err(|e| e.to_string())?;
             let mut urls = Vec::with_capacity(sources.len());
             for (slot, src) in sources.iter().enumerate() {
                 urls.push(self.cache_source(item.id.as_str(), slot as u32, src, rev));
@@ -128,8 +170,20 @@ impl IconHost {
                 y,
                 source_urls: urls,
             });
+            // Capture the CAS anchor AT SCAN TIME (codex Block 2): a hand-edit during the bake then
+            // fails the driver's CAS instead of being silently overwritten. An unreadable surface
+            // gets a sentinel fingerprint, so a fresh apply of it conflicts (skipped), never forced.
+            let fingerprint = self
+                .reader
+                .read_fingerprint(&item.target())
+                .unwrap_or_else(|_| dm_domain::Fingerprint::of_bytes(b""));
+            scanned.push(ScannedItem { item, fingerprint });
         }
-        self.mut_state.lock().unwrap().scan = items;
+        {
+            let mut st = self.mut_state.lock().unwrap();
+            st.scan = scanned;
+            st.scan_revision = rev;
+        }
         Ok(IconScanDto { revision: rev, items: dtos })
     }
 
@@ -142,10 +196,19 @@ impl IconHost {
         Ok(self.finish_persisted(self.to_persisted_dto_locked(&stores)))
     }
 
-    /// `icons.applyBakedBegin`: open a chunk-buffer session for scan `revision`.
+    /// `icons.applyBakedBegin`: open a chunk-buffer session for scan `revision`. Rejects a stale
+    /// apply whose revision no longer matches the current scan (codex Block 2), and captures the
+    /// look-epoch so the commit can detect an intervening mutation (codex Block 3).
     pub fn apply_baked_begin(&self, revision: u32, count: u32) -> Result<(), String> {
-        self.mut_state.lock().unwrap().session =
-            Some(IconApplySession::begin(revision, count as usize));
+        let mut st = self.mut_state.lock().unwrap();
+        if revision != st.scan_revision {
+            return Err(format!(
+                "stale apply: begin revision {revision} does not match the current scan {}",
+                st.scan_revision
+            ));
+        }
+        st.session = Some(IconApplySession::begin(revision, count as usize));
+        st.session_epoch = st.look_epoch;
         Ok(())
     }
 
@@ -167,30 +230,57 @@ impl IconHost {
     pub fn apply_baked_commit(
         &self,
         style_json: String,
+        restore_ids: Vec<String>,
         label: Option<String>,
     ) -> Result<IconOpResultDto, String> {
         let style = parse_style(&style_json)?;
         let mut st = self.mut_state.lock().unwrap();
         let session = st.session.take().ok_or("no apply session to commit")?;
+        // Reject a malformed buffer (short/over) — a stale scan or a dropped chunk (codex Block 2).
+        if session.len() != session.expected() {
+            return Err(format!(
+                "incomplete apply buffer: {} masters of {} promised",
+                session.len(),
+                session.expected()
+            ));
+        }
+        // Reject a SUPERSEDED apply: a Restore or another Apply landed during this apply's bake, so
+        // committing now would write a stale look OVER the newer truth on the real desktop (codex
+        // Block 3). Fail closed WITHOUT mutating — the store rescans and reassembles.
+        if st.look_epoch != st.session_epoch {
+            let stores = self.ops().read_state(&st.history, &st.ledger).map_err(|e| e.to_string())?;
+            let dto = self.to_persisted_dto_locked(&stores);
+            drop(st);
+            return Ok(IconOpResultDto {
+                ok: false,
+                toast: Some(ToastDto { key: "icons.applySuperseded".into(), arg: None }),
+                persisted: self.finish_persisted(dto),
+            });
+        }
         // Split the guard into disjoint field borrows so the ops call can hold &mut of several at once.
-        let IconMutState { ledger, journal, history, txn, scan, .. } = &mut *st;
+        let IconMutState { ledger, journal, history, txn, scan, look_epoch, .. } = &mut *st;
         let look_id = format!("look-{}", txn.peek());
         let created_at = now_secs();
         let outcome = self
             .ops()
-            .commit_apply(session, style, label, look_id, created_at, scan, txn, journal, ledger, history)
+            .commit_apply(session, style, label, look_id, created_at, scan, &restore_ids, txn, journal, ledger, history)
             .map_err(|e| e.to_string())?;
+        // This apply changed the icon look → bump the epoch so any concurrent stale apply rejects.
+        *look_epoch += 1;
         let committed_any = !outcome.committed.is_empty();
         let dto = self.to_persisted_dto_locked(&outcome.stores);
         drop(st);
 
-        // A successful global apply installs the machine-wide transparent overlay (native arrow
-        // hidden, ADR-0021). The elevated verb is the host's; on the dev host it succeeds.
+        // A global apply that styled at least one icon installs the machine-wide transparent overlay
+        // (native arrow hidden, ADR-0021), pointing the elevated helper at a real transparent ICO
+        // (the helper rejects an empty path — codex Block 5). The elevated verb is the host's; on the
+        // dev host it succeeds. A pure revert-only apply leaves the overlay state untouched.
         if committed_any {
-            if let Ok(OverlayOutcome::Applied) =
-                self.overlay.apply(dm_domain::OverlayStyle::Transparent, "")
+            if let Ok(OverlayOutcome::Applied) = self
+                .overlay
+                .apply(dm_domain::OverlayStyle::Transparent, &self.overlay_ico.to_string_lossy())
             {
-                *self.arrow_overlay.lock().unwrap() = ArrowOverlayDto::Hidden;
+                self.set_arrow(ArrowOverlayDto::Hidden);
             }
             let _ = self.refresher.notify_icons_changed();
         }
@@ -205,22 +295,33 @@ impl IconHost {
     /// spec 07 §10) AND lift the arrow overlay (icons + arrow back to native).
     pub fn restore(&self) -> Result<IconOpResultDto, String> {
         let mut st = self.mut_state.lock().unwrap();
-        let IconMutState { ledger, history, .. } = &mut *st;
+        let IconMutState { ledger, history, journal, look_epoch, .. } = &mut *st;
         let outcome = self
             .ops()
-            .reset_to_original(ledger, history)
+            .reset_to_original(journal, ledger, history)
             .map_err(|e| e.to_string())?;
+        // A reset changes the icon look → bump the epoch so a concurrent in-flight apply rejects.
+        *look_epoch += 1;
         let dto = self.to_persisted_dto_locked(&outcome.stores);
+        let skipped = outcome.skipped.len();
         drop(st);
 
+        // §10 three-part coupling (spec 07 §8.4): clearing ② (done in the ops) is paired with
+        // turning auto-format OFF so the resident stays dormant after a reset.
+        let _ = self
+            .settings
+            .set(&SettingsPatch { keep_new_icons_styled: Some(false), ..Default::default() });
         // Lift the overlay if it was installed (best-effort; the observed arrow state is authority).
         if *self.arrow_overlay.lock().unwrap() == ArrowOverlayDto::Hidden {
             if let Ok(OverlayOutcome::Applied) = self.overlay.restore() {
-                *self.arrow_overlay.lock().unwrap() = ArrowOverlayDto::Native;
+                self.set_arrow(ArrowOverlayDto::Native);
             }
         }
         let _ = self.refresher.notify_icons_changed();
-        Ok(IconOpResultDto { ok: true, toast: None, persisted: self.finish_persisted(dto) })
+        // Surface the trust-first skips ("已跳过 N 项(你自己改过)") instead of always reporting success.
+        let toast = (skipped > 0)
+            .then(|| ToastDto { key: "icons.resetSkipped".into(), arg: Some(skipped.to_string()) });
+        Ok(IconOpResultDto { ok: true, toast, persisted: self.finish_persisted(dto) })
     }
 
     /// `icons.restoreOverlay`: keep-beautification restore — lift ONLY the arrow overlay (the icon
@@ -234,7 +335,7 @@ impl IconHost {
             OverlayOutcome::Declined => (ArrowOverlayDto::Hidden, false, "icons.restoreDeclined"),
             OverlayOutcome::Failed => (ArrowOverlayDto::Hidden, false, "icons.restoreFailed"),
         };
-        *self.arrow_overlay.lock().unwrap() = arrow;
+        self.set_arrow(arrow);
         let persisted = self.get_persisted()?;
         Ok(IconOpResultDto {
             ok,
@@ -426,7 +527,7 @@ mod tests {
             master_png: tiny_master(),
         }])
         .unwrap();
-        let res = h.apply_baked_commit(style_json(1), Some("第一版".into())).unwrap();
+        let res = h.apply_baked_commit(style_json(1), vec![], Some("第一版".into())).unwrap();
         assert!(res.ok);
         assert!(res.persisted.applied);
         assert_eq!(res.persisted.arrow_overlay, ArrowOverlayDto::Hidden);
@@ -446,7 +547,7 @@ mod tests {
         let edge = scan.items.iter().find(|i| i.id == "edge").unwrap();
         h.apply_baked_begin(scan.revision, 1).unwrap();
         h.apply_baked_chunk(vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }]).unwrap();
-        h.apply_baked_commit(style_json(1), Some("A".into())).unwrap();
+        h.apply_baked_commit(style_json(1), vec![], Some("A".into())).unwrap();
 
         let res = h.restore().unwrap();
         assert!(res.ok);
@@ -463,7 +564,7 @@ mod tests {
         let edge = scan.items.iter().find(|i| i.id == "edge").unwrap();
         h.apply_baked_begin(scan.revision, 1).unwrap();
         h.apply_baked_chunk(vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }]).unwrap();
-        h.apply_baked_commit(style_json(1), Some("A".into())).unwrap();
+        h.apply_baked_commit(style_json(1), vec![], Some("A".into())).unwrap();
 
         let res = h.restore_overlay().unwrap();
         assert!(res.ok);

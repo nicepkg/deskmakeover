@@ -23,7 +23,7 @@ pub mod wallpaper;
 pub use error::{OperationError, Result};
 pub use icons::{
     BufferedMaster, IconApplyOutcome, IconApplySession, IconOps, IconPlatform, IconResetOutcome,
-    IconStoreState,
+    IconStoreState, ScannedItem,
 };
 pub use ledger::{
     JsonLedgerStore, LedgerEntry, LedgerStore, LookHistoryStore, LookVersion, MemLedgerStore,

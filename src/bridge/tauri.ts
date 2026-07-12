@@ -107,8 +107,8 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
       return unwrap(await commands.iconsApplyBakedChunk(p.items))
     }
     case 'icons.applyBakedCommit': {
-      const p = params as { styleJson: string; label: string | null }
-      return unwrap(await commands.iconsApplyBakedCommit(p.styleJson, p.label))
+      const p = params as { styleJson: string; restoreIds: string[]; label: string | null }
+      return unwrap(await commands.iconsApplyBakedCommit(p.styleJson, p.restoreIds, p.label))
     }
     case 'icons.restore':
       return unwrap(await commands.iconsRestore())

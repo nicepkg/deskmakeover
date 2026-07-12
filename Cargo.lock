@@ -892,6 +892,7 @@ dependencies = [
  "base64 0.22.1",
  "dm-contracts",
  "dm-domain",
+ "dm-icon-codec",
  "dm-operations",
  "dm-windows",
  "image",

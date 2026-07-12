@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 dm-contracts = { path = "../crates/dm-contracts" }
 dm-domain = { path = "../crates/dm-domain" }
+dm-icon-codec = { path = "../crates/dm-icon-codec" }
 dm-operations = { path = "../crates/dm-operations" }
 log = "0.4"
 serde = { version = "1", features = ["derive"] }

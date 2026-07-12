@@ -800,6 +800,11 @@ export const useIcons = create<IconsState>((set, get) => {
       const jobs = bakeSet.flatMap((item) =>
         item.sourceUrls.map((url, sourceIndex) => ({ item, url, sourceIndex })),
       )
+      // 「保留原样」 / kindPolicy-excluded styleable items send NO master — but a currently-styled one
+      // must be REVERTED to its original, not left (spec 06 §2). Rust reverts the tracked subset.
+      const restoreIds = s.items
+        .filter((i) => i.styleable && effectiveTileConfig(i, config, policy, typeOverrides).showOriginal)
+        .map((i) => i.id)
       set({ state: { ...s.state, working: true }, applyProgress: { done: 0, total: jobs.length } })
       try {
         // Every source must be decoded BEFORE the count is advertised — an
@@ -827,11 +832,11 @@ export const useIcons = create<IconsState>((set, get) => {
           // Yield a frame so the progress UI paints between chunks.
           await new Promise((resolve) => requestAnimationFrame(resolve))
         }
-        // The full recipe rides as an opaque JSON string (Rust persists it as ②③). Per-icon
-        // overrides are already baked into the masters (or excluded as show-original), so they
-        // do not cross — the styleJson is the three global knobs only (spec 07 §8.2).
+        // The full recipe rides as an opaque JSON string (Rust persists it as ②③); a tint override
+        // is baked into its master. `restoreIds` carries the 「保留原样」 items so Rust reverts any
+        // that are currently styled (spec 06 §2). The styleJson is the three global knobs (spec 07 §8.2).
         const styleJson = JSON.stringify({ config, kindPolicy: policy, typeOverrides })
-        const result = await bridge('icons.applyBakedCommit', { styleJson, label: lookLabel(s.state) })
+        const result = await bridge('icons.applyBakedCommit', { styleJson, restoreIds, label: lookLabel(s.state) })
         // Superseded while baking (a newer writer landed first): drop this stale
         // commit — never write the outdated state or announce success over the
         // newer writer's truth (P2-4). Clear the progress veil AND release

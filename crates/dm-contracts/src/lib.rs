@@ -15,8 +15,8 @@ mod wallpaper;
 
 pub use common::ToastDto;
 pub use icons::{
-    ArrowOverlayDto, IconChunkItemDto, IconItemDto, IconKindDto, IconOpResultDto, IconPersistedDto,
-    IconScanDto, LookVersionDto, OverrideModeDto,
+    ArrowOverlayDto, GridMetricsDto, IconChunkItemDto, IconItemDto, IconKindDto, IconOpResultDto,
+    IconPersistedDto, IconScanDto, LookVersionDto, OverrideModeDto,
 };
 pub use settings::{Language, SettingsDto, SettingsPatch, Theme};
 pub use style::{IconStyle, IconStyleError};

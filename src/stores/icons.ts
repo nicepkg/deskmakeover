@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { call } from '@/bridge/client'
-import type { ConfigDto, IconItemDto, IconOpResultDto, IconPersistedDto, IconScanDto, IconsStateDto, IconKindBucket, KindPolicy, TypeOverrideEntry, TypeOverrides } from '@/bridge/types'
+import type { ConfigDto, GridMetricsDto, IconItemDto, IconOpResultDto, IconPersistedDto, IconScanDto, IconsStateDto, IconKindBucket, KindPolicy, TypeOverrideEntry, TypeOverrides } from '@/bridge/types'
 import { DEFAULT_KIND_POLICY, kindBucket, kindParticipates } from '@/lib/kind-policy'
 import { appAccentSeed, resolveTypeConfig, typeHasFixedPlate } from '@/lib/type-config'
 import { activePresetIdOf as activePresetIdOfRecipe, assembleIconsState, defaultRecipe, parseHistory, parseRecipe, type IconStyleRecipe } from '@/lib/icons-assemble'
@@ -201,6 +201,9 @@ async function sourcesSettled(): Promise<void> {
 let fieldSeeds = new Map<string, string>()
 /** id -> kind bucket (Field kind families + affordances + kindShapes, D2). */
 let kindBuckets = new Map<string, 'App' | 'Folder' | 'File' | 'System' | null>()
+/** The last scan's OBSERVED grid metrics, reused so op-result reassembly uses platform truth (not
+ *  the fabricated default) between scans (codex Major 5). */
+let lastGridMetrics: GridMetricsDto | undefined
 
 /** Device-resolution tile render size (same clamp discipline as v1). */
 export function displaySize(state: IconsStateDto | null, zoom: number): number {
@@ -263,10 +266,11 @@ function currentWallpaperUrl(): string | null {
   return useWallpaper.getState().state?.originalUrl ?? null
 }
 
-/** Maps the thin `IconPersistedDto` into the assembly's persisted shape (parses history recipes). */
+/** Maps the thin `IconPersistedDto` into the assembly's persisted shape (parses history recipes;
+ *  `isCurrent` keys off ② so a reset leaves nothing current). */
 function persistedForAssembly(p: IconPersistedDto) {
   return {
-    history: parseHistory(p.history),
+    history: parseHistory(p.history, p.savedStyleJson),
     applied: p.applied,
     arrowOverlay: p.arrowOverlay,
     activeUserProfiles: p.activeUserProfiles,
@@ -487,8 +491,14 @@ export const useIcons = create<IconsState>((set, get) => {
     return { scan, persisted }
   }
 
-  /** Assembles + adopts a scan under `draft` (D1: the frontend owns presets/palette/grid/assembly). */
-  const adoptScan = (scan: IconScanDto, persisted: IconPersistedDto, draft: IconStyleRecipe) => {
+  /** Assembles + adopts a scan under `draft` (D1: the frontend owns presets/palette/grid/assembly).
+   *  `keepOverrides` re-applies live per-icon overrides across a manual rescan (codex Major 3). */
+  const adoptScan = (
+    scan: IconScanDto,
+    persisted: IconPersistedDto,
+    draft: IconStyleRecipe,
+    keepOverrides?: Map<string, { mode: 'keep' | 'tint'; tint: string | null }>,
+  ) => {
     if (scan.revision < get().revision) return
     // Any successful full load clears the scan-recovery state (review P2-2 item 4):
     // retry budget + pending backoff timer + the exhausted flag, so a rescan (or
@@ -498,21 +508,31 @@ export const useIcons = create<IconsState>((set, get) => {
       clearTimeout(scanRetryTimer)
       scanRetryTimer = null
     }
-    kindBuckets = new Map(scan.items.map((i) => [i.id, kindBucket(i.kind)]))
+    // Scan items arrive with empty overrides (D1: overrides are frontend draft); carry the live ones
+    // forward on a manual rescan so a refresh never silently drops the user's per-icon choices.
+    const items = keepOverrides
+      ? scan.items.map((it) => {
+          const o = keepOverrides.get(it.id)
+          return o ? { ...it, overrideMode: o.mode, overrideTint: o.tint } : it
+        })
+      : scan.items
+    kindBuckets = new Map(items.map((i) => [i.id, kindBucket(i.kind)]))
+    lastGridMetrics = scan.grid
     getIconCompositor().invalidateAll()
     set({
-      items: scan.items,
+      items,
       state: assembleIconsState({
         draft,
-        items: scan.items,
+        items,
         persisted: persistedForAssembly(persisted),
         wallpaperUrl: currentWallpaperUrl(),
+        gridMetrics: scan.grid,
       }),
       revision: scan.revision,
       renderTick: get().renderTick + 1,
       scanExhausted: false,
     })
-    loadSources(scan.items)
+    loadSources(items)
   }
 
   return {
@@ -626,8 +646,14 @@ export const useIcons = create<IconsState>((set, get) => {
       // A rescan superseded by a later op (e.g. an arrow restore started after it)
       // must not apply its now-stale full state over the newer truth (P2-4b).
       if (!isCurrentGen(gen)) return
-      // Preserve the user's live draft across a manual refresh (only the initial scan resumes ②).
-      adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted))
+      // Preserve the user's live draft AND per-icon overrides across a manual refresh (only the
+      // initial scan resumes ② + starts overrides empty).
+      const keepOverrides = new Map(
+        get()
+          .items.filter((i) => i.overrideMode !== null)
+          .map((i) => [i.id, { mode: i.overrideMode as 'keep' | 'tint', tint: i.overrideTint }]),
+      )
+      adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted), keepOverrides)
       useToasts.getState().show(t('Toast_Refreshed'))
     },
 
@@ -701,8 +727,12 @@ export const useIcons = create<IconsState>((set, get) => {
 
     setOverride: (id, mode, tint) => {
       const s = get()
+      if (!s.state) return
       pushUndo()
       set({
+        // A per-icon override IS a draft change: mark dirty after an apply so the CTA offers a
+        // re-apply instead of staying falsely "synced" (codex Major 3).
+        state: markDirty(s.state),
         items: s.items.map((i) =>
           i.id === id
             ? { ...i, overrideMode: mode === 'follow' ? null : mode, overrideTint: mode === 'tint' ? (tint ?? null) : null }
@@ -715,9 +745,12 @@ export const useIcons = create<IconsState>((set, get) => {
 
     clearOverrides: () => {
       const s = get()
-      if (!s.items.some((i) => i.overrideMode !== null)) return
+      if (!s.state || !s.items.some((i) => i.overrideMode !== null)) return
       pushUndo()
-      set({ items: s.items.map((i) => ({ ...i, overrideMode: null, overrideTint: null })) })
+      set({
+        state: markDirty(s.state),
+        items: s.items.map((i) => ({ ...i, overrideMode: null, overrideTint: null })),
+      })
       schedulePersist()
       useToasts.getState().show(t('Toast_ExceptionsCleared'))
     },
@@ -856,6 +889,7 @@ export const useIcons = create<IconsState>((set, get) => {
             items: get().items,
             persisted: persistedForAssembly(result.persisted),
             wallpaperUrl: currentWallpaperUrl(),
+            gridMetrics: lastGridMetrics,
           }),
           applyProgress: null,
         })
@@ -897,6 +931,7 @@ export const useIcons = create<IconsState>((set, get) => {
             items: get().items,
             persisted: persistedForAssembly(result.persisted),
             wallpaperUrl: currentWallpaperUrl(),
+            gridMetrics: lastGridMetrics,
           }),
         })
         toastOf(result)
@@ -956,7 +991,9 @@ export const useIcons = create<IconsState>((set, get) => {
       if (!entry || !s.state) return
       pushUndo()
       set({
-        state: markDirty({ ...s.state, config: { ...entry.config }, typeOverrides: structuredClone(entry.typeOverrides) }),
+        // 回到此版 restores the FULL recipe — config + kindPolicy (participation) + typeOverrides —
+        // so a history look never applies A's visuals with B's participation policy (codex Major 2).
+        state: markDirty({ ...s.state, config: { ...entry.config }, kindPolicy: { ...entry.kindPolicy }, typeOverrides: structuredClone(entry.typeOverrides) }),
         hoverConfig: null,
         bareLook: false,
       })

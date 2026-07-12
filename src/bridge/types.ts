@@ -229,8 +229,10 @@ export interface HistoryEntryDto {
   time: string
   label: string
   isCurrent: boolean
-  /** v2: entries carry their full config so 回到此版 re-bakes locally. */
+  /** v2: entries carry their FULL recipe so 回到此版 re-bakes locally + restores the same
+   *  participation policy — config + typeOverrides + kindPolicy, the three ② knobs (spec 07 §8.2). */
   config: ConfigDto
+  kindPolicy: KindPolicy
   typeOverrides: TypeOverrides
 }
 
@@ -284,10 +286,20 @@ export interface ToastDto {
 // frontend assembles IconsStateDto (presets/palette/grid) via lib/icons-assemble. IconsStateDto
 // above is now a FRONTEND-ASSEMBLED store shape, not a bridge DTO. ----
 
-/** `icons.scan` result — raw observed items + a revision. NO embedded state (the store assembles). */
+/** Observed desktop metrics a scan reports (mirrors Rust `GridMetricsDto`) — the frontend assembles
+ *  its grid from these PLATFORM values, never fabricated dims. */
+export interface GridMetricsDto {
+  screenWidth: number
+  screenHeight: number
+  taskbarHeight: number
+}
+
+/** `icons.scan` result — raw observed items + revision + the observed grid metrics. NO embedded
+ *  state (the store assembles it). */
 export interface IconScanDto {
   revision: number
   items: IconItemDto[]
+  grid: GridMetricsDto
 }
 
 /** One store-③ look-history entry (mirrors Rust `LookVersionDto`); `styleJson` is the opaque

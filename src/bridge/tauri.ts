@@ -93,6 +93,7 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
       const scan = unwrap(await commands.iconsScan())
       return {
         revision: scan.revision,
+        grid: scan.grid,
         items: scan.items.map((it) => ({ ...it, overrideMode: null, overrideTint: null })),
       }
     }

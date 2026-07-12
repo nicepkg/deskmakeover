@@ -29,6 +29,19 @@ export const commands = {
 export type ArrowOverlayDto = "native" | "hidden";
 
 /**
+ *  The OBSERVED desktop metrics a scan reports, so the frontend assembles the grid from PLATFORM
+ *  truth instead of fabricating dims (codex Major 5 — a hardcoded 1920×1080 lies on 4K/ultrawide/
+ *  side-taskbar desktops). The frontend derives `iconPx`/cell sizes from these + the chosen size.
+ *  [WINDOWS-VERIFY] the real `SPI_GETWORKAREA` + shell icon metrics on the box; the dev host
+ *  synthesizes plausible values.
+ */
+export type GridMetricsDto = {
+	screenWidth: number,
+	screenHeight: number,
+	taskbarHeight: number,
+};
+
+/**
  *  One baked master in an `icons.applyBakedChunk` batch (a command INPUT). `sourceIndex` 0 =
  *  primary, 1 = paired empty (Recycle Bin); `masterPng` is the base64 256px straight-alpha RGBA
  *  PNG the frontend WASM-baked. Mirrors the TS `icons.applyBakedChunk` item shape.
@@ -112,13 +125,14 @@ export type IconPersistedDto = {
 };
 
 /**
- *  The result of `icons.scan`: a monotonically increasing revision + the raw observed items. NO
- *  embedded `IconsStateDto` (D1: the frontend assembles it from these items + `getPersisted` +
- *  its own presets/palette/grid). Mirrors the TS `icons.scan` result.
+ *  The result of `icons.scan`: a monotonically increasing revision, the raw observed items, and the
+ *  observed desktop grid metrics. NO embedded `IconsStateDto` (D1: the frontend assembles it from
+ *  these + `getPersisted` + its own presets/palette). Mirrors the TS `icons.scan` result.
  */
 export type IconScanDto = {
 	revision: number,
 	items: IconItemDto[],
+	grid: GridMetricsDto,
 };
 
 /**

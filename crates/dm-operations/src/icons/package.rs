@@ -18,6 +18,13 @@ use crate::error::{OperationError, Result};
 const PRIMARY_INDEX: u32 = 0;
 /// The paired empty-state slot (the Recycle Bin's empty icon).
 const EMPTY_INDEX: u32 = 1;
+/// The exact bake-master size (spec 06 §2): the compositor renders every master at 256×256.
+const MASTER_PX: u32 = 256;
+/// A hard ceiling on a master's base64 length, so a hostile/oversized payload can never force an
+/// unbounded decode. A 256×256 RGBA PNG is comfortably under this (~256 KiB raw, less compressed).
+const MAX_MASTER_B64: usize = 4 * 1024 * 1024;
+/// The 8-byte PNG signature — a master MUST be a PNG (not a JPEG or anything `image` would auto-detect).
+const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
 /// One master the frontend baked, addressed to an item + its source slot. `png_base64` is the
 /// standard-alphabet base64 of a straight-alpha RGBA PNG (the 256px bake master).
@@ -90,14 +97,30 @@ pub fn package_masters(masters: &[BufferedMaster]) -> Result<Vec<PackagedItem>> 
 /// content-addressed ICO. `image`'s `to_rgba8` yields exactly the straight-alpha, row-major RGBA8
 /// buffer [`Raster`] holds, so the conversion is a move, not a re-encode.
 fn bake_master(png_base64: &str, item_id: &str, slot: u32) -> Result<IcoAsset> {
+    // Fail closed on a malformed payload (codex 2026-07-12): cap the size before decoding, require a
+    // real PNG (not a JPEG `image` would happily auto-detect), and require the exact 256×256 master
+    // size — a wrong-size or wrong-format master must never silently ride into the shell's icon store.
+    if png_base64.len() > MAX_MASTER_B64 {
+        return Err(OperationError::Io(format!(
+            "icon master {item_id}#{slot}: {} base64 bytes exceeds the {MAX_MASTER_B64}-byte cap",
+            png_base64.len()
+        )));
+    }
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(png_base64.as_bytes())
         .map_err(|e| OperationError::Io(format!("icon master {item_id}#{slot}: base64 {e}")))?;
-    let img = image::load_from_memory(&bytes)
+    if bytes.len() < PNG_MAGIC.len() || bytes[..PNG_MAGIC.len()] != PNG_MAGIC {
+        return Err(OperationError::Io(format!("icon master {item_id}#{slot}: not a PNG")));
+    }
+    let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
         .map_err(|e| OperationError::Io(format!("icon master {item_id}#{slot}: decode {e}")))?;
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let raster = Raster { width: w as usize, height: h as usize, data: rgba.into_raw() };
+    let (w, h) = (img.width(), img.height());
+    if w != MASTER_PX || h != MASTER_PX {
+        return Err(OperationError::Io(format!(
+            "icon master {item_id}#{slot}: {w}×{h}, expected {MASTER_PX}×{MASTER_PX}"
+        )));
+    }
+    let raster = Raster { width: w as usize, height: h as usize, data: img.to_rgba8().into_raw() };
     Ok(bake_ico(&raster))
 }
 
@@ -165,6 +188,49 @@ mod tests {
     fn rejects_an_empty_master_without_a_primary() {
         let err = package_masters(&[master("bin", 1, [0, 0, 0, 255])]).unwrap_err();
         assert!(matches!(err, OperationError::Io(_)), "an orphan empty must fail closed");
+    }
+
+    #[test]
+    fn rejects_a_master_that_is_not_256_square() {
+        for (w, h) in [(255, 256), (256, 255), (512, 512), (128, 128)] {
+            let bad = BufferedMaster {
+                item_id: "x".into(),
+                source_index: 0,
+                png_base64: master_png(w, h, [1, 2, 3, 255]),
+            };
+            assert!(
+                package_masters(&[bad]).is_err(),
+                "a {w}×{h} master must be rejected (expected 256×256)",
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_a_non_png_master_even_if_image_could_decode_it() {
+        use image::ImageEncoder;
+        // A valid 256×256 JPEG (RGB — JPEG has no alpha). `image` would happily auto-detect it, but
+        // the master contract is PNG.
+        let img = image::RgbImage::from_pixel(256, 256, image::Rgb([9, 9, 9]));
+        let mut jpeg = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new(&mut jpeg)
+            .write_image(&img, 256, 256, image::ExtendedColorType::Rgb8)
+            .unwrap();
+        let bad = BufferedMaster {
+            item_id: "x".into(),
+            source_index: 0,
+            png_base64: base64::engine::general_purpose::STANDARD.encode(&jpeg),
+        };
+        assert!(package_masters(&[bad]).is_err(), "a JPEG master must be rejected (PNG only)");
+    }
+
+    #[test]
+    fn rejects_an_oversized_master_before_decoding() {
+        let bad = BufferedMaster {
+            item_id: "x".into(),
+            source_index: 0,
+            png_base64: "A".repeat(MAX_MASTER_B64 + 1),
+        };
+        assert!(package_masters(&[bad]).is_err(), "an over-cap payload must fail before decode");
     }
 
     #[test]

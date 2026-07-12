@@ -8,6 +8,7 @@
 import type {
   ConfigDto,
   GridDto,
+  GridMetricsDto,
   HistoryEntryDto,
   IconItemDto,
   IconsStateDto,
@@ -16,6 +17,7 @@ import type {
   PresetDto,
   TypeOverrides,
 } from '@/bridge/types'
+import { DEFAULT_KIND_POLICY } from '@/lib/kind-policy'
 import { typeOverridesEqual } from '@/lib/type-config'
 
 /** The three global knobs a saved appearance recipe carries (store ②③, spec 07 §8.2). */
@@ -86,8 +88,8 @@ export const MARK_SWATCHES = ['#FFFFFF', '#141414', '#FF6F5E', '#B97D4E', '#3FB6
 
 // Desktop icon px is Small 32 · Mid 48 · Big 96 (C# DesktopIconSize.cs).
 const ICON_PX: Record<ConfigDto['size'], number> = { Small: 32, Mid: 48, Big: 96 }
-const GRID_W = 1920
-const GRID_H = 1080
+/** Fallback metrics before the first scan lands (the store always feeds real scan metrics after). */
+const DEFAULT_METRICS: GridMetricsDto = { screenWidth: 1920, screenHeight: 1080, taskbarHeight: 48 }
 
 /** Presets as DATA — the web renders each mini with the live renderer. */
 export function iconPresets(): PresetDto[] {
@@ -98,13 +100,14 @@ export function iconPresets(): PresetDto[] {
   }))
 }
 
-/** The desktop grid for an icon size (frontend rendering concern, D1). */
-export function iconGrid(size: ConfigDto['size']): GridDto {
+/** The desktop grid for an icon size, built from the OBSERVED platform metrics (D1: dims are
+ *  platform truth from the scan; iconPx + cell padding are the frontend rendering concern). */
+export function iconGrid(size: ConfigDto['size'], metrics: GridMetricsDto = DEFAULT_METRICS): GridDto {
   const iconPx = ICON_PX[size]
   return {
-    screenWidth: GRID_W,
-    screenHeight: GRID_H,
-    taskbarHeight: 48,
+    screenWidth: metrics.screenWidth,
+    screenHeight: metrics.screenHeight,
+    taskbarHeight: metrics.taskbarHeight,
     iconPx,
     cellWidth: iconPx + 44,
     cellHeight: iconPx + 48,
@@ -138,17 +141,20 @@ export function parseRecipe(styleJson: string | null): IconStyleRecipe | null {
   }
 }
 
-/** Maps store-③ look-history entries into the `HistoryEntryDto`s the panel renders. */
-export function parseHistory(history: LookVersionDto[]): HistoryEntryDto[] {
+/** Maps store-③ look-history entries into the `HistoryEntryDto`s the panel renders, carrying the
+ *  FULL recipe (config + kindPolicy + typeOverrides) so 回到此版 restores the participation policy
+ *  too. `isCurrent` is determined by ② (`savedStyleJson`), NOT position: after a reset ② is null, so
+ *  NO entry is current (codex Major 2). */
+export function parseHistory(history: LookVersionDto[], savedStyleJson: string | null): HistoryEntryDto[] {
   return history.map((v, index) => {
     const recipe = parseRecipe(v.styleJson)
     return {
       index,
       time: v.label ?? formatTime(v.createdAt),
       label: v.label ?? '自定义',
-      // The newest entry (index 0) is the current applied look after an apply.
-      isCurrent: index === 0,
+      isCurrent: savedStyleJson !== null && v.styleJson === savedStyleJson,
       config: recipe?.config ?? { ...BASE_CONFIGS[DEFAULT_PRESET_ID] },
+      kindPolicy: recipe?.kindPolicy ?? { ...DEFAULT_KIND_POLICY },
       typeOverrides: recipe?.typeOverrides ?? {},
     }
   })
@@ -199,8 +205,9 @@ export function assembleIconsState(args: {
   items: IconItemDto[]
   persisted: PersistedIcons
   wallpaperUrl: string | null
+  gridMetrics?: GridMetricsDto
 }): IconsStateDto {
-  const { draft, items, persisted, wallpaperUrl } = args
+  const { draft, items, persisted, wallpaperUrl, gridMetrics } = args
   return {
     scanning: false,
     working: false,
@@ -214,7 +221,7 @@ export function assembleIconsState(args: {
     palette: ICON_PALETTE,
     monoSwatches: MONO_SWATCHES,
     markSwatches: MARK_SWATCHES,
-    grid: iconGrid(draft.config.size),
+    grid: iconGrid(draft.config.size, gridMetrics),
     wallpaperUrl,
     kindPolicy: { ...draft.kindPolicy },
     typeOverrides: structuredClone(draft.typeOverrides),

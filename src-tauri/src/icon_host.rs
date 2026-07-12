@@ -15,8 +15,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use dm_contracts::{
-    ArrowOverlayDto, IconChunkItemDto, IconItemDto, IconKindDto, IconOpResultDto, IconPersistedDto,
-    IconScanDto, IconStyle, LookVersionDto, SettingsPatch, ToastDto,
+    ArrowOverlayDto, GridMetricsDto, IconChunkItemDto, IconItemDto, IconKindDto, IconOpResultDto,
+    IconPersistedDto, IconScanDto, IconStyle, LookVersionDto, SettingsPatch, ToastDto,
 };
 use dm_domain::{
     DecodedImage, DesktopScanner, ExplorerRefresher, IconApplier, IconSourceExtractor, ItemKind,
@@ -150,13 +150,16 @@ impl IconHost {
     pub fn scan(&self) -> Result<IconScanDto, String> {
         let items = self.scanner.scan().map_err(|e| e.to_string())?;
         let rev = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+        // Rebuild the content-addressed source cache from scratch each scan so it stays bounded (a
+        // prior scan's now-abandoned URLs simply 404). The DTO `rev` still gates the apply session.
+        self.sources.lock().unwrap().clear();
         let mut dtos = Vec::with_capacity(items.len());
         let mut scanned = Vec::with_capacity(items.len());
         for (i, item) in items.into_iter().enumerate() {
             let sources = self.extractor.extract(&item).map_err(|e| e.to_string())?;
             let mut urls = Vec::with_capacity(sources.len());
             for (slot, src) in sources.iter().enumerate() {
-                urls.push(self.cache_source(item.id.as_str(), slot as u32, src, rev));
+                urls.push(self.cache_source(item.id.as_str(), slot as u32, src));
             }
             let (x, y) = synthetic_layout(i);
             dtos.push(IconItemDto {
@@ -184,7 +187,11 @@ impl IconHost {
             st.scan = scanned;
             st.scan_revision = rev;
         }
-        Ok(IconScanDto { revision: rev, items: dtos })
+        // Observed desktop metrics (the frontend assembles its grid from these, never fabricated
+        // dims). [WINDOWS-VERIFY] real SPI_GETWORKAREA + shell icon metrics; the dev host reports a
+        // plausible 1080p work area matching `synthetic_layout`.
+        let grid = GridMetricsDto { screen_width: 1920, screen_height: 1080, taskbar_height: 48 };
+        Ok(IconScanDto { revision: rev, items: dtos, grid })
     }
 
     /// `icons.getPersisted`: the ②③ + native bits the frontend overlays onto its assembled state.
@@ -344,11 +351,16 @@ impl IconHost {
         })
     }
 
-    /// `icons.exportCompare`: render a before/after compare sheet. The sheet rendering is a
-    /// frontend/future concern; the host op is a no-op that returns the current state.
+    /// `icons.exportCompare`: render + save a before/after compare sheet. Not yet implemented — the
+    /// sheet compositor is a future deliverable, so this reports `ok:false` with an "unavailable"
+    /// toast rather than falsely claiming success with no artifact on disk (codex Major 5).
     pub fn export_compare(&self) -> Result<IconOpResultDto, String> {
         let persisted = self.get_persisted()?;
-        Ok(IconOpResultDto { ok: true, toast: None, persisted })
+        Ok(IconOpResultDto {
+            ok: false,
+            toast: Some(ToastDto { key: "icons.exportUnavailable".into(), arg: None }),
+            persisted,
+        })
     }
 
     /// Protocol lookup: the PNG bytes for `dmicon://…/<itemId>/<slot>?rev=N`.
@@ -363,11 +375,16 @@ impl IconHost {
         )
     }
 
-    /// Caches an extracted source under `"<itemId>/<slot>"` and returns its protocol URL.
-    fn cache_source(&self, item_id: &str, slot: u32, src: &DecodedImage, rev: u32) -> String {
-        let key = format!("{item_id}/{slot}");
+    /// Caches an extracted source under a CONTENT-ADDRESSED key `"<itemId>/<slot>/<hash>"` and returns
+    /// its protocol URL. Content-addressing makes the `immutable` Cache-Control header honest (codex
+    /// Major 4): identical pixels → identical URL (a legitimate cache hit); changed pixels → a new URL
+    /// (never a stale reuse of a prior process's bytes). The cache is rebuilt each scan, so it stays
+    /// bounded and a stale URL simply 404s (the webview re-fetches the current one).
+    fn cache_source(&self, item_id: &str, slot: u32, src: &DecodedImage) -> String {
+        let hash = &dm_icon_codec::content_hash(&src.png)[..16];
+        let key = format!("{item_id}/{slot}/{hash}");
         self.sources.lock().unwrap().insert(key.clone(), src.png.clone());
-        icon_protocol_url(&key, rev)
+        icon_protocol_url(&key)
     }
 
     /// Maps the ops-layer store snapshot to the wire DTO (recipe as opaque JSON string). Safe to
@@ -436,11 +453,11 @@ fn synthetic_layout(i: usize) -> (i32, i32) {
 
 /// The platform-correct custom-protocol URL for an icon source (mirrors the wallpaper protocol).
 /// [WINDOWS-VERIFY] the `http://dmicon.localhost` WebView2 form on the real box.
-fn icon_protocol_url(key: &str, rev: u32) -> String {
+fn icon_protocol_url(key: &str) -> String {
     if cfg!(windows) {
-        format!("http://dmicon.localhost/{key}?rev={rev}")
+        format!("http://dmicon.localhost/{key}")
     } else {
-        format!("dmicon://localhost/{key}?rev={rev}")
+        format!("dmicon://localhost/{key}")
     }
 }
 
@@ -487,10 +504,11 @@ mod tests {
     fn tiny_master() -> String {
         use base64::Engine;
         use image::ImageEncoder;
-        let img = image::RgbaImage::from_pixel(8, 8, image::Rgba([120, 90, 200, 255]));
+        // The contract-required 256×256 master size (the host packages exactly this).
+        let img = image::RgbaImage::from_pixel(256, 256, image::Rgba([120, 90, 200, 255]));
         let mut png = Vec::new();
         image::codecs::png::PngEncoder::new(&mut png)
-            .write_image(&img, 8, 8, image::ExtendedColorType::Rgba8)
+            .write_image(&img, 256, 256, image::ExtendedColorType::Rgba8)
             .unwrap();
         base64::engine::general_purpose::STANDARD.encode(png)
     }

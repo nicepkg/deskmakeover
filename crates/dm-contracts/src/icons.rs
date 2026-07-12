@@ -93,14 +93,28 @@ pub struct IconChunkItemDto {
     pub master_png: String,
 }
 
-/// The result of `icons.scan`: a monotonically increasing revision + the raw observed items. NO
-/// embedded `IconsStateDto` (D1: the frontend assembles it from these items + `getPersisted` +
-/// its own presets/palette/grid). Mirrors the TS `icons.scan` result.
+/// The OBSERVED desktop metrics a scan reports, so the frontend assembles the grid from PLATFORM
+/// truth instead of fabricating dims (codex Major 5 — a hardcoded 1920×1080 lies on 4K/ultrawide/
+/// side-taskbar desktops). The frontend derives `iconPx`/cell sizes from these + the chosen size.
+/// [WINDOWS-VERIFY] the real `SPI_GETWORKAREA` + shell icon metrics on the box; the dev host
+/// synthesizes plausible values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GridMetricsDto {
+    pub screen_width: u32,
+    pub screen_height: u32,
+    pub taskbar_height: u32,
+}
+
+/// The result of `icons.scan`: a monotonically increasing revision, the raw observed items, and the
+/// observed desktop grid metrics. NO embedded `IconsStateDto` (D1: the frontend assembles it from
+/// these + `getPersisted` + its own presets/palette). Mirrors the TS `icons.scan` result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct IconScanDto {
     pub revision: u32,
     pub items: Vec<IconItemDto>,
+    pub grid: GridMetricsDto,
 }
 
 /// One saved appearance recipe from store ③ (look-history), mirroring `dm_operations::LookVersion`
@@ -227,6 +241,7 @@ mod tests {
     fn scan_dto_round_trips() {
         let scan = IconScanDto {
             revision: 3,
+            grid: GridMetricsDto { screen_width: 3840, screen_height: 2160, taskbar_height: 48 },
             items: vec![IconItemDto {
                 id: "bin".into(),
                 label: "回收站".into(),

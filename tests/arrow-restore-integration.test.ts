@@ -113,7 +113,11 @@ const opResult = (over: Partial<IconPersistedDto>, extra: Partial<IconOpResultDt
   ...extra,
 })
 
-const scanDto = (revision = 1): IconScanDto => ({ revision, items: [] })
+const scanDto = (revision = 1): IconScanDto => ({
+  revision,
+  items: [],
+  grid: { screenWidth: 1920, screenHeight: 1080, taskbarHeight: 48 },
+})
 
 beforeEach(() => {
   resetIconsHistoryForTests()

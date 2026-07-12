@@ -13,14 +13,15 @@ use crate::settings_store::SettingsStore;
 use crate::txn::fakes::{FakePlatform, World};
 use crate::txn::{FsAssetStore, TxnIdAllocator, VecJournal};
 
-/// A base64 straight-alpha RGBA PNG master of a solid colour (a real, decodable bake master).
+/// A base64 straight-alpha RGBA PNG master of a solid colour, at the REQUIRED 256×256 master size
+/// (a real, decodable, contract-valid bake master).
 fn master_b64(rgba: [u8; 4]) -> String {
     use base64::Engine;
     use image::ImageEncoder;
-    let img = image::RgbaImage::from_pixel(16, 16, image::Rgba(rgba));
+    let img = image::RgbaImage::from_pixel(256, 256, image::Rgba(rgba));
     let mut png = Vec::new();
     image::codecs::png::PngEncoder::new(&mut png)
-        .write_image(&img, 16, 16, image::ExtendedColorType::Rgba8)
+        .write_image(&img, 256, 256, image::ExtendedColorType::Rgba8)
         .unwrap();
     base64::engine::general_purpose::STANDARD.encode(png)
 }

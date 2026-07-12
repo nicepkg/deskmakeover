@@ -12,7 +12,6 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use dm_domain::ItemId;
@@ -97,25 +96,10 @@ impl JsonLedgerStore {
         }
     }
 
-    /// Atomically persists `entries`: write a temp file, fsync it, rename over the target.
+    /// Atomically persists `entries` (temp + fsync + rename, with the Windows sharing-violation
+    /// retry) through the crate's shared [`crate::fs_atomic::write_atomic`].
     fn store(&self, entries: &[LedgerEntry]) -> Result<()> {
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let tmp = self.temp_path();
-        {
-            let mut file = fs::File::create(&tmp)?;
-            file.write_all(&serde_json::to_vec_pretty(entries)?)?;
-            file.sync_all()?;
-        }
-        replace_atomically(&tmp, &self.path)?;
-        Ok(())
-    }
-
-    fn temp_path(&self) -> PathBuf {
-        let mut ext = self.path.extension().map(|e| e.to_os_string()).unwrap_or_default();
-        ext.push(".tmp");
-        self.path.with_extension(ext)
+        crate::fs_atomic::write_atomic(&self.path, &serde_json::to_vec_pretty(entries)?)
     }
 
     fn rewrite<F: FnOnce(&mut Vec<LedgerEntry>)>(&self, mutate: F) -> Result<()> {
@@ -153,44 +137,6 @@ impl LedgerStore for JsonLedgerStore {
 
     fn remove(&mut self, item: &ItemId) -> Result<()> {
         self.rewrite(|entries| entries.retain(|e| &e.item != item))
-    }
-}
-
-/// Atomically replaces `target` with `tmp`, preserving the crash-atomic rename semantics.
-///
-/// On Windows a rename over a file an indexer / anti-virus / backup agent momentarily holds open
-/// returns a sharing violation (or access-denied), which would fail an otherwise-valid ledger
-/// commit; those locks are transient, so we retry with a short backoff. POSIX `rename(2)` already
-/// tolerates open readers, so [`is_transient_share_violation`] is always false there and the first
-/// attempt succeeds. [WINDOWS-VERIFY] the sharing-violation retry against a real AV/indexer.
-fn replace_atomically(tmp: &Path, target: &Path) -> Result<()> {
-    const MAX_RETRIES: u32 = 10;
-    const BACKOFF: std::time::Duration = std::time::Duration::from_millis(20);
-    let mut attempt = 0;
-    loop {
-        match fs::rename(tmp, target) {
-            Ok(()) => return Ok(()),
-            Err(e) if attempt < MAX_RETRIES && is_transient_share_violation(&e) => {
-                attempt += 1;
-                std::thread::sleep(BACKOFF);
-            }
-            Err(e) => return Err(e.into()),
-        }
-    }
-}
-
-/// Whether an `fs::rename` error is a transient Windows sharing conflict worth retrying:
-/// `ERROR_SHARING_VIOLATION` (32) or `ERROR_ACCESS_DENIED` (5). Always false off Windows, so
-/// POSIX makes exactly one rename attempt.
-fn is_transient_share_violation(e: &std::io::Error) -> bool {
-    #[cfg(windows)]
-    {
-        matches!(e.raw_os_error(), Some(32) | Some(5))
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = e;
-        false
     }
 }
 
@@ -274,26 +220,6 @@ mod tests {
         assert_eq!(store.all().unwrap().len(), 1);
         store.remove(&ItemId::from_raw("a")).unwrap();
         assert!(store.all().unwrap().is_empty());
-    }
-
-    #[test]
-    fn replace_atomically_overwrites_an_existing_target() {
-        let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("ledger.json");
-        let tmp = dir.path().join("ledger.json.tmp");
-        fs::write(&target, b"old").unwrap();
-        fs::write(&tmp, b"new").unwrap();
-        replace_atomically(&tmp, &target).unwrap();
-        assert_eq!(fs::read(&target).unwrap(), b"new");
-        assert!(!tmp.exists()); // the rename consumed the temp file
-    }
-
-    #[cfg(not(windows))]
-    #[test]
-    fn off_windows_nothing_is_a_transient_share_violation() {
-        // POSIX rename tolerates open readers, so the retry loop must make exactly one attempt.
-        let e = std::io::Error::from_raw_os_error(32);
-        assert!(!is_transient_share_violation(&e));
     }
 
     #[test]

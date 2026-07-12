@@ -13,6 +13,7 @@
 //!   driving through the wallpaper ports. Pure Rust, Mac-tested with fakes.
 
 mod error;
+mod fs_atomic;
 pub mod ledger;
 mod settings_store;
 pub mod txn;

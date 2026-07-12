@@ -41,22 +41,11 @@ impl SnapshotStore {
             .map_err(|_| OperationError::CorruptSnapshot)
     }
 
-    /// Atomic write: serialize to `<path>.tmp`, fsync, rename over `path`. A crash
-    /// mid-save leaves either the old snapshot or the new one, never a torn file.
+    /// Atomic write (temp + fsync + rename, with the Windows sharing-violation retry) through the
+    /// crate's shared [`crate::fs_atomic::write_atomic`]. A crash mid-save leaves either the old
+    /// snapshot or the new one, never a torn file.
     pub fn save(&self, snapshot: &WallpaperSnapshot) -> Result<()> {
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let tmp = self.path.with_extension("tmp");
-        let json = serde_json::to_vec_pretty(snapshot)?;
-        {
-            use std::io::Write;
-            let mut f = fs::File::create(&tmp)?;
-            f.write_all(&json)?;
-            f.sync_all()?;
-        }
-        fs::rename(&tmp, &self.path)?;
-        Ok(())
+        crate::fs_atomic::write_atomic(&self.path, &serde_json::to_vec_pretty(snapshot)?)
     }
 
     /// Removes the snapshot (after a successful whole-desktop restore). Missing is ok.
@@ -100,8 +89,8 @@ mod tests {
         let store = SnapshotStore::new(dir.path().join("snap.json"));
         store.save(&snap()).unwrap();
         assert_eq!(store.load().unwrap(), Some(snap()));
-        // No stray temp file survives the rename.
-        assert!(!store.path().with_extension("tmp").exists());
+        // No stray temp file survives the rename (write_atomic uses a `<name>.tmp` sibling).
+        assert!(!store.path().with_extension("json.tmp").exists());
     }
 
     #[test]

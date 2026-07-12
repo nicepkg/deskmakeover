@@ -415,12 +415,19 @@ impl IconHost {
         drop(st);
 
         let mut overlay_failed = false;
+        let mut autoformat_off_failed = false;
         if !deferred {
             // §10 three-part coupling (spec 07 §8.4): clearing ② (done in the ops) is paired with
-            // turning auto-format OFF so the resident stays dormant after a reset.
-            let _ = self
+            // turning auto-format OFF so the resident stays dormant after a reset. A write fault here is
+            // NOT swallowed (codex R7-#4): a reset reporting ok:true while `keep_new_icons_styled` is
+            // still true would leave the resident re-styling new icons after a "restore to original".
+            if self
                 .settings
-                .set(&SettingsPatch { keep_new_icons_styled: Some(false), ..Default::default() });
+                .set(&SettingsPatch { keep_new_icons_styled: Some(false), ..Default::default() })
+                .is_err()
+            {
+                autoformat_off_failed = true;
+            }
             // Lift the overlay if it was installed. A helper FAILURE is surfaced (codex R2-Block 3): the
             // icons reverted but the machine-wide arrow is still hidden, so the op is NOT a clean success.
             if *self.arrow_overlay.lock().unwrap() == ArrowOverlayDto::Hidden {
@@ -434,13 +441,13 @@ impl IconHost {
         // A finalize step failed after some icons already reverted (codex R3-Block 4): log the detail,
         // return ok:false + a repair toast + the authoritative state. Surface the trust-first skips, or
         // the arrow-restore failure — never a blanket ok:true. Priority: arrow fault → finalize
-        // degraded → trust-first skips.
+        // degraded (incl. an auto-format-off write fault) → trust-first skips.
         if let Some(reason) = &degraded {
             log::warn!("icons reset finalize degraded: {reason}");
         }
         let (ok, toast) = if overlay_failed {
             (false, Some(ToastDto { key: "Toast_RestoreArrowFailed".into(), arg: None }))
-        } else if degraded.is_some() {
+        } else if degraded.is_some() || autoformat_off_failed {
             (false, Some(ToastDto { key: "Toast_ResetDegraded".into(), arg: None }))
         } else if skipped > 0 {
             (true, Some(ToastDto { key: "Toast_ResetSkipped".into(), arg: Some(skipped.to_string()) }))

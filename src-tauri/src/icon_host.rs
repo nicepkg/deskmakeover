@@ -219,22 +219,15 @@ impl IconHost {
     }
 
     /// `icons.getPersisted`: the ②③ + native bits the frontend overlays onto its assembled state.
+    /// `read_state` folds the repair-pending signal into `applied` (codex R6-#6), so a styled desktop
+    /// a degraded recovery left un-ledgered keeps its restore affordance reachable here AND on every
+    /// apply/reset op-result — the signal lives in ONE place, the shared `read_state`.
     pub fn get_persisted(&self) -> Result<IconPersistedDto, String> {
-        use dm_operations::txn::{journal::active_txns, JournalSink};
         let st = self.mut_state.lock().unwrap();
-        let mut stores =
-            self.ops().read_state(&st.history, &st.ledger).map_err(|e| e.to_string())?;
-        // Fail-closed repair signal (codex R5-#6): an IN-FLIGHT transaction still in the journal means
-        // a prior crash's recovery could not finish (a clean recovery checkpoints the journal empty).
-        // That can leave a styled desktop with NO ledger row — `applied` would then be false and HIDE
-        // the restore affordance, stranding the user. Force `applied: true` so the restore path stays
-        // reachable; clicking it re-runs recovery (reset's first step), which retries the abort and
-        // heals. Only NO-terminal txns count (`active_txns`), so a cleanly rolled-back/committed txn
-        // whose records simply await the next checkpoint never spuriously trips this.
-        let journal_records = st.journal.read_all().map_err(|e| e.to_string())?;
-        if !active_txns(&journal_records).is_empty() {
-            stores.applied = true;
-        }
+        let stores = self
+            .ops()
+            .read_state(&st.history, &st.ledger, &st.journal)
+            .map_err(|e| e.to_string())?;
         drop(st);
         Ok(self.finish_persisted(self.to_persisted_dto_locked(&stores)))
     }
@@ -299,7 +292,7 @@ impl IconHost {
         // Reject a commit whose token no longer matches the current session — a newer Begin
         // superseded it, so its buffer/styleJson belong to a stale apply (codex R3-Block 1).
         if session_id != st.session_id.to_string() {
-            let stores = self.ops().read_state(&st.history, &st.ledger).map_err(|e| e.to_string())?;
+            let stores = self.ops().read_state(&st.history, &st.ledger, &st.journal).map_err(|e| e.to_string())?;
             let dto = self.to_persisted_dto_locked(&stores);
             drop(st);
             return Ok(IconOpResultDto {
@@ -322,7 +315,7 @@ impl IconHost {
         // user's newer intent on the real desktop (codex Block 3 / R2-Block 3). Fail closed WITHOUT
         // mutating — the store keeps the draft dirty + rescans.
         if st.op_epoch != st.session_epoch {
-            let stores = self.ops().read_state(&st.history, &st.ledger).map_err(|e| e.to_string())?;
+            let stores = self.ops().read_state(&st.history, &st.ledger, &st.journal).map_err(|e| e.to_string())?;
             let dto = self.to_persisted_dto_locked(&stores);
             drop(st);
             return Ok(IconOpResultDto {
@@ -381,11 +374,16 @@ impl IconHost {
             }
         } else if outcome.degraded.is_some() {
             (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
-        } else if outcome.committed.is_empty() && outcome.reverted.is_empty() {
-            // No error, but nothing was styled AND nothing reverted — an all-conflicts / zero-effect
-            // apply (every item CAS-failed or was already original). The saved-style was deliberately
-            // NOT written (icons/mod.rs), so this is not a clean success: tell the user their icons may
-            // have changed under them and keep the draft dirty for a retry (codex R5-#2).
+        } else if outcome.committed.is_empty()
+            && outcome.reverted.is_empty()
+            && !outcome.conflicts.is_empty()
+        {
+            // No error, nothing styled, nothing reverted, but there WERE conflicts — every icon
+            // CAS-failed (they changed under the user since the scan). The saved-style was deliberately
+            // NOT written (icons/mod.rs), so this is not a clean success: tell the user + keep the draft
+            // dirty for a retry (codex R5-#2 / R6-#2). An intentional-empty apply (nothing selected,
+            // NO conflicts) falls through to the clean-success arm — it is benign, not a "changed
+            // elsewhere" warning.
             (false, Some(ToastDto { key: "Toast_ApplyNoEffect".into(), arg: None }))
         } else {
             (true, None)
@@ -409,20 +407,27 @@ impl IconHost {
         let dto = self.to_persisted_dto_locked(&outcome.stores);
         let skipped = outcome.skipped.len();
         let degraded = outcome.degraded;
+        // The ops DEFERRED the ledger reset because up-front recovery had to heal a prior crash first
+        // (codex R6-#4). The reset did NOT run, so its finalizers (auto-format off + arrow lift) MUST
+        // be skipped — running them would leave a partial state (arrow native + resident off, yet icons
+        // still styled). The user re-syncs from the returned state and retries.
+        let deferred = outcome.deferred;
         drop(st);
 
-        // §10 three-part coupling (spec 07 §8.4): clearing ② (done in the ops) is paired with
-        // turning auto-format OFF so the resident stays dormant after a reset.
-        let _ = self
-            .settings
-            .set(&SettingsPatch { keep_new_icons_styled: Some(false), ..Default::default() });
-        // Lift the overlay if it was installed. A helper FAILURE is surfaced (codex R2-Block 3): the
-        // icons reverted but the machine-wide arrow is still hidden, so the op is NOT a clean success.
         let mut overlay_failed = false;
-        if *self.arrow_overlay.lock().unwrap() == ArrowOverlayDto::Hidden {
-            match self.overlay.restore() {
-                Ok(OverlayOutcome::Applied) => self.set_arrow(ArrowOverlayDto::Native),
-                _ => overlay_failed = true,
+        if !deferred {
+            // §10 three-part coupling (spec 07 §8.4): clearing ② (done in the ops) is paired with
+            // turning auto-format OFF so the resident stays dormant after a reset.
+            let _ = self
+                .settings
+                .set(&SettingsPatch { keep_new_icons_styled: Some(false), ..Default::default() });
+            // Lift the overlay if it was installed. A helper FAILURE is surfaced (codex R2-Block 3): the
+            // icons reverted but the machine-wide arrow is still hidden, so the op is NOT a clean success.
+            if *self.arrow_overlay.lock().unwrap() == ArrowOverlayDto::Hidden {
+                match self.overlay.restore() {
+                    Ok(OverlayOutcome::Applied) => self.set_arrow(ArrowOverlayDto::Native),
+                    _ => overlay_failed = true,
+                }
             }
         }
         let _ = self.refresher.notify_icons_changed();

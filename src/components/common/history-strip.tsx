@@ -24,12 +24,16 @@ export function HistoryStrip<T extends HistoryStripItem>({
   renderThumb,
   onGoTo,
   onBackToInitial,
+  disabled = false,
 }: {
   /** Newest first. */
   items: T[]
   renderThumb: (item: T) => ReactNode
   onGoTo: (item: T) => void
   onBackToInitial?: () => void
+  /** True while a host crossing is in flight — the version-jump buttons run the
+   *  module's apply/restore ceremony, so they must be inert until it lands. */
+  disabled?: boolean
 }) {
   const t = useT()
   return (
@@ -52,7 +56,8 @@ export function HistoryStrip<T extends HistoryStripItem>({
             ) : (
               <button
                 type="button"
-                className="shrink-0 text-caption text-coral-ink transition-colors hover:underline"
+                disabled={disabled}
+                className="shrink-0 text-caption text-coral-ink transition-colors hover:underline disabled:cursor-not-allowed disabled:text-t3 disabled:no-underline"
                 onClick={() => onGoTo(item)}
               >
                 {t('History_GoTo')}
@@ -71,7 +76,8 @@ export function HistoryStrip<T extends HistoryStripItem>({
             </span>
             <button
               type="button"
-              className="shrink-0 text-caption text-coral-ink transition-colors hover:underline"
+              disabled={disabled}
+              className="shrink-0 text-caption text-coral-ink transition-colors hover:underline disabled:cursor-not-allowed disabled:text-t3 disabled:no-underline"
               onClick={onBackToInitial}
             >
               {t('History_BackToInitial')}

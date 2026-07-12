@@ -221,29 +221,32 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     expect(useIcons.getState().overlayRestoring).toBe(false)
   })
 
-  test('a stale restore response is DROPPED after an intervening op (no state / profile regression)', async () => {
+  test('a full restore is BLOCKED while an arrow-restore is in flight (single-flight — host verbs never interleave)', async () => {
     let resolveRestore!: (v: IconsOpResultDto) => void
+    let fullRestoreCalls = 0
     const inflight = new Promise<IconsOpResultDto>((r) => (resolveRestore = r))
     __setBridgeForTests(((method: string) => {
       if (method === 'icons.restoreOverlay') return inflight
-      if (method === 'icons.restore') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      if (method === 'icons.restore') {
+        fullRestoreCalls++
+        return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      }
       throw new Error(`unexpected ${method}`)
     }) as unknown as Parameters<typeof __setBridgeForTests>[0])
-    seedStore({ arrowOverlay: 'hidden', activeUserProfiles: 1 })
+    seedStore({ arrowOverlay: 'hidden', activeUserProfiles: 1, applied: true })
 
-    const p = useIcons.getState().restoreOverlay() // in flight; generation claimed
-    // An intervening authoritative op (full restore) starts + lands, taking a newer generation.
+    const p = useIcons.getState().restoreOverlay() // in flight; overlayRestoring=true
+    // A full restore attempted mid-flight must NOT start — busy() single-flight blocks
+    // it, so the two host mutations can never race the desktop / marker (codex R3).
     await useIcons.getState().restore()
-    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
-    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+    expect(fullRestoreCalls).toBe(0) // the host restore was never called
+    expect(useIcons.getState().overlayRestoring).toBe(true) // arrow-restore still the only op
 
-    // The late restore response now arrives with a STALE observation (hidden / 1).
-    resolveRestore(opResult({ arrowOverlay: 'hidden', activeUserProfiles: 1 }, { toast: { key: 'Toast_ArrowRestored', arg: null } }))
+    // The arrow-restore lands its own result unopposed.
+    resolveRestore(opResult({ arrowOverlay: 'native', activeUserProfiles: 1 }, { toast: { key: 'Toast_ArrowRestored', arg: null } }))
     await p
-
-    // Dropped: the intervening op's truth stands, not the stale restore's.
     expect(useIcons.getState().state!.arrowOverlay).toBe('native')
-    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(1)
     expect(useIcons.getState().overlayRestoring).toBe(false)
   })
 
@@ -341,52 +344,57 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
   })
 
-  test('a modal apply commit self-drops when superseded, and releases working (review P2 modal + item 1)', async () => {
+  test('an arrow-restore is BLOCKED while a modal apply is in flight (single-flight); apply commits normally', async () => {
     const commit = deferred<IconsOpResultDto>()
+    let overlayCalls = 0
     setBridge((method) => {
       if (method === 'icons.applyBakedBegin' || method === 'icons.applyBakedChunk') return Promise.resolve(null)
       if (method === 'icons.applyBakedCommit') return commit.promise
-      // A DELTA-MERGE superseder (arrow restore) that does NOT touch `working`, so
-      // apply's optimistic working:true survives until apply's own branch clears it.
-      if (method === 'icons.restoreOverlay') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      if (method === 'icons.restoreOverlay') {
+        overlayCalls++
+        return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      }
       throw new Error(`unexpected ${method}`)
     })
     seedStore({ arrowOverlay: 'native', activeUserProfiles: 1 }) // no items → apply skips the bake loop
 
-    const pApply = useIcons.getState().apply() // gen claimed; awaiting the commit (working:true)
-    await useIcons.getState().restoreOverlay() // newer writer lands first, leaves working:true
-    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
-    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+    const pApply = useIcons.getState().apply() // working:true, awaiting the commit
+    await useIcons.getState().restoreOverlay() // blocked by busy() — never touches the host
+    expect(overlayCalls).toBe(0)
+    expect(useIcons.getState().state!.working).toBe(true) // apply still the only op in flight
 
-    // The stale apply commit now arrives with the OLD look (hidden / 1).
+    // Apply's own commit lands unopposed — never dropped, so the desktop and UI agree.
     commit.resolve(opResult({ arrowOverlay: 'hidden', activeUserProfiles: 1 }))
-    expect(await pApply).toBe(false) // superseded apply does not claim success
-    expect(useIcons.getState().state!.arrowOverlay).toBe('native') // stale look dropped
-    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+    expect(await pApply).toBe(true) // apply commits normally
+    expect(useIcons.getState().state!.arrowOverlay).toBe('hidden')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(1)
     expect(useIcons.getState().applyProgress).toBeNull() // progress veil cleared
     expect(useIcons.getState().state!.working).toBe(false) // working released (no UI lock)
   })
 
-  test('a modal full-restore self-drops when superseded, and releases working (review P2 modal + item 1)', async () => {
+  test('an arrow-restore is BLOCKED while a modal full-restore is in flight (single-flight); restore lands normally', async () => {
     const full = deferred<IconsOpResultDto>()
+    let overlayCalls = 0
     setBridge((method) => {
       if (method === 'icons.restore') return full.promise
-      // Delta-merge superseder leaves this restore's optimistic working:true in place.
-      if (method === 'icons.restoreOverlay') return Promise.resolve(opResult({ arrowOverlay: 'hidden', activeUserProfiles: 2 }))
+      if (method === 'icons.restoreOverlay') {
+        overlayCalls++
+        return Promise.resolve(opResult({ arrowOverlay: 'hidden', activeUserProfiles: 2 }))
+      }
       throw new Error(`unexpected ${method}`)
     })
     seedStore({ arrowOverlay: 'native', activeUserProfiles: 1, applied: true })
 
-    const pFull = useIcons.getState().restore() // gen claimed; awaiting host (working:true)
-    await useIcons.getState().restoreOverlay() // newer writer lands first, leaves working:true
-    expect(useIcons.getState().state!.arrowOverlay).toBe('hidden')
-    expect(useIcons.getState().state!.activeUserProfiles).toBe(2)
+    const pFull = useIcons.getState().restore() // working:true, awaiting host
+    await useIcons.getState().restoreOverlay() // blocked by busy() — never touches the host
+    expect(overlayCalls).toBe(0)
+    expect(useIcons.getState().state!.working).toBe(true) // restore still the only op in flight
 
-    // The stale full-restore now arrives with the OLD truth (native / 1).
+    // The full restore lands its own truth unopposed.
     full.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 1 }))
     await pFull
-    expect(useIcons.getState().state!.arrowOverlay).toBe('hidden') // stale truth dropped
-    expect(useIcons.getState().state!.activeUserProfiles).toBe(2)
+    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(1)
     expect(useIcons.getState().state!.working).toBe(false) // working released (no UI lock)
   })
 

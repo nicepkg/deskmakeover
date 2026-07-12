@@ -835,6 +835,11 @@ export const useIcons = create<IconsState>((set, get) => {
     apply: async () => {
       const s = get()
       if (!s.state) return false
+      // Single-flight: never start a second host crossing while one is in flight
+      // (double-click, or apply racing an arrow-restore). The generation guard
+      // supersedes stragglers, but blocking at the door avoids the wasted bake and
+      // the divergence window entirely (codex R3-Block 1/3 — store-level guard).
+      if (busy()) return false
       // System Default is a reset, never an apply (A1): a bare look can NEVER bake
       // beautified icons onto the desktop. Its CTA crossing is a restore, routed by
       // the panel; this store invariant guarantees no stray apply slips through.
@@ -933,6 +938,9 @@ export const useIcons = create<IconsState>((set, get) => {
     restore: async () => {
       const s = get()
       if (!s.state) return
+      // Single-flight (codex R3-Block 1/3): a restore must not start over an
+      // apply / another restore / arrow-restore already in flight.
+      if (busy()) return
       // Claim a generation to supersede any writer in flight, and to self-drop
       // this restore's own late response if a newer writer (canvas refresh /
       // Settings arrow-restore, reachable while `working`) started after it
@@ -975,7 +983,9 @@ export const useIcons = create<IconsState>((set, get) => {
     // DTO), and reports a restore-specific failure — not "apply failed".
     restoreOverlay: async () => {
       const s = get()
-      if (!s.state || s.overlayRestoring) return
+      // Single-flight AND mutually exclusive with a full apply/restore: `busy()`
+      // covers both `working` and a prior `overlayRestoring` (codex R3-Block 1/3).
+      if (!s.state || busy()) return
       set({ overlayRestoring: true })
       // Claim a generation at START (initiation order, not arrival order): this
       // restore applies its result only if no LATER-STARTED authoritative op

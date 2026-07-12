@@ -760,6 +760,7 @@ export function IconsPanel() {
                 renderThumb={(h) => <IconVersionThumb config={h.config} />}
                 onGoTo={(h) => goVersion(h.index)}
                 onBackToInitial={() => void restore()}
+                disabled={state.working}
               />
             </motion.div>
           )}

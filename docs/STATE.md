@@ -27,6 +27,11 @@ pointer: what is TRUE now, what is in flight, what comes next.
 
 ## Governing docs (current truth)
 
+- **`docs/ship-readiness.md`** — the authoritative "what is left before a Windows user can install
+  this and it works" inventory (milestone table · ship-blockers [MAC]/[WIN] · [WV] surface · stubs ·
+  packaging gaps · icon-bridge R4 status · owner decisions). Living tracker; the detail behind this
+  pointer. **Owner decision 2026-07-12: polish everything Mac-closable to near-perfection first,
+  Windows is final integration + [WV] runtime pass only.**
 - **ADR-0019/0020/0021 + `docs/plans/2026-07-10-tauri-migration.md`** — the
   Tauri 2 + Rust replatform, background-resident v1 (spec 07), arrow default.
 - **ADR-0022** + `docs/specs/07-background-resident.md` (updated) — M7 常驻自动 format 的外观模型

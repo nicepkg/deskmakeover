@@ -6,6 +6,9 @@ publish.workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+# The saved-style / look-history recipe (`IconStyle`) is a validated but otherwise opaque
+# frontend-authored JSON blob, so the contract layer carries serde_json.
+serde_json = "1"
 # Pinned to the tauri-specta 2.0.0-rc.25 line (the src-tauri exporter must agree).
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 

@@ -9,10 +9,12 @@
 
 mod common;
 mod settings;
+mod style;
 mod wallpaper;
 
 pub use common::ToastDto;
 pub use settings::{Language, SettingsDto, SettingsPatch, Theme};
+pub use style::{IconStyle, IconStyleError};
 pub use wallpaper::{
     MonitorBounds, ScreenInfoDto, ScreenOrientation, WallpaperPosition, WallpaperResultDto,
     WallpaperScreensDto, WallpaperSourceDto,

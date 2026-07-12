@@ -10,9 +10,10 @@
 
 use std::path::{Path, PathBuf};
 
+use dm_contracts::IconStyle;
 use serde::{Deserialize, Serialize};
 
-use crate::error::Result;
+use crate::error::{OperationError, Result};
 
 /// How many looks the history keeps (spec 07 §17 — THIS store only; never the active ledger,
 /// whose fail-safety direction is deliberately opposite).
@@ -32,11 +33,21 @@ pub struct LookVersion {
     /// A user-chosen name; also what a pinned favourite is remembered by. `None` = unnamed.
     #[serde(default)]
     pub label: Option<String>,
-    /// Exempt from FIFO eviction while set (spec 07 §17). Older builds without this field read as
-    /// unpinned.
+    /// Exempt from FIFO eviction while set (spec 07 §17). A new look is NEVER born pinned — pinning
+    /// is a deliberate later action through [`LookHistoryStore::set_pinned`] (bounded by
+    /// [`MAX_PINS`]); [`LookHistoryStore::push`] forces this false so the pin cap can never be
+    /// bypassed by pushing a pre-pinned entry. Older builds without this field read as unpinned.
     #[serde(default)]
     pub pinned: bool,
-    pub icon_style: serde_json::Value,
+    pub icon_style: IconStyle,
+}
+
+impl LookVersion {
+    /// A fresh, unpinned, unnamed look. The Tauri layer supplies a real id + timestamp; tests pass
+    /// fixed values.
+    pub fn new(id: impl Into<String>, created_at: i64, icon_style: IconStyle) -> Self {
+        Self { id: id.into(), created_at, label: None, pinned: false, icon_style }
+    }
 }
 
 /// What a [`LookHistoryStore::push`] did.
@@ -91,7 +102,13 @@ impl LookHistoryStore {
     /// clicking Apply a few times in a row does not burn through the cap. Otherwise the entry is
     /// prepended and the oldest NON-pinned entries are evicted down to the cap.
     pub fn push(&mut self, entry: LookVersion) -> Result<PushOutcome> {
-        let mut all = self.load();
+        // A new look is never born pinned — pinning is a deliberate later action bounded by
+        // MAX_PINS. Forcing it false here closes the "push a pre-pinned entry to bypass the pin cap"
+        // hole (which otherwise let the history grow unbounded and could evict the just-inserted
+        // entry while still reporting Added).
+        let mut entry = entry;
+        entry.pinned = false;
+        let mut all = self.load_for_mutation()?;
         if let Some(head) = all.first_mut() {
             if head.icon_style == entry.icon_style {
                 head.created_at = entry.created_at;
@@ -108,7 +125,7 @@ impl LookHistoryStore {
     /// Pins/unpins an entry. Pinned entries survive FIFO eviction (spec 07 §17). Pinning is
     /// refused past [`MAX_PINS`] so a `LimitReached` is a clear signal, not a silent no-op.
     pub fn set_pinned(&mut self, id: &str, pinned: bool) -> Result<PinResult> {
-        let mut all = self.load();
+        let mut all = self.load_for_mutation()?;
         // Existence first: a pin request for an unknown id is NotFound, never LimitReached.
         let Some(pos) = all.iter().position(|v| v.id == id) else {
             return Ok(PinResult::NotFound);
@@ -125,7 +142,7 @@ impl LookHistoryStore {
 
     /// Renames an entry (or clears its name with `None`). Returns whether the entry existed.
     pub fn set_label(&mut self, id: &str, label: Option<String>) -> Result<bool> {
-        let mut all = self.load();
+        let mut all = self.load_for_mutation()?;
         match all.iter_mut().find(|v| v.id == id) {
             Some(v) => {
                 v.label = label;
@@ -136,12 +153,27 @@ impl LookHistoryStore {
         }
     }
 
-    /// Tolerant load: any read/parse failure yields an empty history (see the type docs). Newest-
-    /// first is the on-disk order, preserved verbatim.
+    /// Tolerant load for READS (`all`/`get`): any read/parse failure yields an empty history (see
+    /// the type docs), so a corrupt file never blocks apply/restore. Newest-first is the on-disk
+    /// order, preserved verbatim.
     fn load(&self) -> Vec<LookVersion> {
         match std::fs::read(&self.path) {
             Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
             Err(_) => Vec::new(),
+        }
+    }
+
+    /// Load for MUTATIONS (`push`/`set_pinned`/`set_label`): distinguishes the failure kinds so a
+    /// mutation never CLOBBERS real data it merely failed to read. Missing → empty (a fresh start).
+    /// Present-but-unparseable → empty (self-heal; the corrupt bytes are unrecoverable anyway, and
+    /// the write is atomic). But a genuine I/O error (permission denied, the file `chmod 000`, a
+    /// transient read failure) → `Err`: the real history may still be intact, so the mutation aborts
+    /// rather than overwriting it with a truncated version.
+    fn load_for_mutation(&self) -> Result<Vec<LookVersion>> {
+        match std::fs::read(&self.path) {
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes).unwrap_or_default()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(e) => Err(OperationError::Io(e.to_string())),
         }
     }
 
@@ -177,12 +209,13 @@ mod tests {
     }
 
     /// A distinct recipe per `n`, shaped like the real `{config, kindPolicy, typeOverrides}` blob.
-    fn style(n: i64) -> serde_json::Value {
-        json!({ "config": { "seed": n }, "kindPolicy": {}, "typeOverrides": {} })
+    fn style(n: i64) -> IconStyle {
+        IconStyle::from_value(json!({ "config": { "seed": n }, "kindPolicy": {}, "typeOverrides": {} }))
+            .unwrap()
     }
 
     fn ver(id: &str, ts: i64, n: i64) -> LookVersion {
-        LookVersion { id: id.into(), created_at: ts, label: None, pinned: false, icon_style: style(n) }
+        LookVersion::new(id, ts, style(n))
     }
 
     #[test]
@@ -242,7 +275,9 @@ mod tests {
         }
         let all = store.all();
         assert!(all.iter().any(|v| v.id == "keep"), "a pinned favourite survives eviction");
-        assert!(all.len() <= CAP + 1, "history still converges near the cap");
+        // With one pin and eight+ non-pinned to evict, the history converges to EXACTLY the cap —
+        // not cap+1 (that slack would hide an off-by-one).
+        assert_eq!(all.len(), CAP, "the non-pinned tail is evicted down to exactly the cap");
     }
 
     #[test]
@@ -281,5 +316,49 @@ mod tests {
         std::fs::write(store.path(), b"{ not json ]").unwrap();
         assert!(store.all().is_empty());
         assert!(store.get("anything").is_none());
+    }
+
+    #[test]
+    fn push_forces_new_entries_unpinned_closing_the_pin_bypass() {
+        let (_dir, mut store) = store();
+        // A caller tries to sneak in a pre-pinned entry (the public field is set true).
+        let mut sneaky = ver("x", 1, 1);
+        sneaky.pinned = true;
+        store.push(sneaky).unwrap();
+        assert!(!store.get("x").unwrap().pinned, "push must force a new look unpinned");
+        // So the pin cap can't be bypassed via push: even if every push claims pinned, the cap holds.
+        for n in 2..14 {
+            let mut p = ver(&format!("v{n}"), n, n);
+            p.pinned = true;
+            store.push(p).unwrap();
+        }
+        assert_eq!(store.all().len(), CAP, "the pin cap can't be bypassed through push");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_mutation_io_error_never_clobbers_the_existing_history() {
+        let (_dir, mut store) = store();
+        store.push(ver("keep", 1, 1)).unwrap();
+        store.push(ver("also", 2, 2)).unwrap();
+
+        // Make the file unreadable while the directory stays writable — the exact condition under
+        // which a tolerant "read error = empty" mutation would overwrite real data with a truncation.
+        set_mode(store.path(), 0o000);
+        assert!(store.push(ver("new", 3, 3)).is_err(), "a read-IO error must abort the mutation");
+        set_mode(store.path(), 0o644);
+
+        // The original history is intact; the failed push wrote nothing.
+        let ids: Vec<String> = store.all().into_iter().map(|v| v.id).collect();
+        assert!(ids.contains(&"keep".into()) && ids.contains(&"also".into()), "originals survived");
+        assert!(!ids.contains(&"new".into()), "the failed push left no residue");
+    }
+
+    #[cfg(unix)]
+    fn set_mode(path: &Path, mode: u32) {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_mode(mode);
+        std::fs::set_permissions(path, perms).unwrap();
     }
 }

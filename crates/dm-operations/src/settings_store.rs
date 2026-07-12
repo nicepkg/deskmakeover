@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use dm_contracts::{Language, SettingsDto, SettingsPatch, Theme};
+use dm_contracts::{IconStyle, Language, SettingsDto, SettingsPatch, Theme};
 use rusqlite::{Connection, Transaction};
 
 use crate::error::{OperationError, Result};
@@ -61,32 +61,40 @@ impl SettingsStore {
         Ok(current)
     }
 
-    /// Reads store ② of the appearance model (spec 07 §8.2) — the single saved-style blob.
+    /// Reads store ② of the appearance model (spec 07 §8.2) — the single saved-style recipe.
     /// `None` means no style has been saved (system default). Fail-closed like the ledger: a
-    /// present-but-invalid blob is an [`OperationError::Corrupt`], never silently `None`, so a
-    /// saved style that cannot be read is visible rather than masquerading as "never applied."
-    pub fn get_saved_style(&self) -> Result<Option<serde_json::Value>> {
+    /// present-but-invalid cell is an [`OperationError::Corrupt`], never silently `None`, so a saved
+    /// style that cannot be read (bad JSON, an envelope that fails [`IconStyle`] validation, or a
+    /// non-TEXT cell) is visible rather than masquerading as "never applied."
+    pub fn get_saved_style(&self) -> Result<Option<IconStyle>> {
+        use rusqlite::types::Value as SqlValue;
         let conn = self.lock();
-        let json: Option<String> = conn.query_row(
+        let raw: SqlValue = conn.query_row(
             "SELECT icon_style_json FROM app_settings WHERE id = 1",
             [],
             |row| row.get(0),
         )?;
-        match json {
-            Some(text) => serde_json::from_str(&text)
-                .map(Some)
-                .map_err(|e| OperationError::Corrupt(format!("saved style: {e}"))),
-            None => Ok(None),
+        match raw {
+            SqlValue::Null => Ok(None),
+            SqlValue::Text(text) => {
+                let value: serde_json::Value = serde_json::from_str(&text)
+                    .map_err(|e| OperationError::Corrupt(format!("saved style: {e}")))?;
+                IconStyle::from_value(value)
+                    .map(Some)
+                    .map_err(|e| OperationError::Corrupt(format!("saved style: {e}")))
+            }
+            other => Err(OperationError::Corrupt(format!("saved style cell is not text: {other:?}"))),
         }
     }
 
     /// Writes store ② (spec 07 §8.2/§8.4) — called ONLY on a completed global Apply, never from
-    /// the settings-patch path, a draft debounce, or a single-icon edit. `None` clears it (the
-    /// "apply the system default" path: ② becomes null, which the automation layer reads as
-    /// "nothing to project").
-    pub fn set_saved_style(&self, style: Option<&serde_json::Value>) -> Result<()> {
+    /// the settings-patch path, a draft debounce, or a single-icon edit. The recipe is
+    /// pre-validated ([`IconStyle`]), so a null/garbage value can never be persisted as a style.
+    /// `None` clears it (the "apply the system default" path: ② becomes NULL, which the automation
+    /// layer reads as "nothing to project").
+    pub fn set_saved_style(&self, style: Option<&IconStyle>) -> Result<()> {
         let text: Option<String> = match style {
-            Some(v) => Some(serde_json::to_string(v)?),
+            Some(s) => Some(serde_json::to_string(s.as_value())?),
             None => None,
         };
         let conn = self.lock();
@@ -307,15 +315,21 @@ mod tests {
         ));
     }
 
+    fn style(seed: i64) -> IconStyle {
+        IconStyle::from_value(
+            serde_json::json!({ "config": { "seed": seed }, "kindPolicy": {}, "typeOverrides": {} }),
+        )
+        .unwrap()
+    }
+
     #[test]
     fn saved_style_defaults_to_none_and_round_trips() {
         let store = SettingsStore::open_in_memory().unwrap();
         // Store ② starts empty (system default).
         assert!(store.get_saved_style().unwrap().is_none());
 
-        let style = serde_json::json!({ "config": { "seed": 3 }, "kindPolicy": {}, "typeOverrides": {} });
-        store.set_saved_style(Some(&style)).unwrap();
-        assert_eq!(store.get_saved_style().unwrap(), Some(style));
+        store.set_saved_style(Some(&style(3))).unwrap();
+        assert_eq!(store.get_saved_style().unwrap(), Some(style(3)));
 
         // Clearing it (the "apply the system default" path) returns to None.
         store.set_saved_style(None).unwrap();
@@ -326,16 +340,15 @@ mod tests {
     fn saved_style_is_independent_of_the_settings_row_and_persists() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.sqlite3");
-        let style = serde_json::json!({ "config": { "seed": 9 } });
         {
             let store = SettingsStore::open(&path).unwrap();
-            store.set_saved_style(Some(&style)).unwrap();
+            store.set_saved_style(Some(&style(9))).unwrap();
             // A settings patch must NOT disturb store ② (they are orthogonal, spec 07 §8.2).
             let patch: SettingsPatch = serde_json::from_str(r#"{"theme":"Dark"}"#).unwrap();
             store.set(&patch).unwrap();
         }
         let reopened = SettingsStore::open(&path).unwrap();
-        assert_eq!(reopened.get_saved_style().unwrap(), Some(style));
+        assert_eq!(reopened.get_saved_style().unwrap(), Some(style(9)));
         assert_eq!(reopened.get().unwrap().theme, Theme::Dark);
     }
 
@@ -365,18 +378,32 @@ mod tests {
         assert!(store.get_saved_style().unwrap().is_none());
         assert_eq!(store.get().unwrap(), SettingsDto::default());
         // And it is writable post-migration.
-        let style = serde_json::json!({ "config": {} });
-        store.set_saved_style(Some(&style)).unwrap();
-        assert_eq!(store.get_saved_style().unwrap(), Some(style));
+        store.set_saved_style(Some(&style(1))).unwrap();
+        assert_eq!(store.get_saved_style().unwrap(), Some(style(1)));
     }
 
     #[test]
     fn corrupt_saved_style_fails_closed_never_silently_none() {
         let store = SettingsStore::open_in_memory().unwrap();
-        // Poke invalid JSON directly into the column, bypassing set_saved_style.
+        // Invalid JSON in the column → Corrupt, never silently None.
         store
             .lock()
             .execute("UPDATE app_settings SET icon_style_json = '{ not json' WHERE id = 1", [])
+            .unwrap();
+        assert!(matches!(store.get_saved_style(), Err(OperationError::Corrupt(_))));
+
+        // Valid JSON that is NOT a valid style envelope (e.g. `null`) also fails closed — M7 must
+        // never read it as a non-empty ② with nothing to project.
+        store
+            .lock()
+            .execute("UPDATE app_settings SET icon_style_json = 'null' WHERE id = 1", [])
+            .unwrap();
+        assert!(matches!(store.get_saved_style(), Err(OperationError::Corrupt(_))));
+
+        // A non-TEXT cell (e.g. an integer written past the API) is corruption, not None.
+        store
+            .lock()
+            .execute("UPDATE app_settings SET icon_style_json = 42 WHERE id = 1", [])
             .unwrap();
         assert!(matches!(store.get_saved_style(), Err(OperationError::Corrupt(_))));
     }

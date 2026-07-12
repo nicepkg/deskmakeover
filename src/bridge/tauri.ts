@@ -23,6 +23,16 @@ const HANDLED = new Set([
   'wallpaper.getScreens',
   'wallpaper.applyBaked',
   'wallpaper.restore',
+  // Icons (schema 7 thin, D1): the store assembles IconsStateDto; Rust returns raw items +
+  // persisted bits. setLook is NOT here — it left the bridge (frontend draft).
+  'icons.scan',
+  'icons.getPersisted',
+  'icons.applyBakedBegin',
+  'icons.applyBakedChunk',
+  'icons.applyBakedCommit',
+  'icons.restore',
+  'icons.restoreOverlay',
+  'icons.exportCompare',
   'shell.openExternal',
   'shell.openDataFolder',
 ])
@@ -76,6 +86,36 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
       const p = params as { monitorId: string }
       return unwrap(await commands.wallpaperRestore(p.monitorId))
     }
+    // Icons (schema 7 thin, D1): map Rust's raw scan items into the store-facing IconItemDto
+    // (adding the frontend-owned override slots, which the store fills from its own draft); every
+    // other icon DTO is structurally identical, so it passes through.
+    case 'icons.scan': {
+      const scan = unwrap(await commands.iconsScan())
+      return {
+        revision: scan.revision,
+        items: scan.items.map((it) => ({ ...it, overrideMode: null, overrideTint: null })),
+      }
+    }
+    case 'icons.getPersisted':
+      return unwrap(await commands.iconsGetPersisted())
+    case 'icons.applyBakedBegin': {
+      const p = params as { revision: number; count: number }
+      return unwrap(await commands.iconsApplyBakedBegin(p.revision, p.count))
+    }
+    case 'icons.applyBakedChunk': {
+      const p = params as { items: { id: string; sourceIndex: number; masterPng: string }[] }
+      return unwrap(await commands.iconsApplyBakedChunk(p.items))
+    }
+    case 'icons.applyBakedCommit': {
+      const p = params as { styleJson: string; label: string | null }
+      return unwrap(await commands.iconsApplyBakedCommit(p.styleJson, p.label))
+    }
+    case 'icons.restore':
+      return unwrap(await commands.iconsRestore())
+    case 'icons.restoreOverlay':
+      return unwrap(await commands.iconsRestoreOverlay())
+    case 'icons.exportCompare':
+      return unwrap(await commands.iconsExportCompare())
     case 'shell.minimize':
       await getCurrentWindow().minimize()
       return null

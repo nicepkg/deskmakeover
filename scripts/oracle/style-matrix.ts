@@ -6,7 +6,7 @@
 // at runtime against the live profile so pack drift fails loudly.
 
 import type { ConfigDto, FilterStyle, IconShape, MarkStyle } from '@/bridge/types'
-import { BASE_CONFIGS } from '@/bridge/mock-desktop'
+import { BASE_CONFIGS } from '@/lib/icons-assemble'
 import type { OracleSource } from './desktop-session'
 import { PRESET_IDS } from './desktop-session'
 

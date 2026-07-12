@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 import { call } from '@/bridge/client'
-import type { ConfigDto, IconItemDto, IconsOpResultDto, IconsStateDto, IconKindBucket, KindPolicy, OverrideEntryDto, TypeOverrideEntry, TypeOverrides } from '@/bridge/types'
-import { kindBucket, kindParticipates } from '@/lib/kind-policy'
-import { appAccentSeed, resolveTypeConfig, typeHasFixedPlate, typeOverridesEqual } from '@/lib/type-config'
+import type { ConfigDto, IconItemDto, IconOpResultDto, IconPersistedDto, IconScanDto, IconsStateDto, IconKindBucket, KindPolicy, TypeOverrideEntry, TypeOverrides } from '@/bridge/types'
+import { DEFAULT_KIND_POLICY, kindBucket, kindParticipates } from '@/lib/kind-policy'
+import { appAccentSeed, resolveTypeConfig, typeHasFixedPlate } from '@/lib/type-config'
+import { activePresetIdOf as activePresetIdOfRecipe, assembleIconsState, defaultRecipe, parseHistory, parseRecipe, type IconStyleRecipe } from '@/lib/icons-assemble'
+import { useWallpaper } from '@/stores/wallpaper'
 import { getIconCompositor } from '@/icon-compositor/icon-renderer'
 import type { RenderOpts } from '@/icon-wasm/protocol'
 import type { SpreadEntry } from '@/icon-wasm/hue-spread'
@@ -18,7 +20,6 @@ import { useToasts } from '@/stores/toasts'
 // coalesce per gesture (spec 06 §3.3). apply/restore run ONLY from explicit
 // user clicks (owner gate).
 
-const PERSIST_DEBOUNCE_MS = 400
 const APPLY_CHUNK = 20
 
 // System-Default (bare) draft persistence (A3). The host settings store persists
@@ -246,19 +247,36 @@ export function fieldRenderOpts(id: string): RenderOpts {
   return { fieldSeed: fieldSeeds.get(id) ?? null, kindBucket: kindBuckets.get(id) ?? null }
 }
 
-function overridesOf(items: IconItemDto[]): OverrideEntryDto[] {
-  return items
-    .filter((i) => i.overrideMode !== null)
-    .map((i) => ({ id: i.id, mode: i.overrideMode as 'keep' | 'tint', tint: i.overrideTint }))
-}
-
-function toastOf(dto: IconsOpResultDto): void {
+function toastOf(dto: IconOpResultDto): void {
   if (dto.toast) {
     const text = dto.toast.arg
       ? format(t(dto.toast.key as StringKey), dto.toast.arg)
       : t(dto.toast.key as StringKey)
     useToasts.getState().show(text, dto.ok ? 'info' : 'warn')
   }
+}
+
+/** The desktop wallpaper for the icons preview mirror — the active screen's decoded source, read
+ *  from the wallpaper store (both the mock and the real bridge populate it). Null before the
+ *  wallpaper module loads (the mirror simply shows no bed until then). */
+function currentWallpaperUrl(): string | null {
+  return useWallpaper.getState().state?.originalUrl ?? null
+}
+
+/** Maps the thin `IconPersistedDto` into the assembly's persisted shape (parses history recipes). */
+function persistedForAssembly(p: IconPersistedDto) {
+  return {
+    history: parseHistory(p.history),
+    applied: p.applied,
+    arrowOverlay: p.arrowOverlay,
+    activeUserProfiles: p.activeUserProfiles,
+  }
+}
+
+/** Derives the initial draft (config/kindPolicy/typeOverrides) from the saved-style ② (or the
+ *  factory default when no Apply has run) — the store's resume source on a fresh scan. */
+function draftFromPersisted(p: IconPersistedDto): IconStyleRecipe {
+  return parseRecipe(p.savedStyleJson) ?? defaultRecipe(DEFAULT_KIND_POLICY)
 }
 
 const PRESET_NAME_KEYS: Record<string, StringKey> = {
@@ -278,25 +296,9 @@ const PRESET_NAME_KEYS: Record<string, StringKey> = {
  * filter + distinction, tint only when Mono.
  */
 export function activePresetIdOf(state: IconsStateDto): string | null {
-  const c = state.config
-  for (const p of state.presets) {
-    if (
-      p.config.shape === c.shape &&
-      p.config.subject === c.subject &&
-      p.config.filter === c.filter &&
-      p.config.distinction === c.distinction &&
-      typeOverridesEqual(p.typeOverrides, state.typeOverrides) &&
-      (p.config.shortcutShape ?? null) === (c.shortcutShape ?? null) &&
-      (p.config.plateColor ?? null) === (c.plateColor ?? null) &&
-      p.config.plateFallback === c.plateFallback &&
-      (p.config.plateColor !== null || p.config.plateBand === c.plateBand) &&
-      (p.config.subject !== 'Mono' || p.config.monoStyle === c.monoStyle) &&
-      (p.config.subject !== 'Mono' || p.config.tint.toUpperCase() === c.tint.toUpperCase())
-    ) {
-      return p.id
-    }
-  }
-  return null
+  // Delegates to the single matching rule in lib/icons-assemble so the selection highlight and the
+  // assembled `activePresetId` field never drift (D1: presets are frontend data).
+  return activePresetIdOfRecipe(state.config, state.typeOverrides)
 }
 
 /**
@@ -362,17 +364,12 @@ export const useIcons = create<IconsState>((set, get) => {
   }
 
   const schedulePersist = () => {
-    // The bare-look intent is client-only — write it immediately (not debounced)
-    // so a fast close never drops it. Every look mutator sets bareLook then calls
-    // this, so this one line keeps storage coherent across edits + undo/redo.
+    // The bare-look intent is the only client-durable draft bit — write it immediately (not
+    // debounced) so a fast close never drops it. The config/override/kindPolicy/typeOverrides DRAFT
+    // does NOT persist here (D1 / spec 07 §8.2: setLook left the bridge; a draft is not intent). It
+    // is frontend session state, resumed from ② (the last global Apply) on the next scan — so a
+    // never-applied tweak is intentionally not durable, only an Applied look is.
     persistBareLook(get().bareLook)
-    if (persistTimer) clearTimeout(persistTimer)
-    persistTimer = setTimeout(() => {
-      persistTimer = null
-      const s = get()
-      if (!s.state) return
-      void bridge('icons.setLook', { config: s.state.config, overrides: overridesOf(s.items), kindPolicy: s.state.kindPolicy, typeOverrides: s.state.typeOverrides })
-    }, PERSIST_DEBOUNCE_MS)
   }
 
   const markDirty = (state: IconsStateDto): IconsStateDto =>
@@ -478,8 +475,21 @@ export const useIcons = create<IconsState>((set, get) => {
     if (sourcesLoading === 0) recomputeHueSpread() // all sources were cached
   }
 
-  const adoptScan = (result: { revision: number; items: IconItemDto[]; state: IconsStateDto }) => {
-    if (result.revision < get().revision) return
+  /** The store's live draft (config/kindPolicy/typeOverrides), or null before the first scan. */
+  const currentDraft = (): IconStyleRecipe | null => {
+    const s = get().state
+    return s ? { config: s.config, kindPolicy: s.kindPolicy, typeOverrides: s.typeOverrides } : null
+  }
+
+  /** Fetches the raw scan + the persisted ②③/native bits (thin, D1) in one round-trip pair. */
+  const fetchScan = async (): Promise<{ scan: IconScanDto; persisted: IconPersistedDto }> => {
+    const [scan, persisted] = await Promise.all([bridge('icons.scan'), bridge('icons.getPersisted')])
+    return { scan, persisted }
+  }
+
+  /** Assembles + adopts a scan under `draft` (D1: the frontend owns presets/palette/grid/assembly). */
+  const adoptScan = (scan: IconScanDto, persisted: IconPersistedDto, draft: IconStyleRecipe) => {
+    if (scan.revision < get().revision) return
     // Any successful full load clears the scan-recovery state (review P2-2 item 4):
     // retry budget + pending backoff timer + the exhausted flag, so a rescan (or
     // manual retry) heals a prior exhaustion.
@@ -488,16 +498,21 @@ export const useIcons = create<IconsState>((set, get) => {
       clearTimeout(scanRetryTimer)
       scanRetryTimer = null
     }
-    kindBuckets = new Map(result.items.map((i) => [i.id, kindBucket(i.kind)]))
+    kindBuckets = new Map(scan.items.map((i) => [i.id, kindBucket(i.kind)]))
     getIconCompositor().invalidateAll()
     set({
-      items: result.items,
-      state: result.state,
-      revision: result.revision,
+      items: scan.items,
+      state: assembleIconsState({
+        draft,
+        items: scan.items,
+        persisted: persistedForAssembly(persisted),
+        wallpaperUrl: currentWallpaperUrl(),
+      }),
+      revision: scan.revision,
       renderTick: get().renderTick + 1,
       scanExhausted: false,
     })
-    loadSources(result.items)
+    loadSources(scan.items)
   }
 
   return {
@@ -533,9 +548,9 @@ export const useIcons = create<IconsState>((set, get) => {
       // "Windows default"), and `loaded` resets so a later trigger re-scans
       // (mirrors the boot() handshake). Previously the await was uncaught, so a
       // scan failure left loaded=true + state=null forever (review P2-2).
-      let result
+      let fetched
       try {
-        result = await bridge('icons.scan')
+        fetched = await fetchScan()
       } catch (err) {
         console.error('icons.scan failed', err)
         // SELF-RECOVER with EXPONENTIAL BACKOFF + a TERMINAL state (review P2-2):
@@ -575,8 +590,9 @@ export const useIcons = create<IconsState>((set, get) => {
         set({ loaded: false })
         return
       }
-      // Scan succeeded — adoptScan clears the recovery budget + timer + exhausted.
-      adoptScan(result)
+      // Scan succeeded — adoptScan clears the recovery budget + timer + exhausted. The initial
+      // draft resumes from ② (the last global Apply), or the factory default if none.
+      adoptScan(fetched.scan, fetched.persisted, draftFromPersisted(fetched.persisted))
       // A3 resume: rehydrate the last bare-look intent BEFORE first paint, so a
       // relaunch whose last selection was System Default opens bare (not the
       // rehydrated config). Only the initial scan resumes it — a manual rescan
@@ -606,11 +622,12 @@ export const useIcons = create<IconsState>((set, get) => {
 
     rescan: async () => {
       const gen = nextGen()
-      const result = await bridge('icons.scan')
+      const fetched = await fetchScan()
       // A rescan superseded by a later op (e.g. an arrow restore started after it)
       // must not apply its now-stale full state over the newer truth (P2-4b).
       if (!isCurrentGen(gen)) return
-      adoptScan(result)
+      // Preserve the user's live draft across a manual refresh (only the initial scan resumes ②).
+      adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted))
       useToasts.getState().show(t('Toast_Refreshed'))
     },
 
@@ -810,12 +827,11 @@ export const useIcons = create<IconsState>((set, get) => {
           // Yield a frame so the progress UI paints between chunks.
           await new Promise((resolve) => requestAnimationFrame(resolve))
         }
-        const result = await bridge('icons.applyBakedCommit', {
-          config,
-          typeOverrides,
-          overrides: overridesOf(s.items),
-          label: lookLabel(s.state),
-        })
+        // The full recipe rides as an opaque JSON string (Rust persists it as ②③). Per-icon
+        // overrides are already baked into the masters (or excluded as show-original), so they
+        // do not cross — the styleJson is the three global knobs only (spec 07 §8.2).
+        const styleJson = JSON.stringify({ config, kindPolicy: policy, typeOverrides })
+        const result = await bridge('icons.applyBakedCommit', { styleJson, label: lookLabel(s.state) })
         // Superseded while baking (a newer writer landed first): drop this stale
         // commit — never write the outdated state or announce success over the
         // newer writer's truth (P2-4). Clear the progress veil AND release
@@ -827,7 +843,17 @@ export const useIcons = create<IconsState>((set, get) => {
           set(cur ? { state: { ...cur, working: false }, applyProgress: null } : { applyProgress: null })
           return false
         }
-        set({ state: result.state, applyProgress: null })
+        // The applied recipe IS the new draft; assemble the fresh state from it + the persisted ②③.
+        const applied: IconStyleRecipe = { config, kindPolicy: policy, typeOverrides }
+        set({
+          state: assembleIconsState({
+            draft: applied,
+            items: get().items,
+            persisted: persistedForAssembly(result.persisted),
+            wallpaperUrl: currentWallpaperUrl(),
+          }),
+          applyProgress: null,
+        })
         toastOf(result)
         if (result.ok) set({ waveKind: 'bloom', waveStamp: Date.now() })
         return result.ok
@@ -858,7 +884,16 @@ export const useIcons = create<IconsState>((set, get) => {
           if (cur) set({ state: { ...cur, working: false } })
           return
         }
-        set({ state: result.state })
+        // A full restore clears ② + reverts the desktop; keep the user's live draft (they can
+        // re-apply) — only `applied`/arrow flip, sourced from the fresh persisted state.
+        set({
+          state: assembleIconsState({
+            draft: currentDraft() ?? draftFromPersisted(result.persisted),
+            items: get().items,
+            persisted: persistedForAssembly(result.persisted),
+            wallpaperUrl: currentWallpaperUrl(),
+          }),
+        })
         toastOf(result)
         if (result.ok) set({ waveKind: 'settle', waveStamp: Date.now() })
       } catch {
@@ -892,8 +927,8 @@ export const useIcons = create<IconsState>((set, get) => {
           set({
             state: {
               ...cur,
-              arrowOverlay: result.state.arrowOverlay,
-              activeUserProfiles: result.state.activeUserProfiles,
+              arrowOverlay: result.persisted.arrowOverlay,
+              activeUserProfiles: result.persisted.activeUserProfiles,
             },
           })
         }
@@ -925,12 +960,10 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     exportCompare: async () => {
-      // Export wholesale-replaces state, so it must obey the same generation
-      // discipline: if a newer op landed first, skip the stale state clobber but
-      // still toast (the export file itself was written either way) (P2-4a).
-      const gen = nextGen()
+      // Export renders a before/after compare sheet — a pure side effect that never changes the
+      // visible state (D1: the thin op returns only the unchanged persisted bits), so it just
+      // toasts. No generation guard needed: there is no state to clobber.
       const result = await bridge('icons.exportCompare')
-      if (isCurrentGen(gen)) set({ state: result.state })
       toastOf(result)
     },
 

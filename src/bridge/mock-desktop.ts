@@ -1,42 +1,25 @@
 import type {
-  ConfigDto,
   IconItemDto,
   IconKind,
-  IconsOpResultDto,
-  IconsStateDto,
-  KindPolicy,
-  OverrideEntryDto,
-  PresetDto,
-  ScanResultDto,
-  TypeOverrides,
+  IconOpResultDto,
+  IconPersistedDto,
+  IconScanDto,
+  LookVersionDto,
 } from './types'
-import { DEFAULT_KIND_POLICY } from '@/lib/kind-policy'
-import { typeOverridesEqual } from '@/lib/type-config'
+import { iconGrid } from '@/lib/icons-assemble'
 import { overlayRestoreResult, type OverlayOutcome } from '@/lib/arrow-overlay'
 
-// Browser-only fake desktop DATA source (icons contract v2, spec 06 §2/§5):
-// the canvas wallpaper scene, the REAL icon pack (public/real-icons/, the
-// asset SSoT harvested by scripts/dev/fetch-real-icons.ts) and the session state
-// machine. NO styling happens here any more — the icon compositor renders
-// sources exactly as it does against the Windows host, so the Mac dev loop
-// shows engine truth (ADR-0015 D1 retired the old approximate tile painter).
+// Browser-only fake DESKTOP DATA source (icons contract v2, schema 7, D1): the mock is now THIN —
+// it produces the raw scan items + the persisted ②③/native bits, exactly like the real Rust host.
+// The presets/palette/swatches/grid/assembly moved to `lib/icons-assemble` (the single frontend
+// assembly both the mock and the real bridge feed); NOTHING styles here — the compositor renders
+// sources identically against the Windows host, so the Mac dev loop shows engine truth.
 
-// ---- mock wallpaper: REAL Win11 default first, drawn scene fallback ----
-// The real Bloom wallpaper rides in the gitignored real pack (fetch script §4).
-// Locally we cannot read the user's actual wallpaper, so the REAL default is
-// the honest stand-in (owner order 2026-07-09); the canvas dawn scene remains
-// only for a clone that has not fetched the fixtures.
-
+// ---- mock wallpaper scene (kept: consumed by mock-wallpaper.ts) ----
 const SCENE_W = 1920
 const SCENE_H = 1080
 
 // ---- DEV user-simulation scenarios (dev menu; owner ask 2026-07-09) ----
-// messy  = the whole harvested pack (stress test — the current chaos)
-// office = a tidy work desktop: documents, folders, a few work apps
-// gamer  = a geek/gaming desktop: dark theme wallpaper, its own app set
-// Scenario = mock DATA choice, so it lives here, not in app state; switching
-// happens in the dev menu via localStorage + reload (dev/video tooling only).
-
 export type MockScenario = 'messy' | 'office' | 'gamer'
 export const SCENARIO_KEY = 'dm.dev.scenario'
 
@@ -45,9 +28,7 @@ export function currentScenario(): MockScenario {
   return v === 'office' || v === 'gamer' ? v : 'messy'
 }
 
-// [M6-WIRE] Active user-profile count is host truth on Windows; in the browser
-// loop it is a dev knob (localStorage + reload, like the scenario) so the
-// multi-user consent gate can be exercised. Default 1 (single user).
+// [M6-WIRE] Active user-profile count is host truth on Windows; in the browser loop a dev knob.
 export const USER_PROFILES_KEY = 'dm.dev.userProfiles'
 
 function activeUserProfiles(): number {
@@ -55,10 +36,8 @@ function activeUserProfiles(): number {
   return Number.isFinite(v) && v >= 1 ? Math.floor(v) : 1
 }
 
-// [M6-WIRE] The real dm-elevated RestoreOverlay verb resolves to Applied |
-// Declined | Failed (dm-domain ports.rs OverlayOutcome). In the browser loop a
-// dev knob injects the outcome so the declined/failed paths are exercisable;
-// the real host reports the observed outcome. Default: a confirmed restore.
+// [M6-WIRE] The real dm-elevated RestoreOverlay verb resolves Applied|Declined|Failed; a dev knob
+// injects the outcome so the declined/failed paths are exercisable.
 export const RESTORE_OUTCOME_KEY = 'dm.dev.restoreOutcome'
 
 function restoreOutcome(): OverlayOutcome {
@@ -83,11 +62,6 @@ const SCENARIO_ITEMS: Record<Exclude<MockScenario, 'messy'>, { id: string; label
     { id: 'real-app-teams', label: 'Teams' },
     { id: 'real-app-onenote' },
     { id: 'real-app-calculator' },
-    // Loose files — every label matches its icon's ART (contact-sheet
-    // verified): doc windows = .docx, ruled note = .txt, pie-chart slide =
-    // .pptx, picture docs = images, floppy = backup. No .xlsx/.pdf names —
-    // the pack has no spreadsheet/PDF art, and a PDF label on a printer icon
-    // is exactly the confusion the owner banned.
     { id: 'real-win-67', label: '项目计划.docx' },
     { id: 'real-win-130', label: '合同定稿.docx' },
     { id: 'real-win-1278', label: '合同_副本.docx' },
@@ -199,23 +173,12 @@ export function mockWallpaperUrl(): string {
   return sceneUrl
 }
 
-export const MOCK_PALETTE = ['#B97D4E', '#8A5A33', '#E8C9A0', '#6E4526', '#F4E7D3']
-const MONO_SWATCHES = ['#FFFFFF', '#141414', '#B97D4E', '#FF6F5E', '#3FB6A8', '#D9A94E']
-const MARK_SWATCHES = ['#FFFFFF', '#141414', '#FF6F5E', '#B97D4E', '#3FB6A8']
-
-// ---- desktop items: the REAL icon pack is REQUIRED (owner order 2026-07-11:
-// synthetic icons are gone from the mock desktop) ----
-// public/real-icons/ is the gitignored asset SSoT (subfoldered by type),
-// harvested by scripts/dev/fetch-real-icons.ts: genuine Windows system icons
-// + real app icons at their native sizes. A fresh clone must run the harvest
-// script once; there is no synthetic fallback.
-
+// ---- desktop items: the REAL icon pack is REQUIRED (owner order 2026-07-11) ----
 interface RealEntry {
   file: string
   id: string
   kind: IconKind
   label: string
-  /** Additional source files (Recycle Bin: [empty]). */
   extraSources: string[]
 }
 
@@ -267,245 +230,106 @@ async function loadManifest(): Promise<PackEntry[]> {
   return manifestPromise
 }
 
-function toItem(entry: PackEntry, index: number, rows: number, g: IconsStateDto['grid']): IconItemDto {
-  // UWP desktop entries are ordinary .lnk files — the standard icon-location
-  // write applies (owner prototype truth, 2026-07-09); only Unsupported is off.
+// Positions are OBSERVED truth (spec 06 §3.6): the mock lays them out on a fixed-size grid, the
+// stand-in for the real IFolderView2 layout. The frontend's grid drives rendering (D1).
+const MOCK_GRID = iconGrid('Mid')
+
+function toItem(entry: PackEntry, index: number, rows: number): IconItemDto {
+  // UWP desktop entries are ordinary .lnk files — only Unsupported is off (owner prototype truth).
   const styleable = entry.kind !== 'Unsupported'
-  const override = session.overrides.get(entry.id)
   const col = Math.floor(index / rows)
   const row = index % rows
   return {
     id: entry.id,
     label: entry.label,
     kind: entry.kind,
-    // AppxShortcut IS a shortcut (ADR-0017 bug fix): UWP desktop entries are
-    // ordinary .lnk files and must wear the mark like any other shortcut.
     isShortcut: entry.kind === 'Shortcut' || entry.kind === 'UrlShortcut' || entry.kind === 'AppxShortcut',
     styleable,
-    statusReason: styleable ? null : 'MOCK-HOST-REASON', // host sends localized copy; UI falls back to its own key
-    x: g.inset + col * g.cellWidth,
-    y: g.inset + row * g.cellHeight,
+    statusReason: styleable ? null : 'MOCK-HOST-REASON',
+    x: MOCK_GRID.inset + col * MOCK_GRID.cellWidth,
+    y: MOCK_GRID.inset + row * MOCK_GRID.cellHeight,
     sourceUrls: entry.sourceUrls,
-    overrideMode: override?.mode ?? null,
-    overrideTint: override?.tint ?? null,
+    // Per-icon overrides are frontend DRAFT state (schema 7) — a scan starts them empty; the store
+    // fills them from its own draft.
+    overrideMode: null,
+    overrideTint: null,
   }
 }
 
-// ---- module state machine ----
-
-// Marks default ON (owner 2026-07-10, voids the 2026-07-07 no-marks decree):
-// the badge is the delete-safety indicator, so every preset ships
-// Distinction.Mark with the lightweight Shadow style.
-// Lineup reworked per ADR-0016 D3 (findability panel, owner 2026-07-10):
-// Presets are COORDINATE BOOKMARKS in the subject × plate space (ADR-0018).
-export const BASE_CONFIGS: Record<string, ConfigDto> = {
-  // Preset Collection v2 (chief-designer curation, owner order 2026-07-10):
-  // six distinct material worlds, six mark styles (Fold retired), dark-brown
-  // folder boards banned. docs/product/preset-collection-v2.md is normative.
-  // Key order = card order: the featured four (max-difference sampling -
-  // colour/glass/ink/white) sit above the 更多风格 fold; glass wears Shadow
-  // (the Glass mark's opaque disc read as a dark patch on frosted tiles;
-  // bead redesign = logged component debt).
-  spectrum: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Halo', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
-  glass: { shape: 'Samsung', subject: 'Original', plateBand: 'Vivid', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Shadow', markColor: null, plateColor: null, size: 'Mid', filter: 'Glass' },
-  ink: { shape: 'Circle', subject: 'BlackWhite', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Arc', markColor: null, plateColor: '#F4F1EA', size: 'Mid', filter: 'None' },
-  white: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Ring', markColor: null, plateColor: '#FFFFFF', size: 'Mid', filter: 'None' },
-  stationery: { shape: 'Apple', subject: 'Original', plateBand: 'Quiet', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Satin', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
-  pebble: { shape: 'Pebble', subject: 'Original', plateBand: 'Quiet', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Shadow', markColor: null, plateColor: null, size: 'Mid', filter: 'Sticker' },
-  ascast: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Ring', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
-}
-
-// Per-preset type ladders (Preset Collection v2) — every set ships its own.
-export const PRESET_TYPE_OVERRIDES: Record<string, TypeOverrides> = {
-  spectrum: {
-    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: null, plateFallback: 'derived' } },
-    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#EDEAE4' } },
-  },
-  stationery: {
-    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#EAD6A8' } },
-    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#EDEAE4' } },
-  },
-  glass: {
-    Folder: { source: 'custom', patch: { shape: 'Samsung', plateColor: null, plateFallback: 'derived' } },
-    File: { source: 'custom', patch: { shape: 'Samsung', plateColor: '#FFFFFF' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#ECECEE' } },
-  },
-  pebble: {
-    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#EAD6A8' } },
-    File: { source: 'custom', patch: { shape: 'Teardrop', plateColor: '#E9E2D4' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#EAE7E0' } },
-  },
-  ink: {
-    Folder: { source: 'custom', patch: { shape: 'Bookmark', plateColor: '#EDE8DC' } },
-    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#F4F1EA' } },
-    System: { source: 'custom', patch: { shape: 'Circle', plateColor: '#EEEBE4' } },
-  },
-  white: {
-    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#FFFFFF' } },
-    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#FFFFFF' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#F2F2F2' } },
-  },
-  ascast: {
-    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: null, plateFallback: 'white' } },
-    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#EDEAE4' } },
-  },
-}
-
-// C# truth: desktop icon px is Small 32 · Mid 48 · Big 96 (DesktopIconSize.cs).
-const ICON_PX: Record<ConfigDto['size'], number> = { Small: 32, Mid: 48, Big: 96 }
+// ---- thin session (schema 7): only the platform/persisted truth the mock owns ----
+const HISTORY_CAP = 10
 
 interface MockIconsSession {
-  config: ConfigDto
-  typeOverrides: TypeOverrides
   applied: boolean
-  dirty: boolean
-  working: boolean
-  history: { time: string; label: string; config: ConfigDto; typeOverrides: TypeOverrides }[]
-  currentHistoryIndex: number
-  overrides: Map<string, { mode: 'keep' | 'tint'; tint: string | null }>
-  kindPolicy: KindPolicy
+  arrowOverlay: 'native' | 'hidden'
+  /** Store ② — the last-Applied recipe JSON, or null before any Apply. */
+  savedStyleJson: string | null
+  /** Store ③ — up to 10 saved looks, newest-first. */
+  history: LookVersionDto[]
   revision: number
   bakePending: Map<string, string>
-  // [M6-WIRE] Machine-wide native-arrow state (ADR-0021). Apply installs the
-  // transparent overlay ('hidden'); both restores lift it ('native').
-  arrowOverlay: 'native' | 'hidden'
+  styleableCount: number
 }
 
 const session: MockIconsSession = {
-  config: { ...BASE_CONFIGS.spectrum },
-  typeOverrides: structuredClone(PRESET_TYPE_OVERRIDES.spectrum),
   applied: false,
-  dirty: false,
-  working: false,
+  arrowOverlay: 'native',
+  savedStyleJson: null,
   history: [],
-  currentHistoryIndex: -1,
-  overrides: new Map(),
-  kindPolicy: { ...DEFAULT_KIND_POLICY },
   revision: 0,
   bakePending: new Map(),
-  arrowOverlay: 'native',
+  styleableCount: 0,
 }
 
-function activePresetId(): string | null {
-  for (const [id, preset] of Object.entries(BASE_CONFIGS)) {
-    if (
-      preset.shape === session.config.shape &&
-      preset.subject === session.config.subject &&
-      preset.filter === session.config.filter &&
-      preset.distinction === session.config.distinction &&
-      typeOverridesEqual(PRESET_TYPE_OVERRIDES[id], session.typeOverrides) &&
-      (preset.shortcutShape ?? null) === (session.config.shortcutShape ?? null) &&
-      preset.plateColor === session.config.plateColor &&
-      preset.plateFallback === session.config.plateFallback &&
-      // derived-plate presets differ by band only when the plate IS derived.
-      (preset.plateColor !== null || preset.plateBand === session.config.plateBand) &&
-      (preset.subject !== 'Mono' || preset.tint === session.config.tint)
-    ) {
-      return id
-    }
-  }
-  return null
-}
-
-function presets(): PresetDto[] {
-  return Object.entries(BASE_CONFIGS).map(([id, config]) => ({
-    id,
-    config: { ...config },
-    typeOverrides: structuredClone(PRESET_TYPE_OVERRIDES[id] ?? {}),
-  }))
-}
-
-function grid(): IconsStateDto['grid'] {
-  const iconPx = ICON_PX[session.config.size]
+function persisted(): IconPersistedDto {
   return {
-    screenWidth: SCENE_W,
-    screenHeight: SCENE_H,
-    taskbarHeight: 48,
-    iconPx,
-    cellWidth: iconPx + 44,
-    cellHeight: iconPx + 48,
-    inset: 14,
-    labelFontPx: 12,
-  }
-}
-
-let styleableCount = 0
-
-function state(): IconsStateDto {
-  return {
-    scanning: false,
-    working: session.working,
+    savedStyleJson: session.savedStyleJson,
+    history: session.history.map((v) => ({ ...v })),
     applied: session.applied,
-    dirty: session.dirty,
-    styleableCount,
-    config: { ...session.config },
-    activePresetId: activePresetId(),
-    presets: presets(),
-    history: session.history.map((h, index) => ({
-      index,
-      time: h.time,
-      label: h.label,
-      isCurrent: index === session.currentHistoryIndex,
-      config: { ...h.config },
-      typeOverrides: structuredClone(h.typeOverrides),
-    })),
-    palette: MOCK_PALETTE,
-    monoSwatches: MONO_SWATCHES,
-    markSwatches: MARK_SWATCHES,
-    grid: grid(),
-    wallpaperUrl: mockWallpaperUrl(),
-    kindPolicy: { ...session.kindPolicy },
-    typeOverrides: structuredClone(session.typeOverrides),
     arrowOverlay: session.arrowOverlay,
     activeUserProfiles: activeUserProfiles(),
   }
 }
 
-function nowLabel(): string {
-  const d = new Date()
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000)
+}
+
+let lookCounter = 0
+
+/** Pushes a look (dedup-before-cap, mirroring the real LookHistoryStore). */
+function pushHistory(styleJson: string, label: string | null): void {
+  const head = session.history[0]
+  if (head && head.styleJson === styleJson) {
+    head.createdAt = nowSeconds()
+    return
+  }
+  session.history.unshift({ id: `mock-look-${++lookCounter}`, createdAt: nowSeconds(), label, pinned: false, styleJson })
+  session.history = session.history.slice(0, HISTORY_CAP)
 }
 
 export async function mockIconsCall(method: string, params: unknown): Promise<unknown> {
   const p = (params ?? {}) as {
-    config?: ConfigDto
-    overrides?: OverrideEntryDto[]
     revision?: number
     count?: number
     items?: { id: string; sourceIndex: number; masterPng: string }[]
-    label?: string
+    styleJson?: string
+    label?: string | null
   }
   switch (method) {
-    case 'icons.getState':
-      return state()
+    case 'icons.getPersisted':
+      return persisted()
     case 'icons.scan': {
       await probeRealWallpaper()
       const entries = await loadManifest()
-      const g = grid()
-      const rows = Math.floor((g.screenHeight - g.taskbarHeight - g.inset * 2) / g.cellHeight)
-      // Positions are OBSERVED truth: computed once per scan at the CURRENT
-      // icon size, never re-packed by a size-knob change (spec 06 §3.6).
-      const items = entries.map((e, i) => toItem(e, i, rows, g))
-      styleableCount = items.filter((i) => i.styleable).length
+      const rows = Math.floor((MOCK_GRID.screenHeight - MOCK_GRID.taskbarHeight - MOCK_GRID.inset * 2) / MOCK_GRID.cellHeight)
+      const items = entries.map((e, i) => toItem(e, i, rows))
+      session.styleableCount = items.filter((i) => i.styleable).length
       session.revision += 1
-      return { revision: session.revision, items, state: state() } satisfies ScanResultDto
-    }
-    case 'icons.setLook': {
-      session.config = { ...p.config! }
-      session.overrides = new Map((p.overrides ?? []).map((o) => [o.id, { mode: o.mode, tint: o.tint }]))
-      const kp = (p as { kindPolicy?: KindPolicy }).kindPolicy
-      if (kp) session.kindPolicy = { ...kp }
-      const to = (p as { typeOverrides?: TypeOverrides }).typeOverrides
-      if (to) session.typeOverrides = structuredClone(to)
-      if (session.applied) session.dirty = true
-      return null
+      return { revision: session.revision, items } satisfies IconScanDto
     }
     case 'icons.applyBakedBegin':
       session.bakePending = new Map()
-      session.working = true
       return null
     case 'icons.applyBakedChunk': {
       for (const item of p.items ?? []) session.bakePending.set(`${item.id}#${item.sourceIndex}`, item.masterPng)
@@ -516,40 +340,28 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
       ;(window as { __dmBakedIcons?: Record<string, string> }).__dmBakedIcons = Object.fromEntries(
         [...session.bakePending].map(([id, png]) => [id, `data:image/png;base64,${png}`]),
       )
-      session.config = { ...p.config! }
-      session.overrides = new Map((p.overrides ?? []).map((o) => [o.id, { mode: o.mode, tint: o.tint }]))
-      const committedLadder = (p as { typeOverrides?: TypeOverrides }).typeOverrides
-      if (committedLadder) session.typeOverrides = structuredClone(committedLadder)
+      const styleJson = p.styleJson ?? '{}'
+      session.savedStyleJson = styleJson
       session.applied = true
-      session.dirty = false
-      session.working = false
-      // [M6-WIRE] Apply installs the global transparent overlay: the native
-      // Windows arrow is hidden machine-wide (ADR-0021).
+      // Apply installs the global transparent overlay: the native arrow is hidden (ADR-0021).
       session.arrowOverlay = 'hidden'
-      session.history.unshift({ time: nowLabel(), label: p.label ?? '自定义', config: { ...p.config! }, typeOverrides: structuredClone(session.typeOverrides) })
-      session.history = session.history.slice(0, 10)
-      session.currentHistoryIndex = 0
-      return { state: state(), toast: null, ok: true } satisfies IconsOpResultDto
+      pushHistory(styleJson, p.label ?? '自定义')
+      return { ok: true, toast: null, persisted: persisted() } satisfies IconOpResultDto
     }
     case 'icons.restore':
       session.applied = false
-      session.dirty = false
-      session.currentHistoryIndex = -1
+      session.savedStyleJson = null
       // Full restore lifts the overlay too (icons AND arrow back to native).
       session.arrowOverlay = 'native'
-      return { state: state(), toast: null, ok: true } satisfies IconsOpResultDto
+      return { ok: true, toast: null, persisted: persisted() } satisfies IconOpResultDto
     case 'icons.restoreOverlay': {
-      // [M6-WIRE] Keep-beautification restore: only the arrow overlay moves; the
-      // icon look (applied/history/config) is untouched. Faithful to the real
-      // Applied|Declined|Failed contract — a confirmed restore flips to native,
-      // a declined/failed one leaves the arrow hidden so the entry stays for a
-      // retry, and the OBSERVED post-op state (not the outcome) is authoritative.
+      // Keep-beautification restore: only the arrow overlay moves; the icon look is untouched.
       const res = overlayRestoreResult(restoreOutcome())
       session.arrowOverlay = res.arrowOverlay
-      return { state: state(), toast: { key: res.toastKey, arg: null }, ok: res.ok } satisfies IconsOpResultDto
+      return { ok: res.ok, toast: { key: res.toastKey, arg: null }, persisted: persisted() } satisfies IconOpResultDto
     }
     case 'icons.exportCompare':
-      return { state: state(), toast: null, ok: true } satisfies IconsOpResultDto
+      return { ok: true, toast: null, persisted: persisted() } satisfies IconOpResultDto
     default:
       throw new Error(`[mock desktop] unhandled method: ${method}`)
   }

@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ConfigDto, IconItemDto, IconKind, IconKindBucket, TypeOverrides } from '@/bridge/types'
-import { BASE_CONFIGS, PRESET_TYPE_OVERRIDES } from '@/bridge/mock-desktop'
+import { BASE_CONFIGS, PRESET_TYPE_OVERRIDES } from '@/lib/icons-assemble'
 import { DEFAULT_KIND_POLICY, kindBucket } from '@/lib/kind-policy'
 import { appAccentSeed, resolveTypeConfig, typeHasFixedPlate } from '@/lib/type-config'
 import { computeHueSpread } from '@/icon-compositor/hue-spread'

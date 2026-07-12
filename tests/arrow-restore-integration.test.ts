@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
-import type { IconsOpResultDto, IconsStateDto } from '../src/bridge/types'
+import type { IconOpResultDto, IconPersistedDto, IconScanDto, IconsStateDto } from '../src/bridge/types'
 import {
   __setBridgeForTests,
   __setScanRetryMsForTests,
@@ -9,7 +9,8 @@ import {
   SCAN_RETRY_MAX,
   useIcons,
 } from '../src/stores/icons'
-import { BASE_CONFIGS, mockIconsCall, probeRealWallpaper } from '../src/bridge/mock-desktop'
+import { mockIconsCall, probeRealWallpaper } from '../src/bridge/mock-desktop'
+import { BASE_CONFIGS } from '../src/lib/icons-assemble'
 import { useToasts } from '../src/stores/toasts'
 import { DEFAULT_KIND_POLICY } from '../src/lib/kind-policy'
 import { t } from '../src/lib/i18n'
@@ -94,12 +95,25 @@ const seedState = (over: Partial<IconsStateDto> = {}): IconsStateDto => ({
 const seedStore = (over: Partial<IconsStateDto> = {}) =>
   useIcons.setState({ loaded: true, state: seedState(over), items: [], revision: 0, overlayRestoring: false })
 
-const opResult = (over: Partial<IconsStateDto>, extra: Partial<IconsOpResultDto> = {}): IconsOpResultDto => ({
-  state: seedState(over),
-  toast: null,
+// Thin bridge shapes (schema 7): op results carry `persisted`, scans carry only revision + items,
+// and the store fetches getPersisted alongside every scan.
+const persistedDto = (over: Partial<IconPersistedDto> = {}): IconPersistedDto => ({
+  savedStyleJson: null,
+  history: [],
+  applied: false,
+  arrowOverlay: 'native',
+  activeUserProfiles: 1,
+  ...over,
+})
+
+const opResult = (over: Partial<IconPersistedDto>, extra: Partial<IconOpResultDto> = {}): IconOpResultDto => ({
   ok: true,
+  toast: null,
+  persisted: persistedDto(over),
   ...extra,
 })
+
+const scanDto = (revision = 1): IconScanDto => ({ revision, items: [] })
 
 beforeEach(() => {
   resetIconsHistoryForTests()
@@ -168,12 +182,10 @@ describe('real mock through the store — the mock transitions are pinned', () =
 
   test('applyBakedCommit hides the arrow (machine-wide overlay installed)', async () => {
     const res = (await mockIconsCall('icons.applyBakedCommit', {
-      config: BASE_CONFIGS.spectrum,
-      typeOverrides: {},
-      overrides: [],
+      styleJson: JSON.stringify({ config: BASE_CONFIGS.spectrum, kindPolicy: {}, typeOverrides: {} }),
       label: 'x',
-    })) as IconsOpResultDto
-    expect(res.state.arrowOverlay).toBe('hidden')
+    })) as IconOpResultDto
+    expect(res.persisted.arrowOverlay).toBe('hidden')
   })
 })
 
@@ -246,10 +258,11 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     __setScanRetryMsForTests(10)
     let calls = 0
     __setBridgeForTests(((method: string) => {
+      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
       if (method !== 'icons.scan') throw new Error(`unexpected ${method}`)
       calls++
       if (calls === 1) return Promise.reject(new Error('bridge down')) // initial attempt fails
-      return Promise.resolve({ revision: 1, items: [], state: seedState() }) // the retry succeeds
+      return Promise.resolve(scanDto(1)) // the retry succeeds
     }) as unknown as Parameters<typeof __setBridgeForTests>[0])
     useIcons.setState({ loaded: false, state: null, revision: 0 })
 
@@ -298,6 +311,7 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     const scanInflight = new Promise((r) => (resolveScan = r))
     const restoreInflight = new Promise<IconsOpResultDto>((r) => (resolveRestore = r))
     __setBridgeForTests(((method: string) => {
+      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
       if (method === 'icons.scan') return scanInflight
       if (method === 'icons.restoreOverlay') return restoreInflight
       throw new Error(`unexpected ${method}`)
@@ -309,7 +323,7 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     const pRestore = useIcons.getState().restoreOverlay()
 
     // The OLDER rescan lands FIRST with a now-stale full state — must be dropped.
-    resolveScan({ revision: 1, items: [], state: seedState({ arrowOverlay: 'hidden', activeUserProfiles: 1 }) })
+    resolveScan(scanDto(1))
     // The NEWER restore lands second with the truth the user actually wants.
     resolveRestore(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
     await Promise.all([pScan, pRestore])
@@ -372,6 +386,7 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
   test('a stale rescan that lands LAST is dropped — its gen guard is load-bearing (review scan gate)', async () => {
     const scan = deferred<unknown>()
     setBridge((method) => {
+      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
       if (method === 'icons.scan') return scan.promise
       if (method === 'icons.restoreOverlay') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
       throw new Error(`unexpected ${method}`)
@@ -386,7 +401,7 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     // The OLDER rescan now lands LAST with a stale full-state snapshot — the
     // guard must drop it (this is the case the reverse-start test could not pin,
     // because there the late restore masked the transient clobber).
-    scan.resolve({ revision: 1, items: [], state: seedState({ arrowOverlay: 'hidden', activeUserProfiles: 1 }) })
+    scan.resolve(scanDto(1))
     await pScan
     expect(useIcons.getState().state!.arrowOverlay).toBe('native')
     expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
@@ -396,6 +411,7 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     __setScanRetryMsForTests(1) // 1ms base → the whole ladder resolves fast
     let calls = 0
     setBridge((method) => {
+      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
       if (method !== 'icons.scan') throw new Error(`unexpected ${method}`)
       calls++
       return Promise.reject(new Error('permanently down'))
@@ -417,10 +433,11 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     let calls = 0
     let mode: 'fail' | 'ok' = 'fail'
     setBridge((method) => {
+      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
       if (method !== 'icons.scan') throw new Error(`unexpected ${method}`)
       calls++
       if (mode === 'fail') return Promise.reject(new Error('down'))
-      return Promise.resolve({ revision: calls, items: [], state: seedState() })
+      return Promise.resolve(scanDto(calls))
     })
     useIcons.setState({ loaded: false, state: null, scanExhausted: false, revision: 0 })
 
@@ -442,6 +459,7 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     __setScanRetryMsForTests(30) // long enough to interpose a newer op before the retry fires
     let scanCalls = 0
     setBridge((method) => {
+      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
       if (method === 'icons.scan') {
         scanCalls++
         return Promise.reject(new Error('down'))
@@ -471,6 +489,7 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     const g2 = deferred<unknown>() // the NEWER scan, will succeed
     let n = 0
     setBridge((method) => {
+      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
       if (method !== 'icons.scan') throw new Error(`unexpected ${method}`)
       n++
       return n === 1 ? g1.promise : g2.promise
@@ -481,7 +500,7 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     useIcons.getState().retryScan() // resets gate + starts G2: loaded:true, awaiting g2
 
     // The NEWER scan succeeds first and owns the loaded state.
-    g2.resolve({ revision: 1, items: [], state: seedState() })
+    g2.resolve(scanDto(1))
     await waitUntil(() => useIcons.getState().state !== null)
     expect(useIcons.getState().loaded).toBe(true)
 

@@ -10,7 +10,13 @@
 // `applyBaked`/`restore` return a THIN WallpaperResultDto (ok/toast/hasBackup — NO
 // state; the store re-fetches getScreens and re-assembles). MonitorLookDto /
 // WallpaperStateDto remain, but as FRONTEND-ASSEMBLED store shapes, not bridge DTOs.
-export const BRIDGE_SCHEMA_VERSION = 6
+// Schema 7 (owner ruling D1, 2026-07-12): the ICON bridge contract SHRINKS like wallpaper's did.
+// Rust does scan / package + apply / restore / persist ②③ and returns THIN data (IconScanDto raw
+// items · IconPersistedDto the ②③+native bits · IconOpResultDto thin op results); the FRONTEND
+// assembles IconsStateDto (presets/palette/swatches/grid/activePresetId) via lib/icons-assemble,
+// and `icons.setLook` LEAVES the bridge (the draft is frontend session state, resumed from ② on
+// relaunch). IconsStateDto / ScanResultDto / IconsOpResultDto are now FRONTEND store shapes.
+export const BRIDGE_SCHEMA_VERSION = 7
 
 export interface SettingsDto {
   theme: 'System' | 'Dark' | 'Light'
@@ -274,16 +280,49 @@ export interface ToastDto {
   arg: string | null
 }
 
-export interface ScanResultDto {
+// ---- Thin icon bridge (schema 7, D1): Rust returns raw items + the persisted/native bits; the
+// frontend assembles IconsStateDto (presets/palette/grid) via lib/icons-assemble. IconsStateDto
+// above is now a FRONTEND-ASSEMBLED store shape, not a bridge DTO. ----
+
+/** `icons.scan` result — raw observed items + a revision. NO embedded state (the store assembles). */
+export interface IconScanDto {
   revision: number
   items: IconItemDto[]
-  state: IconsStateDto
 }
 
-export interface IconsOpResultDto {
-  state: IconsStateDto
-  toast: ToastDto | null
+/** One store-③ look-history entry (mirrors Rust `LookVersionDto`); `styleJson` is the opaque
+ *  `{config, kindPolicy, typeOverrides}` recipe the frontend parses to render its mini. */
+export interface LookVersionDto {
+  id: string
+  createdAt: number
+  label: string | null
+  pinned: boolean
+  styleJson: string
+}
+
+/** The persisted ②③ + native bits the frontend overlays onto its assembled state (mirrors Rust
+ *  `IconPersistedDto`). `savedStyleJson` is the opaque store-② recipe (or null before any Apply). */
+export interface IconPersistedDto {
+  savedStyleJson: string | null
+  history: LookVersionDto[]
+  applied: boolean
+  arrowOverlay: 'native' | 'hidden'
+  activeUserProfiles: number
+}
+
+/** The THIN result of a mutating icon op (mirrors Rust `IconOpResultDto`) — the store re-assembles
+ *  IconsStateDto from `persisted` + its own live draft + items. */
+export interface IconOpResultDto {
   ok: boolean
+  toast: ToastDto | null
+  persisted: IconPersistedDto
+}
+
+/** One baked master in an applyBakedChunk batch (mirrors Rust `IconChunkItemDto`). */
+export interface IconChunkItemDto {
+  id: string
+  sourceIndex: number
+  masterPng: string
 }
 
 // ---- Wallpaper module (mirrors Host/Bridge/WallpaperContracts.cs) ----
@@ -488,29 +527,25 @@ export interface BridgeMethods {
   'wallpaper.applyBaked': { params: { monitorId: string; pngBase64: string }; result: WallpaperResultDto }
   'wallpaper.restore': { params: { monitorId: string }; result: WallpaperResultDto }
   'fonts.list': { params: void; result: FontChoiceDto[] }
-  // Icons contract v2 (spec 06 §2): sources in ONCE per scan, chunked 256px
-  // masters out ONLY on apply; preview traffic never crosses the bridge.
-  'icons.getState': { params: void; result: IconsStateDto }
-  'icons.scan': { params: void; result: ScanResultDto }
-  'icons.setLook': { params: { config: ConfigDto; overrides: OverrideEntryDto[]; kindPolicy: KindPolicy; typeOverrides: TypeOverrides }; result: null }
+  // Thin icon contract (schema 7, D1): raw sources in ONCE per scan (served over dmicon://),
+  // chunked 256px masters out ONLY on apply; the store assembles IconsStateDto from these + the
+  // persisted bits + its own presets/palette/grid. sourceIndex: 0 = primary, 1 = paired empty.
+  'icons.getPersisted': { params: void; result: IconPersistedDto }
+  'icons.scan': { params: void; result: IconScanDto }
+  // setLook LEFT the bridge (D1): the config/override/kindPolicy/typeOverrides DRAFT is frontend
+  // session state, resumed from ② (savedStyle) on relaunch — spec 07 §8.2 writes ② only on Apply.
   'icons.applyBakedBegin': { params: { revision: number; count: number }; result: null }
-  'icons.applyBakedChunk': {
-    /** sourceIndex maps multi-source items (Recycle Bin: 0=empty, 1=full). */
-    params: { items: { id: string; sourceIndex: number; masterPng: string }[] }
-    result: null
-  }
-  'icons.applyBakedCommit': {
-    params: { config: ConfigDto; typeOverrides: TypeOverrides; overrides: OverrideEntryDto[]; label: string }
-    result: IconsOpResultDto
-  }
-  'icons.restore': { params: void; result: IconsOpResultDto }
+  'icons.applyBakedChunk': { params: { items: IconChunkItemDto[] }; result: null }
+  // The full recipe rides as an opaque JSON string (the envelope Rust persists as ②③); per-icon
+  // overrides are already baked into the masters (or excluded), so they do not cross here.
+  'icons.applyBakedCommit': { params: { styleJson: string; label: string | null }; result: IconOpResultDto }
+  'icons.restore': { params: void; result: IconOpResultDto }
   /** [M6-WIRE] Keep-beautification restore: brings the native shortcut arrow
    *  back (arrowOverlay → 'native') WITHOUT undoing the icon look — shapes and
    *  colours stay. Distinct from `icons.restore` (which undoes everything). The
-   *  real elevated verb is `dm-elevated RestoreOverlay` (exact byte restore),
-   *  wired in the Tauri cutover batch; mock-only here. */
-  'icons.restoreOverlay': { params: void; result: IconsOpResultDto }
-  'icons.exportCompare': { params: void; result: IconsOpResultDto }
+   *  real elevated verb is `dm-elevated RestoreOverlay` (exact byte restore). */
+  'icons.restoreOverlay': { params: void; result: IconOpResultDto }
+  'icons.exportCompare': { params: void; result: IconOpResultDto }
   'shell.minimize': { params: void; result: null }
   'shell.maximize': { params: void; result: null }
   'shell.restore': { params: void; result: null }

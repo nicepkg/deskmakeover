@@ -16,6 +16,16 @@ pub const HIDDEN: u32 = FILE_ATTRIBUTE_HIDDEN.0;
 pub const SYSTEM: u32 = FILE_ATTRIBUTE_SYSTEM.0;
 pub const READONLY: u32 = FILE_ATTRIBUTE_READONLY.0;
 pub const NORMAL: u32 = FILE_ATTRIBUTE_NORMAL.0;
+pub const REPARSE_POINT: u32 = 0x0000_0400; // FILE_ATTRIBUTE_REPARSE_POINT
+
+/// Whether the path is a reparse point (junction/symlink). `GetFileAttributesW` reports the
+/// reparse flag on the entry itself without following it. The apply writers re-check this even
+/// though `scan` already excluded reparse points: `is_dir()`/`exists()` FOLLOW a junction, so a
+/// folder swapped for a junction to elsewhere in the scan→apply window would otherwise be written
+/// through (desktop.ini/.lnk landing in the link's target). (APPLY-2) [WINDOWS-VERIFY] runtime.
+pub fn is_reparse_point(path: &str) -> PortResult<bool> {
+    Ok(get(path)? & REPARSE_POINT != 0)
+}
 
 /// Reads a path's raw `FILE_ATTRIBUTE_*` bits.
 ///

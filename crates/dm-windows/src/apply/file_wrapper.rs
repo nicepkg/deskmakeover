@@ -21,6 +21,13 @@ pub fn apply(file_path: &str, icon_path: &str) -> PortResult<()> {
     if !Path::new(file_path).is_file() {
         return Err(PortError::NotFound(file_path.to_string()));
     }
+    // is_file() FOLLOWS a reparse point; a file swapped for a symlink since scan would be hidden
+    // (and its wrapper aimed) through the link. Refuse. (APPLY-2)
+    if attrs::is_reparse_point(file_path)? {
+        return Err(PortError::Io(format!(
+            "{file_path} became a reparse point after scan; refusing to wrap it"
+        )));
+    }
     // The SAME derivation the surface's `expected_after_apply` uses, so the working dir the wrapper
     // is given can never drift from what the driver expects to read back (P1-#1).
     let working_dir = wrapper_working_dir(file_path);

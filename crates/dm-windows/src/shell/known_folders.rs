@@ -16,10 +16,14 @@ use windows::Win32::UI::Shell::{
 pub fn desktop_roots() -> PortResult<Vec<PathBuf>> {
     let mut roots = Vec::new();
     for id in [&FOLDERID_Desktop, &FOLDERID_PublicDesktop] {
-        if let Some(path) = known_folder(id)? {
-            if path.is_dir() {
-                roots.push(path);
-            }
+        // One folder's lookup failing (e.g. FOLDERID_PublicDesktop unresolved on a
+        // locked-down profile/edition) must NOT discard an already-resolved user Desktop
+        // and fail the whole scan — the doc promise "missing roots are skipped" has to hold
+        // for an API-level error, not only a physically-absent folder. Skip that root. (SHELL-1)
+        match known_folder(id) {
+            Ok(Some(path)) if path.is_dir() => roots.push(path),
+            Ok(_) => {}
+            Err(_) => continue,
         }
     }
     Ok(roots)

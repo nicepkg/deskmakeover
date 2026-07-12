@@ -15,6 +15,13 @@ pub fn apply(folder_path: &str, icon_path: &str) -> PortResult<()> {
     if !Path::new(folder_path).is_dir() {
         return Err(PortError::NotFound(folder_path.to_string()));
     }
+    // Re-check reparse safety at apply time: is_dir() FOLLOWS a junction, so a folder swapped for
+    // a junction since scan would send desktop.ini into the link's target. (APPLY-2)
+    if attrs::is_reparse_point(folder_path)? {
+        return Err(PortError::Io(format!(
+            "{folder_path} became a reparse point after scan; refusing to write desktop.ini through it"
+        )));
+    }
     let ini = ini_path(folder_path);
     attrs::clear_readonly(folder_path)?;
     if Path::new(&ini).exists() {

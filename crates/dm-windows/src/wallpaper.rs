@@ -88,7 +88,11 @@ fn capture_blocking() -> PortResult<WallpaperSnapshot> {
             let id = id_pwstr.to_string();
             CoTaskMemFree(Some(id_pwstr.0 as *const core::ffi::c_void));
             let id = id.map_err(|e| PortError::Com(e.to_string()))?;
-            let image = read_wallpaper(&dw, &id);
+            // CAPTURE uses the STRICT read: a COM read error fails the whole capture so the
+            // pre-first-apply snapshot is never persisted with a monitor's original silently
+            // dropped to `None` (which restore would then clear to the background colour, losing
+            // the real wallpaper behind a snapshot the user believes protects them). (F3)
+            let image = read_wallpaper_strict(&dw, &id)?;
             monitors.push(MonitorWallpaper { monitor_id: id, image });
         }
         Ok(WallpaperSnapshot { background_color, position, slideshow_active, monitors })
@@ -108,6 +112,28 @@ pub(crate) unsafe fn read_wallpaper(dw: &IDesktopWallpaper, monitor_id: &str) ->
         }
         _ => None,
     }
+}
+
+/// STRICT read for the pre-first-apply CAPTURE path: a `GetWallpaper` COM **error** propagates
+/// (so `capture` fails and snapshot-once refuses to mutate the desktop behind an untrustworthy
+/// backup), while a genuinely empty path — a solid-colour desktop — is a legitimate `Ok(None)`.
+/// Contrast [`read_wallpaper`], which collapses both to `None`; that leniency is correct for the
+/// topology/getScreens path (an unreadable source only shows the import CTA, no data-loss risk)
+/// but unsafe for the snapshot. SAFETY: caller guarantees an STA thread; the PWSTR is freed here.
+/// [WINDOWS-VERIFY] the Err-vs-empty distinction on a real desktop.
+pub(crate) unsafe fn read_wallpaper_strict(
+    dw: &IDesktopWallpaper,
+    monitor_id: &str,
+) -> PortResult<Option<String>> {
+    let id = HSTRING::from(monitor_id);
+    let pwstr = dw.GetWallpaper(PCWSTR(id.as_ptr())).map_err(com)?;
+    if pwstr.is_null() {
+        return Ok(None);
+    }
+    let text = pwstr.to_string();
+    CoTaskMemFree(Some(pwstr.0 as *const core::ffi::c_void));
+    let text = text.map_err(|e| PortError::Com(e.to_string()))?;
+    Ok(if text.is_empty() { None } else { Some(text) })
 }
 
 fn set_blocking(monitor_id: &str, image_path: &str) -> PortResult<()> {

@@ -133,7 +133,11 @@ fn pump(_apartment: Apartment) {
         if msg.message == WM_STA_JOB {
             // SAFETY: the lParam is the Box<Job> raw pointer posted in `run`; reclaim and run it.
             let job = unsafe { Box::from_raw(msg.lParam.0 as *mut Job) };
-            job();
+            // Isolate a panicking job: without catch_unwind the unwind exits the STA thread and
+            // every later .run() fails permanently with "STA thread is gone" — one bad job would
+            // kill all COM (shortcut/wrapper/scan) for the rest of the process. The caller still
+            // observes its dropped reply channel as an error; the thread survives. (COM-1)
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || job()));
         } else {
             // SAFETY: dispatch non-job messages so marshaled cross-apartment COM calls complete.
             unsafe {

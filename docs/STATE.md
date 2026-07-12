@@ -171,13 +171,22 @@ disabling auto-format + restoring the arrow overlay); auto-format trust model = 
 timeout-auto-apply with native Toast (never silent by default); resident enable requires one
 successful global Apply first.
 
-**Wave B foundation IN PROGRESS (2026-07-12 night — pure-Rust storage/identity layer, all Mac-green).**
+**Wave B foundation BUILT + HARDENED (2026-07-12 night — pure-Rust storage/identity layer, Mac-green).**
 Landed on `main` after `70fddf0`: **B6** saved-style column (② `SettingsStore.icon_style_json`,
 `9f4a3c3`), **B7** `FsAssetStore` (the first real `dm_domain::AssetStore`, `97d4bf0`), **B8**
 `LookHistoryStore` (③ `look-history.json`, `4af1e05`), **B9** `SourceIdentity` source fingerprint
-(`517417d`), plus a shared `fs_atomic` crash-atomic-write extraction (`7feae9d`). `cargo test -p
-dm-operations` 118 · `-p dm-domain` 38 · dm-domain msvc-clean. Under adversarial codex review
-(`/multi-ai solo`) before B2 builds on it.
+(`517417d`), plus a shared `fs_atomic` crash-atomic-write extraction (`7feae9d`) + a validated shared
+`dm_contracts::IconStyle`.
+**Two adversarial codex rounds (`/multi-ai solo`, each "Request Changes") → 5 fix commits** hardened
+it: symlink-temp truncation (create_new O_EXCL + fsync parent) across fs_atomic/durable.rs/overlay.rs;
+completed the atomic-write DRY (journal + baked-wallpaper gained fsync); FsAssetStore trust
+(content-verify on reuse, symlink-root refusal, case-insensitive `-empty`, length-first compare);
+LookHistoryStore anti-clobber (strict mutation load) + pin-cap normalization; typed IconStyle
+(rejects null/garbage/per-icon); SourceFingerprint newtype + AUMID; a real overlay-snapshot
+durability barrier before the HKLM write (`6aec58d f2437f7 340231f 3e51d41 00a25b6 de3db16`).
+`cargo test --workspace` **457 green**; dm-domain + dm-windows msvc-clean; **dm-elevated is
+blind-write (blake3 blocks msvc on Mac) → [WINDOWS-VERIFY]**. A 3rd codex CERT pass is running; the
+B2 apply/GC lifecycle-lock is recorded as a B2 acceptance criterion in the m6-wire-host plan.
 **Still unbuilt in Wave B:** the icon bridge cluster **B1-B5** (`dm-contracts/icons.rs` DTOs,
 the apply-session chunk-buffer + `TxnDriver::apply` wiring to a real Tauri command incl. the
 commit→ledger reconcile gap #5, devhost icon fakes, `src-tauri` 9 icon commands, bridge repoint)

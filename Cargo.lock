@@ -1072,6 +1072,7 @@ name = "dm-windows"
 version = "0.0.0"
 dependencies = [
  "dm-domain",
+ "image",
  "notify-debouncer-full",
  "tempfile",
  "windows",

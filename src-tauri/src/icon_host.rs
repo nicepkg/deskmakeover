@@ -217,21 +217,23 @@ impl IconHost {
     /// look-epoch so the commit can detect an intervening mutation (codex Block 3).
     pub fn apply_baked_begin(&self, revision: u32, count: u32) -> Result<(), String> {
         let mut st = self.mut_state.lock().unwrap();
-        // Never overwrite an in-flight session — a second Begin without a commit is a protocol error
-        // that could otherwise mix one apply's masters with another's styleJson (codex R2-Block 1).
-        if st.session.is_some() {
-            return Err("an apply is already in progress; commit or abandon it first".into());
-        }
         if revision != st.scan_revision {
             return Err(format!(
                 "stale apply: begin revision {revision} does not match the current scan {}",
                 st.scan_revision
             ));
         }
+        // A fresh Begin ABANDONS any prior in-flight session (the frontend serializes applies; a new
+        // Begin unambiguously means "start over", so a bake that errored mid-stream and never
+        // committed must not strand the session and deadlock every future apply — codex R2-Block 1
+        // wanted a reject, but a reject with no abandon path is the worse bug). Mixing is still
+        // prevented: each Begin installs a FRESH empty buffer, binds session_scan to the current
+        // scan, and commit validates the exact count against that buffer under the one mut lock.
+        if st.session.is_some() {
+            log::warn!("icons.applyBakedBegin abandoned a prior uncommitted apply session");
+        }
         st.session = Some(IconApplySession::begin(revision, count as usize));
         st.session_epoch = st.op_epoch;
-        // Bind this apply to the scan it began against: an intervening rescan swaps `scan`, but the
-        // commit resolves against THIS snapshot so the CAS anchors stay the ones the user saw.
         st.session_scan = st.scan.clone();
         Ok(())
     }

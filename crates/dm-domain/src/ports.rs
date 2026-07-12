@@ -88,6 +88,20 @@ pub trait OverlayControl {
     fn restore(&self) -> PortResult<OverlayOutcome>;
 }
 
+/// Extracts an item's normalized 256px source image(s) for the compositor to render from (oracle:
+/// the C# shell icon extraction — `SHGetFileInfo`/WIC/package-asset read). Returns `[0]` the
+/// primary source; a two-state item (the Recycle Bin) also returns `[1]` its empty-state source.
+/// The pixels are served to the webview over a custom protocol (`dmicon://`) so they never ride
+/// the JSON bridge — the same discipline the wallpaper `dmwallpaper://` decode uses.
+///
+/// Icon source extraction is genuine platform work with no cross-platform Rust core (unlike the
+/// pure-Rust wallpaper decoder): Windows extracts from the shell/package ([WINDOWS-VERIFY]); the
+/// Mac dev host synthesizes distinct stand-in sources so the real scan→render→apply→restore
+/// pipeline is exercised end to end on Mac.
+pub trait IconSourceExtractor {
+    fn extract(&self, item: &DesktopItem) -> PortResult<Vec<DecodedImage>>;
+}
+
 /// The overlay styles the helper accepts (oracle: `OverlayCommands.Apply` style whitelist).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayStyle {

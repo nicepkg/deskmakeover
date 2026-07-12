@@ -14,14 +14,20 @@ use tauri_specta::{collect_commands, Builder};
 mod commands;
 #[cfg(not(windows))]
 mod devhost;
+#[cfg(not(windows))]
+mod devhost_icons;
+mod icon_host;
 mod wallpaper_host;
 
+use icon_host::{IconHost, IconHostPorts};
 use wallpaper_host::WallpaperHost;
 
 /// App-wide state managed by Tauri and read by commands.
 pub struct AppState {
-    pub settings: SettingsStore,
+    /// Shared with the icon host (both persist against the one settings DB — store ② lives here).
+    pub settings: Arc<SettingsStore>,
     pub wallpaper: WallpaperHost,
+    pub icons: IconHost,
 }
 
 /// The single command surface — used both to wire `invoke` at runtime and to
@@ -33,6 +39,14 @@ fn specta_builder() -> Builder<tauri::Wry> {
         commands::wallpaper_get_screens,
         commands::wallpaper_apply_baked,
         commands::wallpaper_restore,
+        commands::icons_scan,
+        commands::icons_get_persisted,
+        commands::icons_apply_baked_begin,
+        commands::icons_apply_baked_chunk,
+        commands::icons_apply_baked_commit,
+        commands::icons_restore,
+        commands::icons_restore_overlay,
+        commands::icons_export_compare,
     ])
 }
 
@@ -58,6 +72,47 @@ fn build_wallpaper_host(data_dir: &Path) -> Result<WallpaperHost, String> {
             Arc::new(RustImageDecoder),
             data_dir,
         ))
+    }
+}
+
+/// Composition root for the icon stack: real dm-windows shell adapters on Windows, the dev-host
+/// fakes elsewhere; the FsAssetStore + ②③ stores live inside the host (data_dir). The settings
+/// store is SHARED with `AppState` so store ② has one writer.
+fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<IconHost, String> {
+    #[cfg(windows)]
+    {
+        // [WINDOWS-VERIFY] the whole icon composition is blind-wired: the shell adapters exist +
+        // msvc-check, but source extraction is deferred (WindowsIconSourceExtractor returns [WV]),
+        // the overlay helper path is a placeholder, and none of it is runtime-verified on Mac.
+        // Swapping to live = fill the extractor body + resolve the real helper path on the box.
+        let exec = Arc::new(dm_windows::StaExecutor::spawn().map_err(|e| e.to_string())?);
+        let helper = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("dm-elevated.exe")))
+            .unwrap_or_else(|| data_dir.join("dm-elevated.exe"));
+        let ports = IconHostPorts {
+            scanner: Arc::new(dm_windows::WindowsScanner::new(exec.clone())),
+            extractor: Arc::new(dm_windows::WindowsIconSourceExtractor::new(exec.clone())),
+            reader: Arc::new(dm_windows::WindowsStateReader::new(exec.clone())),
+            applier: Arc::new(dm_windows::WindowsIconApplier::new(exec)),
+            overlay: Arc::new(dm_windows::WindowsOverlayControl::new(helper)),
+            refresher: Arc::new(dm_windows::WindowsExplorerRefresher),
+        };
+        // Real active-profile count is a [WINDOWS-VERIFY] ProfileList enum; default single-user.
+        Ok(IconHost::new(ports, settings, data_dir, 1))
+    }
+    #[cfg(not(windows))]
+    {
+        let desk = devhost_icons::DevIconDesktop::new();
+        let ports = IconHostPorts {
+            scanner: Arc::new(devhost_icons::DevDesktopScanner),
+            extractor: Arc::new(devhost_icons::DevIconSourceExtractor),
+            reader: Arc::new(devhost_icons::DevIconReader(desk.clone())),
+            applier: Arc::new(devhost_icons::DevIconApplier(desk)),
+            overlay: Arc::new(devhost_icons::DevOverlayControl),
+            refresher: Arc::new(devhost_icons::DevExplorerRefresher),
+        };
+        Ok(IconHost::new(ports, settings, data_dir, 1))
     }
 }
 
@@ -125,6 +180,28 @@ pub fn run() {
                     .expect("static 404 cannot fail"),
             }
         })
+        // Extracted 256px icon sources ride this protocol as image/png (mirrors dmwallpaper://):
+        // the key is "<itemId>/<slot>", the URL revisioned (`?rev=N`) so each scan cache-busts.
+        .register_uri_scheme_protocol("dmicon", |ctx, request| {
+            let key = request.uri().path().trim_start_matches('/');
+            let png = ctx
+                .app_handle()
+                .try_state::<AppState>()
+                .and_then(|s| s.icons.png_for(key));
+            match png {
+                Some(bytes) => tauri::http::Response::builder()
+                    .header("Content-Type", "image/png")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .header("Cache-Control", "public, max-age=31536000, immutable")
+                    .body(bytes)
+                    .expect("static headers cannot fail"),
+                None => tauri::http::Response::builder()
+                    .status(404)
+                    .header("Access-Control-Allow-Origin", "*")
+                    .body(Vec::new())
+                    .expect("static 404 cannot fail"),
+            }
+        })
         .invoke_handler(specta.invoke_handler())
         .setup(move |app| {
             #[cfg(desktop)]
@@ -142,9 +219,10 @@ pub fn run() {
             run_startup_recovery(&data_dir)?;
 
             let db_path = data_dir.join(SETTINGS_DB_FILE);
-            let store = SettingsStore::open(&db_path)?;
+            let settings = Arc::new(SettingsStore::open(&db_path)?);
             let wallpaper = build_wallpaper_host(&data_dir)?;
-            app.manage(AppState { settings: store, wallpaper });
+            let icons = build_icon_host(&data_dir, settings.clone())?;
+            app.manage(AppState { settings, wallpaper, icons });
             log::info!("settings store ready at {}", db_path.display());
             Ok(())
         })

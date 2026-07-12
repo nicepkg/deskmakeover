@@ -30,6 +30,8 @@ mod refresh;
 #[cfg(windows)]
 pub mod shell;
 #[cfg(windows)]
+mod source;
+#[cfg(windows)]
 mod state_reader;
 #[cfg(windows)]
 pub mod topology;
@@ -48,6 +50,8 @@ pub use overlay::WindowsOverlayControl;
 pub use refresh::WindowsExplorerRefresher;
 #[cfg(windows)]
 pub use shell::WindowsScanner;
+#[cfg(windows)]
+pub use source::WindowsIconSourceExtractor;
 #[cfg(windows)]
 pub use state_reader::WindowsStateReader;
 #[cfg(windows)]

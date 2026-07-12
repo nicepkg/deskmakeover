@@ -82,6 +82,17 @@ pub struct IconItemDto {
     pub source_urls: Vec<String>,
 }
 
+/// One baked master in an `icons.applyBakedChunk` batch (a command INPUT). `sourceIndex` 0 =
+/// primary, 1 = paired empty (Recycle Bin); `masterPng` is the base64 256px straight-alpha RGBA
+/// PNG the frontend WASM-baked. Mirrors the TS `icons.applyBakedChunk` item shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct IconChunkItemDto {
+    pub id: String,
+    pub source_index: u32,
+    pub master_png: String,
+}
+
 /// The result of `icons.scan`: a monotonically increasing revision + the raw observed items. NO
 /// embedded `IconsStateDto` (D1: the frontend assembles it from these items + `getPersisted` +
 /// its own presets/palette/grid). Mirrors the TS `icons.scan` result.
@@ -95,11 +106,15 @@ pub struct IconScanDto {
 /// One saved appearance recipe from store ③ (look-history), mirroring `dm_operations::LookVersion`
 /// with the recipe carried as an opaque JSON string (`styleJson`). The frontend renders each
 /// entry's style-sample mini from the parsed recipe (spec 07 §8.1 — never a desktop screenshot).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+// No `Eq`: `created_at` is `f64` (a TS `number`), which has no total equality.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LookVersionDto {
     pub id: String,
-    pub created_at: i64,
+    /// UNIX seconds as a TS `number` — specta-typescript forbids raw i64 export (JS has no i64),
+    /// and a seconds timestamp is far below 2^53 so `f64` is lossless. The host maps the store's
+    /// `i64` `created_at` in; this is output-only (the frontend never sends it back).
+    pub created_at: f64,
     /// A user-chosen name; `None` = unnamed. Independent of `pinned` (owner ruling 2026-07-12:
     /// naming is an unlimited label, pinning is the eviction exemption).
     pub label: Option<String>,
@@ -124,7 +139,8 @@ pub enum ArrowOverlayDto {
 /// (D1: the frontend owns presets/palette/swatches/grid/`activePresetId`/the config draft). This
 /// is what `icons.getPersisted` returns and what every mutating op reports back, so there is ONE
 /// overlay path. Mirrors the TS `IconPersistedDto`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+// No `Eq`: carries `LookVersionDto`s (which hold an `f64` timestamp).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct IconPersistedDto {
     /// Store ② — the current global saved-style recipe as an opaque JSON string, or `None` when no
@@ -144,7 +160,8 @@ pub struct IconPersistedDto {
 /// The THIN result of a mutating icon op (`applyBaked*` commit / `restore` / `restoreOverlay` /
 /// `exportCompare`): success, an optional localized toast, and the FRESH persisted state so the
 /// frontend re-overlays without a second round-trip. Mirrors the TS `IconOpResultDto`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+// No `Eq`: carries `IconPersistedDto` (which holds `f64` timestamps).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct IconOpResultDto {
     pub ok: bool,
@@ -231,7 +248,7 @@ mod tests {
     fn look_version_carries_the_style_as_a_string() {
         let v = LookVersionDto {
             id: "v1".into(),
-            created_at: 1_700_000_000,
+            created_at: 1_700_000_000.0,
             label: Some("我的最爱".into()),
             pinned: true,
             style_json: r#"{"config":{},"kindPolicy":{},"typeOverrides":{}}"#.into(),
@@ -276,6 +293,16 @@ mod tests {
         let back: IconOpResultDto =
             serde_json::from_str(&serde_json::to_string(&res).unwrap()).unwrap();
         assert_eq!(back, res);
+    }
+
+    #[test]
+    fn chunk_item_uses_camel_case_keys() {
+        let c = IconChunkItemDto { id: "app".into(), source_index: 1, master_png: "iVBOR".into() };
+        let json = serde_json::to_string(&c).unwrap();
+        assert!(json.contains("\"sourceIndex\":1"), "got {json}");
+        assert!(json.contains("\"masterPng\""));
+        let back: IconChunkItemDto = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, c);
     }
 
     #[test]

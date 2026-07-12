@@ -9,14 +9,147 @@ export const commands = {
 	wallpaperGetScreens: () => typedError<WallpaperScreensDto, string>(__TAURI_INVOKE("wallpaper_get_screens")),
 	wallpaperApplyBaked: (monitorId: string, pngBase64: string) => typedError<WallpaperResultDto, string>(__TAURI_INVOKE("wallpaper_apply_baked", { monitorId, pngBase64 })),
 	wallpaperRestore: (monitorId: string) => typedError<WallpaperResultDto, string>(__TAURI_INVOKE("wallpaper_restore", { monitorId })),
+	iconsScan: () => typedError<IconScanDto, string>(__TAURI_INVOKE("icons_scan")),
+	iconsGetPersisted: () => typedError<IconPersistedDto, string>(__TAURI_INVOKE("icons_get_persisted")),
+	iconsApplyBakedBegin: (revision: number, count: number) => typedError<null, string>(__TAURI_INVOKE("icons_apply_baked_begin", { revision, count })),
+	iconsApplyBakedChunk: (items: IconChunkItemDto[]) => typedError<null, string>(__TAURI_INVOKE("icons_apply_baked_chunk", { items })),
+	iconsApplyBakedCommit: (styleJson: string, label: string | null) => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_apply_baked_commit", { styleJson, label })),
+	iconsRestore: () => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_restore")),
+	iconsRestoreOverlay: () => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_restore_overlay")),
+	iconsExportCompare: () => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_export_compare")),
 };
 
 /* Types */
+/**
+ *  The native shortcut-arrow overlay state (ADR-0021 machine-wide overlay). `native` = Windows
+ *  draws its own arrow (pre-first-apply, or after a restore); `hidden` = the global transparent
+ *  overlay is installed and DeskMakeover draws the mark. Serialized lowercase to match the TS
+ *  `'native' | 'hidden'` union.
+ */
+export type ArrowOverlayDto = "native" | "hidden";
+
+/**
+ *  One baked master in an `icons.applyBakedChunk` batch (a command INPUT). `sourceIndex` 0 =
+ *  primary, 1 = paired empty (Recycle Bin); `masterPng` is the base64 256px straight-alpha RGBA
+ *  PNG the frontend WASM-baked. Mirrors the TS `icons.applyBakedChunk` item shape.
+ */
+export type IconChunkItemDto = {
+	id: string,
+	sourceIndex: number,
+	masterPng: string,
+};
+
+/**
+ *  One desktop item as the scanner observed it — raw platform truth ONLY (no override, no style).
+ *  The frontend overlays its own draft per-icon overrides + renders the styling locally from
+ *  `sourceUrls` (256px, `[0]` primary; the Recycle Bin ships TWO — empty + full). Positions are
+ *  OBSERVED desktop truth, never predicted. Mirrors the styleable subset of the TS `IconItemDto`
+ *  (the TS shape additionally carries the frontend-owned `overrideMode`/`overrideTint`).
+ */
+export type IconItemDto = {
+	id: string,
+	label: string,
+	kind: IconKindDto,
+	isShortcut: boolean,
+	styleable: boolean,
+	/**
+	 *  Host-localized human reason when `styleable` is false (e.g. a genuinely unreadable item);
+	 *  `None` when styleable.
+	 */
+	statusReason: string | null,
+	x: number,
+	y: number,
+	/**
+	 *  The item's 256px source URL(s) the compositor renders from; `[0]` is primary. The Recycle
+	 *  Bin carries two (empty + full).
+	 */
+	sourceUrls: string[],
+};
+
+/**
+ *  The kind of one desktop item (spec 06 §6 taxonomy). Serialized as the variant name to match
+ *  the TS `IconKind` union. `SystemIcon`/`ExecutableFile` are host-classification refinements the
+ *  scanner assigns; the operations layer maps them onto its `ItemKind` write mechanisms.
+ */
+export type IconKindDto = "Shortcut" | "UrlShortcut" | "AppxShortcut" | "RecycleBin" | "SystemIcon" | "Folder" | "RegularFile" | "ExecutableFile" | "Unsupported";
+
+/**
+ *  The THIN result of a mutating icon op (`applyBaked*` commit / `restore` / `restoreOverlay` /
+ *  `exportCompare`): success, an optional localized toast, and the FRESH persisted state so the
+ *  frontend re-overlays without a second round-trip. Mirrors the TS `IconOpResultDto`.
+ */
+export type IconOpResultDto = {
+	ok: boolean,
+	toast: ToastDto | null,
+	persisted: IconPersistedDto,
+};
+
+/**
+ *  The persisted + native icon state the frontend overlays onto its assembled `IconsStateDto`
+ *  (D1: the frontend owns presets/palette/swatches/grid/`activePresetId`/the config draft). This
+ *  is what `icons.getPersisted` returns and what every mutating op reports back, so there is ONE
+ *  overlay path. Mirrors the TS `IconPersistedDto`.
+ */
+export type IconPersistedDto = {
+	/**
+	 *  Store ② — the current global saved-style recipe as an opaque JSON string, or `None` when no
+	 *  global Apply has ever run (the resident then treats it as "nothing to project", spec 07 §8.3).
+	 */
+	savedStyleJson: string | null,
+	/**  Store ③ — up to 10 saved looks, newest-first (already capped + pin-normalized by the store). */
+	history: LookVersionDto[],
+	/**
+	 *  Whether a look is currently applied (the active ledger holds at least one styled row) — the
+	 *  frontend's `applied`/restore affordance authority, surviving a cold start.
+	 */
+	applied: boolean,
+	arrowOverlay: ArrowOverlayDto,
+	/**
+	 *  Count of active user profiles on this machine (>1 makes the machine-wide arrow disclosure
+	 *  non-skippable; owner disposition 3). Host truth on Windows.
+	 */
+	activeUserProfiles: number,
+};
+
+/**
+ *  The result of `icons.scan`: a monotonically increasing revision + the raw observed items. NO
+ *  embedded `IconsStateDto` (D1: the frontend assembles it from these items + `getPersisted` +
+ *  its own presets/palette/grid). Mirrors the TS `icons.scan` result.
+ */
+export type IconScanDto = {
+	revision: number,
+	items: IconItemDto[],
+};
+
 /**
  *  UI language. `System` follows the OS UI culture; the two concrete tags use
  *  the BCP-47 spellings the TS dictionaries key on.
  */
 export type Language = "System" | "zh-Hans" | "en";
+
+/**
+ *  One saved appearance recipe from store ③ (look-history), mirroring `dm_operations::LookVersion`
+ *  with the recipe carried as an opaque JSON string (`styleJson`). The frontend renders each
+ *  entry's style-sample mini from the parsed recipe (spec 07 §8.1 — never a desktop screenshot).
+ */
+export type LookVersionDto = {
+	id: string,
+	/**
+	 *  UNIX seconds as a TS `number` — specta-typescript forbids raw i64 export (JS has no i64),
+	 *  and a seconds timestamp is far below 2^53 so `f64` is lossless. The host maps the store's
+	 *  `i64` `created_at` in; this is output-only (the frontend never sends it back).
+	 */
+	createdAt: number | null,
+	/**
+	 *  A user-chosen name; `None` = unnamed. Independent of `pinned` (owner ruling 2026-07-12:
+	 *  naming is an unlimited label, pinning is the eviction exemption).
+	 */
+	label: string | null,
+	/**  Exempt from the store's FIFO eviction while set (spec 07 §17). */
+	pinned: boolean,
+	/**  The `{config, kindPolicy, typeOverrides}` recipe as an opaque JSON string (see module docs). */
+	styleJson: string,
+};
 
 /**
  *  Virtual-desktop bounds of one monitor, in physical pixels (IDesktopWallpaper

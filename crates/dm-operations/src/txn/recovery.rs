@@ -124,22 +124,30 @@ pub fn recover(
         }
     }
 
-    let mut outcome = RecoveryOutcome::default();
-    for txn in txn_order {
-        let group = txns.remove(&txn).expect("txn in order list");
-        // A single txn id can only ever have ONE terminal — a real transaction either commits or
-        // rolls back, never both. Both terminals under one id means id reuse or journal corruption:
-        // the records of two different transactions merged into one group. Neither "committed-wins"
-        // nor "rolled-back-wins" is correct (each mishandles the other transaction's items —
-        // rolled-back-wins silently drops the committed work, committed-wins wrongly reconciles the
-        // rolled-back items as styled). Fail closed and surface it (P1-7), consistent with the
-        // fail-closed stance for a corrupt ledger / mid-file journal damage. The monotonic id
-        // allocator + the driver's monotonic guard prevent this upstream; this is the last line.
+    // Structural preflight BEFORE any mutation (codex R5-#4): a `both terminals` corruption in ANY
+    // transaction must fail closed with the desktop UNTOUCHED. A single txn id can only ever have ONE
+    // terminal — a real transaction either commits or rolls back, never both. Both terminals under one
+    // id means id reuse or journal corruption: the records of two different transactions merged into
+    // one group. Neither "committed-wins" nor "rolled-back-wins" is correct (each mishandles the other
+    // transaction's items). If this validation ran INSIDE the drain loop, an EARLIER incomplete txn in
+    // `txn_order` would already have been aborted — restoring + mutating the desktop — before the
+    // corrupt txn was reached, leaving a bare Err over a half-mutated desktop. Validate every group up
+    // front so the whole recovery is refused atomically. The monotonic id allocator + the driver's
+    // monotonic guard prevent this upstream; this is the last line.
+    for (&txn, group) in &txns {
         if group.committed && group.rolled_back {
             return Err(OperationError::Journal(format!(
                 "transaction id {txn} carries both a commit and a rollback terminal — id reuse or journal corruption; refusing to recover"
             )));
         }
+    }
+
+    let mut outcome = RecoveryOutcome::default();
+    for txn in txn_order {
+        let group = txns.remove(&txn).expect("txn in order list");
+        // Both-terminals corruption was ruled out atomically by the preflight above, so every group
+        // here has at most one terminal — no mutation has happened yet at the point that check runs.
+        debug_assert!(!(group.committed && group.rolled_back), "both-terminals must be preflighted");
         if group.rolled_back {
             outcome.clean_txns += 1;
         } else if group.committed {

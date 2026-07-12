@@ -630,6 +630,66 @@ fn recovery_fails_closed_when_one_txn_id_has_both_terminals() {
 }
 
 #[test]
+fn both_terminals_fail_closed_before_any_earlier_incomplete_txn_mutates_the_desktop() {
+    // codex R5-#4: the both-terminals corruption check must be a structural PREFLIGHT over every txn,
+    // run before the drain loop touches anything. An EARLIER incomplete txn in first-seen order would
+    // otherwise be aborted first — restoring (mutating) its item on the desktop — and only THEN would
+    // the corrupt txn surface the Err, leaving a bare Err over a half-recovered desktop. Here txn 10 is
+    // incomplete (its item styled on disk, would revert on abort) and txn 20 carries both terminals;
+    // recovery must fail closed with txn 10's item STILL styled (never aborted).
+    let a = target("A");
+    let b = target("B");
+    let orig_a = b"orig-A".to_vec();
+    let styled_a = styled_bytes("hash10");
+    let styled_a_fp = Fingerprint::of_bytes(&styled_a);
+    let anchor_a = dm_domain::RestoreAnchor::FileBytes { bytes: orig_a.clone() };
+
+    let records = vec![
+        // txn 10 — incomplete: A prepared + applied (styled on disk), NO terminal → an abort candidate.
+        JournalRecord::TxnBegin { txn: 10, items: vec![a.id.clone()] },
+        JournalRecord::ItemPrepared {
+            txn: 10,
+            item: a.id.clone(),
+            target: a.clone(),
+            anchor: anchor_a,
+            original_fingerprint: Fingerprint::of_bytes(&orig_a),
+            expected_fingerprint: Fingerprint::of_bytes(&orig_a),
+            asset_hash: "hash10".into(),
+            owned: OwnedFields::icon_only(),
+            pinned_seed: None,
+        },
+        JournalRecord::AssetWritten {
+            txn: 10,
+            item: a.id.clone(),
+            asset: dm_domain::AssetRef::new("hash10", "assets/hash10.ico"),
+            empty: None,
+        },
+        JournalRecord::ItemApplied { txn: 10, item: a.id.clone(), new_fingerprint: styled_a_fp },
+        // txn 20 — corrupt: id reuse merged a commit AND a rollback terminal under one id.
+        JournalRecord::TxnBegin { txn: 20, items: vec![b.id.clone()] },
+        JournalRecord::TxnCommitted { txn: 20 },
+        JournalRecord::TxnRolledBack { txn: 20 },
+    ];
+
+    // The desktop reflects txn 10's styling at crash time.
+    let world = World::shared();
+    seed(&world, &a, &styled_a);
+    let plat = FakePlatform::new(world.clone());
+    let mut ledger = MemLedgerStore::new();
+
+    let result = recover(&records, &plat, &plat, &mut ledger);
+    assert!(
+        matches!(result, Err(OperationError::Journal(_))),
+        "both-terminals corruption must fail closed"
+    );
+    assert_eq!(
+        world.borrow().get(&a.path).unwrap(),
+        styled_a,
+        "the earlier incomplete txn must NOT have been aborted — the preflight fails before any mutation"
+    );
+}
+
+#[test]
 fn an_abandoned_txn_does_not_clobber_a_later_committed_txn_on_the_same_item() {
     // New-P1 (abandon is not a write fence): txn 1 abandons item A (restores the original, writes NO
     // journal terminal), then txn 2 re-styles A and commits. Both sets of records coexist in the log

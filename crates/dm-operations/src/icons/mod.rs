@@ -115,6 +115,10 @@ pub struct IconApplyOutcome {
     /// Currently-styled icons the user set to 「保留原样」 that this apply reverted to their original.
     pub reverted: Vec<ItemId>,
     pub conflicts: Vec<ItemId>,
+    /// True when the styling batch entered its mutation phase and then rolled back / abandoned — the
+    /// desktop WAS touched even though nothing committed (codex R5-#1). The host uses it so a rollback
+    /// is never reported as "nothing changed"; a clean preflight failure leaves it false.
+    pub desktop_mutated: bool,
     pub error: Option<String>,
     /// A finalize step that ran AFTER the desktop was already mutated failed at runtime (a keep-revert
     /// I/O fault, a ②/③ write, GC, or the state read-back). The desktop DID change, so the op must
@@ -201,17 +205,29 @@ impl<'a> IconOps<'a> {
         // ledger (and checkpoint the journal) BEFORE preparing, so the CAS anchors + the GC live set
         // below are computed against a ledger that reflects every durable commit. Idempotent.
         let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
-        // Recovery of a PRIOR crash's journal could not fully reconcile at runtime (codex R4-Block 5):
-        // the ledger/desktop is in a partially-recovered state, so do NOT stack a new apply on top.
-        // Return the authoritative state + a repair-required note (never a bare Err) so the UI
-        // re-syncs and the user retries; the journal was left intact for the next recovery pass.
-        if !recovery.degraded.is_empty() {
+        // Recovery of a PRIOR crash's journal either could not fully reconcile (`degraded`, codex
+        // R4-Block 5) OR cleanly ABORTED an interrupted transaction — which RESTORES the desktop
+        // (codex R5-#3). In EITHER case do NOT stack a new apply on top: the abort already mutated the
+        // desktop, so any bare `?` later in this same call (the master validation below, a store read)
+        // would surface as "nothing changed" over a desktop recovery just moved. Return the
+        // authoritative state + a repair-required note (never a bare Err) so the UI re-syncs and the
+        // user retries; the journal was left intact for the next pass (a clean abort already
+        // checkpointed it, so the retry finds an empty journal and proceeds normally). Reconcile-only
+        // recovery (ledger gap close, no desktop change) is safe to build on and does not early-return.
+        if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
             let mut repair = recovery.degraded;
+            if !recovery.aborted.is_empty() {
+                repair.push(format!(
+                    "recovered {} interrupted item(s) from a prior crash — re-syncing before re-applying",
+                    recovery.aborted.len()
+                ));
+            }
             let stores = self.read_state_or_degraded(history, ledger, &mut repair);
             return Ok(IconApplyOutcome {
                 committed: Vec::new(),
                 reverted: Vec::new(),
                 conflicts: Vec::new(),
+                desktop_mutated: !recovery.aborted.is_empty(),
                 error: None,
                 degraded: Some(repair.join("; ")),
                 stores,
@@ -331,6 +347,10 @@ impl<'a> IconOps<'a> {
                     committed: Vec::new(),
                     reverted,
                     conflicts,
+                    // A driver bare-Err can escape only from a journal-append fault, which may be AFTER
+                    // the desktop mutated — treat it as possibly-changed so the host never says
+                    // "nothing changed" (codex R5-#1). The `degraded` path already routes it there.
+                    desktop_mutated: true,
                     error: None,
                     degraded: Some(repair.join("; ")),
                     stores,
@@ -353,7 +373,12 @@ impl<'a> IconOps<'a> {
         // freshly-styled desktop — codex R3-Block 4): record it into `repair` and press on, so the op
         // returns the authoritative persisted state + ok:false. (A crash BETWEEN these writes is the
         // separately-documented, self-healing finalize crash-window — a distinct, accepted gap.)
-        if apply.error.is_none() {
+        // ...AND only when this apply actually STYLED at least one icon. An all-conflicts / zero-effect
+        // batch (every item CAS-failed, or every one was a healed-poison re-apply that skipped) leaves
+        // `committed` empty and the desktop unchanged: writing ② then would poison the saved-style with
+        // a look the desktop never wears and grow ③ with a phantom entry, and the host would report a
+        // clean success over a no-op (codex R5-#2). Persist ONLY on a real, committed style change.
+        if apply.error.is_none() && !apply.committed.is_empty() {
             if let Err(e) = self.settings.set_saved_style(Some(&style)) {
                 repair.push(format!("save ② style: {e}"));
             }
@@ -387,6 +412,7 @@ impl<'a> IconOps<'a> {
             committed: apply.committed,
             reverted,
             conflicts,
+            desktop_mutated: apply.desktop_mutated,
             error: apply.error,
             degraded: (!repair.is_empty()).then(|| repair.join("; ")),
             stores,
@@ -443,11 +469,21 @@ impl<'a> IconOps<'a> {
         // is STRICT here (not the recovery path's best-effort): if the journal cannot be emptied we
         // abort before touching the ledger, so a restart never revives a half-reset state.
         let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
-        // Recovery of a prior crash could not fully reconcile at runtime (codex R4-Block 5): do NOT
-        // reset (which would checkpoint the journal away + delete rows) on top of a partial recovery.
-        // Return repair-required + the authoritative state; the journal stays for the next pass.
-        if !recovery.degraded.is_empty() {
+        // Recovery of a prior crash either could not fully reconcile (`degraded`, codex R4-Block 5) OR
+        // cleanly ABORTED an interrupted transaction — restoring the desktop (codex R5-#3). In either
+        // case do NOT reset on top: the strict `journal.checkpoint(&[])?` below is a bare `?` that, if
+        // it faulted after a recovery abort already moved the desktop, would surface as a bare Err over
+        // a mutated desktop. Return repair-required + the authoritative state; the journal stays for the
+        // next pass (a clean abort already checkpointed it, so the retry proceeds normally). A
+        // reconcile-only recovery (no desktop change) is safe to reset on and does not early-return.
+        if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
             let mut repair = recovery.degraded;
+            if !recovery.aborted.is_empty() {
+                repair.push(format!(
+                    "recovered {} interrupted item(s) from a prior crash — re-syncing before resetting",
+                    recovery.aborted.len()
+                ));
+            }
             let stores = self.read_state_or_degraded(history, ledger, &mut repair);
             return Ok(IconResetOutcome {
                 restored: Vec::new(),

@@ -604,3 +604,143 @@ fn reset_revert_fault_reports_degraded_and_reverts_the_others() {
     assert_ne!(f.world.borrow().get(&stuck.path).unwrap(), b"orig-stuck", "stuck stays styled (revert failed)");
     assert!(f.ledger.get(&stuck.id).unwrap().is_some(), "stuck's ledger row is kept");
 }
+
+#[test]
+fn a_poisoned_row_re_applied_directly_is_healed_and_styled_not_conflicted() {
+    // codex R5-#2: a prior keep/reset restored this item on disk (desktop == original) but its paired
+    // `ledger.remove` faulted, leaving a POISONED row (last_applied=styled). If the user re-styles the
+    // item DIRECTLY (in the bake set, not via keep/reset), the mod.rs heal arm never sees it — and the
+    // driver's CAS would reject the apply forever (current=original != last_applied=styled). The driver
+    // must heal the stale row and treat it as a fresh apply, re-styling the icon.
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.apply(&[("a", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[a.clone()]);
+    let stale_fp = f.ledger.get(&a.id).unwrap().unwrap().last_applied_fingerprint;
+    // Poison: the desktop is back to the true original, but the ledger row lingers (remove faulted).
+    f.world.borrow_mut().put(&a.path, b"orig-a");
+
+    // Re-style A directly — A is in the bake set, NOT in restore_ids.
+    let out = f.apply(&[("a", 0, [7, 7, 7, 255])], style(2), "B", "v2", &[a.clone()]);
+
+    assert_eq!(out.committed, vec![ItemId::from_raw("a")], "the poisoned row was healed → A re-styled");
+    assert!(out.conflicts.is_empty(), "it must NOT read as a permanent CAS conflict");
+    let row = f.ledger.get(&a.id).unwrap().unwrap();
+    assert_ne!(row.last_applied_fingerprint, stale_fp, "the row carries the FRESH styling, not the stale one");
+    assert_eq!(
+        row.original_fingerprint,
+        dm_domain::Fingerprint::of_bytes(b"orig-a"),
+        "the heal re-captured the TRUE original anchor, so a later reset still restores correctly"
+    );
+    assert_ne!(f.world.borrow().get(&a.path).unwrap(), b"orig-a", "the desktop is styled again");
+}
+
+#[test]
+fn an_all_conflicts_apply_never_writes_the_saved_style_or_history() {
+    // codex R5-#2: an apply where every icon CAS-conflicts (nothing styled) must NOT persist ② with a
+    // look the desktop never wears, nor push ③ — writing them would make the host report a clean
+    // success over a no-op and resume from a phantom style next launch.
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.apply(&[("a", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[a.clone()]);
+    let saved_after_first = f.settings.get_saved_style().unwrap();
+    assert!(saved_after_first.is_some(), "the first, real apply persisted ②");
+    let history_after_first = f.history.all().len();
+    // Hand-edit A so a re-apply CAS-conflicts (current is neither original nor last-applied).
+    f.world.borrow_mut().put(&a.path, b"user-hand-edit");
+
+    let out = f.apply(&[("a", 0, [9, 9, 9, 255])], style(2), "B", "v2", &[a.clone()]);
+
+    assert!(out.committed.is_empty(), "nothing was styled");
+    assert_eq!(out.conflicts, vec![ItemId::from_raw("a")], "A CAS-conflicted");
+    assert_eq!(f.settings.get_saved_style().unwrap(), saved_after_first, "② was NOT overwritten by the no-op");
+    assert_eq!(f.history.all().len(), history_after_first, "③ got no phantom entry");
+}
+
+#[test]
+fn a_rollback_with_no_keep_revert_still_flags_the_desktop_as_mutated() {
+    // codex R5-#1: re-styling already-styled icons where the styling batch then rolls back DID move the
+    // desktop (each icon was re-applied then restored to its true original), even though no keep-revert
+    // ran and nothing committed. `desktop_mutated` must be true so the host shows a partial-change
+    // repair toast, never "桌面没有改动".
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    let b = item("b", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.seed(&b, b"orig-b");
+    f.apply(
+        &[("a", 0, [1, 1, 1, 255]), ("b", 0, [2, 2, 2, 255])],
+        style(1),
+        "A",
+        "v1",
+        &[a.clone(), b.clone()],
+    );
+    // Re-style both, but b's apply faults → the batch rolls back (a re-applied then restored to orig-a).
+    f.world.borrow_mut().fail_apply(&b.path);
+    let out = f.apply(
+        &[("a", 0, [8, 8, 8, 255]), ("b", 0, [9, 9, 9, 255])],
+        style(2),
+        "B",
+        "v2",
+        &[a.clone(), b.clone()],
+    );
+
+    assert!(out.error.is_some(), "the styling batch rolled back");
+    assert!(out.reverted.is_empty(), "no keep-revert ran — nothing was opted out");
+    assert!(out.committed.is_empty(), "nothing committed");
+    assert!(out.desktop_mutated, "the rollback moved the desktop → not 'nothing changed' (codex R5-#1)");
+    assert_eq!(
+        f.world.borrow().get(&a.path).unwrap(),
+        b"orig-a",
+        "the rolled-back item was restored to its TRUE original — a real desktop change from styled-v1",
+    );
+}
+
+#[test]
+fn a_clean_recovery_that_restored_the_desktop_defers_the_current_apply() {
+    // codex R5-#3: a prior crash left an incomplete transaction in the journal. This apply's up-front
+    // recovery cleanly ABORTS it — restoring (mutating) the crashed item's desktop. The apply must NOT
+    // stack a new styling on top (a later bare `?` would then surface over a recovery-moved desktop);
+    // it defers with a repair/resync note + the authoritative state, and the retry finds a clean journal.
+    use crate::txn::journal::{JournalRecord, JournalSink};
+    let mut f = Fixture::new();
+    let x = item("x", ItemKind::Shortcut); // an item a PRIOR crashed txn styled
+    let y = item("y", ItemKind::Shortcut); // the item THIS apply wants to style
+    f.seed(&y, b"orig-y");
+    // The prior crash left X styled on disk with an incomplete (no-terminal) txn in the journal.
+    let orig_x = b"orig-x".to_vec();
+    let styled_x = b"styled-x-bytes".to_vec();
+    f.world.borrow_mut().put(&x.path, &styled_x);
+    let target = x.target();
+    for rec in [
+        JournalRecord::TxnBegin { txn: 1, items: vec![x.id.clone()] },
+        JournalRecord::ItemPrepared {
+            txn: 1,
+            item: x.id.clone(),
+            target: target.clone(),
+            anchor: dm_domain::RestoreAnchor::FileBytes { bytes: orig_x.clone() },
+            original_fingerprint: dm_domain::Fingerprint::of_bytes(&orig_x),
+            expected_fingerprint: dm_domain::Fingerprint::of_bytes(&orig_x),
+            asset_hash: "hashX".into(),
+            owned: dm_domain::OwnedFields::icon_only(),
+            pinned_seed: None,
+        },
+        JournalRecord::ItemApplied {
+            txn: 1,
+            item: x.id.clone(),
+            new_fingerprint: dm_domain::Fingerprint::of_bytes(&styled_x),
+        },
+        // no terminal → incomplete → recovery aborts it, restoring X to orig-x.
+    ] {
+        f.journal.append(&rec).unwrap();
+    }
+
+    let out = f.apply(&[("y", 0, [3, 3, 3, 255])], style(1), "Y", "v1", &[y.clone()]);
+
+    assert_eq!(f.world.borrow().get(&x.path).unwrap(), orig_x, "recovery restored the crashed item's desktop");
+    assert!(out.committed.is_empty(), "the current apply was DEFERRED, not stacked on top of recovery");
+    assert!(out.degraded.is_some(), "it returns a repair/resync note, never a bare Err over a moved desktop");
+    assert!(out.degraded.as_deref().unwrap().contains("recovered"), "the note explains the recovery");
+    assert_eq!(f.world.borrow().get(&y.path).unwrap(), b"orig-y", "Y was NOT styled this round");
+}

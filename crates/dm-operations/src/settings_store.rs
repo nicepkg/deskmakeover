@@ -15,7 +15,7 @@ use crate::error::{OperationError, Result};
 /// The schema version this build understands. Bump alongside a new migration
 /// step in [`migrate`]; opening a file written by a newer build is refused
 /// rather than silently truncated.
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 pub struct SettingsStore {
     conn: Mutex<Connection>,
@@ -59,6 +59,39 @@ impl SettingsStore {
         write_row(&tx, &current)?;
         tx.commit()?;
         Ok(current)
+    }
+
+    /// Reads store ② of the appearance model (spec 07 §8.2) — the single saved-style blob.
+    /// `None` means no style has been saved (system default). Fail-closed like the ledger: a
+    /// present-but-invalid blob is an [`OperationError::Corrupt`], never silently `None`, so a
+    /// saved style that cannot be read is visible rather than masquerading as "never applied."
+    pub fn get_saved_style(&self) -> Result<Option<serde_json::Value>> {
+        let conn = self.lock();
+        let json: Option<String> = conn.query_row(
+            "SELECT icon_style_json FROM app_settings WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        match json {
+            Some(text) => serde_json::from_str(&text)
+                .map(Some)
+                .map_err(|e| OperationError::Corrupt(format!("saved style: {e}"))),
+            None => Ok(None),
+        }
+    }
+
+    /// Writes store ② (spec 07 §8.2/§8.4) — called ONLY on a completed global Apply, never from
+    /// the settings-patch path, a draft debounce, or a single-icon edit. `None` clears it (the
+    /// "apply the system default" path: ② becomes null, which the automation layer reads as
+    /// "nothing to project").
+    pub fn set_saved_style(&self, style: Option<&serde_json::Value>) -> Result<()> {
+        let text: Option<String> = match style {
+            Some(v) => Some(serde_json::to_string(v)?),
+            None => None,
+        };
+        let conn = self.lock();
+        conn.execute("UPDATE app_settings SET icon_style_json = ?1 WHERE id = 1", (text,))?;
+        Ok(())
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -110,9 +143,33 @@ fn migrate(conn: &mut Connection) -> Result<()> {
             ),
         )?;
     }
+    if version < 2 {
+        // Store ② of the appearance model (spec 07 §8.2): the single saved-style blob, written
+        // only on a global Apply. Nullable — NULL means "no saved style / system default". SQLite
+        // has no `ADD COLUMN IF NOT EXISTS`, so guard by inspecting the schema (idempotent even if
+        // a torn pre-commit run had already added it — belt-and-suspenders with the transactional
+        // migration, matching the version<1 recovery discipline).
+        if !column_exists(&tx, "app_settings", "icon_style_json")? {
+            tx.execute_batch("ALTER TABLE app_settings ADD COLUMN icon_style_json TEXT;")?;
+        }
+    }
     tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     tx.commit()?;
     Ok(())
+}
+
+/// Whether `table` already has a column named `column` (via `PRAGMA table_info`), so an additive
+/// `ALTER TABLE ... ADD COLUMN` migration step can be skipped when it already ran.
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?; // table_info columns: (cid, name, type, ...)
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn read_row(conn: &Connection) -> Result<SettingsDto> {
@@ -248,5 +305,79 @@ mod tests {
             SettingsStore::from_conn(conn),
             Err(OperationError::SchemaTooNew { .. })
         ));
+    }
+
+    #[test]
+    fn saved_style_defaults_to_none_and_round_trips() {
+        let store = SettingsStore::open_in_memory().unwrap();
+        // Store ② starts empty (system default).
+        assert!(store.get_saved_style().unwrap().is_none());
+
+        let style = serde_json::json!({ "config": { "seed": 3 }, "kindPolicy": {}, "typeOverrides": {} });
+        store.set_saved_style(Some(&style)).unwrap();
+        assert_eq!(store.get_saved_style().unwrap(), Some(style));
+
+        // Clearing it (the "apply the system default" path) returns to None.
+        store.set_saved_style(None).unwrap();
+        assert!(store.get_saved_style().unwrap().is_none());
+    }
+
+    #[test]
+    fn saved_style_is_independent_of_the_settings_row_and_persists() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.sqlite3");
+        let style = serde_json::json!({ "config": { "seed": 9 } });
+        {
+            let store = SettingsStore::open(&path).unwrap();
+            store.set_saved_style(Some(&style)).unwrap();
+            // A settings patch must NOT disturb store ② (they are orthogonal, spec 07 §8.2).
+            let patch: SettingsPatch = serde_json::from_str(r#"{"theme":"Dark"}"#).unwrap();
+            store.set(&patch).unwrap();
+        }
+        let reopened = SettingsStore::open(&path).unwrap();
+        assert_eq!(reopened.get_saved_style().unwrap(), Some(style));
+        assert_eq!(reopened.get().unwrap().theme, Theme::Dark);
+    }
+
+    #[test]
+    fn migrates_a_v1_database_by_adding_the_saved_style_column() {
+        // A database written by the pre-store-② build: the four original columns, user_version 1,
+        // no icon_style_json. Opening it must migrate forward (add the column), not fail.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.sqlite3");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE app_settings (
+                     id                    INTEGER PRIMARY KEY CHECK (id = 1),
+                     theme                 TEXT    NOT NULL,
+                     language              TEXT    NOT NULL,
+                     keep_new_icons_styled INTEGER NOT NULL,
+                     wallpaper_coach_shown INTEGER NOT NULL
+                 );
+                 INSERT INTO app_settings VALUES (1, 'System', 'System', 0, 0);",
+            )
+            .unwrap();
+            conn.pragma_update(None, "user_version", 1u32).unwrap();
+        }
+        let store = SettingsStore::open(&path).unwrap();
+        // The new column exists and reads as None; existing settings survive the migration.
+        assert!(store.get_saved_style().unwrap().is_none());
+        assert_eq!(store.get().unwrap(), SettingsDto::default());
+        // And it is writable post-migration.
+        let style = serde_json::json!({ "config": {} });
+        store.set_saved_style(Some(&style)).unwrap();
+        assert_eq!(store.get_saved_style().unwrap(), Some(style));
+    }
+
+    #[test]
+    fn corrupt_saved_style_fails_closed_never_silently_none() {
+        let store = SettingsStore::open_in_memory().unwrap();
+        // Poke invalid JSON directly into the column, bypassing set_saved_style.
+        store
+            .lock()
+            .execute("UPDATE app_settings SET icon_style_json = '{ not json' WHERE id = 1", [])
+            .unwrap();
+        assert!(matches!(store.get_saved_style(), Err(OperationError::Corrupt(_))));
     }
 }

@@ -1,9 +1,11 @@
 //! Desktop change watcher (Wave B B10, spec 07 §3 + §16).
 //!
-//! Backed by `notify` + `notify-debouncer-full` — the `-full` debouncer tracks file ids and folds
-//! the installer temp-write→rename storm into ONE settled event per final item (spec 07 §16). The
-//! primitive is cross-platform (ReadDirectoryChangesW on Windows, FSEvents on macOS, inotify on
-//! Linux), so the debounce + event-mapping core is unit-testable on the Mac host; only the
+//! Backed by `notify` + `notify-debouncer-full` — the `-full` debouncer tracks file ids and pairs an
+//! installer's temp-write→rename into a single `Rename(Both)` (spec 07 §16). It is a best-effort
+//! reducer, NOT an exactly-once guarantee: heterogeneous bursts can still yield more than one hint,
+//! so EXACTLY-ONCE FORMATTING is the reconciler's job (its pending-set + idempotence), not this
+//! stream's. The primitive is cross-platform (ReadDirectoryChangesW on Windows, FSEvents on macOS,
+//! inotify on Linux), so the debounce + event-mapping core is unit-testable on the Mac host; only the
 //! Windows-runtime desktop semantics below stay `[WINDOWS-VERIFY]`.
 //!
 //! `events are hints, reconciliation is truth` (spec 07 §3): this stream deliberately carries no
@@ -11,17 +13,32 @@
 //! (re)format. So over-notifying is harmless; under-notifying (a dropped buffer) is not, which is
 //! why an overflow/rescan signal is surfaced as [`WatchEvent::Overflow`] for a full reconcile.
 //!
+//! ⚠️ KNOWN LIMITATION — WINDOWS OVERFLOW IS SILENT WITH notify 8.2 (codex B10-review 🔴). notify's
+//! Windows `ReadDirectoryChangesW` backend IGNORES the completion's `bytes_written`: a buffer
+//! overflow (Windows signals it as a zero-byte completion, discarding the whole 16 KiB buffer) emits
+//! NO event, NO error, and NO `Flag::Rescan`. So `to_watch_event`'s `need_rescan() → Overflow` maps
+//! correctly (and FIRES on macOS/inotify), but on Windows a real overflow is dropped silently, which
+//! breaks the "under-notifying → full reconcile" fail-safe. Mainline notify still ignores the
+//! parameter, so there is no version bump that fixes it. The DURABLE fix (either a patched/forked
+//! Windows backend that emits `Rescan` on a zero-byte completion, OR — recommended — a periodic full
+//! reconcile in the M7 resident as a belt-and-suspenders backstop) is Windows-runtime work; until
+//! then the M7 reconciler MUST NOT rely on `Overflow` alone for burst-loss recovery on Windows.
+//!
 //! [WINDOWS-VERIFY] — runtime behaviours the Mac host cannot exercise, batched to the owner's
 //! Windows box (see `docs/plans/2026-07-10-m34-windows-blind.md` item 9):
 //!   1. Self-write suppression: the apply path writes `desktop.ini` / swaps ICOs; the reconciler
-//!      must not treat the app's OWN writes as a new-icon event. The suppression window is the
-//!      reconciler's job (it owns the apply epoch); this watcher only supplies raw hints. Confirm on
-//!      Windows that an apply does not trigger a self-format loop.
+//!      must not treat the app's OWN writes as a new-icon event. This is the RECONCILER's job (it
+//!      owns the apply epoch); this watcher only supplies raw hints. Confirm on Windows that an apply
+//!      does not trigger a self-format loop.
 //!   2. Explorer-restart / resume catch-up: after an Explorer crash or a sleep/resume the watch
 //!      handle may need re-arming; confirm the reconciler does a full rescan on (re)start so items
 //!      that appeared while unwatched are still formatted (spec 07 §3 catch-up).
-//!   3. Buffer-overflow → full rescan: force a ReadDirectoryChangesW buffer overflow (a burst of
-//!      hundreds of desktop writes) and confirm it surfaces as `Overflow`, not silent event loss.
+//!   3. Buffer-overflow → full rescan: see the KNOWN LIMITATION above — with notify 8.2 this does NOT
+//!      reach `Overflow` on Windows; verify the M7 periodic-reconcile backstop instead.
+//!   4. File-stability gate (size+mtime settle, open/lock probe, `.lnk` readiness — spec 07 §... the
+//!      resident section): this is NOT in the watcher (a blocking probe would stall the debouncer
+//!      worker). It belongs in the M7 reconciler/job layer as a retryable gate BEFORE formatting; its
+//!      pure state machine is Mac-testable, only the real share-mode / `IShellLink` readiness is `[WV]`.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -30,9 +47,11 @@ use notify_debouncer_full::notify::event::{ModifyKind, RenameMode};
 use notify_debouncer_full::notify::{Event, EventKind, RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
 
-/// The default settle window (spec 07 §3: debounce 2–10s). Two seconds folds the common installer
-/// temp-write→rename burst while still feeling responsive; tune via [`watch_desktops_with`].
-pub const DEFAULT_DEBOUNCE: Duration = Duration::from_secs(2);
+/// The default settle window (spec 07 §3/§16: debounce 4s, allowed range 2–10s). Four seconds folds
+/// the installer temp-write→rename burst while staying responsive. A config-injected value should be
+/// clamped to [2s, 10s] at the wiring layer (M7) — [`watch_desktops_with`] stays unclamped as the
+/// test seam.
+pub const DEFAULT_DEBOUNCE: Duration = Duration::from_secs(4);
 
 /// A raw change hint from the filesystem watcher (spec 07 §3: hints, not decisions). Installers
 /// commonly write-temp then rename, so `Renamed` and `Created` both occur for a new item.
@@ -47,10 +66,29 @@ pub enum WatchEvent {
     Overflow,
 }
 
-/// A live desktop watch. Holding it keeps the underlying OS watch armed; dropping it stops the
-/// watch and joins the debouncer's worker thread. The resident owns one for the app's lifetime.
+/// A live desktop watch. Holding it keeps the underlying OS watch armed. Dropping it (or calling
+/// [`DesktopWatch::shutdown`]) STOPS the watch and JOINS the debouncer's worker thread — a real
+/// quiescence barrier, so no `on_event` callback fires after it returns (the bare `Debouncer::drop`
+/// only sets a stop flag and can drain one more tick; `stop()` joins). The resident owns one for the
+/// app's lifetime.
 pub struct DesktopWatch {
-    _debouncer: Debouncer<RecommendedWatcher, RecommendedCache>,
+    debouncer: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
+}
+
+impl DesktopWatch {
+    /// Stops the watch and joins the worker thread NOW (idempotent). Prefer this over `drop` when the
+    /// caller needs to KNOW callbacks have quiesced before proceeding.
+    pub fn shutdown(&mut self) {
+        if let Some(debouncer) = self.debouncer.take() {
+            debouncer.stop();
+        }
+    }
+}
+
+impl Drop for DesktopWatch {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
 }
 
 /// Starts watching the user + public desktop `roots`, delivering settled [`WatchEvent`] hints to
@@ -99,11 +137,16 @@ where
     .map_err(|e| format!("watcher init: {e}"))?;
 
     for root in &roots {
+        // NON-recursive: the desktop scanner enumerates only the root's DIRECT children and skips
+        // reparse points (shell/scan.rs) — matching that scope avoids walking a code repo / OneDrive
+        // folder / junction that happens to sit on the desktop (which a recursive watch would traverse
+        // at startup, then churn deep events + file-id memory for, codex B10-review 🟠). The debouncer's
+        // file-id cache also walks the tree per root, so this bounds that too.
         debouncer
-            .watch(root, RecursiveMode::Recursive)
+            .watch(root, RecursiveMode::NonRecursive)
             .map_err(|e| format!("watch {}: {e}", root.display()))?;
     }
-    Ok(DesktopWatch { _debouncer: debouncer })
+    Ok(DesktopWatch { debouncer: Some(debouncer) })
 }
 
 /// Maps ONE settled `notify::Event` to at most one hint. A backend rescan flag (buffer overflow /

@@ -178,11 +178,22 @@ x86_64-pc-windows-msvc` green. The full-workspace msvc check stays blocked only 
    - **(b) Explorer-restart / sleep-resume catch-up** — kill+restart `explorer.exe` (or
      sleep→resume) while items appear on the desktop, and confirm the resident does a full rescan on
      re-arm so nothing that landed while unwatched is missed (spec 07 §3 catch-up).
-   - **(c) Buffer-overflow → full rescan** — dump hundreds of files onto the desktop in a burst to
-     overflow the `ReadDirectoryChangesW` buffer, and confirm it surfaces as `WatchEvent::Overflow`
-     (→ full reconcile), never silent event loss. On Windows `notify` sets the rescan flag on
-     overflow; `to_watch_event` maps `Event::need_rescan()` → `Overflow`, but the real overflow
-     threshold + flag delivery is Windows-runtime behaviour.
+   - **(c) Buffer-overflow → full rescan — ⚠️ KNOWN BROKEN with notify 8.2, EXPECT THIS TO FAIL.**
+     A codex source-read of `notify-8.2.0/src/windows.rs` found the Windows `ReadDirectoryChangesW`
+     backend IGNORES the completion's `bytes_written`: a real buffer overflow (Windows signals it as
+     a zero-byte completion, discarding the whole 16 KiB buffer) emits NO event, NO error, and NO
+     `Flag::Rescan` — so `WatchEvent::Overflow` never fires and burst-loss recovery silently breaks.
+     Mainline notify still ignores the parameter, so no version bump fixes it. **Please confirm the
+     symptom** (dump hundreds of files in a burst, observe no `Overflow` + missed items), then pick a
+     fix: (i) patch/fork notify's Windows backend to emit `EventKind::Other + Flag::Rescan` on a
+     zero-byte completion / `ERROR_NOTIFY_ENUM_DIR`, OR (ii) — recommended, and already written into
+     the M7 plan — have the M7 reconciler run a PERIODIC full reconcile as a backstop so a silently
+     dropped overflow still heals. `to_watch_event` already maps `need_rescan() → Overflow` correctly
+     (it fires on macOS/inotify); the gap is purely the Windows backend's delivery.
+   Also note: the file-STABILITY gate (size+mtime settle / open-lock probe / `.lnk` readiness) is
+   NOT in the watcher (a blocking probe would stall the debouncer worker) — it belongs in the M7
+   reconciler; and the default debounce is now 4s (spec 07), watch is NON-recursive (matches the
+   scanner's root-children-only scope), and `DesktopWatch::drop`/`shutdown()` joins the worker.
    Msvc cross-check is green (`cargo check -p dm-windows --target x86_64-pc-windows-msvc`), so the
    Windows backend (ReadDirectoryChangesW under the hood) compiles for the real target already.
 

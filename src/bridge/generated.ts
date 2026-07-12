@@ -16,7 +16,7 @@ export const commands = {
 	iconsApplyBakedCommit: (sessionId: string, styleJson: string, restoreIds: string[], label: string | null) => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_apply_baked_commit", { sessionId, styleJson, restoreIds, label })),
 	iconsRestore: () => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_restore")),
 	iconsRestoreOverlay: () => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_restore_overlay")),
-	iconsExportCompare: () => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_export_compare")),
+	iconsExportCompare: (pngBase64: string) => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_export_compare", { pngBase64 })),
 };
 
 /* Types */

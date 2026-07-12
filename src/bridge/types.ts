@@ -560,7 +560,10 @@ export interface BridgeMethods {
    *  colours stay. Distinct from `icons.restore` (which undoes everything). The
    *  real elevated verb is `dm-elevated RestoreOverlay` (exact byte restore). */
   'icons.restoreOverlay': { params: void; result: IconOpResultDto }
-  'icons.exportCompare': { params: void; result: IconOpResultDto }
+  /** The webview composes the branded before/after sheet (it owns the fonts and both image
+   *  states — oracle ComparisonImageExporter); Rust only validates + saves the finished PNG
+   *  (raw base64) and toasts the saved path. */
+  'icons.exportCompare': { params: { png: string }; result: IconOpResultDto }
   'shell.minimize': { params: void; result: null }
   'shell.maximize': { params: void; result: null }
   'shell.restore': { params: void; result: null }

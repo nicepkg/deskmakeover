@@ -115,8 +115,10 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
       return unwrap(await commands.iconsRestore())
     case 'icons.restoreOverlay':
       return unwrap(await commands.iconsRestoreOverlay())
-    case 'icons.exportCompare':
-      return unwrap(await commands.iconsExportCompare())
+    case 'icons.exportCompare': {
+      const p = params as { png: string }
+      return unwrap(await commands.iconsExportCompare(p.png))
+    }
     case 'shell.minimize':
       await getCurrentWindow().minimize()
       return null

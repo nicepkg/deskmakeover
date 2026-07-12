@@ -12,6 +12,7 @@ import { computeHueSpread } from '@/icon-wasm/hue-spread'
 import { format, t } from '@/lib/i18n'
 import type { StringKey } from '@/lib/i18n'
 import { useToasts } from '@/stores/toasts'
+import { composeCompareSheet, type CompareTile } from '@/lib/compare-sheet'
 
 // Icons-module state (icons contract v2, spec 06): the web compositor renders
 // every preview locally — NOTHING crosses the bridge per edit. `setLook`
@@ -996,11 +997,51 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     exportCompare: async () => {
-      // Export renders a before/after compare sheet — a pure side effect that never changes the
-      // visible state (D1: the thin op returns only the unchanged persisted bits), so it just
-      // toasts. No generation guard needed: there is no state to clobber.
-      const result = await bridge('icons.exportCompare')
-      toastOf(result)
+      // Export composes the before/after compare sheet HERE (the webview owns the fonts and both
+      // image states — oracle ComparisonImageExporter) and hands Rust only the finished PNG to
+      // save. A pure side effect that never changes visible state, so it just toasts. No
+      // generation guard needed: there is no state to clobber.
+      const s = get()
+      const fail = () => useToasts.getState().show(t('Toast_CompareFailed'), 'warn')
+      if (!s.state || s.items.length === 0) return fail()
+      try {
+        const compositor = getIconCompositor()
+        const config = s.state.config
+        const policy = s.state.kindPolicy
+        const overrides = s.state.typeOverrides
+        // Styled tiles first (the sheet advertises the makeover); when nothing is styled yet the
+        // first tiles stand in, exactly the oracle's fallback.
+        const eligible = s.items.filter((i) => i.sourceUrls.length > 0)
+        const styledSet = eligible.filter(
+          (i) => i.styleable && !effectiveTileConfig(i, config, policy, overrides).showOriginal,
+        )
+        const pool = (styledSet.length > 0 ? styledSet : eligible).slice(0, 8)
+        if (pool.length === 0) return fail()
+        const tiles: CompareTile[] = []
+        for (const item of pool) {
+          await compositor.loadSource(item.id, item.sourceUrls[0])
+          const eff = effectiveTileConfig(item, config, policy, overrides)
+          const png = await compositor.bakeMasterPng(
+            item.id,
+            eff.config,
+            item.isShortcut,
+            fieldRenderOpts(item.id),
+          )
+          if (png) tiles.push({ originalUrl: item.sourceUrls[0], styledPng: png })
+        }
+        if (tiles.length === 0) return fail()
+        const sheet = await composeCompareSheet(tiles, {
+          productName: t('ProductName'),
+          tagline: t('About_Tagline'),
+          before: t('Compare_Before'),
+          after: t('Compare_After'),
+          homepage: t('About_Homepage'),
+        })
+        const result = await bridge('icons.exportCompare', { png: sheet })
+        toastOf(result)
+      } catch {
+        fail()
+      }
     },
 
     setComparing: (comparing) => set({ comparing }),

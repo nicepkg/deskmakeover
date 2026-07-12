@@ -107,6 +107,8 @@ pub struct IconHost {
     /// Active user-profile count (host truth; >1 makes the machine-wide arrow disclosure
     /// non-skippable). The dev host reports a single user.
     active_user_profiles: u32,
+    /// Where `exportCompare` saves when the platform offers no Pictures known-folder.
+    export_fallback_dir: PathBuf,
 }
 
 impl IconHost {
@@ -157,6 +159,7 @@ impl IconHost {
             arrow_marker,
             overlay_ico,
             active_user_profiles,
+            export_fallback_dir: data_dir.join("exports"),
         }
     }
 
@@ -580,15 +583,47 @@ impl IconHost {
         })
     }
 
-    /// `icons.exportCompare`: render + save a before/after compare sheet. Not yet implemented — the
-    /// sheet compositor is a future deliverable, so this reports `ok:false` with an "unavailable"
-    /// toast rather than falsely claiming success with no artifact on disk (codex Major 5).
-    pub fn export_compare(&self) -> Result<IconOpResultDto, String> {
+    /// `icons.exportCompare`: save the webview-composed before/after sheet. Composition lives in
+    /// the frontend (it owns the fonts, the CJK stack, and both image states — oracle
+    /// `ComparisonImageExporter`); this side validates the payload IS a decodable PNG and writes
+    /// it to the Pictures folder (fallback: the app's own exports dir). Failure stays honest —
+    /// `ok:false` + the failed toast, never a phantom success with no artifact on disk.
+    pub fn export_compare(
+        &self,
+        png_base64: &str,
+        pictures: Option<PathBuf>,
+    ) -> Result<IconOpResultDto, String> {
         let persisted = self.get_persisted()?;
-        Ok(IconOpResultDto {
-            ok: false,
-            toast: Some(ToastDto { key: "Toast_CompareFailed".into(), arg: None }),
-            persisted,
+        let saved = (|| -> Result<PathBuf, String> {
+            use base64::Engine;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(png_base64.trim())
+                .map_err(|e| format!("compare sheet: bad base64: {e}"))?;
+            // A payload that does not decode as an image never lands on disk under our name.
+            image::load_from_memory(&bytes).map_err(|e| format!("compare sheet: not an image: {e}"))?;
+            let dir = pictures.unwrap_or_else(|| self.export_fallback_dir.clone());
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let path = unique_export_path(&dir, &utc_stamp(now_secs()));
+            std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+            Ok(path)
+        })();
+        Ok(match saved {
+            Ok(path) => IconOpResultDto {
+                ok: true,
+                toast: Some(ToastDto {
+                    key: "Toast_CompareSaved".into(),
+                    arg: Some(path.display().to_string()),
+                }),
+                persisted,
+            },
+            Err(e) => {
+                log::warn!("exportCompare failed: {e}");
+                IconOpResultDto {
+                    ok: false,
+                    toast: Some(ToastDto { key: "Toast_CompareFailed".into(), arg: None }),
+                    persisted,
+                }
+            }
         })
     }
 
@@ -779,6 +814,46 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
+/// `YYYYMMDD-HHMMSS` (UTC) for export filenames — Howard Hinnant's civil-from-days algorithm,
+/// so the host needs no calendar dependency. UTC (not local) keeps it deterministic; the stamp
+/// is a filename, not a displayed date.
+fn utc_stamp(secs: i64) -> String {
+    let days = secs.div_euclid(86_400);
+    let tod = secs.rem_euclid(86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!(
+        "{y:04}{m:02}{d:02}-{:02}{:02}{:02}",
+        tod / 3600,
+        (tod % 3600) / 60,
+        tod % 60
+    )
+}
+
+/// A non-clobbering export path: `DeskMakeover-<stamp>.png`, suffixed `-2`, `-3`, … when two
+/// exports land in the same second.
+fn unique_export_path(dir: &Path, stamp: &str) -> PathBuf {
+    let base = dir.join(format!("DeskMakeover-{stamp}.png"));
+    if !base.exists() {
+        return base;
+    }
+    for n in 2..100 {
+        let alt = dir.join(format!("DeskMakeover-{stamp}-{n}.png"));
+        if !alt.exists() {
+            return alt;
+        }
+    }
+    base
+}
+
 #[cfg(all(test, not(windows)))]
 mod tests {
     use super::*;
@@ -904,6 +979,48 @@ mod tests {
             orig2,
             "a hand-edited surface no longer matches last_applied → live extraction wins"
         );
+    }
+
+    #[test]
+    fn export_compare_saves_a_validated_png_and_toasts_the_path() {
+        use base64::Engine;
+        let dir = tempfile::tempdir().unwrap();
+        let h = host(dir.path());
+        let out = dir.path().join("pictures");
+
+        // A real PNG payload saves + toasts its path.
+        let res = h.export_compare(&tiny_master(), Some(out.clone())).unwrap();
+        assert!(res.ok);
+        let arg = res.toast.as_ref().unwrap().arg.clone().unwrap();
+        assert!(arg.contains("DeskMakeover-"), "toast carries the saved path: {arg}");
+        let saved = std::path::Path::new(&arg);
+        assert!(saved.exists(), "the artifact is on disk");
+
+        // A second export in the same second gets a suffixed name, never a clobber.
+        let res2 = h.export_compare(&tiny_master(), Some(out.clone())).unwrap();
+        let arg2 = res2.toast.as_ref().unwrap().arg.clone().unwrap();
+        assert_ne!(arg, arg2, "same-second exports never overwrite");
+
+        // Garbage payloads never land on disk — honest ok:false.
+        for bad in ["not-base64!!!", &base64::engine::general_purpose::STANDARD.encode(b"nonsense")] {
+            let res = h.export_compare(bad, Some(out.clone())).unwrap();
+            assert!(!res.ok);
+            assert_eq!(res.toast.as_ref().unwrap().key, "Toast_CompareFailed");
+        }
+        assert_eq!(
+            std::fs::read_dir(&out).unwrap().count(),
+            2,
+            "only the two valid exports exist"
+        );
+    }
+
+    #[test]
+    fn utc_stamps_follow_the_civil_calendar() {
+        assert_eq!(utc_stamp(0), "19700101-000000");
+        // 2026-07-13 00:00:00 UTC = 1783900800.
+        assert_eq!(utc_stamp(1_783_900_800), "20260713-000000");
+        // Leap-year day: 2024-02-29 12:34:56 UTC = 1709210096.
+        assert_eq!(utc_stamp(1_709_210_096), "20240229-123456");
     }
 
     #[test]

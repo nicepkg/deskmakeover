@@ -321,6 +321,7 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
     styleJson?: string
     label?: string | null
     sessionId?: string
+    png?: string
   }
   switch (method) {
     case 'icons.getPersisted':
@@ -378,10 +379,23 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
       session.arrowOverlay = res.arrowOverlay
       return { ok: res.ok, toast: { key: res.toastKey, arg: null }, persisted: persisted() } satisfies IconOpResultDto
     }
-    case 'icons.exportCompare':
-      // The before/after compare sheet is not yet implemented — honest ok:false (matches the real
-      // host), never a phantom success (codex Major 5 / R2-Major 2).
-      return { ok: false, toast: { key: 'Toast_CompareFailed', arg: null }, persisted: persisted() } satisfies IconOpResultDto
+    case 'icons.exportCompare': {
+      // The webview composed the sheet; the mock has no filesystem, so parity = a browser
+      // download of the same PNG (DOM-gated: bun tests run without a document). An empty
+      // payload keeps the honest ok:false contract (codex Major 5 / R2-Major 2).
+      const png = p.png
+      if (!png) {
+        return { ok: false, toast: { key: 'Toast_CompareFailed', arg: null }, persisted: persisted() } satisfies IconOpResultDto
+      }
+      const name = 'DeskMakeover-compare.png'
+      if (typeof document !== 'undefined') {
+        const a = document.createElement('a')
+        a.href = `data:image/png;base64,${png}`
+        a.download = name
+        a.click()
+      }
+      return { ok: true, toast: { key: 'Toast_CompareSaved', arg: name }, persisted: persisted() } satisfies IconOpResultDto
+    }
     default:
       throw new Error(`[mock desktop] unhandled method: ${method}`)
   }

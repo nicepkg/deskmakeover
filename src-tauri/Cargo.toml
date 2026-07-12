@@ -34,6 +34,8 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 # Synthesizes the dev-host's stand-in 256px icon sources at runtime (icon source extraction has
 # no cross-platform Rust core, unlike the wallpaper decoder). png-only: we only encode PNG.
 image = { version = "0.25", default-features = false, features = ["png"] }
+# Decodes the webview-composed compare sheet (icons.exportCompare) before it lands on disk.
+base64 = "0.22"
 
 # Desktop-only plugins. `cfg(desktop)` is a Tauri-set cfg unknown to Cargo at
 # resolution time, so these must key off the standard target_os cfgs instead.
@@ -52,4 +54,3 @@ dm-windows = { path = "../crates/dm-windows" }
 
 [dev-dependencies]
 tempfile = "3"
-base64 = "0.22"

@@ -111,6 +111,15 @@ pub fn icons_restore_overlay(state: State<'_, AppState>) -> Result<IconOpResultD
 
 #[tauri::command]
 #[specta::specta]
-pub fn icons_export_compare(state: State<'_, AppState>) -> Result<IconOpResultDto, String> {
-    state.icons.export_compare()
+pub fn icons_export_compare(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    png_base64: String,
+) -> Result<IconOpResultDto, String> {
+    // The webview composed the sheet (it owns the fonts + both image states); Rust saves it to
+    // the user's Pictures folder, falling back to the host's own export dir when the platform
+    // has no Pictures known-folder.
+    use tauri::Manager;
+    let pictures = app.path().picture_dir().ok();
+    state.icons.export_compare(&png_base64, pictures)
 }

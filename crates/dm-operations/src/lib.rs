@@ -14,12 +14,17 @@
 
 mod error;
 mod fs_atomic;
+pub mod icons;
 pub mod ledger;
 mod settings_store;
 pub mod txn;
 pub mod wallpaper;
 
 pub use error::{OperationError, Result};
+pub use icons::{
+    BufferedMaster, IconApplyOutcome, IconApplySession, IconOps, IconPlatform, IconResetOutcome,
+    IconStoreState,
+};
 pub use ledger::{
     JsonLedgerStore, LedgerEntry, LedgerStore, LookHistoryStore, LookVersion, MemLedgerStore,
     PinResult, PushOutcome, TxnState,

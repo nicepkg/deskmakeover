@@ -12,7 +12,9 @@ pub use id::TxnIdAllocator;
 pub use journal::{FileJournal, JournalRecord, JournalSink, VecJournal};
 pub use recovery::{recover, recover_from_journal, RecoveryOutcome};
 
+// Crate-visible in test builds so the icon-ops tests reuse this virtual-desktop fake instead of
+// duplicating it (the driver tests use it as `super::fakes`).
 #[cfg(test)]
-mod fakes;
+pub(crate) mod fakes;
 #[cfg(test)]
 mod tests;

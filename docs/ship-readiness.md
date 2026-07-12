@@ -27,7 +27,7 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 | **M6 kernel-speed + WASM cutover** | ✅ EXECUTED (WASM is the only pixel path) | Physical deletion of the frozen TS compositor (`src/icon-compositor/*.ts`, 10 files) held to M8. |
 | **M6-WIRE Wave A (wallpaper)** | DONE **on Mac only** | All Windows COM/WIC/topology (`topology.rs`, `decode.rs`, `wallpaper.rs`) `[WV]`. |
 | **M6-WIRE Wave B foundation (B6-B9 + fs_atomic)** | ✅ DONE (Mac-green) | The four Windows durability defects in `m6-wire-host.md §8a` are **not Mac-fixable** and gate shipping. |
-| **M6-WIRE Wave B icon bridge (B1-B5)** | Mac end-to-end, **codex R4 = Request Changes (NOT converged)** | 5 Block + 2 Major error-contract findings — see §Icon-bridge R4. |
+| **M6-WIRE Wave B icon bridge (B1-B5)** | Mac end-to-end; **R1–R5 all fixed, codex R6 verify pending** | R5's 7 findings (4🔴+3🟠) fixed 2026-07-13 — see §Icon-bridge R4→R5. |
 | **M6-WIRE Wave B B10 (desktop watcher)** | ✅ DONE 2026-07-12 (`37f4b13`) | Real `notify`+`notify-debouncer-full`, Mac-live-verified (FSEvents), msvc-clean. 3 runtime semantics `[WV]` (self-write suppression / restart catch-up / overflow→rescan). |
 | **M6-WIRE Wave C (Windows handoff doc)** | **NOT STARTED** | Spec'd at `docs/references/windows-wiring-handoff/README.md` (m6-wire-host §8); directory does not exist. No systematic Windows verification recipe yet. |
 | **M7 resident auto-format** | **NOT STARTED** (design finalized: ADR-0022 + spec 07 + `m7-resident.md`) | `crates/dm-resident/src/lib.rs` is an empty crate (doc comment only), NOT wired into `src-tauri`. Tasks T1-T12 unbuilt. Precondition gate (B6-B10) is now green. |
@@ -104,25 +104,28 @@ in the (unwritten) Windows handoff doc; the running checklists live in
 - **First-run/onboarding** — welcome-gate built on web; M7 first-format consent strip + resident onboarding unbuilt.
 - Owner-gated release blockers: first version number, making the private repo public, the signing cert, the extracted `public/real-icons/` pack sign-off.
 
-## Icon-bridge R4 status (codex, 2026-07-12 — Request Changes, NOT converged)
+## Icon-bridge R4→R5 status (codex adversarial loop — R6 verify pending)
 
-The B1-B5 bridge went through R1(13)+R2(8)+R3(5) fixed; **R4 found the R3 error-contract fixes were
-directionally right but incomplete + buggy.** Owner decision (A): grind to convergence on Mac.
-**Status 2026-07-12: all 7 R4 findings below FIXED with regression tests (cargo 507 · bun 516 · tsc ·
-msvc-clean, green); codex R5 verification dispatched.** The big one was Major 1 + 1b — the
-start-ordered generation guard was deleted outright and replaced by strict single-flight (at most one
-host round-trip in flight; scan/rescan/apply/restore/restoreOverlay mutually exclusive).
+The B1-B5 bridge went through R1(13)+R2(8)+R3(5)+R4(7) fixed; **R5 (2026-07-12) found the R3/R4 fixes
+were directionally right but did not cover the full state space.** Owner decision (A): grind to
+convergence on Mac. **Status 2026-07-13: all 7 R5 findings (4🔴+3🟠) FIXED with regression tests
+(0cecacb/1fdd611/4c18bc7); cargo workspace green (dm-operations 159 · deskmakeover-desktop 24 ·
+dm-windows 53) · tsc · bun 516 · vite · bindings drift-guard; codex R6 verification dispatched.** The
+R4 big one was Major 1 + 1b — the start-ordered generation guard was deleted outright and replaced by
+strict single-flight (at most one host round-trip in flight; scan/rescan/apply/restore/restoreOverlay
+mutually exclusive). R5 then closed the residual state-space gaps that guard had masked:
 
-| # | Finding | Fix size |
+| R5 # | Finding | Fix |
 |---|---|---|
-| 🔴 B1 | keep-revert succeeds but the driver batch then fails → host still shows "桌面没有改动" (`error` outranks a non-empty `reverted`/`degraded`). | small-med |
-| 🔴 B2 | restore succeeds but `ledger.remove` fails → **permanent CAS poison** (`desktop=original, ledger=styled`); next reset reads it as "user-edited" and skips forever. The "self-heals" comment is wrong. | med (durable intent / reconcile recognizes restore-landed) |
-| 🔴 B3 | a post-mutation read-back fault fabricates `applied=false`; the store adopts it and **hides the only restore entry**. "read failed" is unknown, not "not applied". | small (fail-closed to applied:true / express unknown) |
-| 🔴 B4 | `restore_overlay` still does `get_persisted()?` AFTER the arrow flip + set_arrow — a bare `Err` over a landed machine-level mutation (my Block-4 fix missed this path). | small |
-| 🔴 B5 | `recover_from_journal`'s `?` can revert some items then bare-`Err` on a later one — a runtime journal fault, not a crash-window. | med (structured partial outcome) |
-| 🟠 M1 | rescan is NOT side-effect-free: host `scan()` unconditionally publishes cache + bumps `scan_revision`; a discarded rescan DTO desyncs the UI revision → subsequent Apply fails stale-revision until a full refresh. | med (scan bidirectional single-flight + host serialize) |
-| 🟠 M2 | fixed two-generation cache can't express consumer lifecycle (`G0 未adopt → publish G1 → G2` evicts G0). | med (lease/refcount/LRU) |
-| — | codex ruling: the three inert `isCurrentGen` branches in apply/restore/restoreOverlay should be **deleted** (not kept as defense — they'd revive R3 bugs if reachable). Test `arrow-restore-integration.test.ts:318` still pins "a published scan is discardable" as a wrong contract. | small-med |
+| 🔴 #1 | driver rollback/abandon moves the desktop but host still shows "桌面没有改动" (only keep-restore `reverted` was checked, not the driver's own `rolled_back`). | `desktop_mutated` flag on the outcome; host degraded toast when set. |
+| 🔴 #2 | a poisoned lingering row re-styled DIRECTLY bypasses the heal arm → permanent CAS conflict; an all-conflicts batch still writes ②③ + reports ok:true. | `prepare_item` heals (current==original≠last_applied) then fresh-applies; ②③ gated on `!committed.is_empty()`; `Toast_ApplyNoEffect`. |
+| 🔴 #3 | a clean recovery that ABORTED an interrupted txn moved the desktop, then a later bare `?` (package validate / store read) surfaces over it. | commit_apply/reset defer (resync) when `!aborted.is_empty()`, not only on degraded. |
+| 🔴 #4 | both-terminals corruption Err fires INSIDE the drain loop — after an earlier incomplete txn was already aborted (desktop mutated). | structural preflight over all txns before any mutation. |
+| 🟠 #5 | `Promise.all([scan,getPersisted])` fail-fast releases the single-flight lock while the still-running `scan` orphan-publishes + desyncs the revision. | `fetchScan` sequences getPersisted (publish-free) then scan. |
+| 🟠 #6 | startup recovery swallows `degraded`; a fresh-incomplete txn styles the desktop with no ledger row → `applied:false` hides the only restore entry. | get_persisted forces `applied:true` off an in-flight journal (`active_txns`); startup logs degraded loudly. **[WV]: the cfg(windows) startup branch can't be msvc-checked from Mac (rusqlite baseline) — verify on the box.** |
+| 🟠 #7 | 32MB LRU can evict the generation it is publishing (256px high-entropy × 200 icons > cap in one scan) → live 404. | `publish` pins the current generation; `trim` evicts only historical keys. |
+
+_R1–R4 (33 findings) all fixed earlier; R4's Major 1+1b deleted the generation guard for strict single-flight, R4's B1–B5 hardened the degraded error-contract. Detail swept to `docs/journal/2026-07.md`._
 
 ## Open owner decisions (from STATE.md)
 
@@ -135,7 +138,7 @@ host round-trip in flight; scan/rescan/apply/restore/restoreOverlay mutually exc
 
 The Mac-side product (UI, icon core, wallpaper wiring, icon bridge, storage foundation) is genuinely
 built. **Essentially nothing on the Windows ship target has been validated at runtime.** Under
-decision A, the near-term Mac work is: (1) converge the icon-bridge R4 contract, (2) write the two
+decision A, the near-term Mac work is: (1) converge the icon-bridge contract (R5 fixed, R6 verifying), (2) write the two
 Mac-buildable stubs (`source.rs` extraction, `exportCompare`), (3) finish the Mac-buildable halves of
 the `[WIN]` seams so the Windows pass is verification-only, (4) author the Windows handoff doc so the
 box work is a checklist, then (5) M7 build + M8 packaging. Steps that are irreducibly Windows-runtime

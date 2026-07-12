@@ -92,16 +92,6 @@ impl WallpaperHost {
         })
     }
 
-    /// `wallpaper.getSource`: the first screen with a decoded source (compositor
-    /// bootstrap convenience — per-screen sources ride on `screens[]`).
-    pub fn primary_source(&self) -> Result<WallpaperSourceDto, String> {
-        let dto = self.screens()?;
-        dto.screens
-            .into_iter()
-            .find_map(|s| s.source)
-            .ok_or_else(|| "no readable wallpaper source on any screen".into())
-    }
-
     /// `wallpaper.applyBaked` — the ops layer owns snapshot-once + materialization.
     pub fn apply_baked(&self, monitor_id: &str, png_base64: &str) -> Result<WallpaperResultDto, String> {
         let _serialized = self.mutate.lock().unwrap();

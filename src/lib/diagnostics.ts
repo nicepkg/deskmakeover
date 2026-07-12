@@ -21,7 +21,7 @@ async function systemInfo(): Promise<SystemInfoDto> {
   try {
     return await call('diagnostics.getInfo')
   } catch {
-    return { osVersion: 'unknown', dotnetVersion: 'unknown', webview2Version: 'unknown', arch: 'unknown', hostLogTail: [] }
+    return { osVersion: 'unknown', webview2Version: 'unknown', arch: 'unknown', hostLogTail: [] }
   }
 }
 
@@ -58,7 +58,6 @@ export async function buildReport(): Promise<string> {
     '## Environment',
     ...webEnvLines(),
     `OS: ${sys.osVersion}`,
-    `.NET: ${sys.dotnetVersion}`,
     `WebView2: ${sys.webview2Version} (${sys.arch})`,
     '',
     `## Error log (newest first, ${errors.length} entries)`,

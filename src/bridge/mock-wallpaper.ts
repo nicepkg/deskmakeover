@@ -112,11 +112,6 @@ export async function mockWallpaperCall(method: string, params: unknown): Promis
     case 'wallpaper.getScreens':
       await probeRealWallpaper()
       return screenInfos()
-    case 'wallpaper.getSource': {
-      await probeRealWallpaper()
-      const src = screenInfos().screens[0]?.source
-      return src ?? { url: mockWallpaperUrl(), width: MOCK_WALLPAPER_DIMS.w, height: MOCK_WALLPAPER_DIMS.h }
-    }
     case 'wallpaper.applyBaked': {
       const { pngBase64 } = params as { monitorId: string; pngBase64: string }
       if (typeof window !== 'undefined') (window as { __dmBakedPng?: string }).__dmBakedPng = `data:image/png;base64,${pngBase64}`

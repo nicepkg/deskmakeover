@@ -42,7 +42,6 @@ export interface AppLinksDto {
 /** Environment snapshot for diagnostics reports (mirrors Host DiagnosticsService, F8). */
 export interface SystemInfoDto {
   osVersion: string
-  dotnetVersion: string
   webview2Version: string
   arch: string
   /** Recent host-side error lines, already formatted (empty until F8). */
@@ -481,9 +480,6 @@ export interface BridgeMethods {
   // Schema 6 thin wallpaper contract (D1). getScreens REPLACES getState: raw screen
   // info + globals only — the store reconciles looks + assembles WallpaperStateDto.
   'wallpaper.getScreens': { params: void; result: WallpaperScreensDto }
-  // getSource stays void-param (returns the ACTIVE screen's source) so the
-  // compositor init keeps working; per-monitor sources ride on screens[].source.
-  'wallpaper.getSource': { params: void; result: WallpaperSourceDto }
   // setLook LEFT the bridge — per-monitor draft looks persist in the frontend's
   // localStorage (`wallpaper.look.v2::<device-path>`), like `dm.icons.bareLook`.
   // Per-monitor mutating verbs (§B1). `monitorId` is the device path; the baked PNG

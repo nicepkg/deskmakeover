@@ -21,7 +21,6 @@ const HANDLED = new Set([
   'shell.restore',
   'shell.close',
   'wallpaper.getScreens',
-  'wallpaper.getSource',
   'wallpaper.applyBaked',
   'wallpaper.restore',
 ])
@@ -64,11 +63,9 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
     case 'settings.set':
       return unwrap(await commands.settingsSet(params as Parameters<typeof commands.settingsSet>[0]))
     // Wallpaper (schema 6 thin, D1): the store reconciles + assembles; Rust returns
-    // raw screens (getScreens) / the active source (getSource) / a thin op result.
+    // raw screens (getScreens) / a thin op result.
     case 'wallpaper.getScreens':
       return unwrap(await commands.wallpaperGetScreens())
-    case 'wallpaper.getSource':
-      return unwrap(await commands.wallpaperGetSource())
     case 'wallpaper.applyBaked': {
       const p = params as { monitorId: string; pngBase64: string }
       return unwrap(await commands.wallpaperApplyBaked(p.monitorId, p.pngBase64))

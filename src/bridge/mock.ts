@@ -58,7 +58,6 @@ export async function mockCall(method: string, params: unknown): Promise<unknown
     case 'diagnostics.getInfo':
       return {
         osVersion: `${navigator.platform || 'browser'} (mock)`,
-        dotnetVersion: '.NET 8.0 (mock)',
         webview2Version: 'browser (mock)',
         arch: 'x64 (mock)',
         hostLogTail: [],

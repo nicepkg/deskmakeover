@@ -7,23 +7,11 @@ export const commands = {
 	settingsGet: () => typedError<SettingsDto, string>(__TAURI_INVOKE("settings_get")),
 	settingsSet: (patch: SettingsPatch) => typedError<SettingsDto, string>(__TAURI_INVOKE("settings_set", { patch })),
 	wallpaperGetScreens: () => typedError<WallpaperScreensDto, string>(__TAURI_INVOKE("wallpaper_get_screens")),
-	wallpaperGetSource: () => typedError<WallpaperSourceDto, string>(__TAURI_INVOKE("wallpaper_get_source")),
 	wallpaperApplyBaked: (monitorId: string, pngBase64: string) => typedError<WallpaperResultDto, string>(__TAURI_INVOKE("wallpaper_apply_baked", { monitorId, pngBase64 })),
 	wallpaperRestore: (monitorId: string) => typedError<WallpaperResultDto, string>(__TAURI_INVOKE("wallpaper_restore", { monitorId })),
-	diagnosticsPing: (message: string) => __TAURI_INVOKE<DiagnosticsPing>("diagnostics_ping", { message }),
 };
 
 /* Types */
-/**
- *  Reply to `diagnostics_ping` — echoes the caller's message and reports the
- *  backend version, so the frontend can confirm it is talking to a live host.
- */
-export type DiagnosticsPing = {
-	ok: boolean,
-	version: string,
-	message: string,
-};
-
 /**
  *  UI language. `System` follows the OS UI culture; the two concrete tags use
  *  the BCP-47 spellings the TS dictionaries key on.

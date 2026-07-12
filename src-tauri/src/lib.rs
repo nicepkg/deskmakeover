@@ -31,10 +31,8 @@ fn specta_builder() -> Builder<tauri::Wry> {
         commands::settings_get,
         commands::settings_set,
         commands::wallpaper_get_screens,
-        commands::wallpaper_get_source,
         commands::wallpaper_apply_baked,
         commands::wallpaper_restore,
-        commands::diagnostics_ping,
     ])
 }
 

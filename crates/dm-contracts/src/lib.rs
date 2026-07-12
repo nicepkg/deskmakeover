@@ -8,12 +8,10 @@
 //! phases migrate it here.
 
 mod common;
-mod diagnostics;
 mod settings;
 mod wallpaper;
 
 pub use common::ToastDto;
-pub use diagnostics::DiagnosticsPing;
 pub use settings::{Language, SettingsDto, SettingsPatch, Theme};
 pub use wallpaper::{
     MonitorBounds, ScreenInfoDto, ScreenOrientation, WallpaperPosition, WallpaperResultDto,

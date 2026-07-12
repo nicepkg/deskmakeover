@@ -79,6 +79,13 @@ pub struct IconHost {
     assets: FsAssetStore,
     settings: Arc<SettingsStore>,
     mut_state: Mutex<IconMutState>,
+    /// Serializes an ENTIRE desktop-mutating verb — apply-commit, full restore, and arrow restore —
+    /// including its overlay call + `set_arrow`, which run OUTSIDE `mut_state` (a slow elevated
+    /// round-trip must not hold the transaction lock that scans need). Without this gate two verbs'
+    /// overlay helpers could interleave and leave marker ≠ desktop ≠ UI (codex R3-Block 2). Reads
+    /// (scan / get_persisted) never take it, so a mutation-in-flight never blocks a refresh. Lock
+    /// order is ALWAYS op_gate → mut_state; no reader ever takes op_gate, so there is no cycle.
+    op_gate: Mutex<()>,
     /// The `dmicon://` protocol cache: `"<itemId>/<slot>"` → the extracted PNG bytes (overwritten
     /// each scan; the URL's `?rev` — not this map — cache-busts the webview).
     sources: Mutex<HashMap<String, Vec<u8>>>,
@@ -124,6 +131,7 @@ impl IconHost {
             refresher: ports.refresher,
             assets: FsAssetStore::new(data_dir.join("icon-assets")),
             settings,
+            op_gate: Mutex::new(()),
             mut_state: Mutex::new(IconMutState {
                 ledger: JsonLedgerStore::new(data_dir.join("ledger.json")),
                 journal: FileJournal::new(data_dir.join("txn.log")),
@@ -270,6 +278,10 @@ impl IconHost {
         label: Option<String>,
     ) -> Result<IconOpResultDto, String> {
         let style = parse_style(&style_json)?;
+        // Hold the mutation gate for the WHOLE verb — the ledger commit AND the overlay install +
+        // set_arrow below (which run after `mut_state` is dropped) — so no concurrent restore /
+        // arrow-restore can interleave its overlay helper with this one (codex R3-Block 2).
+        let _op_gate = self.op_gate.lock().unwrap();
         let mut st = self.mut_state.lock().unwrap();
         // Reject a commit whose token no longer matches the current session — a newer Begin
         // superseded it, so its buffer/styleJson belong to a stale apply (codex R3-Block 1).
@@ -336,16 +348,28 @@ impl IconHost {
             }
             let _ = self.refresher.notify_icons_changed();
         }
-        Ok(IconOpResultDto {
-            ok: outcome.error.is_none(),
-            toast: outcome.error.map(|e| ToastDto { key: "Toast_ApplyFailed".into(), arg: Some(e) }),
-            persisted: self.finish_persisted(dto),
-        })
+        // A finalize step failed AFTER the desktop committed (codex R3-Block 4): log the detail for
+        // the operator, surface a generic "applied but finalize incomplete" toast, and return ok:false
+        // with the authoritative persisted state — the store then keeps the draft dirty for a retry,
+        // never a bare bridge error that reads as "nothing changed".
+        if let Some(reason) = &outcome.degraded {
+            log::warn!("icons apply finalize degraded: {reason}");
+        }
+        let (ok, toast) = if let Some(e) = outcome.error {
+            (false, Some(ToastDto { key: "Toast_ApplyFailed".into(), arg: Some(e) }))
+        } else if outcome.degraded.is_some() {
+            (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
+        } else {
+            (true, None)
+        };
+        Ok(IconOpResultDto { ok, toast, persisted: self.finish_persisted(dto) })
     }
 
     /// `icons.restore`: full reset — revert every styled icon to its true original (trust-first,
     /// spec 07 §10) AND lift the arrow overlay (icons + arrow back to native).
     pub fn restore(&self) -> Result<IconOpResultDto, String> {
+        // Hold the mutation gate across the ledger reset AND the arrow lift below (codex R3-Block 2).
+        let _op_gate = self.op_gate.lock().unwrap();
         let mut st = self.mut_state.lock().unwrap();
         let IconMutState { ledger, history, journal, op_epoch, .. } = &mut *st;
         let outcome = self
@@ -356,6 +380,7 @@ impl IconHost {
         *op_epoch += 1;
         let dto = self.to_persisted_dto_locked(&outcome.stores);
         let skipped = outcome.skipped.len();
+        let degraded = outcome.degraded;
         drop(st);
 
         // §10 three-part coupling (spec 07 §8.4): clearing ② (done in the ops) is paired with
@@ -373,9 +398,17 @@ impl IconHost {
             }
         }
         let _ = self.refresher.notify_icons_changed();
-        // Surface the trust-first skips, or the arrow-restore failure — never a blanket ok:true.
+        // A finalize step failed after some icons already reverted (codex R3-Block 4): log the detail,
+        // return ok:false + a repair toast + the authoritative state. Surface the trust-first skips, or
+        // the arrow-restore failure — never a blanket ok:true. Priority: arrow fault → finalize
+        // degraded → trust-first skips.
+        if let Some(reason) = &degraded {
+            log::warn!("icons reset finalize degraded: {reason}");
+        }
         let (ok, toast) = if overlay_failed {
             (false, Some(ToastDto { key: "Toast_RestoreArrowFailed".into(), arg: None }))
+        } else if degraded.is_some() {
+            (false, Some(ToastDto { key: "Toast_ResetDegraded".into(), arg: None }))
         } else if skipped > 0 {
             (true, Some(ToastDto { key: "Toast_ResetSkipped".into(), arg: Some(skipped.to_string()) }))
         } else {
@@ -388,6 +421,9 @@ impl IconHost {
     /// look stays). Faithful to the elevated Applied|Declined|Failed contract; the OBSERVED
     /// post-op arrow state is authoritative.
     pub fn restore_overlay(&self) -> Result<IconOpResultDto, String> {
+        // Hold the mutation gate across the overlay helper + epoch bump + set_arrow so a concurrent
+        // apply-commit / full-restore can never interleave its own overlay call (codex R3-Block 2).
+        let _op_gate = self.op_gate.lock().unwrap();
         let outcome = self.overlay.restore().map_err(|e| e.to_string())?;
         let (arrow, ok, toast_key) = match outcome {
             OverlayOutcome::Applied => (ArrowOverlayDto::Native, true, "Toast_ArrowRestored"),

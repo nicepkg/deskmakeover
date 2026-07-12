@@ -495,8 +495,10 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Toast_Applied": "美化完成 · 已保存还原快照",
   "Toast_AppliedNoOverlay": "图标已美化 · 隐藏箭头一步已跳过（未授权）",
   "Toast_ApplyFailed": "美化未完成 · 桌面没有改动，一切安好",
+  "Toast_ApplyDegraded": "已美化桌面 · 但状态没能全部保存，重开可能要再点一次",
   "Toast_ApplySuperseded": "已被更新的操作取代 · 请重新美化",
   "Toast_ResetSkipped": "已跳过 {0} 项（你自己改过的图标）",
+  "Toast_ResetDegraded": "已还原 · 但收尾没能全部完成，可再点一次还原",
   "Toast_ArrowRestored": "已恢复系统箭头", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Toast_ArrowRestoreDeclined": "已取消，小箭头保持隐藏", // PENDING-RESX (UAC declined)
   "Toast_RestoreArrowFailed": "恢复箭头没成功，请稍后再试", // PENDING-RESX (restore-specific failure)

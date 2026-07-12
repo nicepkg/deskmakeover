@@ -116,6 +116,12 @@ pub struct IconApplyOutcome {
     pub reverted: Vec<ItemId>,
     pub conflicts: Vec<ItemId>,
     pub error: Option<String>,
+    /// A finalize step that ran AFTER the desktop was already mutated failed at runtime (a keep-revert
+    /// I/O fault, a ②/③ write, GC, or the state read-back). The desktop DID change, so the op must
+    /// never return a bare `Err` (the UI would report "nothing changed" over a mutated desktop —
+    /// codex R3-Block 4); it returns `ok:false` + the authoritative persisted state + this repair
+    /// note so the UI re-syncs and the store keeps the draft dirty for a retry. `None` = clean finalize.
+    pub degraded: Option<String>,
     pub stores: IconStoreState,
 }
 
@@ -125,6 +131,11 @@ pub struct IconApplyOutcome {
 pub struct IconResetOutcome {
     pub restored: Vec<ItemId>,
     pub skipped: Vec<ItemId>,
+    /// A finalize step that ran AFTER a revert already landed failed at runtime (a later item's
+    /// revert I/O fault, GC, ② clear, or the state read-back). Same contract as the apply path
+    /// (codex R3-Block 4): never a bare `Err` over an already-mutated desktop — `ok:false` + the
+    /// authoritative persisted state + this note. `None` = clean.
+    pub degraded: Option<String>,
     pub stores: IconStoreState,
 }
 
@@ -204,22 +215,51 @@ impl<'a> IconOps<'a> {
         // codex 2026-07-12). CAS-gated + trust-first: an icon the user hand-edited since is left
         // alone. An id not in the ledger was never styled — nothing to revert. An id ALSO in the bake
         // set is being re-styled, so the apply wins — skip its revert (codex R2-Block 2 double-touch).
+        // Repair notes: any failure of a step that runs AFTER the desktop is (or may be) already
+        // mutated is recorded here, NEVER surfaced as a bare `Err` (codex R3-Block 4). Joined into
+        // `degraded` at the end; the host turns it into `ok:false` + a repair toast + the real state.
+        let mut repair: Vec<String> = Vec::new();
+
+        // Best-effort keep-restore: each iteration is CAS-gated + item-independent, so a fault on one
+        // item records a note and moves on — the ledger row it couldn't revert simply stays (desktop ==
+        // ledger for that item, self-heals on the next reset), rather than bailing after having already
+        // reverted earlier items and leaving the caller a bare `Err` over a half-changed desktop.
         let mut reverted: Vec<ItemId> = Vec::new();
         for id in restore_ids {
             if packaged_ids.contains(id.as_str()) {
                 continue;
             }
             let item_id = ItemId::from_raw(id.as_str());
-            let Some(entry) = ledger.get(&item_id)? else { continue };
+            let entry = match ledger.get(&item_id) {
+                Ok(Some(e)) => e,
+                Ok(None) => continue, // not in the ledger → never styled, nothing to revert
+                Err(e) => {
+                    repair.push(format!("keep-restore ledger read {id}: {e}"));
+                    continue;
+                }
+            };
             match self.platform.reader.read_fingerprint(&entry.target) {
                 Ok(cur) if cur == entry.last_applied_fingerprint => {
-                    self.platform.applier.restore(&entry.target, &entry.original_anchor)?;
-                    ledger.remove(&item_id)?;
+                    if let Err(e) = self.platform.applier.restore(&entry.target, &entry.original_anchor) {
+                        // Desktop unchanged for THIS item (restore faulted); its ledger row stays →
+                        // still consistent. Record + continue.
+                        repair.push(format!("keep-restore {id}: {e}"));
+                        continue;
+                    }
+                    // Reverted on disk; a remove fault leaves a lingering row that the next reset's CAS
+                    // resolves (the desktop is already correct) — record it, still count as reverted.
+                    if let Err(e) = ledger.remove(&item_id) {
+                        repair.push(format!("keep-restore ledger remove {id}: {e}"));
+                    }
                     reverted.push(item_id);
                 }
                 Ok(_) => {} // hand-edited since → leave it (trust-first)
-                Err(PortError::NotFound(_)) => ledger.remove(&item_id)?, // deleted → drop the row
-                Err(e) => return Err(e.into()),
+                Err(PortError::NotFound(_)) => {
+                    if let Err(e) = ledger.remove(&item_id) {
+                        repair.push(format!("keep-restore ledger drop {id}: {e}"));
+                    }
+                }
+                Err(e) => repair.push(format!("keep-restore read {id}: {e}")),
             }
         }
 
@@ -253,8 +293,27 @@ impl<'a> IconOps<'a> {
         }
 
         let txn_id = txn.next_id();
-        let apply = TxnDriver::new(self.platform.reader, self.platform.applier, self.platform.assets)
-            .apply(txn_id, requests, journal, ledger)?;
+        let apply = match TxnDriver::new(self.platform.reader, self.platform.applier, self.platform.assets)
+            .apply(txn_id, requests, journal, ledger)
+        {
+            Ok(a) => a,
+            Err(e) => {
+                // The driver faulted OUTSIDE its transactional envelope (a batch rollback returns
+                // Ok-with-error, NOT Err). Keep-reverts above may already have touched the desktop, so
+                // return the authoritative state + a repair note rather than a bare Err over a
+                // half-changed desktop (codex R3-Block 4).
+                repair.push(format!("apply driver: {e}"));
+                let stores = self.read_state_or_degraded(history, ledger, &mut repair);
+                return Ok(IconApplyOutcome {
+                    committed: Vec::new(),
+                    reverted,
+                    conflicts,
+                    error: None,
+                    degraded: Some(repair.join("; ")),
+                    stores,
+                });
+            }
+        };
         conflicts.extend(apply.conflicts);
 
         // Persist ② (saved-style) + push ③ (look-history) ONLY on a clean apply. A batch that
@@ -266,32 +325,67 @@ impl<'a> IconOps<'a> {
         // by the store). set_saved_style borrows the style; the push then consumes it.
         // [FOLLOW-UP] the ①→②→③ finalize is three separate writes — a crash between them is not yet
         // journaled (documented alongside the reset crash-window; both want a finalize record).
+        // The ①→②→③ finalize below runs AFTER the driver already committed the desktop. A runtime
+        // failure of any step must NOT bubble a bare Err (the UI would say "nothing changed" over a
+        // freshly-styled desktop — codex R3-Block 4): record it into `repair` and press on, so the op
+        // returns the authoritative persisted state + ok:false. (A crash BETWEEN these writes is the
+        // separately-documented, self-healing finalize crash-window — a distinct, accepted gap.)
         if apply.error.is_none() {
-            self.settings.set_saved_style(Some(&style))?;
-            history.push(LookVersion {
+            if let Err(e) = self.settings.set_saved_style(Some(&style)) {
+                repair.push(format!("save ② style: {e}"));
+            }
+            if let Err(e) = history.push(LookVersion {
                 id: look_id.into(),
                 created_at,
                 label,
                 pinned: false,
                 icon_style: style,
-            })?;
+            }) {
+                repair.push(format!("push ③ history: {e}"));
+            }
         }
 
         // Collect assets orphaned by this apply (an item's superseded ICO). Live = the ledger's
         // referenced assets UNION the in-flight journal's, so nothing a durable-but-unreconciled
         // record still points at is dropped (the lock keeps a CONCURRENT apply out; this union
-        // covers the same-call in-flight window).
-        let live = live_asset_hashes(ledger, journal)?;
-        self.platform.assets.gc(&live)?;
+        // covers the same-call in-flight window). A GC fault only strands orphan bytes (disk waste
+        // that the next GC reclaims) — never fail a committed apply over it (codex R3-Block 4).
+        match live_asset_hashes(ledger, journal) {
+            Ok(live) => {
+                if let Err(e) = self.platform.assets.gc(&live) {
+                    repair.push(format!("gc: {e}"));
+                }
+            }
+            Err(e) => repair.push(format!("gc live-set: {e}")),
+        }
 
-        let stores = self.read_state(history, ledger)?;
+        let stores = self.read_state_or_degraded(history, ledger, &mut repair);
         Ok(IconApplyOutcome {
             committed: apply.committed,
             reverted,
             conflicts,
             error: apply.error,
+            degraded: (!repair.is_empty()).then(|| repair.join("; ")),
             stores,
         })
+    }
+
+    /// Reads stores ②③ + the ledger for the finalize read-back; on a runtime read fault (after the
+    /// desktop already committed) it records a repair note and returns a minimal safe snapshot rather
+    /// than bubbling a bare Err (codex R3-Block 4). `history.all()` is an in-memory clone (infallible).
+    fn read_state_or_degraded(
+        &self,
+        history: &LookHistoryStore,
+        ledger: &dyn LedgerStore,
+        repair: &mut Vec<String>,
+    ) -> IconStoreState {
+        match self.read_state(history, ledger) {
+            Ok(s) => s,
+            Err(e) => {
+                repair.push(format!("state read-back: {e}"));
+                IconStoreState { saved_style: None, history: history.all(), applied: false }
+            }
+        }
     }
 
     /// Reverts every styled item to the user's true original (spec 07 §10), CAS-gated so an item
@@ -322,35 +416,64 @@ impl<'a> IconOps<'a> {
         recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
         journal.checkpoint(&[])?;
 
+        // Best-effort revert: reverting item N mutates the desktop, so a fault on item N+1 must not
+        // bail with a bare `Err` over the items already reverted (codex R3-Block 4). Each item is
+        // independent + CAS-gated; a fault records a repair note and the loop presses on. An item
+        // whose revert faulted stays styled (its ledger row stays → desktop == ledger, self-heals).
+        let mut repair: Vec<String> = Vec::new();
         let mut restored = Vec::new();
         let mut skipped = Vec::new();
         for entry in ledger.all()? {
             match self.platform.reader.read_fingerprint(&entry.target) {
                 // The user deleted the icon: clear its row (its ICO becomes collectable below).
-                Err(PortError::NotFound(_)) => ledger.remove(&entry.item)?,
+                Err(PortError::NotFound(_)) => {
+                    if let Err(e) = ledger.remove(&entry.item) {
+                        repair.push(format!("reset ledger drop {}: {e}", entry.item.as_str()));
+                    }
+                }
                 // ★ Trust-first: the current state no longer matches what we applied, so the user
                 // hand-edited it — leave it, count it toward "已跳过 N 项(你自己改过)".
                 Ok(cur) if cur != entry.last_applied_fingerprint => skipped.push(entry.item),
                 // Still exactly our applied state: revert to the true original and drop the row.
                 Ok(_) => {
-                    self.platform.applier.restore(&entry.target, &entry.original_anchor)?;
-                    ledger.remove(&entry.item)?;
+                    if let Err(e) = self.platform.applier.restore(&entry.target, &entry.original_anchor) {
+                        repair.push(format!("reset {}: {e}", entry.item.as_str()));
+                        continue;
+                    }
+                    if let Err(e) = ledger.remove(&entry.item) {
+                        repair.push(format!("reset ledger remove {}: {e}", entry.item.as_str()));
+                    }
                     restored.push(entry.item);
                 }
-                // An infrastructure error (locked file, COM/registry fault) is NOT a benign skip —
-                // abort so the operator learns the restore path may be compromised (spec 07 §10).
-                Err(e) => return Err(e.into()),
+                // An infrastructure fault (locked file, COM/registry) reading ONE item is recorded —
+                // the operator still learns the restore path is compromised (via `degraded`), but the
+                // items already reverted are not abandoned to a bare Err (spec 07 §10 / codex R3-Block 4).
+                Err(e) => repair.push(format!("reset read {}: {e}", entry.item.as_str())),
             }
         }
         // Collect every asset the now-shrunk ledger no longer references. Skipped rows keep theirs;
-        // an empty ledger collects everything.
-        let live = ledger_asset_hashes(ledger)?;
-        self.platform.assets.gc(&live)?;
+        // an empty ledger collects everything. A GC fault only strands orphan bytes — never fail a
+        // reset that already reverted the desktop over it.
+        match ledger_asset_hashes(ledger) {
+            Ok(live) => {
+                if let Err(e) = self.platform.assets.gc(&live) {
+                    repair.push(format!("reset gc: {e}"));
+                }
+            }
+            Err(e) => repair.push(format!("reset gc live-set: {e}")),
+        }
         // ② cleared: after a reset there is no current global style, so the resident is dormant.
-        self.settings.set_saved_style(None)?;
+        if let Err(e) = self.settings.set_saved_style(None) {
+            repair.push(format!("reset clear ②: {e}"));
+        }
 
-        let stores = self.read_state(history, ledger)?;
-        Ok(IconResetOutcome { restored, skipped, stores })
+        let stores = self.read_state_or_degraded(history, ledger, &mut repair);
+        Ok(IconResetOutcome {
+            restored,
+            skipped,
+            degraded: (!repair.is_empty()).then(|| repair.join("; ")),
+            stores,
+        })
     }
 }
 

@@ -484,3 +484,64 @@ fn a_kept_icon_that_was_styled_is_reverted_not_left() {
     assert!(f.ledger.get(&keep.id).unwrap().is_none(), "its ledger row is gone");
     assert!(f.ledger.get(&a.id).unwrap().is_some(), "a is re-styled");
 }
+
+#[test]
+fn keep_restore_revert_fault_reports_degraded_never_a_bare_err() {
+    // codex R3-Block 4: a 「保留原样」 revert that faults mid-commit must NOT bubble a bare Err over
+    // the fresh item it already styled — it records the fault as `degraded` and returns the
+    // authoritative state, so the host answers ok:false + persisted (not "nothing changed").
+    let mut f = Fixture::new();
+    let fresh = item("fresh", ItemKind::Shortcut);
+    let keep = item("keep", ItemKind::Shortcut);
+    f.seed(&fresh, b"orig-fresh");
+    f.seed(&keep, b"orig-keep");
+    f.apply(
+        &[("fresh", 0, [1, 1, 1, 255]), ("keep", 0, [2, 2, 2, 255])],
+        style(1),
+        "A",
+        "v1",
+        &[fresh.clone(), keep.clone()],
+    );
+    // The kept icon's revert will fault (a locked file / COM error on the real desktop).
+    f.world.borrow_mut().fail_restore(&keep.path);
+
+    // Re-apply B: re-style `fresh`, set `keep` to 「保留原样」 (rides restore_ids). keep's revert faults.
+    let out = f.apply_reverting(&[("fresh", 0, [9, 9, 9, 255])], style(2), "B", "v2", &[fresh.clone(), keep.clone()], &["keep"]);
+
+    assert_eq!(out.committed, vec![ItemId::from_raw("fresh")], "the fresh item still committed");
+    assert!(out.error.is_none(), "the styling batch itself succeeded");
+    assert!(out.degraded.is_some(), "the keep-revert fault is surfaced as degraded, never a bare Err");
+    assert!(!out.reverted.contains(&ItemId::from_raw("keep")), "keep was NOT reverted (its restore faulted)");
+    // Desktop == ledger for keep: it stays styled with its row intact → self-heals on a later reset.
+    assert_ne!(f.world.borrow().get(&keep.path).unwrap(), b"orig-keep", "keep stays styled (revert failed)");
+    assert!(f.ledger.get(&keep.id).unwrap().is_some(), "keep's ledger row is kept (consistent with the desktop)");
+}
+
+#[test]
+fn reset_revert_fault_reports_degraded_and_reverts_the_others() {
+    // codex R3-Block 4: a reset whose Nth item revert faults must not abandon the items already
+    // reverted to a bare Err — it reverts what it can and surfaces the fault via `degraded`.
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    let stuck = item("stuck", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.seed(&stuck, b"orig-stuck");
+    f.apply(
+        &[("a", 0, [1, 1, 1, 255]), ("stuck", 0, [2, 2, 2, 255])],
+        style(1),
+        "A",
+        "v1",
+        &[a.clone(), stuck.clone()],
+    );
+    // `stuck`'s revert will fault; `a`'s must still land.
+    f.world.borrow_mut().fail_restore(&stuck.path);
+
+    let out = f.reset(false);
+
+    assert!(out.degraded.is_some(), "the stuck revert is surfaced as degraded, not a bare Err");
+    assert_eq!(out.restored, vec![ItemId::from_raw("a")], "a was reverted despite stuck's fault");
+    assert_eq!(f.world.borrow().get(&a.path).unwrap(), b"orig-a", "a is back to its original on the desktop");
+    // stuck stays styled with its ledger row (desktop == ledger) → a later reset heals it.
+    assert_ne!(f.world.borrow().get(&stuck.path).unwrap(), b"orig-stuck", "stuck stays styled (revert failed)");
+    assert!(f.ledger.get(&stuck.id).unwrap().is_some(), "stuck's ledger row is kept");
+}

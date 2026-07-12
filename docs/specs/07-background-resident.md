@@ -559,9 +559,12 @@ macOS does. The tray needs explicit light/dark bitmap pairs at 16/20/24/32px
   - **Dedup before cap**: pushing a new `IconStyleDto` that is field-for-field
     identical to the current head only bumps its timestamp — this is what makes
     "click Apply a few times in a row" not burn through the cap.
-  - **Pin/name exemption**: 1–2 entries may be pinned/named and are exempt from FIFO
-    eviction, so a deliberately-kept favourite is never silently evicted by newer
-    experiments.
+  - **Pin exemption (owner ruling 2026-07-12): pin and name are INDEPENDENT.**
+    Pinning marks 1–2 entries as exempt from FIFO eviction, so a deliberately-kept
+    favourite is never silently evicted by newer experiments. **Naming is a separate,
+    unlimited label** — it aids recognition and does NOT affect eviction (so naming a
+    look never fails on a cap, and a named-but-unpinned look can still age out). Mental
+    model: 置顶=保留, 命名=整理. To keep a named look forever, pin it too.
 - **Local metrics** (on-device only, privacy-sensitive — never leaves the machine
   without separate explicit opt-in): automation enable rate; undo rate within the
   first 5 automatic batches; idle CPU/RSS of the resident process; process

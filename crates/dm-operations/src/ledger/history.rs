@@ -182,10 +182,11 @@ impl LookHistoryStore {
     }
 }
 
-/// Evicts the oldest NON-pinned entries until at most [`CAP`] remain. Pinned entries are exempt
-/// from FIFO eviction (spec 07 §17), so a deliberately-kept favourite is never silently dropped —
-/// even if that means momentarily keeping more than the cap when the whole tail is pinned (pins are
-/// bounded by [`MAX_PINS`] < [`CAP`], so in practice the history still converges to the cap).
+/// Evicts the oldest NON-pinned entries until at most [`CAP`] remain. Only PINNED entries are exempt
+/// from FIFO eviction (spec 07 §17, owner ruling 2026-07-12: pin and name are independent — a name
+/// is an unlimited label with no eviction effect). A deliberately-pinned favourite is never silently
+/// dropped, even if that means momentarily keeping more than the cap when the whole tail is pinned
+/// (pins are bounded by [`MAX_PINS`] < [`CAP`], so the history still converges to the cap).
 fn evict_to_cap(all: &mut Vec<LookVersion>) {
     while all.len() > CAP {
         match all.iter().rposition(|v| !v.pinned) {

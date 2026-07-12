@@ -126,7 +126,7 @@ One disposable `.lnk`, end to end. All COM; `[WINDOWS-VERIFY]` runtime.
 | `crates/dm-windows/src/apply/recyclebin.rs` | `Shell/RecycleBinIconWriter.cs` | per-user DefaultIcon REG_SZ/REG_EXPAND_SZ fidelity + restore — `[WINDOWS-VERIFY]` |
 | `crates/dm-windows/src/shell/layout.rs` | `Shell/DesktopLayoutReader.cs`, `FolderViewInterop.cs` | `IFolderView2::GetItemPosition` (+ SysListView32 cross-process fallback) — `[WINDOWS-VERIFY]` |
 | `crates/dm-windows/src/wallpaper.rs` | `Shell/DesktopWallpaperInterop.cs` | `IDesktopWallpaper` get-source/apply/restore, multi-monitor state — `[WINDOWS-VERIFY]` |
-| `crates/dm-windows/src/watcher.rs` | spec 07 §3 | `ReadDirectoryChangesW` hint skeleton (debounce/stability probe are M7) — `[WINDOWS-VERIFY]` |
+| `crates/dm-windows/src/watcher.rs` | spec 07 §3/§16 | **DONE (B10, 2026-07-12)** — real `notify`+`notify-debouncer-full` watcher; debounce + event-mapping core Mac-tested & live-verified; only the 3 runtime semantics in item 9 (self-write suppression / restart catch-up / overflow→rescan) are `[WINDOWS-VERIFY]` |
 
 ## Cross-crate needs (defined, not implemented here — for the icon-core agent)
 - `dm-icon-codec` must expose content-addressed ICO assembly: `write_ico(frames) -> Vec<u8>` and
@@ -164,7 +164,27 @@ x86_64-pc-windows-msvc` green. The full-workspace msvc check stays blocked only 
    embedded at packaging.
 8. Wallpaper: `IDesktopWallpaper` capture/set/restore across monitors.
 9. **Stubs to implement on Windows**: `shell/layout.rs` (IFolderView2 `GetItemPosition` /
-   SysListView32 positions) and `watcher.rs` (`ReadDirectoryChangesW` hints, M7).
+   SysListView32 positions) still returns an empty `Vec` — real positions unwired.
+   `watcher.rs` — **DONE (B10, 2026-07-12): now a real `notify` + `notify-debouncer-full`
+   watcher, NOT a `ReadDirectoryChangesW` stub.** The primitive is cross-platform so the
+   debounce + event-mapping core is unit-tested + live-verified on the Mac host (a real FSEvents
+   watch reports a newly-created file through the debouncer; `cargo test -p dm-windows watcher`).
+   Three runtime semantics still need a real Windows box — **please test + confirm these, they
+   cannot be exercised on Mac**:
+   - **(a) Self-write suppression** — run an icon apply (which writes `desktop.ini` / swaps ICOs)
+     while the watcher is armed and confirm the resident does NOT treat the app's own writes as a
+     new-icon event and self-format-loop. (The suppression window is the reconciler's job — M7 T4;
+     the watcher only supplies raw hints — but the loop can only be observed on Windows.)
+   - **(b) Explorer-restart / sleep-resume catch-up** — kill+restart `explorer.exe` (or
+     sleep→resume) while items appear on the desktop, and confirm the resident does a full rescan on
+     re-arm so nothing that landed while unwatched is missed (spec 07 §3 catch-up).
+   - **(c) Buffer-overflow → full rescan** — dump hundreds of files onto the desktop in a burst to
+     overflow the `ReadDirectoryChangesW` buffer, and confirm it surfaces as `WatchEvent::Overflow`
+     (→ full reconcile), never silent event loss. On Windows `notify` sets the rescan flag on
+     overflow; `to_watch_event` maps `Event::need_rescan()` → `Overflow`, but the real overflow
+     threshold + flag delivery is Windows-runtime behaviour.
+   Msvc cross-check is green (`cargo check -p dm-windows --target x86_64-pc-windows-msvc`), so the
+   Windows backend (ReadDirectoryChangesW under the hood) compiles for the real target already.
 
 **Blind-audit follow-ups (2026-07-11, independent Windows reviewer over `7dc82c1`).** Reading-
 detectable hardening scheduled as blind fixes; each carries a live-box verification. Codenamed

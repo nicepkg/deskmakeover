@@ -10,6 +10,11 @@ publish.workspace = true
 # C-compiling dependency (no rusqlite) so that isolated cross-check compiles offline.
 [dependencies]
 dm-domain = { path = "../dm-domain" }
+# Desktop change watcher (B10, spec 07 §3/§16). Cross-platform (ReadDirectoryChangesW on Windows,
+# FSEvents/inotify elsewhere) and pure-Rust bindings — no C toolchain, so the msvc cross-check stays
+# offline-clean and the debounce/event-mapping core is unit-testable on the Mac host. `-full` (not
+# `-mini`) tracks file ids to fold installer temp-write→rename storms into one settled event.
+notify-debouncer-full = "0.7.0"
 
 [dev-dependencies]
 # Temp dirs for the host-side durability/atomic-replace tests (durable::write_atomic).

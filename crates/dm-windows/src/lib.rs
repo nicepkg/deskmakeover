@@ -37,7 +37,8 @@ mod state_reader;
 pub mod topology;
 #[cfg(windows)]
 pub mod wallpaper;
-#[cfg(windows)]
+// Cross-platform (notify-backed) — NOT `cfg(windows)`: the debounce + event-mapping core is
+// exercised on the Mac host (B10), only the Windows-runtime desktop semantics are `[WINDOWS-VERIFY]`.
 pub mod watcher;
 
 #[cfg(windows)]

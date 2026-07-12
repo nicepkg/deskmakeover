@@ -493,7 +493,7 @@ export const en = {
   "Toast_Applied": "Done · restore snapshot saved",
   "Toast_AppliedNoOverlay": "Icons beautified · the arrow-hide step was skipped (no admin)",
   "Toast_ApplyFailed": "Couldn't apply · nothing changed, your desktop is safe",
-  "Toast_ApplyDegraded": "Desktop styled · but not all state was saved; you may need to apply again after a restart",
+  "Toast_ApplyDegraded": "Partly applied · it didn't fully complete; please apply again to confirm",
   "Toast_ApplySuperseded": "Superseded by a newer change · apply again",
   "Toast_ResetSkipped": "Skipped {0} item(s) you'd edited yourself",
   "Toast_ResetDegraded": "Restored · but cleanup didn't fully finish; you can restore again",

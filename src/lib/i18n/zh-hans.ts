@@ -495,7 +495,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Toast_Applied": "美化完成 · 已保存还原快照",
   "Toast_AppliedNoOverlay": "图标已美化 · 隐藏箭头一步已跳过（未授权）",
   "Toast_ApplyFailed": "美化未完成 · 桌面没有改动，一切安好",
-  "Toast_ApplyDegraded": "已美化桌面 · 但状态没能全部保存，重开可能要再点一次",
+  "Toast_ApplyDegraded": "部分改动已生效 · 但没能完整完成，请重新美化确认一下",
   "Toast_ApplySuperseded": "已被更新的操作取代 · 请重新美化",
   "Toast_ResetSkipped": "已跳过 {0} 项（你自己改过的图标）",
   "Toast_ResetDegraded": "已还原 · 但收尾没能全部完成，可再点一次还原",

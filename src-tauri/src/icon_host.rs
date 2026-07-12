@@ -356,8 +356,15 @@ impl IconHost {
         if let Some(reason) = &outcome.degraded {
             log::warn!("icons apply finalize degraded: {reason}");
         }
-        let (ok, toast) = if let Some(e) = outcome.error {
-            (false, Some(ToastDto { key: "Toast_ApplyFailed".into(), arg: Some(e) }))
+        let (ok, toast) = if let Some(e) = &outcome.error {
+            if outcome.reverted.is_empty() {
+                // The styling batch rolled back AND no keep-revert landed → truly nothing changed.
+                (false, Some(ToastDto { key: "Toast_ApplyFailed".into(), arg: Some(e.clone()) }))
+            } else {
+                // The batch rolled back but keep-reverts already changed the desktop — NOT "nothing
+                // changed" (codex R4-Block 1): partial → ok:false + repair toast + the real state.
+                (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
+            }
         } else if outcome.degraded.is_some() {
             (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
         } else {
@@ -425,6 +432,11 @@ impl IconHost {
         // Hold the mutation gate across the overlay helper + epoch bump + set_arrow so a concurrent
         // apply-commit / full-restore can never interleave its own overlay call (codex R3-Block 2).
         let _op_gate = self.op_gate.lock().unwrap();
+        // Read the authoritative ②③ persisted state BEFORE the machine-level overlay mutation, so a
+        // ledger/settings I/O fault fails the op with the desktop UNCHANGED — never a bare Err AFTER
+        // the arrow already flipped (codex R4-Block 4). This op only touches the arrow overlay, so
+        // the ②③ half of the snapshot is still exact post-op; we overwrite just the arrow field.
+        let mut persisted = self.get_persisted()?;
         let outcome = self.overlay.restore().map_err(|e| e.to_string())?;
         let (arrow, ok, toast_key) = match outcome {
             OverlayOutcome::Applied => (ArrowOverlayDto::Native, true, "Toast_ArrowRestored"),
@@ -440,7 +452,7 @@ impl IconHost {
             self.mut_state.lock().unwrap().op_epoch += 1;
         }
         self.set_arrow(arrow);
-        let persisted = self.get_persisted()?;
+        persisted.arrow_overlay = arrow; // the one field this op mutated; ②③ carried from the pre-read
         Ok(IconOpResultDto {
             ok,
             toast: Some(ToastDto { key: toast_key.into(), arg: None }),

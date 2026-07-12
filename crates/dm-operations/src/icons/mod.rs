@@ -383,7 +383,13 @@ impl<'a> IconOps<'a> {
             Ok(s) => s,
             Err(e) => {
                 repair.push(format!("state read-back: {e}"));
-                IconStoreState { saved_style: None, history: history.all(), applied: false }
+                // A read fault means the applied-state is UNKNOWN, not authoritatively false. This
+                // runs only AFTER a mutation landed, so fail CLOSED toward "possibly applied"
+                // (`applied: true`) — the restore affordance keys off it, and hiding it over a mere
+                // read fault would strand the user with a changed desktop and no way back (codex
+                // R4-Block 3). `history.all()` is an in-memory clone (infallible); saved_style falls
+                // back to None (unknown) — a benign default the frontend treats as "not the current".
+                IconStoreState { saved_style: None, history: history.all(), applied: true }
             }
         }
     }

@@ -518,6 +518,43 @@ fn keep_restore_revert_fault_reports_degraded_never_a_bare_err() {
 }
 
 #[test]
+fn a_failed_styling_batch_that_still_reverted_a_kept_icon_reports_both() {
+    // codex R4-Block 1: a keep-revert lands BEFORE the (transactional) styling batch, so if the
+    // batch then rolls back, the desktop STILL changed — the outcome must carry error=Some AND a
+    // non-empty `reverted`, so the host shows a partial-change repair toast, never "nothing changed".
+    let mut f = Fixture::new();
+    let keep = item("keep", ItemKind::Shortcut);
+    let styled = item("styled", ItemKind::Shortcut);
+    f.seed(&keep, b"orig-keep");
+    f.seed(&styled, b"orig-styled");
+    f.apply(
+        &[("keep", 0, [1, 1, 1, 255]), ("styled", 0, [2, 2, 2, 255])],
+        style(1),
+        "A",
+        "v1",
+        &[keep.clone(), styled.clone()],
+    );
+    // Re-apply B: keep → 「保留原样」 (reverts cleanly), styled → re-style but its apply FAULTS → the
+    // driver rolls the styling batch back, leaving keep reverted.
+    f.world.borrow_mut().fail_apply(&styled.path);
+    let out = f.apply_reverting(
+        &[("styled", 0, [9, 9, 9, 255])],
+        style(2),
+        "B",
+        "v2",
+        &[keep.clone(), styled.clone()],
+        &["keep"],
+    );
+    assert!(out.error.is_some(), "the styling batch failed/rolled back");
+    assert_eq!(out.reverted, vec![ItemId::from_raw("keep")], "the kept icon was still reverted");
+    assert_eq!(
+        f.world.borrow().get(&keep.path).unwrap(),
+        b"orig-keep",
+        "keep is original on the desktop → this is NOT a no-op failure"
+    );
+}
+
+#[test]
 fn reset_revert_fault_reports_degraded_and_reverts_the_others() {
     // codex R3-Block 4: a reset whose Nth item revert faults must not abandon the items already
     // reverted to a bare Err — it reverts what it can and surfaces the fault via `degraded`.

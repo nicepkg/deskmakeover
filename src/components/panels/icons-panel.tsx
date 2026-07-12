@@ -57,6 +57,10 @@ export function IconsPanel() {
   const t = useT()
   const { state, phase, statusText, ctaText } = useIconsHero()
   const bareLook = useIcons((s) => s.bareLook)
+  // A host op is in flight when the modal is up (`working`) OR a slow arrow-restore is running
+  // (`overlayRestoring`, which holds no `working` flag) — both must inert the version-jump crossings
+  // (codex R4-Minor: a control that looks clickable but silently no-ops is worse than a disabled one).
+  const overlayRestoring = useIcons((s) => s.overlayRestoring)
   const { mutate, selectPreset, selectSystemDefault, apply, restore, stageVersion, hover, hoverBare } = useIcons.getState()
   const [moreShapes, setMoreShapes] = React.useState(false)
   const [morePresets, setMorePresets] = React.useState(false)
@@ -760,7 +764,7 @@ export function IconsPanel() {
                 renderThumb={(h) => <IconVersionThumb config={h.config} />}
                 onGoTo={(h) => goVersion(h.index)}
                 onBackToInitial={() => void restore()}
-                disabled={state.working}
+                disabled={state.working || overlayRestoring}
               />
             </motion.div>
           )}

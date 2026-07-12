@@ -203,7 +203,8 @@ IconsStateDto (presets/palette/grid). Locked design decisions (carry forward to 
 - **`icons.setLook` LEAVES the bridge** (frontend draft) — a config/override/kindPolicy/typeOverrides draft
   is not intent (spec 07 §8.2: ② written only on a completed global Apply), so it lives in the frontend store
   like wallpaper's setLook. **Per-icon overrides are frontend draft state** (a `tint` bakes its master
-  frontend-side, a `keep` item is simply never sent), so a scan item carries none and `commit` needs none.
+  frontend-side), BUT a 「保留原样」 of an already-styled icon must REVERT it, so `commit` carries
+  `restoreIds` and Rust CAS-reverts the tracked subset (codex Block 4 — not sending a master ≠ restoring).
 - **IconStyle rides as an opaque validated JSON STRING** (`styleJson`/`savedStyleJson`) — like the baked
   wallpaper PNG rides as base64; Rust validates the envelope, never types the recipe internals, keeping the
   generated bindings free of the recipe shape.
@@ -239,9 +240,19 @@ IconsStateDto (presets/palette/grid). Locked design decisions (carry forward to 
   (blind-wired, unverified — overlay-helper path, exec sharing, real IFolderView2 positions) · reset's
   crash-window journaling. **LIVE supervised icon-apply on Mac-Tauri is the owner gate (never auto-run).**
 
+**Codex adversarial review — round 1 Request Changes → ALL FIXED (2026-07-12, `4c3a25c`+`2a12f53`).**
+7 Block + 6 Major, each二次核实'd real then fixed: reset journal-revival (reconcile+strict-checkpoint before
+delete), fresh-apply CAS uses the scan-TIME fingerprint (ScannedItem) + session revision/count validation,
+a superseded apply rejects via the host look-epoch (no stale desktop write), 「保留原样」 reverts via
+restoreIds, arrow overlay real-ICO-path + persisted marker, dmicon CSP allow-list, ②③ guarded on
+apply.error, reset §10 (keepNewIconsStyled=false + skipped surfaced), ③ replay carries kindPolicy + isCurrent
+via ②, rescan preserves overrides + setOverride marks dirty, dmicon content-addressed URLs, scan reports
+observed GridMetricsDto (no fabricated dims), export honest, package.rs fail-closed (PNG/256²/size-cap).
+Gates: workspace 497 · msvc-clean · tsc · bun 516 · drift-guard green. **Round-2 codex verification dispatched.**
+Documented follow-ups: the ①→②→③ finalize crash-window (not yet journaled) + the reset crash-window.
+
 **Still unbuilt in Wave B — only B10:** `crates/dm-windows/src/watcher.rs` (M7 SKELETON `Err` stub →
-`notify`+`notify-debouncer-full`, spec 07 §3/§16). **Roadmap: B10 → M7.** Codex adversarial review of B1-B5
-dispatched (`/multi-ai solo codex`).
+`notify`+`notify-debouncer-full`, spec 07 §3/§16). **Roadmap: B10 → M7.**
 
 **In flight / next (web):**
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all

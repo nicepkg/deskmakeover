@@ -242,7 +242,7 @@ impl<'p> TxnDriver<'p> {
             Err(e) => return Err(e.into()),
         };
 
-        let mut existing = ledger.get(&req.target.id)?;
+        let existing = ledger.get(&req.target.id)?;
         // Heal a POISONED lingering row before it can force a permanent CAS conflict (codex R5-#2,
         // R6-#3). A prior keep/reset restored this item on disk (desktop == its original) but the paired
         // `ledger.remove` faulted, leaving a stale row whose `last_applied` no longer matches the
@@ -258,23 +258,21 @@ impl<'p> TxnDriver<'p> {
             if current == e.original_fingerprint && current != e.last_applied_fingerprint {
                 // A POISON row (a keep/reset restore landed but its `ledger.remove` faulted) OR a user
                 // who MANUALLY restored the icon to its exact original since the scan — the fingerprint
-                // tuple is identical, so we cannot tell them apart without durable provenance. Drop the
-                // stale row EITHER way: the desktop is proven at its original, so a row still claiming
-                // `styled` is wrong. But only proceed to STYLE it when the scan is FRESH
-                // (`current == req.expected_fingerprint`): then the scan reflects the live desktop and
-                // styling is the user's explicit, current intent. If the scan is STALE (the host's
-                // cached scan predates the restore), we must NOT bypass the scan-time CAS and silently
-                // overwrite what could be a user hand-edit (codex R6-#3 + R7-#1) — return conflict and
-                // force a rescan; the dropped row then makes the next attempt an unambiguous fresh apply.
+                // tuple is IDENTICAL, and we cannot tell them apart without durable provenance. Drop the
+                // stale row (the desktop is proven at its original, so a row still claiming `styled` is
+                // wrong and would force a permanent CAS conflict), then ALWAYS conflict: never bypass the
+                // scan-time CAS to style it in the same round. `current == req.expected_fingerprint` does
+                // NOT prove the scan is fresh — an ABA (O→styled→O, the user restoring to exactly the
+                // original) leaves a stale cached scan whose `O` still equals `current`, so styling then
+                // would silently overwrite the hand-edit (codex R7-#1 / R8-#1). The dropped row makes the
+                // NEXT apply an ordinary un-ledgered fresh apply, where the normal CAS applies. Resolving
+                // the app's own poison in one round would need a durable poison tombstone (follow-up).
                 ledger.remove(&req.target.id)?;
-                if current != req.expected_fingerprint {
-                    return Ok(None);
-                }
-                existing = None;
+                return Ok(None);
             }
         }
-        // CAS anchor: last-applied on re-apply, the scan-time observation on a fresh (or freshly-healed)
-        // apply. A stale scan on any un-ledgered item still fails this and conflicts, never overwriting.
+        // CAS anchor: last-applied on re-apply, the scan-time observation on a fresh apply. A stale scan
+        // on any un-ledgered item still fails this and conflicts, never overwriting an external change.
         let expected = existing
             .as_ref()
             .map(|e| e.last_applied_fingerprint)

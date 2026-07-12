@@ -606,33 +606,36 @@ fn reset_revert_fault_reports_degraded_and_reverts_the_others() {
 }
 
 #[test]
-fn a_poisoned_row_re_applied_directly_is_healed_and_styled_not_conflicted() {
-    // codex R5-#2: a prior keep/reset restored this item on disk (desktop == original) but its paired
-    // `ledger.remove` faulted, leaving a POISONED row (last_applied=styled). If the user re-styles the
-    // item DIRECTLY (in the bake set, not via keep/reset), the mod.rs heal arm never sees it — and the
-    // driver's CAS would reject the apply forever (current=original != last_applied=styled). The driver
-    // must heal the stale row and treat it as a fresh apply, re-styling the icon.
+fn a_poisoned_row_re_applied_directly_is_dropped_and_conflicts_then_a_second_apply_styles() {
+    // codex R5-#2 / R8-#1: a prior keep/reset restored this item on disk (desktop == original) but its
+    // paired `ledger.remove` faulted, leaving a POISONED row (last_applied=styled). The observable tuple
+    // (current == original != last_applied) is IDENTICAL to a user who manually restored the icon, and a
+    // fingerprint-equality "is the scan fresh?" test is ABA-unsafe — so the driver must NOT silently
+    // re-style it. The first re-apply DROPS the stale row (un-poisoning it, so it can never cause a
+    // PERMANENT conflict) and CONFLICTS; the row is now gone, so a SECOND apply is an ordinary fresh
+    // apply that styles the icon cleanly.
     let mut f = Fixture::new();
     let a = item("a", ItemKind::Shortcut);
     f.seed(&a, b"orig-a");
     f.apply(&[("a", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[a.clone()]);
-    let stale_fp = f.ledger.get(&a.id).unwrap().unwrap().last_applied_fingerprint;
     // Poison: the desktop is back to the true original, but the ledger row lingers (remove faulted).
     f.world.borrow_mut().put(&a.path, b"orig-a");
 
-    // Re-style A directly — A is in the bake set, NOT in restore_ids.
-    let out = f.apply(&[("a", 0, [7, 7, 7, 255])], style(2), "B", "v2", &[a.clone()]);
+    // First re-apply: the heal drops the row + conflicts, never silently overwriting.
+    let first = f.apply(&[("a", 0, [7, 7, 7, 255])], style(2), "B", "v2", &[a.clone()]);
+    assert!(first.committed.is_empty(), "the ambiguous heal must NOT silently re-style");
+    assert_eq!(first.conflicts, vec![ItemId::from_raw("a")], "it conflicts, forcing a fresh attempt");
+    assert!(f.ledger.get(&a.id).unwrap().is_none(), "the poison row WAS dropped (un-poisoned)");
 
-    assert_eq!(out.committed, vec![ItemId::from_raw("a")], "the poisoned row was healed → A re-styled");
-    assert!(out.conflicts.is_empty(), "it must NOT read as a permanent CAS conflict");
-    let row = f.ledger.get(&a.id).unwrap().unwrap();
-    assert_ne!(row.last_applied_fingerprint, stale_fp, "the row carries the FRESH styling, not the stale one");
+    // Second apply: no ledger row now → an ordinary fresh apply styles it.
+    let second = f.apply(&[("a", 0, [7, 7, 7, 255])], style(2), "B2", "v3", &[a.clone()]);
+    assert_eq!(second.committed, vec![ItemId::from_raw("a")], "with the row gone it styles cleanly");
     assert_eq!(
-        row.original_fingerprint,
+        f.ledger.get(&a.id).unwrap().unwrap().original_fingerprint,
         dm_domain::Fingerprint::of_bytes(b"orig-a"),
-        "the heal re-captured the TRUE original anchor, so a later reset still restores correctly"
+        "the fresh apply captured the TRUE original anchor",
     );
-    assert_ne!(f.world.borrow().get(&a.path).unwrap(), b"orig-a", "the desktop is styled again");
+    assert_ne!(f.world.borrow().get(&a.path).unwrap(), b"orig-a", "the desktop is styled");
 }
 
 #[test]
@@ -852,6 +855,8 @@ fn an_apply_whose_only_intent_is_a_hand_edited_revert_reports_no_effect() {
     let a = item("a", ItemKind::Shortcut);
     f.seed(&a, b"orig-a");
     f.apply(&[("a", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[a.clone()]);
+    let saved_after_first = f.settings.get_saved_style().unwrap();
+    let history_after_first = f.history.all().len();
     // Hand-edit a since the scan (neither its original nor its last-applied).
     f.world.borrow_mut().put(&a.path, b"user-hand-edit");
     // Opt a to 「保留原样」 (no masters, restore a) — but a was hand-edited.
@@ -859,6 +864,10 @@ fn an_apply_whose_only_intent_is_a_hand_edited_revert_reports_no_effect() {
 
     assert!(out.committed.is_empty() && out.reverted.is_empty(), "nothing styled, nothing reverted");
     assert_eq!(out.conflicts, vec![ItemId::from_raw("a")], "the hand-edited revert skip counts as a conflict");
+    // A zero-effect restore-only apply must NOT write a phantom ②③ (codex R8-#2): `packaged.is_empty()`
+    // is not a valid "completed Apply" proxy — the real effect (committed || reverted) was empty.
+    assert_eq!(f.settings.get_saved_style().unwrap(), saved_after_first, "② was NOT overwritten by the no-op");
+    assert_eq!(f.history.all().len(), history_after_first, "③ got no phantom entry");
 }
 
 #[test]

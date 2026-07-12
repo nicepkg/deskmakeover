@@ -395,17 +395,20 @@ impl<'a> IconOps<'a> {
         // freshly-styled desktop — codex R3-Block 4): record it into `repair` and press on, so the op
         // returns the authoritative persisted state + ok:false. (A crash BETWEEN these writes is the
         // separately-documented, self-healing finalize crash-window — a distinct, accepted gap.)
-        // ...AND only for a genuinely COMPLETED Apply (codex R5-#2 / R6-#2 / R7-#2). Two guards:
-        //   • `repair.is_empty()` — no keep-restore fault ran. A partial revert (icon A reverted, icon
-        //     B's restore faulted → still styled) is NOT complete: writing ② ("everything original")
-        //     while B still wears the old look would resume from a lie next launch.
-        //   • NOT an all-styling-attempts-failed batch — masters were sent but every one CAS-conflicted
-        //     (`packaged` non-empty, `committed` empty): writing ② would poison the saved-style with a
-        //     look the desktop never wears. A batch with NO masters (a pure revert-only or a policy-only
-        //     Apply that intentionally styles nothing) still writes ②③ — that is the completed Apply's
-        //     saved style, and ③ records it (spec 07 §8.2).
-        let all_styling_attempts_failed = !packaged.is_empty() && apply.committed.is_empty();
-        if apply.error.is_none() && repair.is_empty() && !all_styling_attempts_failed {
+        // ...AND only for a genuinely COMPLETED Apply that had a real desktop EFFECT (codex R5-#2 /
+        // R6-#2 / R7-#2 / R8-#2,#3). Two guards, kept IDENTICAL to the host's success verdict so the
+        // ②③ write and `ok:true`/dirty-clear never disagree:
+        //   • `repair.is_empty()` — no keep-restore fault ran. A partial revert (A reverted, B's restore
+        //     faulted → still styled) is NOT complete: writing ② ("everything original") while B wears
+        //     the old look would resume from a lie next launch.
+        //   • it styled OR reverted something (`committed || reverted`). `packaged.is_empty()` is NOT a
+        //     valid "intentional style-nothing" proxy — a restore-only batch that ALL-conflicted (every
+        //     opt-out was a hand-edit) also has no masters yet did nothing, and writing ② then would
+        //     poison the saved-style with a look the desktop never wears (R8-#2). A zero-effect apply
+        //     (nothing styled, nothing reverted — whether all-conflicts or a pure no-op) writes no ②③;
+        //     the host reports it as a no-effect, keeping the draft dirty.
+        let meaningful_apply = !apply.committed.is_empty() || !reverted.is_empty();
+        if apply.error.is_none() && repair.is_empty() && meaningful_apply {
             if let Err(e) = self.settings.set_saved_style(Some(&style)) {
                 repair.push(format!("save ② style: {e}"));
             }
@@ -521,7 +524,14 @@ impl<'a> IconOps<'a> {
                 stores,
             });
         }
-        journal.checkpoint(&[])?;
+        // A clean recovery already reconciled + emptied the journal above; this strict checkpoint is a
+        // belt-and-suspenders guarantee that no committed record can outlive the ledger delete below and
+        // resurrect a styled row at next launch. Run it ONLY when records actually remain (codex R8-#4):
+        // an EMPTY journal here would otherwise try to `remove_file` a zero-byte log, and an undeletable
+        // one (ACL) would bare-Err a reset that has nothing left to checkpoint.
+        if !journal.read_all()?.is_empty() {
+            journal.checkpoint(&[])?;
+        }
 
         // Best-effort revert: reverting item N mutates the desktop, so a fault on item N+1 must not
         // bail with a bare `Err` over the items already reverted (codex R3-Block 4). Each item is

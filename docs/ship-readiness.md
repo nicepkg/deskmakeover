@@ -27,7 +27,7 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 | **M6 kernel-speed + WASM cutover** | ✅ EXECUTED (WASM is the only pixel path) | Physical deletion of the frozen TS compositor (`src/icon-compositor/*.ts`, 10 files) held to M8. |
 | **M6-WIRE Wave A (wallpaper)** | DONE **on Mac only** | All Windows COM/WIC/topology (`topology.rs`, `decode.rs`, `wallpaper.rs`) `[WV]`. |
 | **M6-WIRE Wave B foundation (B6-B9 + fs_atomic)** | ✅ DONE (Mac-green) | The four Windows durability defects in `m6-wire-host.md §8a` are **not Mac-fixable** and gate shipping. |
-| **M6-WIRE Wave B icon bridge (B1-B5)** | Mac end-to-end; **R1–R7 all fixed, codex R8 verify pending** | Severity falling each round (R5 4🔴 → R6 1🔴 → R7 0🔴); see §Icon-bridge R4→R7. |
+| **M6-WIRE Wave B icon bridge (B1-B5)** | Mac end-to-end; **R1–R8 all fixed, codex R9 verify pending** | Severity falling each round (R5 4🔴 → R6 1🔴 → R7 0🔴 → R8 0🔴); see §Icon-bridge R4→R7. |
 | **M6-WIRE Wave B B10 (desktop watcher)** | ✅ DONE 2026-07-12 (`37f4b13`) | Real `notify`+`notify-debouncer-full`, Mac-live-verified (FSEvents), msvc-clean. 3 runtime semantics `[WV]` (self-write suppression / restart catch-up / overflow→rescan). |
 | **M6-WIRE Wave C (Windows handoff doc)** | **NOT STARTED** | Spec'd at `docs/references/windows-wiring-handoff/README.md` (m6-wire-host §8); directory does not exist. No systematic Windows verification recipe yet. |
 | **M7 resident auto-format** | **NOT STARTED** (design finalized: ADR-0022 + spec 07 + `m7-resident.md`) | `crates/dm-resident/src/lib.rs` is an empty crate (doc comment only), NOT wired into `src-tauri`. Tasks T1-T12 unbuilt. Precondition gate (B6-B10) is now green. |

@@ -398,6 +398,49 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     expect(useIcons.getState().state!.working).toBe(false) // working released (no UI lock)
   })
 
+  test('a rescan is BLOCKED while an apply is in flight — no stale-scan gen race (codex R3-Block 3a)', async () => {
+    const commit = deferred<IconsOpResultDto>()
+    let scanCalls = 0
+    setBridge((method) => {
+      if (method === 'icons.applyBakedBegin' || method === 'icons.applyBakedChunk') return Promise.resolve(null)
+      if (method === 'icons.applyBakedCommit') return commit.promise
+      if (method === 'icons.scan') {
+        scanCalls++
+        return Promise.resolve(scanDto(1))
+      }
+      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
+      throw new Error(`unexpected ${method}`)
+    })
+    seedStore({ arrowOverlay: 'native', activeUserProfiles: 1 }) // no items → apply skips the bake loop
+
+    const pApply = useIcons.getState().apply() // working:true set synchronously before the first await
+    await useIcons.getState().rescan() // blocked by busy() — must NOT read the desktop mid-apply
+    expect(scanCalls).toBe(0) // the rescan never reached the bridge, so it can't bump the generation
+
+    commit.resolve(opResult({ arrowOverlay: 'hidden', activeUserProfiles: 1 }))
+    expect(await pApply).toBe(true) // apply's own result lands, never dropped by an intervening rescan
+  })
+
+  test('a draft edit is DROPPED while an apply is in flight — success branch stays consistent (codex R3-Block 3b)', async () => {
+    const commit = deferred<IconsOpResultDto>()
+    setBridge((method) => {
+      if (method === 'icons.applyBakedBegin' || method === 'icons.applyBakedChunk') return Promise.resolve(null)
+      if (method === 'icons.applyBakedCommit') return commit.promise
+      throw new Error(`unexpected ${method}`)
+    })
+    seedStore({ arrowOverlay: 'native' })
+    expect(useIcons.getState().state!.kindPolicy.App).toBe(true)
+
+    const pApply = useIcons.getState().apply() // working:true
+    // The user flips App participation mid-apply; the guard drops it so the apply's success branch can
+    // never clean a draft it never baked (the "changed X to keep mid-apply" divergence).
+    useIcons.getState().setKindPolicy('App', false)
+    expect(useIcons.getState().state!.kindPolicy.App).toBe(true) // the edit was blocked while working
+
+    commit.resolve(opResult({ arrowOverlay: 'hidden' }))
+    await pApply
+  })
+
   test('a stale rescan that lands LAST is dropped — its gen guard is load-bearing (review scan gate)', async () => {
     const scan = deferred<unknown>()
     setBridge((method) => {

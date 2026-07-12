@@ -271,6 +271,21 @@ fn run_startup_recovery(data_dir: &Path) -> Result<(), String> {
             outcome.reconciled.len(),
             outcome.clean_txns
         );
+        // A DEGRADED recovery (codex R5-#6): a restore/ledger op faulted while replaying a prior crash's
+        // journal, so the desktop is only PARTIALLY recovered. `recover_from_journal` deliberately did
+        // NOT checkpoint — the unreconciled records stay so the next (idempotent) recovery finishes the
+        // job (the user's first apply/reset re-runs it, and `get_persisted` reports `applied: true` off
+        // the retained in-flight journal, keeping the restore affordance reachable). We do NOT abort
+        // startup (that would strand the user with no way to reach the very reset that heals it) — but
+        // we must NOT swallow it either: log loudly so the fault is diagnosable.
+        if !outcome.degraded.is_empty() {
+            log::error!(
+                "startup recovery DEGRADED — a prior crash could not be fully recovered ({} fault(s)); \
+                 the journal was retained for the next pass and the restore affordance stays reachable: {}",
+                outcome.degraded.len(),
+                outcome.degraded.join("; ")
+            );
+        }
     }
     #[cfg(not(windows))]
     {

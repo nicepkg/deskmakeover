@@ -220,9 +220,21 @@ impl IconHost {
 
     /// `icons.getPersisted`: the ②③ + native bits the frontend overlays onto its assembled state.
     pub fn get_persisted(&self) -> Result<IconPersistedDto, String> {
+        use dm_operations::txn::{journal::active_txns, JournalSink};
         let st = self.mut_state.lock().unwrap();
-        let stores =
+        let mut stores =
             self.ops().read_state(&st.history, &st.ledger).map_err(|e| e.to_string())?;
+        // Fail-closed repair signal (codex R5-#6): an IN-FLIGHT transaction still in the journal means
+        // a prior crash's recovery could not finish (a clean recovery checkpoints the journal empty).
+        // That can leave a styled desktop with NO ledger row — `applied` would then be false and HIDE
+        // the restore affordance, stranding the user. Force `applied: true` so the restore path stays
+        // reachable; clicking it re-runs recovery (reset's first step), which retries the abort and
+        // heals. Only NO-terminal txns count (`active_txns`), so a cleanly rolled-back/committed txn
+        // whose records simply await the next checkpoint never spuriously trips this.
+        let journal_records = st.journal.read_all().map_err(|e| e.to_string())?;
+        if !active_txns(&journal_records).is_empty() {
+            stores.applied = true;
+        }
         drop(st);
         Ok(self.finish_persisted(self.to_persisted_dto_locked(&stores)))
     }
@@ -357,16 +369,24 @@ impl IconHost {
             log::warn!("icons apply finalize degraded: {reason}");
         }
         let (ok, toast) = if let Some(e) = &outcome.error {
-            if outcome.reverted.is_empty() {
-                // The styling batch rolled back AND no keep-revert landed → truly nothing changed.
+            if outcome.reverted.is_empty() && !outcome.desktop_mutated {
+                // The styling batch failed BEFORE touching the desktop AND no keep-revert landed →
+                // truly nothing changed (a preflight/CAS failure). Only here is "桌面没有改动" honest.
                 (false, Some(ToastDto { key: "Toast_ApplyFailed".into(), arg: Some(e.clone()) }))
             } else {
-                // The batch rolled back but keep-reverts already changed the desktop — NOT "nothing
-                // changed" (codex R4-Block 1): partial → ok:false + repair toast + the real state.
+                // The batch rolled back / abandoned AFTER moving the desktop, or keep-reverts already
+                // changed it — NOT "nothing changed" (codex R4-Block 1 + R5-#1): partial → ok:false +
+                // repair toast + the real state, so the UI never claims the desktop is untouched.
                 (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
             }
         } else if outcome.degraded.is_some() {
             (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
+        } else if outcome.committed.is_empty() && outcome.reverted.is_empty() {
+            // No error, but nothing was styled AND nothing reverted — an all-conflicts / zero-effect
+            // apply (every item CAS-failed or was already original). The saved-style was deliberately
+            // NOT written (icons/mod.rs), so this is not a clean success: tell the user their icons may
+            // have changed under them and keep the draft dirty for a retry (codex R5-#2).
+            (false, Some(ToastDto { key: "Toast_ApplyNoEffect".into(), arg: None }))
         } else {
             (true, None)
         };
@@ -592,14 +612,22 @@ impl SourceCache {
     }
 
     /// Publishes a freshly-extracted generation: inserts every entry (a re-inserted content key
-    /// refreshes its recency, so live icons never evict), then trims the oldest past the byte cap.
+    /// refreshes its recency, so live icons never evict), then trims the oldest HISTORICAL keys past
+    /// the byte cap while PINNING this generation's own keys (codex R5-#7). The scan DTO advertises
+    /// every key in `next`, so the webview will request each one — evicting a live key mid-publish
+    /// would 404 the current desktop. If this one generation alone exceeds the cap (a very large
+    /// desktop of high-entropy icons), the cache is left temporarily over the cap holding the full
+    /// working set, rather than dropping a live key: the next scan trims the then-historical excess.
     fn publish(&mut self, next: HashMap<String, Vec<u8>>) {
+        let pinned: std::collections::HashSet<String> = next.keys().cloned().collect();
         for (k, v) in next {
-            self.insert(k, v);
+            self.insert_raw(k, v);
         }
+        self.trim(&pinned);
     }
 
-    fn insert(&mut self, key: String, bytes: Vec<u8>) {
+    /// Inserts/refreshes one entry without trimming (a re-inserted key moves to most-recent).
+    fn insert_raw(&mut self, key: String, bytes: Vec<u8>) {
         if let Some(old) = self.map.remove(&key) {
             self.bytes -= old.len();
             self.order.retain(|k| k != &key);
@@ -607,13 +635,22 @@ impl SourceCache {
         self.bytes += bytes.len();
         self.order.push_back(key.clone());
         self.map.insert(key, bytes);
-        // Evict the oldest keys until under the cap, but always keep the just-inserted entry.
-        while self.bytes > self.cap && self.order.len() > 1 {
-            if let Some(oldest) = self.order.pop_front() {
-                if let Some(v) = self.map.remove(&oldest) {
-                    self.bytes -= v.len();
-                }
+    }
+
+    /// Evicts the oldest NON-pinned keys until under the cap. `pinned` (the current generation) is
+    /// never evicted; once only pinned keys remain the cache stops trimming even if still over cap.
+    fn trim(&mut self, pinned: &std::collections::HashSet<String>) {
+        let mut idx = 0;
+        while self.bytes > self.cap && idx < self.order.len() {
+            if pinned.contains(&self.order[idx]) {
+                idx += 1; // a live key — skip it, never evict the generation being served
+                continue;
             }
+            let key = self.order.remove(idx).expect("index in bounds");
+            if let Some(v) = self.map.remove(&key) {
+                self.bytes -= v.len();
+            }
+            // `remove(idx)` shifted the tail down, so the next candidate is again at `idx`.
         }
     }
 
@@ -822,5 +859,54 @@ mod tests {
         c.publish(HashMap::from([("new/0/h".to_string(), vec![0u8; 60])])); // now 120 > 100 → evict oldest
         assert_eq!(c.get("old/0/h"), None, "the oldest key was evicted past the cap");
         assert_eq!(c.get("new/0/h").map(|v| v.len()), Some(60), "the newest key is always kept");
+    }
+
+    #[test]
+    fn source_cache_never_evicts_a_key_of_the_generation_being_published() {
+        // codex R5-#7: a single scan whose OWN sources exceed the cap must still resolve EVERY key it
+        // advertises — the DTO points the webview at all of them, so evicting one mid-publish would 404
+        // the live desktop. The cap bounds HISTORICAL generations, never the current one.
+        let mut c = SourceCache::new(100);
+        c.publish(HashMap::from([("old/0/h".to_string(), vec![0u8; 90])])); // historical, will be trimmed
+        // One generation of three 50-byte icons = 150 bytes > the 100 cap. All three must survive.
+        c.publish(HashMap::from([
+            ("live/0/h".to_string(), vec![1u8; 50]),
+            ("live/1/h".to_string(), vec![2u8; 50]),
+            ("live/2/h".to_string(), vec![3u8; 50]),
+        ]));
+        assert_eq!(c.get("old/0/h"), None, "the prior generation is evicted to make room");
+        assert_eq!(c.get("live/0/h").map(|v| v.len()), Some(50), "live key 0 is pinned, never evicted");
+        assert_eq!(c.get("live/1/h").map(|v| v.len()), Some(50), "live key 1 is pinned, never evicted");
+        assert_eq!(c.get("live/2/h").map(|v| v.len()), Some(50), "live key 2 is pinned, never evicted");
+    }
+
+    #[test]
+    fn get_persisted_keeps_the_restore_affordance_when_an_in_flight_txn_lingers() {
+        // codex R5-#6: a degraded prior-crash recovery leaves an IN-FLIGHT (no-terminal) txn in the
+        // journal and can style the desktop with NO ledger row. `applied` off the ledger alone would
+        // then be false and HIDE the restore affordance — stranding the user. get_persisted must keep
+        // `applied: true` off the retained in-flight journal so the restore path (which re-runs
+        // recovery and heals) stays reachable.
+        use dm_operations::txn::{journal::JournalRecord, FileJournal, JournalSink};
+        let dir = tempfile::tempdir().unwrap();
+        let h = host(dir.path());
+        assert!(!h.get_persisted().unwrap().applied, "clean start: nothing applied, no in-flight txn");
+
+        // Simulate the degraded recovery's residue: an in-flight txn lingering in the journal.
+        let mut j = FileJournal::new(dir.path().join("txn.log"));
+        j.append(&JournalRecord::TxnBegin { txn: 1, items: vec![dm_domain::ItemId::from_raw("x")] })
+            .unwrap();
+
+        assert!(
+            h.get_persisted().unwrap().applied,
+            "a lingering in-flight txn forces applied:true so restore stays reachable (ledger is still empty)"
+        );
+
+        // A CLEANLY-terminated txn (rolled back) is NOT pending repair — it must NOT trip the signal.
+        j.append(&JournalRecord::TxnRolledBack { txn: 1 }).unwrap();
+        assert!(
+            !h.get_persisted().unwrap().applied,
+            "a terminal (rolled-back) txn awaiting checkpoint never spuriously shows restore"
+        );
     }
 }

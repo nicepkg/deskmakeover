@@ -19,7 +19,9 @@ pub use asset::{ApplyAssets, AssetRef, OwnedFields};
 pub use error::{PortError, PortResult};
 pub use fingerprint::Fingerprint;
 pub use item::{DesktopItem, IconRef, IconSourceKind, ItemId, ItemKind, ItemState, ItemTarget};
-pub use source::{FileId, IconLocationState, PackageState, SourceIdentity, TargetState};
+pub use source::{
+    FileId, IconLocationState, PackageState, SourceFingerprint, SourceIdentity, TargetState,
+};
 pub use ports::{
     AssetStore, DesktopScanner, ExplorerRefresher, IconApplier, ImageDecoder, ItemStateReader,
     MonitorTopology, OverlayControl, OverlayOutcome, OverlayStyle, WallpaperApplier,

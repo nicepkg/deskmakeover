@@ -14,8 +14,31 @@
 //! queue) — is stateful reconciler logic and lives with the resident reconciler (M7 plan T6), which
 //! consumes this fingerprint; it is deliberately not built into this pure identity type.
 
+use serde::{Deserialize, Serialize};
+
 use crate::fingerprint::Fingerprint;
 use crate::item::ItemKind;
+
+/// A source fingerprint (spec 07 §4), wrapped in a distinct newtype so it can NEVER be passed where
+/// a CAS fingerprint (`ApplyRequest.expected_fingerprint` / `LedgerEntry.last_applied_fingerprint`)
+/// is expected. The two answer different questions — "did what the icon should look like change?"
+/// vs "did OUR applied state change out from under us?" — and silently mixing them would cause false
+/// conflicts or break CAS. Serializes as its lowercase-hex string (for the resident's
+/// change-detection cache).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SourceFingerprint(Fingerprint);
+
+impl SourceFingerprint {
+    /// The lowercase-hex rendering.
+    pub fn to_hex(&self) -> String {
+        self.0.to_hex()
+    }
+
+    /// Parses a lowercase-hex source fingerprint; `None` if malformed.
+    pub fn from_hex(hex: &str) -> Option<Self> {
+        Fingerprint::from_hex(hex).map(Self)
+    }
+}
 
 /// A file's on-volume identity (`volume serial` + `file id`), used to tell a RENAME (same identity,
 /// new path) from a REPLACE (new file at the same path). `None` when the platform cannot read it
@@ -45,10 +68,13 @@ pub struct TargetState {
     pub mtime: i64,
 }
 
-/// A UWP/Appx package's identity: family name + version + the chosen resource variant (scale /
-/// theme / contrast), so a package update or a variant switch changes the icon.
+/// A UWP/Appx package's identity: the AUMID (Application User Model ID — distinguishes two apps
+/// packaged in the SAME family, which share a family name + version), the package family + version,
+/// and the chosen resource variant (scale / theme / contrast). A package update, an app switch
+/// within one package, or a variant change all change the icon.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PackageState {
+    pub aumid: String,
     pub family: String,
     pub version: String,
     pub resource_variant: String,
@@ -89,7 +115,7 @@ impl SourceIdentity {
     /// field is length-prefixed (via [`Fingerprint::of_parts`]) and every `Option` carries an
     /// explicit presence byte, so `None` never collides with `Some(<default>)` and field boundaries
     /// never merge.
-    pub fn fingerprint(&self) -> Fingerprint {
+    pub fn fingerprint(&self) -> SourceFingerprint {
         let mut parts: Vec<Vec<u8>> = Vec::new();
         parts.push(vec![kind_tag(self.kind)]);
 
@@ -126,6 +152,7 @@ impl SourceIdentity {
         match &self.package {
             Some(p) => {
                 parts.push(vec![1]);
+                parts.push(p.aumid.as_bytes().to_vec());
                 parts.push(p.family.as_bytes().to_vec());
                 parts.push(p.version.as_bytes().to_vec());
                 parts.push(p.resource_variant.as_bytes().to_vec());
@@ -136,7 +163,7 @@ impl SourceIdentity {
         parts.push(self.extra.clone());
 
         let refs: Vec<&[u8]> = parts.iter().map(|p| p.as_slice()).collect();
-        Fingerprint::of_parts(&refs)
+        SourceFingerprint(Fingerprint::of_parts(&refs))
     }
 }
 
@@ -204,9 +231,10 @@ mod tests {
     }
 
     #[test]
-    fn a_package_version_or_variant_change_changes_the_fingerprint() {
+    fn a_package_version_or_variant_or_aumid_change_changes_the_fingerprint() {
         let base = SourceIdentity {
             package: Some(PackageState {
+                aumid: "Contoso.App_8wekyb!App".into(),
                 family: "Contoso.App_8wekyb".into(),
                 version: "2.0.0.0".into(),
                 resource_variant: "scale-200".into(),
@@ -220,6 +248,19 @@ mod tests {
         let mut variant = base.clone();
         variant.package.as_mut().unwrap().resource_variant = "scale-400".into();
         assert_ne!(base.fingerprint(), variant.fingerprint());
+
+        // Two apps in the SAME package (same family + version) differ only by AUMID — the
+        // fingerprint MUST tell them apart, or one app's icon would mask the other's.
+        let mut sibling = base.clone();
+        sibling.package.as_mut().unwrap().aumid = "Contoso.App_8wekyb!Helper".into();
+        assert_ne!(base.fingerprint(), sibling.fingerprint());
+    }
+
+    #[test]
+    fn source_fingerprint_hex_round_trips() {
+        let fp = shortcut().fingerprint();
+        assert_eq!(SourceFingerprint::from_hex(&fp.to_hex()), Some(fp));
+        assert!(SourceFingerprint::from_hex("not-hex").is_none());
     }
 
     #[test]

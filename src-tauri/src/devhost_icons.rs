@@ -12,9 +12,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use dm_domain::{
-    ApplyAssets, DecodedImage, DesktopItem, DesktopScanner, ExplorerRefresher, Fingerprint,
-    IconApplier, IconSourceExtractor, ItemId, ItemKind, ItemState, ItemStateReader, ItemTarget,
-    OverlayControl, OverlayOutcome, OverlayStyle, PortError, PortResult, RestoreAnchor,
+    ApplyAssets, DecodedImage, DesktopGeometry, DesktopGeometryReader, DesktopIconSlot,
+    DesktopItem, DesktopScanner, ExplorerRefresher, Fingerprint, IconApplier, IconSourceExtractor,
+    ItemId, ItemKind, ItemState, ItemStateReader, ItemTarget, OverlayControl, OverlayOutcome,
+    OverlayStyle, PortError, PortResult, RestoreAnchor,
 };
 use image::ImageEncoder;
 
@@ -247,6 +248,20 @@ pub struct DevExplorerRefresher;
 impl ExplorerRefresher for DevExplorerRefresher {
     fn notify_icons_changed(&self) -> PortResult<()> {
         Ok(())
+    }
+}
+
+/// The dev geometry: a plausible 1080p work area; NO live positions (the host then lays items
+/// out synthetically, exactly the degraded path the real reader falls back to).
+pub struct DevDesktopGeometry;
+
+impl DesktopGeometryReader for DevDesktopGeometry {
+    fn geometry(&self) -> PortResult<DesktopGeometry> {
+        Ok(DesktopGeometry { screen_width: 1920, screen_height: 1080, taskbar_height: 48 })
+    }
+
+    fn positions(&self) -> PortResult<Vec<DesktopIconSlot>> {
+        Ok(Vec::new())
     }
 }
 

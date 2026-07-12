@@ -23,8 +23,9 @@ pub use source::{
     FileId, IconLocationState, PackageState, SourceFingerprint, SourceIdentity, TargetState,
 };
 pub use ports::{
-    AssetStore, DesktopScanner, ExplorerRefresher, IconApplier, IconSourceExtractor, ImageDecoder,
-    ItemStateReader, MonitorTopology, OverlayControl, OverlayOutcome, OverlayStyle, WallpaperApplier,
+    AssetStore, DesktopGeometry, DesktopGeometryReader, DesktopIconSlot, DesktopScanner,
+    ExplorerRefresher, IconApplier, IconSourceExtractor, ImageDecoder, ItemStateReader,
+    MonitorTopology, OverlayControl, OverlayOutcome, OverlayStyle, WallpaperApplier,
 };
 pub use restore::{
     DesktopIniAnchor, RecycleBinAnchor, RegistryValue, RestoreAnchor, WrapperAnchor,

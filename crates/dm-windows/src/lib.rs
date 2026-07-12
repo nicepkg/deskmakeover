@@ -54,6 +54,8 @@ pub use refresh::WindowsExplorerRefresher;
 #[cfg(windows)]
 pub use shell::WindowsScanner;
 #[cfg(windows)]
+pub use shell::WindowsDesktopGeometry;
+#[cfg(windows)]
 pub use source::WindowsIconSourceExtractor;
 #[cfg(windows)]
 pub use state_reader::WindowsStateReader;

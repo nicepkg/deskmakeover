@@ -94,9 +94,10 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
             scanner: Arc::new(dm_windows::WindowsScanner::new(exec.clone())),
             extractor: Arc::new(dm_windows::WindowsIconSourceExtractor::new(exec.clone())),
             reader: Arc::new(dm_windows::WindowsStateReader::new(exec.clone())),
-            applier: Arc::new(dm_windows::WindowsIconApplier::new(exec)),
+            applier: Arc::new(dm_windows::WindowsIconApplier::new(exec.clone())),
             overlay: Arc::new(dm_windows::WindowsOverlayControl::new(helper)),
             refresher: Arc::new(dm_windows::WindowsExplorerRefresher),
+            geometry: Arc::new(dm_windows::WindowsDesktopGeometry::new(exec)),
         };
         // Real active-profile count is a [WINDOWS-VERIFY] ProfileList enum; default single-user.
         Ok(IconHost::new(ports, settings, data_dir, 1))
@@ -111,6 +112,7 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
             applier: Arc::new(devhost_icons::DevIconApplier(desk)),
             overlay: Arc::new(devhost_icons::DevOverlayControl),
             refresher: Arc::new(devhost_icons::DevExplorerRefresher),
+            geometry: Arc::new(devhost_icons::DevDesktopGeometry),
         };
         Ok(IconHost::new(ports, settings, data_dir, 1))
     }

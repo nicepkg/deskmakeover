@@ -7,4 +7,5 @@ pub mod layout;
 pub mod scan;
 pub mod shell_link;
 
+pub use layout::WindowsDesktopGeometry;
 pub use scan::WindowsScanner;

@@ -19,8 +19,8 @@ use dm_contracts::{
     IconPersistedDto, IconScanDto, IconStyle, LookVersionDto, SettingsPatch, ToastDto,
 };
 use dm_domain::{
-    DecodedImage, DesktopScanner, ExplorerRefresher, IconApplier, IconSourceExtractor, ItemKind,
-    ItemStateReader, OverlayControl, OverlayOutcome,
+    DecodedImage, DesktopGeometryReader, DesktopScanner, ExplorerRefresher, IconApplier,
+    IconSourceExtractor, ItemKind, ItemStateReader, OverlayControl, OverlayOutcome,
 };
 use dm_operations::{
     FsAssetStore, IconApplySession, IconOps, IconPlatform, IconStoreState, JsonLedgerStore,
@@ -72,6 +72,7 @@ pub struct IconHostPorts {
     pub applier: Arc<dyn IconApplier + Send + Sync>,
     pub overlay: Arc<dyn OverlayControl + Send + Sync>,
     pub refresher: Arc<dyn ExplorerRefresher + Send + Sync>,
+    pub geometry: Arc<dyn DesktopGeometryReader + Send + Sync>,
 }
 
 pub struct IconHost {
@@ -81,6 +82,7 @@ pub struct IconHost {
     applier: Arc<dyn IconApplier + Send + Sync>,
     overlay: Arc<dyn OverlayControl + Send + Sync>,
     refresher: Arc<dyn ExplorerRefresher + Send + Sync>,
+    geometry: Arc<dyn DesktopGeometryReader + Send + Sync>,
     assets: FsAssetStore,
     settings: Arc<SettingsStore>,
     mut_state: Mutex<IconMutState>,
@@ -136,6 +138,7 @@ impl IconHost {
             applier: ports.applier,
             overlay: ports.overlay,
             refresher: ports.refresher,
+            geometry: ports.geometry,
             assets: FsAssetStore::new(data_dir.join("icon-assets")),
             settings,
             op_gate: Mutex::new(()),
@@ -201,6 +204,16 @@ impl IconHost {
         // still-displayed URLs 404-ing against a half-cleared cache. One bad item does NOT fail the
         // whole scan (codex extractor-review 🟠3): it degrades to styleable:false with a reason —
         // one OneDrive placeholder must not blank a 40-icon desktop.
+        // Live positions (technique A) matched BY NAME, the oracle's own matching rule; an
+        // unreadable layout (headless session, denied QI) or an unmatched item degrades to the
+        // synthetic grid slot — positions are a mirror nicety, never fatal.
+        let live_slots: HashMap<String, (i32, i32)> = self
+            .geometry
+            .positions()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| (s.name, (s.x, s.y)))
+            .collect();
         let mut next_sources: HashMap<String, Vec<u8>> = HashMap::new();
         let mut dtos = Vec::with_capacity(items.len());
         let mut scanned = Vec::with_capacity(items.len());
@@ -233,7 +246,7 @@ impl IconHost {
                 }
                 Err(e) => (Vec::new(), Some(format!("图标读取失败：{e}"))),
             };
-            let (x, y) = synthetic_layout(i);
+            let (x, y) = live_slots.get(&item.name).copied().unwrap_or_else(|| synthetic_layout(i));
             dtos.push(IconItemDto {
                 id: item.id.as_str().into(),
                 label: item.name.clone(),
@@ -270,9 +283,18 @@ impl IconHost {
             st.scan_valid = true;
         }
         // Observed desktop metrics (the frontend assembles its grid from these, never fabricated
-        // dims). [WINDOWS-VERIFY] real SPI_GETWORKAREA + shell icon metrics; the dev host reports a
-        // plausible 1080p work area matching `synthetic_layout`.
-        let grid = GridMetricsDto { screen_width: 1920, screen_height: 1080, taskbar_height: 48 };
+        // dims). [WINDOWS-VERIFY] real SM_C*SCREEN + SPI_GETWORKAREA; the dev host reports a
+        // plausible 1080p work area matching `synthetic_layout`; an unreadable platform degrades
+        // to the same shape rather than failing the scan.
+        let grid = self
+            .geometry
+            .geometry()
+            .map(|g| GridMetricsDto {
+                screen_width: g.screen_width,
+                screen_height: g.screen_height,
+                taskbar_height: g.taskbar_height,
+            })
+            .unwrap_or(GridMetricsDto { screen_width: 1920, screen_height: 1080, taskbar_height: 48 });
         Ok(IconScanDto { revision: rev, items: dtos, grid })
     }
 
@@ -858,8 +880,8 @@ fn unique_export_path(dir: &Path, stamp: &str) -> PathBuf {
 mod tests {
     use super::*;
     use crate::devhost_icons::{
-        DevDesktopScanner, DevExplorerRefresher, DevIconApplier, DevIconDesktop,
-        DevIconReader, DevIconSourceExtractor, DevOverlayControl,
+        DevDesktopGeometry, DevDesktopScanner, DevExplorerRefresher, DevIconApplier,
+        DevIconDesktop, DevIconReader, DevIconSourceExtractor, DevOverlayControl,
     };
     use serde_json::json;
 
@@ -874,6 +896,7 @@ mod tests {
                 applier: Arc::new(DevIconApplier(desk.clone())),
                 overlay: Arc::new(DevOverlayControl),
                 refresher: Arc::new(DevExplorerRefresher),
+                geometry: Arc::new(DevDesktopGeometry),
             },
             settings,
             dir,
@@ -1051,6 +1074,7 @@ mod tests {
                 applier: Arc::new(DevIconApplier(desk)),
                 overlay: Arc::new(DevOverlayControl),
                 refresher: Arc::new(DevExplorerRefresher),
+                geometry: Arc::new(DevDesktopGeometry),
             },
             settings,
             dir.path(),
@@ -1116,6 +1140,7 @@ mod tests {
                 applier: Arc::new(DevIconApplier(desk)),
                 overlay: Arc::new(DevOverlayControl),
                 refresher: Arc::new(DevExplorerRefresher),
+                geometry: Arc::new(DevDesktopGeometry),
             },
             settings,
             dir.path(),

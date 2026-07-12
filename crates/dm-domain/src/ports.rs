@@ -71,6 +71,36 @@ pub trait DesktopScanner {
     fn scan(&self) -> PortResult<Vec<DesktopItem>>;
 }
 
+/// One desktop icon's live on-screen slot (top-left, desktop pixels). Matched to scan items BY
+/// DISPLAY NAME — the shell view names items the way the desktop shows them, which is exactly how
+/// the oracle's mirror matched positions (`DesktopPreviewService`: "matched to its real position
+/// by name like every other icon").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DesktopIconSlot {
+    pub name: String,
+    pub x: i32,
+    pub y: i32,
+}
+
+/// The desktop's observed geometry: full screen dims + the taskbar's reserved height (screen
+/// minus work area). The frontend assembles its grid from these — never fabricated dims.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DesktopGeometry {
+    pub screen_width: u32,
+    pub screen_height: u32,
+    pub taskbar_height: u32,
+}
+
+/// Reads the desktop's live geometry + icon positions (oracle: `FolderViewInterop` technique A —
+/// `IShellWindows` → `IShellBrowser` → `IFolderView2::GetItemPosition`). Every step can
+/// legitimately fail (headless session, denied QI), so impls degrade to an Err/empty result the
+/// host replaces with its synthetic layout — positions are a preview-mirror nicety, never on the
+/// apply/restore critical path.
+pub trait DesktopGeometryReader {
+    fn geometry(&self) -> PortResult<DesktopGeometry>;
+    fn positions(&self) -> PortResult<Vec<DesktopIconSlot>>;
+}
+
 /// Nudges Explorer to re-read icons without a disruptive restart
 /// (oracle: `ExplorerRefresh.NotifyIconsChanged` → `SHChangeNotify`).
 pub trait ExplorerRefresher {

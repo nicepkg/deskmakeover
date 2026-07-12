@@ -1333,9 +1333,10 @@ fn recover_from_journal_truncates_the_journal_after_reconciling() {
 }
 
 #[test]
-fn recovery_propagates_a_restore_failure_so_it_can_retry() {
-    // An incomplete transaction whose restore fails must surface an error (the next startup
-    // retries), not silently claim success.
+fn recovery_surfaces_a_restore_failure_as_degraded_then_retries_clean() {
+    // codex R4-Block 5: an incomplete transaction whose restore faults must NOT bail with a bare Err
+    // (the caller would relay it as a bridge error over a partially-recovered desktop). It surfaces the
+    // fault via `degraded`, leaves the row + journal intact, and a later retry (fault cleared) finishes.
     let world = World::shared();
     let a = target("A");
     seed(&world, &a, b"orig-A");
@@ -1348,8 +1349,17 @@ fn recovery_propagates_a_restore_failure_so_it_can_retry() {
     let records: Vec<JournalRecord> =
         recording.records().iter().filter(|r| !matches!(r, JournalRecord::TxnCommitted { .. } | JournalRecord::ItemVerified { .. })).cloned().collect();
 
+    // The restore faults on this pass → recovery is degraded, not a bare Err; the item is NOT reported
+    // aborted (its revert never landed).
     world.borrow_mut().fail_restore(&a.path);
     let mut fresh = MemLedgerStore::new();
-    let result = recover(&records, &plat, &plat, &mut fresh);
-    assert!(result.is_err());
+    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    assert!(!out.degraded.is_empty(), "the restore fault is surfaced as degraded");
+    assert!(out.aborted.is_empty(), "the item was NOT reported reverted");
+
+    // The transient fault clears; a retry finishes the abort exactly (restore is idempotent).
+    world.borrow_mut().clear_faults();
+    let out2 = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    assert!(out2.degraded.is_empty(), "the retry reconciles cleanly");
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
 }

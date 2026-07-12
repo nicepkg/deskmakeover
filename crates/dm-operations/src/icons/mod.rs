@@ -200,7 +200,23 @@ impl<'a> IconOps<'a> {
         // #5 commit→ledger gap: reconcile any journal-committed-but-unledgered transaction into the
         // ledger (and checkpoint the journal) BEFORE preparing, so the CAS anchors + the GC live set
         // below are computed against a ledger that reflects every durable commit. Idempotent.
-        recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
+        let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
+        // Recovery of a PRIOR crash's journal could not fully reconcile at runtime (codex R4-Block 5):
+        // the ledger/desktop is in a partially-recovered state, so do NOT stack a new apply on top.
+        // Return the authoritative state + a repair-required note (never a bare Err) so the UI
+        // re-syncs and the user retries; the journal was left intact for the next recovery pass.
+        if !recovery.degraded.is_empty() {
+            let mut repair = recovery.degraded;
+            let stores = self.read_state_or_degraded(history, ledger, &mut repair);
+            return Ok(IconApplyOutcome {
+                committed: Vec::new(),
+                reverted: Vec::new(),
+                conflicts: Vec::new(),
+                error: None,
+                degraded: Some(repair.join("; ")),
+                stores,
+            });
+        }
 
         // Package + VALIDATE every master FIRST, before touching the desktop (codex R2-Block 2): a
         // malformed PNG must fail the whole commit while the desktop is still untouched, never after
@@ -426,7 +442,20 @@ impl<'a> IconOps<'a> {
         // original — and its stale fingerprint then reads as a user hand-edit forever. The checkpoint
         // is STRICT here (not the recovery path's best-effort): if the journal cannot be emptied we
         // abort before touching the ledger, so a restart never revives a half-reset state.
-        recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
+        let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
+        // Recovery of a prior crash could not fully reconcile at runtime (codex R4-Block 5): do NOT
+        // reset (which would checkpoint the journal away + delete rows) on top of a partial recovery.
+        // Return repair-required + the authoritative state; the journal stays for the next pass.
+        if !recovery.degraded.is_empty() {
+            let mut repair = recovery.degraded;
+            let stores = self.read_state_or_degraded(history, ledger, &mut repair);
+            return Ok(IconResetOutcome {
+                restored: Vec::new(),
+                skipped: Vec::new(),
+                degraded: Some(repair.join("; ")),
+                stores,
+            });
+        }
         journal.checkpoint(&[])?;
 
         // Best-effort revert: reverting item N mutates the desktop, so a fault on item N+1 must not

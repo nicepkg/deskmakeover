@@ -30,6 +30,12 @@ pub struct RecoveryOutcome {
     pub reconciled: Vec<dm_domain::ItemId>,
     /// Count of transactions that were already terminal (nothing to do).
     pub clean_txns: usize,
+    /// Per-item runtime faults that prevented a full reconcile (a restore/ledger I/O error while
+    /// replaying a prior crash's journal). Non-empty means recovery is INCOMPLETE: the caller must
+    /// NOT stack a new transaction on top and must NOT checkpoint the journal (the unreconciled
+    /// records stay for a retry) — it returns a repair-required status instead of a bare Err over a
+    /// desktop the recovery already partially mutated (codex R4-Block 5).
+    pub degraded: Vec<String>,
 }
 
 /// Per-item state accumulated from a transaction's journal records.
@@ -67,11 +73,13 @@ pub fn recover_from_journal(
 ) -> Result<RecoveryOutcome> {
     let records = journal.read_all()?;
     let outcome = recover(&records, reader, applier, ledger)?;
-    // Every transaction in the journal is now reconciled into the ledger / desktop, so the history
-    // is no longer needed — truncate it so the next recovery replays nothing (P2-5 checkpoint).
-    // Best-effort: a failed truncation just leaves the reconciled records for the next
-    // (idempotent) recovery, so it must not fail an otherwise-successful recovery pass.
-    let _ = journal.checkpoint(&[]);
+    // Truncate the reconciled history ONLY on a clean pass. If recovery degraded (an item's
+    // restore/ledger op faulted, codex R4-Block 5), the unreconciled records MUST stay so the next
+    // (idempotent) recovery can finish them — checkpointing them away would strand a crashed
+    // transaction forever. A clean truncation failing is itself best-effort (idempotent replay).
+    if outcome.degraded.is_empty() {
+        let _ = journal.checkpoint(&[]);
+    }
     Ok(outcome)
 }
 
@@ -206,8 +214,17 @@ fn abort_incomplete(
             continue;
         }
         let rec = &group.items[id.as_str()];
-        applier.restore(&rec.target, &rec.anchor)?;
-        ledger.remove(id)?;
+        // Best-effort (codex R4-Block 5): a restore/remove fault on one item must not bail with a bare
+        // Err over the items this recovery already restored. Record it as degraded and press on;
+        // restore is idempotent, so a later retry finishes the unreconciled items. The row is only
+        // removed if its restore actually landed, so desktop and ledger stay consistent per item.
+        if let Err(e) = applier.restore(&rec.target, &rec.anchor) {
+            outcome.degraded.push(format!("recover abort restore {}: {e}", id.as_str()));
+            continue;
+        }
+        if let Err(e) = ledger.remove(id) {
+            outcome.degraded.push(format!("recover abort ledger remove {}: {e}", id.as_str()));
+        }
         outcome.aborted.push(id.clone());
     }
     Ok(())
@@ -232,19 +249,34 @@ fn reconcile_committed(
         // paired empty ref. A legacy row committed before empty_asset existed loads as `None`; if we
         // skipped it on the fingerprint alone, the exact empty ref the journal carries would never be
         // persisted and would then be checkpointed away, orphaning the empty ICO (new-P1, wave-2R).
-        let already = ledger
-            .get(id)?
-            .map(|e| {
-                e.state.is_committed()
-                    && e.last_applied_fingerprint == new_fp
-                    && e.empty_asset == rec.empty_asset
-            })
-            .unwrap_or(false);
+        // Best-effort (codex R4-Block 5): a ledger read/write fault reconciling ONE committed item
+        // must not bail the whole recovery — this path never touches the desktop (the committed txn
+        // already applied before the crash), so a fault just leaves the row unreconciled for an
+        // idempotent retry. Record + continue.
+        let already = match ledger.get(id) {
+            Ok(row) => row
+                .map(|e| {
+                    e.state.is_committed()
+                        && e.last_applied_fingerprint == new_fp
+                        && e.empty_asset == rec.empty_asset
+                })
+                .unwrap_or(false),
+            Err(e) => {
+                outcome.degraded.push(format!("recover reconcile read {}: {e}", id.as_str()));
+                continue;
+            }
+        };
         if already {
             continue;
         }
-        let version = ledger.next_version()?;
-        ledger.upsert(LedgerEntry {
+        let version = match ledger.next_version() {
+            Ok(v) => v,
+            Err(e) => {
+                outcome.degraded.push(format!("recover reconcile version {}: {e}", id.as_str()));
+                continue;
+            }
+        };
+        if let Err(e) = ledger.upsert(LedgerEntry {
             item: id.clone(),
             target: rec.target.clone(),
             original_fingerprint: rec.original_fingerprint,
@@ -256,7 +288,10 @@ fn reconcile_committed(
             state: TxnState::Committed,
             pinned_seed: rec.pinned_seed,
             version,
-        })?;
+        }) {
+            outcome.degraded.push(format!("recover reconcile upsert {}: {e}", id.as_str()));
+            continue;
+        }
         outcome.reconciled.push(id.clone());
     }
     Ok(())

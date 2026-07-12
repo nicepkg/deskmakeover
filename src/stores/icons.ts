@@ -159,32 +159,24 @@ export function scanRetryDelayMs(attempt: number, baseMs: number, capMs: number)
   return Math.min(baseMs * 2 ** (attempt - 1), capMs)
 }
 
-// Unified concurrency discipline (review P2-4). EVERY writer that establishes
-// authoritative host state (arrow overlay, profile count, or a wholesale state
-// replacement — scan/rescan, apply, full restore, keep-beautification restore,
-// export) claims a monotonic generation token at its START and, when its
-// response lands, writes state ONLY if no LATER-STARTED writer exists
-// (`isCurrentGen`). Ordering by START, not arrival, kills both failure modes at
-// once: a late response can neither overwrite a newer writer's truth (P2-4a) nor
-// be falsely dropped by an older writer that merely landed first (P2-4b). This
-// applies UNIFORMLY — modal writers (apply / full restore) are NOT exempt: the
-// canvas refresh + Settings export/arrow-restore stay reachable while `working`,
-// so a modal writer's late commit must gate on its generation like any other.
+// Single-flight concurrency discipline (codex R4 — supersedes the old generation
+// guard). AT MOST ONE host round-trip is ever in flight: the four host verbs
+// (apply, full restore, keep-beautification restore) plus a rescan are MUTUALLY
+// EXCLUSIVE, and every draft edit is blocked while any of them runs. Each op
+// checks `busy()` (working | overlayRestoring | scanInFlight) at the door and
+// bails; each sets its flag BEFORE its first await. With no two host writers ever
+// overlapping there is nothing to supersede, so the earlier start-ordered
+// generation token (nextGen/isCurrentGen) is gone: a late response can never
+// belong to a superseded writer, because a superseding writer could never have
+// started. This is why the host — which unconditionally publishes its scan cache +
+// revision — never desyncs the UI: a rescan the UI would have discarded can no
+// longer be started underneath an in-flight verb (codex R4-Major 1), and a verb
+// whose response the UI would have dropped can no longer be superseded mid-flight
+// (codex R4-Block 1..5 / 1b — the inert drop branches are deleted, not kept).
 //
-// [M6-STORE-TXN] Deferred to M6 host wiring, out of scope for arrow-restore: the
-// SYNCHRONOUS look/item writers (undo/redo, mutate, presets, overrides, kind/
-// type policy, history) are NOT generation-aware, and a superseded apply still
-// dispatches its host effect (applyBakedCommit) even though its state write is
-// dropped. Both are store-level concurrency debt to be unified as one proper
-// store transaction when the real elevated contract lands — not bolted onto the
-// mock at 3am. Only the async host-truth writers are gated here.
-let stateGen = 0
-function nextGen(): number {
-  return ++stateGen
-}
-function isCurrentGen(gen: number): boolean {
-  return gen === stateGen
-}
+// `scanInFlight` is a module flag (not on the DTO) because a scan runs while
+// `state` is still null (the initial load), so it cannot live on the state object.
+let scanInFlight = false
 
 // Bridge indirection: production always uses the real `call`; store-behaviour
 // tests inject a controllable bridge to drive deterministic / out-of-order
@@ -485,10 +477,12 @@ export const useIcons = create<IconsState>((set, get) => {
     return s ? { config: s.config, kindPolicy: s.kindPolicy, typeOverrides: s.typeOverrides } : null
   }
 
-  /** True while a real-desktop op (apply / restore / arrow-restore) is in flight. Draft edits and
-   *  rescans are blocked then, so a concurrent op can't race a landed host mutation into a stale UI
-   *  (codex R3-Block 3) — the veil blocks the canvas, this blocks the Settings + programmatic paths. */
-  const busy = (): boolean => !!get().state?.working || get().overlayRestoring
+  /** True while ANY host round-trip is in flight — apply / restore (`working`), arrow-restore
+   *  (`overlayRestoring`), or a scan/rescan (`scanInFlight`). Every host verb, a rescan, and every
+   *  draft edit bail on this, so at most one host round-trip runs at a time and nothing can be
+   *  superseded (codex R4 — single-flight replaces the generation guard). The veil blocks the canvas;
+   *  this blocks the Settings + programmatic paths. */
+  const busy = (): boolean => !!get().state?.working || get().overlayRestoring || scanInFlight
 
   /** Fetches the raw scan + the persisted ②③/native bits (thin, D1) in one round-trip pair. */
   const fetchScan = async (): Promise<{ scan: IconScanDto; persisted: IconPersistedDto }> => {
@@ -567,79 +561,61 @@ export const useIcons = create<IconsState>((set, get) => {
     scanExhausted: false,
 
     scan: async () => {
-      if (get().loaded) return
+      // Single-flight: the `loaded` gate gives idempotence, `scanInFlight` makes a scan mutually
+      // exclusive with the host verbs + a rescan (codex R4 — nothing can supersede it).
+      if (get().loaded || scanInFlight) return
       set({ loaded: true })
-      // Claim a generation so a stale response from an older op can't overwrite
-      // this scan, and vice-versa (unified concurrency, review P2-4).
-      const gen = nextGen()
-      // A failed scan must be RETRYABLE and must not strand consumers: `state`
-      // stays null (→ Settings shows the "checking" status, never a false
-      // "Windows default"), and `loaded` resets so a later trigger re-scans
-      // (mirrors the boot() handshake). Previously the await was uncaught, so a
-      // scan failure left loaded=true + state=null forever (review P2-2).
-      let fetched
+      scanInFlight = true
       try {
-        fetched = await fetchScan()
-      } catch (err) {
-        console.error('icons.scan failed', err)
-        // SELF-RECOVER with EXPONENTIAL BACKOFF + a TERMINAL state (review P2-2):
-        // the sole scan trigger is App.tsx's one-shot mount effect, so resetting
-        // `loaded` alone stranded the user in "checking". Auto-retry heals a
-        // transient failure without a restart, but a PERMANENT failure must not
-        // spin forever (log spam) — after SCAN_RETRY_MAX attempts it gives up and
-        // surfaces a manual re-read entry (icons-mirror).
-        // Gen-guard the FAILURE path BEFORE touching shared state (review item 2):
-        // a superseded failed scan must not flip `loaded` back to false after a
-        // newer scan already succeeded, nor schedule a retry that would claim a
-        // fresh generation and drop the newer op's response.
-        if (!isCurrentGen(gen)) return
-        set({ loaded: false })
-        scanRetryCount++
-        if (scanRetryCount < SCAN_RETRY_MAX) {
-          const delay = scanRetryDelayMs(scanRetryCount, scanRetryBaseMs, SCAN_RETRY_CAP_MS)
-          if (scanRetryTimer === null) {
-            scanRetryTimer = setTimeout(() => {
-              scanRetryTimer = null
-              // The retry belongs to THIS failed scan's generation: if a newer op
-              // superseded it since scheduling, discard the retry rather than claim
-              // a fresh gen that would invalidate that newer op (review timer gen).
-              if (!isCurrentGen(gen)) return
-              void get().scan()
-            }, delay)
+        // A failed scan must be RETRYABLE and must not strand consumers: `state` stays null (→
+        // Settings shows "checking", never a false "Windows default") and `loaded` resets so a later
+        // trigger re-scans. The await is caught so a failure never leaves loaded=true+state=null
+        // forever (review P2-2).
+        let fetched
+        try {
+          fetched = await fetchScan()
+        } catch (err) {
+          console.error('icons.scan failed', err)
+          // SELF-RECOVER with EXPONENTIAL BACKOFF + a TERMINAL state (review P2-2): auto-retry heals a
+          // transient failure without a restart; a PERMANENT failure gives up after SCAN_RETRY_MAX and
+          // surfaces a manual re-read entry (icons-mirror) instead of spinning forever.
+          set({ loaded: false })
+          scanRetryCount++
+          if (scanRetryCount < SCAN_RETRY_MAX) {
+            const delay = scanRetryDelayMs(scanRetryCount, scanRetryBaseMs, SCAN_RETRY_CAP_MS)
+            if (scanRetryTimer === null) {
+              scanRetryTimer = setTimeout(() => {
+                scanRetryTimer = null
+                void get().scan()
+              }, delay)
+            }
+          } else {
+            set({ scanExhausted: true })
           }
-        } else {
-          set({ scanExhausted: true })
+          return
         }
-        return
+        // Scan succeeded — adoptScan clears the recovery budget + timer + exhausted. The initial draft
+        // resumes from ② (the last global Apply), or the factory default if none.
+        adoptScan(fetched.scan, fetched.persisted, draftFromPersisted(fetched.persisted))
+        // A3 resume: rehydrate the last bare-look intent BEFORE first paint, so a relaunch whose last
+        // selection was System Default opens bare. Only the initial scan resumes it — a manual rescan
+        // must not resurrect a bare intent the user has since left.
+        set({ bareLook: readBareLook() })
+        // First paint is gated by `ready` (loadSources): the desktop stays veiled until every tile has
+        // landed, so there is never a wallpaper-with-blank-icons window. Safety: never strand the veil
+        // if the pool never pings (0 renderable tiles) — force the reveal past a full-desktop paint.
+        setTimeout(() => {
+          if (!get().ready) set({ ready: true })
+        }, 2500)
+      } finally {
+        scanInFlight = false
       }
-      // Superseded by a newer op between dispatch and arrival (review item 1):
-      // don't clobber the newer truth, and DON'T strand at loaded:true/state:null
-      // with no recovery — re-open the load gate so a later trigger can re-read.
-      if (!isCurrentGen(gen)) {
-        set({ loaded: false })
-        return
-      }
-      // Scan succeeded — adoptScan clears the recovery budget + timer + exhausted. The initial
-      // draft resumes from ② (the last global Apply), or the factory default if none.
-      adoptScan(fetched.scan, fetched.persisted, draftFromPersisted(fetched.persisted))
-      // A3 resume: rehydrate the last bare-look intent BEFORE first paint, so a
-      // relaunch whose last selection was System Default opens bare (not the
-      // rehydrated config). Only the initial scan resumes it — a manual rescan
-      // must not resurrect a bare intent the user has since left.
-      set({ bareLook: readBareLook() })
-      // The first paint is gated by `ready` (loadSources): the desktop stays
-      // veiled until EVERY tile has landed, so there is never a wallpaper-with-
-      // blank-icons window. That first reveal (once per launch) sweeps the coral
-      // wand + a per-tile bloom (ADR-0013 D8, reworked from the old comparing-hold
-      // which showed originals that hadn't rendered yet).
-      // Safety: never strand the veil if the pool never pings (e.g. 0 renderable
-      // tiles) — force the reveal after a ceiling well past a full-desktop paint.
-      setTimeout(() => {
-        if (!get().ready) set({ ready: true })
-      }, 2500)
     },
 
     retryScan: () => {
+      // A manual re-read only fires from the exhausted state, where no scan is running; guard it
+      // anyway so it can never reset `loaded` under an in-flight scan (single-flight, codex R4).
+      if (scanInFlight) return
       scanRetryCount = 0
       if (scanRetryTimer !== null) {
         clearTimeout(scanRetryTimer)
@@ -650,22 +626,26 @@ export const useIcons = create<IconsState>((set, get) => {
     },
 
     rescan: async () => {
+      // Single-flight: blocked while any host verb runs (busy), and `scanInFlight` blocks the verbs +
+      // a second rescan for the duration — so a verb can never start underneath a rescan and desync
+      // the host revision the UI would then discard (codex R4-Major 1). No generation guard needed.
       if (busy()) return
-      const gen = nextGen()
-      const fetched = await fetchScan()
-      // A rescan superseded by a later op (e.g. an arrow restore started after it)
-      // must not apply its now-stale full state over the newer truth (P2-4b).
-      if (!isCurrentGen(gen)) return
-      // Preserve the user's live draft AND per-icon overrides across a manual refresh (only the
-      // initial scan resumes ② + starts overrides empty).
-      const keepOverrides = new Map(
-        get()
-          .items.filter((i) => i.overrideMode !== null)
-          .map((i) => [i.id, { mode: i.overrideMode as 'keep' | 'tint', tint: i.overrideTint }]),
-      )
-      const wasDirty = get().state?.dirty ?? false
-      adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted), keepOverrides, wasDirty)
-      useToasts.getState().show(t('Toast_Refreshed'))
+      scanInFlight = true
+      try {
+        const fetched = await fetchScan()
+        // Preserve the user's live draft AND per-icon overrides across a manual refresh (only the
+        // initial scan resumes ② + starts overrides empty).
+        const keepOverrides = new Map(
+          get()
+            .items.filter((i) => i.overrideMode !== null)
+            .map((i) => [i.id, { mode: i.overrideMode as 'keep' | 'tint', tint: i.overrideTint }]),
+        )
+        const wasDirty = get().state?.dirty ?? false
+        adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted), keepOverrides, wasDirty)
+        useToasts.getState().show(t('Toast_Refreshed'))
+      } finally {
+        scanInFlight = false
+      }
     },
 
     // One undo step per discrete pick; repaint is local and immediate.
@@ -844,11 +824,6 @@ export const useIcons = create<IconsState>((set, get) => {
       // beautified icons onto the desktop. Its CTA crossing is a restore, routed by
       // the panel; this store invariant guarantees no stray apply slips through.
       if (s.bareLook) return false
-      // Claim a generation so any writer already in flight is superseded, AND so
-      // this apply's own late commit self-drops if a newer writer (canvas refresh
-      // / Settings restore, both reachable while `working`) started after it
-      // (P2-4, uniform gating — modal is NOT exempt).
-      const gen = nextGen()
       const compositor = getIconCompositor()
       const config = s.state.config
       const policy = s.state.kindPolicy
@@ -899,17 +874,6 @@ export const useIcons = create<IconsState>((set, get) => {
         // that are currently styled (spec 06 §2). The styleJson is the three global knobs (spec 07 §8.2).
         const styleJson = JSON.stringify({ config, kindPolicy: policy, typeOverrides })
         const result = await bridge('icons.applyBakedCommit', { sessionId, styleJson, restoreIds, label: lookLabel(s.state) })
-        // Superseded while baking (a newer writer landed first): drop this stale
-        // commit — never write the outdated state or announce success over the
-        // newer writer's truth (P2-4). Clear the progress veil AND release
-        // `working` on the current state: a superseding delta-merge writer (arrow
-        // restore) leaves apply's optimistic working:true in place, which would
-        // otherwise lock the buttons/veil (review item 1 — modal working hang).
-        if (!isCurrentGen(gen)) {
-          const cur = get().state
-          set(cur ? { state: { ...cur, working: false }, applyProgress: null } : { applyProgress: null })
-          return false
-        }
         // The attempted recipe becomes the draft; assemble against the persisted ②③ truth.
         const attempted: IconStyleRecipe = { config, kindPolicy: policy, typeOverrides }
         const assembled = assembleIconsState({
@@ -919,7 +883,7 @@ export const useIcons = create<IconsState>((set, get) => {
           wallpaperUrl: currentWallpaperUrl(),
           gridMetrics: lastGridMetrics,
         })
-        // A failed OR superseded apply did NOT reach the desktop (host returned ok:false with the
+        // A failed / degraded apply did NOT fully reach the desktop (host returned ok:false with the
         // real current truth): keep the attempted recipe as a DIRTY draft so the CTA offers a
         // re-apply, never a false "synced" (codex R2-Block 4). On success the assembled state is
         // authoritative (applied + clean).
@@ -938,25 +902,13 @@ export const useIcons = create<IconsState>((set, get) => {
     restore: async () => {
       const s = get()
       if (!s.state) return
-      // Single-flight (codex R3-Block 1/3): a restore must not start over an
-      // apply / another restore / arrow-restore already in flight.
+      // Single-flight (codex R3-Block 1/3 + R4): a restore must not start over an apply / another
+      // restore / arrow-restore / rescan already in flight; `working` then blocks the rest for its
+      // duration, so nothing supersedes it and no generation guard is needed.
       if (busy()) return
-      // Claim a generation to supersede any writer in flight, and to self-drop
-      // this restore's own late response if a newer writer (canvas refresh /
-      // Settings arrow-restore, reachable while `working`) started after it
-      // (P2-4, uniform gating — modal is NOT exempt).
-      const gen = nextGen()
       set({ state: { ...s.state, working: true } })
       try {
         const result = await bridge('icons.restore')
-        // Superseded: the newer writer's truth stands. Still release `working` on
-        // the current state — a delta-merge superseder (arrow restore) leaves this
-        // restore's optimistic working:true in place, locking the UI (item 1).
-        if (!isCurrentGen(gen)) {
-          const cur = get().state
-          if (cur) set({ state: { ...cur, working: false } })
-          return
-        }
         // A full restore clears ② + reverts the desktop; keep the user's live draft (they can
         // re-apply) — only `applied`/arrow flip, sourced from the fresh persisted state.
         set({
@@ -983,21 +935,15 @@ export const useIcons = create<IconsState>((set, get) => {
     // DTO), and reports a restore-specific failure — not "apply failed".
     restoreOverlay: async () => {
       const s = get()
-      // Single-flight AND mutually exclusive with a full apply/restore: `busy()`
-      // covers both `working` and a prior `overlayRestoring` (codex R3-Block 1/3).
+      // Single-flight AND mutually exclusive with every other host round-trip: `busy()` covers
+      // `working`, a prior `overlayRestoring`, and `scanInFlight` — and `overlayRestoring` then blocks
+      // the rest for this op's duration, so no generation guard is needed (codex R3-Block 1/3 + R4).
       if (!s.state || busy()) return
       set({ overlayRestoring: true })
-      // Claim a generation at START (initiation order, not arrival order): this
-      // restore applies its result only if no LATER-STARTED authoritative op
-      // exists. A later apply/full-restore/rescan supersedes it (no stale
-      // overwrite); an EARLIER op that merely lands afterwards does NOT supersede
-      // it, so a legitimately-newer restore is never falsely dropped (P2-4a/b).
-      const gen = nextGen()
       try {
         const result = await bridge('icons.restoreOverlay')
-        if (!isCurrentGen(gen)) return
-        // Delta-merge only the arrow/profile fields so a concurrent config edit
-        // (this op holds no `working` flag) is never clobbered by a stale DTO.
+        // Merge only the arrow/profile fields the op touched onto the live draft (which nothing else
+        // can have changed while `overlayRestoring` held).
         const cur = get().state
         if (cur) {
           set({
@@ -1010,9 +956,6 @@ export const useIcons = create<IconsState>((set, get) => {
         }
         toastOf(result)
       } catch {
-        // A superseded restore that also rejected stays silent — the newer op's
-        // result already stands; only a still-current failure toasts.
-        if (!isCurrentGen(gen)) return
         useToasts.getState().show(t('Toast_RestoreArrowFailed'), 'warn')
       } finally {
         set({ overlayRestoring: false })
@@ -1078,7 +1021,7 @@ export function resetIconsHistoryForTests(): void {
   scanRetryTimer = null
   scanRetryBaseMs = 2000
   scanRetryCount = 0
-  stateGen = 0
+  scanInFlight = false
   bridge = call
   persistBareLook(false) // clear the client bare-look flag so it can't bleed across tests
 }

@@ -300,8 +300,9 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     }) as unknown as Parameters<typeof __setBridgeForTests>[0])
     seedStore({ arrowOverlay: 'hidden', activeUserProfiles: 1 })
 
-    const p = useIcons.getState().exportCompare() // gen claimed, in flight
-    // A newer op (full restore) starts + lands with the authoritative truth.
+    const p = useIcons.getState().exportCompare() // in flight; a pure read that never writes state
+    // A full restore runs alongside (exportCompare holds no busy flag — it is a read-only side effect)
+    // and lands the authoritative truth.
     await useIcons.getState().restore()
     expect(useIcons.getState().state!.arrowOverlay).toBe('native')
     expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
@@ -315,33 +316,33 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
   })
 
-  test('a newer restore is NOT falsely dropped by an older rescan that lands first (review P2-4b)', async () => {
+  test('an arrow-restore is BLOCKED while a rescan is in flight (single-flight — no scan/verb overlap)', async () => {
     let resolveScan!: (v: unknown) => void
-    let resolveRestore!: (v: IconsOpResultDto) => void
+    let overlayCalls = 0
     const scanInflight = new Promise((r) => (resolveScan = r))
-    const restoreInflight = new Promise<IconsOpResultDto>((r) => (resolveRestore = r))
     __setBridgeForTests(((method: string) => {
-      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
+      // The rescan adopts this persisted snapshot; make it explicit so the assertion is deterministic.
+      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto({ arrowOverlay: 'hidden', activeUserProfiles: 1 }))
       if (method === 'icons.scan') return scanInflight
-      if (method === 'icons.restoreOverlay') return restoreInflight
+      if (method === 'icons.restoreOverlay') {
+        overlayCalls++
+        return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      }
       throw new Error(`unexpected ${method}`)
     }) as unknown as Parameters<typeof __setBridgeForTests>[0])
     seedStore({ arrowOverlay: 'hidden', activeUserProfiles: 1 })
 
-    // rescan starts FIRST (older generation), restore starts SECOND (newer).
-    const pScan = useIcons.getState().rescan()
-    const pRestore = useIcons.getState().restoreOverlay()
+    const pScan = useIcons.getState().rescan() // scanInFlight=true set before the first await
+    // An arrow-restore attempted mid-rescan must NOT start — busy() blocks it, so a verb can never
+    // publish a host mutation underneath a rescan the UI would then discard (codex R4-Major 1).
+    await useIcons.getState().restoreOverlay()
+    expect(overlayCalls).toBe(0) // the host restoreOverlay was never called
 
-    // The OLDER rescan lands FIRST with a now-stale full state — must be dropped.
+    // The rescan lands its own scan + persisted unopposed (the arrow stays as the scan reported it).
     resolveScan(scanDto(1))
-    // The NEWER restore lands second with the truth the user actually wants.
-    resolveRestore(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
-    await Promise.all([pScan, pRestore])
-
-    // Ordering by START, not arrival: the newer restore is applied, not falsely
-    // dropped by the older rescan that merely returned first.
-    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
-    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+    await pScan
+    expect(useIcons.getState().state!.arrowOverlay).toBe('hidden')
+    expect(useIcons.getState().state!.activeUserProfiles).toBe(1)
   })
 
   test('an arrow-restore is BLOCKED while a modal apply is in flight (single-flight); apply commits normally', async () => {
@@ -441,28 +442,30 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     await pApply
   })
 
-  test('a stale rescan that lands LAST is dropped — its gen guard is load-bearing (review scan gate)', async () => {
-    const scan = deferred<unknown>()
+  test('a rescan is BLOCKED while an arrow-restore is in flight (single-flight — reverse direction)', async () => {
+    const overlay = deferred<IconsOpResultDto>()
+    let scanCalls = 0
     setBridge((method) => {
       if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
-      if (method === 'icons.scan') return scan.promise
-      if (method === 'icons.restoreOverlay') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+      if (method === 'icons.scan') {
+        scanCalls++
+        return Promise.resolve(scanDto(1))
+      }
+      if (method === 'icons.restoreOverlay') return overlay.promise
       throw new Error(`unexpected ${method}`)
     })
-    seedStore({ arrowOverlay: 'hidden', activeUserProfiles: 1 })
+    seedStore({ arrowOverlay: 'hidden', activeUserProfiles: 1, applied: true })
 
-    const pScan = useIcons.getState().rescan() // OLDER gen, in flight
-    // A newer writer lands FIRST and establishes the truth.
-    await useIcons.getState().restoreOverlay()
-    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
+    const pOverlay = useIcons.getState().restoreOverlay() // overlayRestoring=true
+    await useIcons.getState().rescan() // blocked by busy() — never reaches the scan bridge
+    expect(scanCalls).toBe(0)
+    expect(useIcons.getState().overlayRestoring).toBe(true) // the arrow-restore is still the only op
 
-    // The OLDER rescan now lands LAST with a stale full-state snapshot — the
-    // guard must drop it (this is the case the reverse-start test could not pin,
-    // because there the late restore masked the transient clobber).
-    scan.resolve(scanDto(1))
-    await pScan
+    overlay.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
+    await pOverlay
     expect(useIcons.getState().state!.arrowOverlay).toBe('native')
     expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
+    expect(useIcons.getState().overlayRestoring).toBe(false)
   })
 
   test('scan backoff terminates after EXACTLY SCAN_RETRY_MAX attempts, then stays terminal (review P2-2 item 3)', async () => {
@@ -513,61 +516,12 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     expect(useIcons.getState().state).not.toBeNull()
   })
 
-  test('a scheduled scan retry that was superseded is discarded, not re-fired (review timer gen)', async () => {
-    __setScanRetryMsForTests(30) // long enough to interpose a newer op before the retry fires
-    let scanCalls = 0
-    setBridge((method) => {
-      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
-      if (method === 'icons.scan') {
-        scanCalls++
-        return Promise.reject(new Error('down'))
-      }
-      if (method === 'icons.restoreOverlay') return Promise.resolve(opResult({ arrowOverlay: 'native', activeUserProfiles: 3 }))
-      throw new Error(`unexpected ${method}`)
-    })
-    useIcons.setState({ loaded: false, state: seedState({ arrowOverlay: 'hidden', activeUserProfiles: 1 }), scanExhausted: false, revision: 0 })
-
-    // A failed scan schedules a retry that belongs to its generation.
-    await useIcons.getState().scan()
-    expect(scanCalls).toBe(1)
-    // A newer op supersedes the failed scan BEFORE its retry timer fires.
-    await useIcons.getState().restoreOverlay()
-    expect(useIcons.getState().state!.arrowOverlay).toBe('native')
-
-    // Past the retry delay: the superseded retry must be discarded — no fresh scan
-    // that would claim a newer gen and invalidate the restore's legitimate truth.
-    await new Promise((r) => setTimeout(r, 70))
-    expect(scanCalls).toBe(1) // retry NOT re-fired
-    expect(useIcons.getState().state!.arrowOverlay).toBe('native') // restore's truth intact
-    expect(useIcons.getState().state!.activeUserProfiles).toBe(3)
-  })
-
-  test('a superseded failed scan does not flip loaded back to false (review item 2)', async () => {
-    const g1 = deferred<unknown>() // the OLD scan, will reject
-    const g2 = deferred<unknown>() // the NEWER scan, will succeed
-    let n = 0
-    setBridge((method) => {
-      if (method === 'icons.getPersisted') return Promise.resolve(persistedDto())
-      if (method !== 'icons.scan') throw new Error(`unexpected ${method}`)
-      n++
-      return n === 1 ? g1.promise : g2.promise
-    })
-    useIcons.setState({ loaded: false, state: null, scanExhausted: false, revision: 0 })
-
-    const p1 = useIcons.getState().scan() // G1: loaded:true, awaiting g1
-    useIcons.getState().retryScan() // resets gate + starts G2: loaded:true, awaiting g2
-
-    // The NEWER scan succeeds first and owns the loaded state.
-    g2.resolve(scanDto(1))
-    await waitUntil(() => useIcons.getState().state !== null)
-    expect(useIcons.getState().loaded).toBe(true)
-
-    // The OLD scan now rejects — it must NOT flip loaded back to false, because
-    // the gen guard runs BEFORE the state write (item 2: order of the two lines).
-    g1.reject(new Error('stale down'))
-    await p1.catch(() => {})
-    expect(useIcons.getState().loaded).toBe(true)
-  })
+  // (Removed under single-flight, codex R4: "a superseded scan retry is discarded" and "two
+  //  concurrent scans, newer wins" both modelled overlapping scans/verbs that can no longer happen —
+  //  a scan holds `scanInFlight` for its whole life, so no verb or second scan starts underneath it,
+  //  and a genuinely failed initial scan keeps retrying until it loads (there is no superseding op to
+  //  discard the retry). The scan/rescan single-flight is covered by the two BLOCKED tests above and
+  //  the backoff/exhaustion tests that remain.)
 })
 
 describe('scanRetryDelayMs — exponential backoff ladder + cap (review P2-2)', () => {

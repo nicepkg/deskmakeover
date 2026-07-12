@@ -47,6 +47,13 @@ pub struct ApplyOutcome {
     pub conflicts: Vec<ItemId>,
     /// Items walked back to their original because the batch failed.
     pub rolled_back: Vec<ItemId>,
+    /// Items whose stale POISON row was healed (dropped) during preflight, each also counted in
+    /// `conflicts` — the tuple `current == original != last_applied` is ambiguous between the app's
+    /// own failed `ledger.remove` and a user's manual restore-to-original, so the item is never
+    /// styled in the same round (codex R8-#1). The host fences the scan revision off this list: a
+    /// same-revision retry (now row-less) would otherwise pass the ordinary fresh CAS and silently
+    /// overwrite a possible hand-edit (the ABA).
+    pub healed: Vec<ItemId>,
     /// CONSERVATIVE "the desktop may have been touched" flag: set once the transaction entered its
     /// durable mutation phase (a rollback or abandon ran). The desktop may actually be changed (an item
     /// styled then restored to its true original, or a restore that faulted and left a residual state)
@@ -59,6 +66,15 @@ pub struct ApplyOutcome {
     pub desktop_mutated: bool,
     /// A human-readable failure reason, if the batch did not fully commit.
     pub error: Option<String>,
+}
+
+/// Phase-1 verdict for one item: proceed with `(anchor, original_fp, expected_fp)`, skip as a benign
+/// conflict, or skip as a HEALED conflict (a stale poison row was dropped — the host must fence the
+/// scan revision so a same-revision retry can't slip through the now-row-less fresh CAS, codex R9-#1).
+enum PrepareVerdict {
+    Proceed(dm_domain::RestoreAnchor, Fingerprint, Fingerprint),
+    Conflict,
+    HealedConflict,
 }
 
 /// Internal per-item working state carried from prepare through commit.
@@ -108,12 +124,20 @@ impl<'p> TxnDriver<'p> {
             Vec::new();
         for req in requests {
             match self.prepare_item(&req, ledger) {
-                Ok(Some((anchor, original_fp, expected))) => {
+                Ok(PrepareVerdict::Proceed(anchor, original_fp, expected)) => {
                     proceeding.push((req, anchor, original_fp, expected))
                 }
                 // Benign, safe-to-skip: the item is gone, externally modified, or has no restore
-                // material. `prepare_item` returns `Ok(None)` for all of these.
-                Ok(None) => outcome.conflicts.push(req.target.id.clone()),
+                // material.
+                Ok(PrepareVerdict::Conflict) => outcome.conflicts.push(req.target.id.clone()),
+                // A stale poison row was dropped and the item conflicted on the AMBIGUOUS tuple
+                // (codex R8-#1). It also lands in `healed` so the host can FENCE the scan revision:
+                // a same-revision retry would otherwise find no ledger row and pass the ordinary
+                // fresh CAS, silently overwriting a possible manual restore-to-original.
+                Ok(PrepareVerdict::HealedConflict) => {
+                    outcome.conflicts.push(req.target.id.clone());
+                    outcome.healed.push(req.target.id.clone());
+                }
                 // A real infrastructure failure (a non-NotFound COM/IO error from the reader, or a
                 // corrupt/unreadable ledger) is NOT a benign per-item conflict. Misreporting it as
                 // one — with `outcome.error` left None — hides that the restore path may be
@@ -226,49 +250,43 @@ impl<'p> TxnDriver<'p> {
         Ok(outcome)
     }
 
-    /// Phase-1 CAS + anchor capture for one item. Returns `Some((anchor, original_fp,
-    /// expected_fp))` when the item may proceed, `None` when it is a conflict (external
-    /// modification, deleted, or no restore material). No DESKTOP mutation happens here; the one
-    /// ledger write is the idempotent heal of a provably-stale poison row (codex R5-#2), taken before
-    /// any desktop change so a fault still leaves the desktop pristine.
+    /// Phase-1 CAS + anchor capture for one item. `Proceed` when the item may be styled, `Conflict`
+    /// for the benign skips (external modification, deleted, no restore material), `HealedConflict`
+    /// when a stale poison row was dropped (the caller reports it so the host can fence the scan).
+    /// No DESKTOP mutation happens here; the one ledger write is the idempotent heal of a
+    /// provably-stale poison row (codex R5-#2), taken before any desktop change so a fault still
+    /// leaves the desktop pristine.
     fn prepare_item(
         &self,
         req: &ApplyRequest,
         ledger: &mut dyn LedgerStore,
-    ) -> Result<Option<(dm_domain::RestoreAnchor, Fingerprint, Fingerprint)>> {
+    ) -> Result<PrepareVerdict> {
         let current = match self.reader.read_fingerprint(&req.target) {
             Ok(fp) => fp,
-            Err(PortError::NotFound(_)) => return Ok(None), // item gone → skip
+            Err(PortError::NotFound(_)) => return Ok(PrepareVerdict::Conflict), // item gone → skip
             Err(e) => return Err(e.into()),
         };
 
         let existing = ledger.get(&req.target.id)?;
         // Heal a POISONED lingering row before it can force a permanent CAS conflict (codex R5-#2,
-        // R6-#3). A prior keep/reset restored this item on disk (desktop == its original) but the paired
-        // `ledger.remove` faulted, leaving a stale row whose `last_applied` no longer matches the
-        // desktop. If the user now re-styles the item directly (not via keep/reset, so the mod.rs heal
-        // arm never sees it), that stale `last_applied` would be used as the CAS anchor forever and
-        // reject the apply every time. Detect it — the row's original matches the live desktop, yet its
-        // last-applied does not. We have PROVEN the desktop is at its true original, so drop the stale
-        // row and anchor this apply on the OBSERVED `current`, NOT on `req.expected_fingerprint`: the
-        // host's cached scan may predate the restore (no rescan between the failed remove and this
-        // re-apply), so its fingerprint could still read as the old styled state. `remove` here is
-        // pre-mutation (nothing journaled yet); a fault propagates as a clean, desktop-untouched Err.
+        // R6-#3, R7-#1, R8-#1). A prior keep/reset restored this item on disk (desktop == its
+        // original) but the paired `ledger.remove` faulted, leaving a stale row whose `last_applied`
+        // no longer matches the desktop — its CAS anchor would reject every direct re-apply forever.
         if let Some(e) = &existing {
             if current == e.original_fingerprint && current != e.last_applied_fingerprint {
-                // A POISON row (a keep/reset restore landed but its `ledger.remove` faulted) OR a user
-                // who MANUALLY restored the icon to its exact original since the scan — the fingerprint
-                // tuple is IDENTICAL, and we cannot tell them apart without durable provenance. Drop the
-                // stale row (the desktop is proven at its original, so a row still claiming `styled` is
-                // wrong and would force a permanent CAS conflict), then ALWAYS conflict: never bypass the
-                // scan-time CAS to style it in the same round. `current == req.expected_fingerprint` does
-                // NOT prove the scan is fresh — an ABA (O→styled→O, the user restoring to exactly the
-                // original) leaves a stale cached scan whose `O` still equals `current`, so styling then
-                // would silently overwrite the hand-edit (codex R7-#1 / R8-#1). The dropped row makes the
-                // NEXT apply an ordinary un-ledgered fresh apply, where the normal CAS applies. Resolving
-                // the app's own poison in one round would need a durable poison tombstone (follow-up).
+                // A POISON row OR a user who MANUALLY restored the icon to its exact original since
+                // the scan — the fingerprint tuple is IDENTICAL, and we cannot tell them apart without
+                // durable provenance. Drop the stale row (the desktop is proven at its original, so a
+                // row still claiming `styled` is wrong), then ALWAYS conflict: never bypass the
+                // scan-time CAS to style it in the same round. `current == req.expected_fingerprint`
+                // does NOT prove the scan is fresh — an ABA (O→styled→O, the user restoring to exactly
+                // the original) leaves a stale cached scan whose `O` still equals `current`. The
+                // verdict is `HealedConflict` so the HOST FENCES the scan revision: with the row now
+                // gone, a same-revision retry would pass the ordinary fresh CAS and overwrite the
+                // possible hand-edit (codex R9-#1) — the fence forces a real rescan first. Resolving
+                // the app's own poison in one round needs a durable poison tombstone (follow-up).
                 ledger.remove(&req.target.id)?;
-                return Ok(None);
+                return Ok(PrepareVerdict::HealedConflict);
             }
         }
         // CAS anchor: last-applied on re-apply, the scan-time observation on a fresh apply. A stale scan
@@ -278,7 +296,7 @@ impl<'p> TxnDriver<'p> {
             .map(|e| e.last_applied_fingerprint)
             .unwrap_or(req.expected_fingerprint);
         if current != expected {
-            return Ok(None); // external modification → visible conflict, never overwritten
+            return Ok(PrepareVerdict::Conflict); // external modification → visible, never overwritten
         }
 
         // The true original is pinned from the ledger on re-apply, captured fresh otherwise.
@@ -287,7 +305,7 @@ impl<'p> TxnDriver<'p> {
             None => match self.reader.capture_anchor(&req.target) {
                 Ok(a) => (a, current),
                 // The item vanished between the CAS read and the capture → benign skip.
-                Err(PortError::NotFound(_)) => return Ok(None),
+                Err(PortError::NotFound(_)) => return Ok(PrepareVerdict::Conflict),
                 // A real capture failure (locked file, COM/registry error) is an infrastructure
                 // problem, NOT a benign skip: propagate it so the batch fails and the operator
                 // learns the restore path may be compromised, rather than silently not styling
@@ -296,9 +314,9 @@ impl<'p> TxnDriver<'p> {
             },
         };
         if !anchor.has_material() {
-            return Ok(None);
+            return Ok(PrepareVerdict::Conflict);
         }
-        Ok(Some((anchor, original_fp, expected)))
+        Ok(PrepareVerdict::Proceed(anchor, original_fp, expected))
     }
 
     /// Phase-2 durable mutation for one already-prepared item: write asset → apply → verify.

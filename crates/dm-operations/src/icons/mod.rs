@@ -119,6 +119,20 @@ pub struct IconApplyOutcome {
     /// desktop WAS touched even though nothing committed (codex R5-#1). The host uses it so a rollback
     /// is never reported as "nothing changed"; a clean preflight failure leaves it false.
     pub desktop_mutated: bool,
+    /// True when this Apply COMPLETED and persisted its global intent to ②③ (codex R9-#2): it either
+    /// had a real desktop effect (`committed`/`reverted` non-empty) OR was a conflict-free zero-target
+    /// Apply (a policy-only / intentionally-empty global Apply — no icons to touch, but the
+    /// kindPolicy/typeOverrides intent still becomes the saved style, spec 07 §8.2). False for a
+    /// zero-effect batch WITH conflicts (nothing landed, something was refused) and for any
+    /// error/repair path. The host's verdict consumes THIS flag — the ②③ write and `ok`/dirty-clear
+    /// share one predicate and can never disagree (codex R8-#2/#3).
+    pub intent_persisted: bool,
+    /// True when the cached scan must be FENCED before another apply (codex R9-#1): a stale poison
+    /// row was healed (dropped) this round, so a same-revision retry — now row-less — would pass the
+    /// ordinary fresh CAS and could silently overwrite a user's manual restore-to-original (the ABA).
+    /// Also set on a driver bare-Err (the heal set is unknown there; fencing is the safe side). The
+    /// host bumps the scan revision off it, structurally forcing a rescan before the next apply.
+    pub requires_rescan: bool,
     pub error: Option<String>,
     /// A finalize step that ran AFTER the desktop was already mutated failed at runtime (a keep-revert
     /// I/O fault, a ②/③ write, GC, or the state read-back). The desktop DID change, so the op must
@@ -240,6 +254,9 @@ impl<'a> IconOps<'a> {
                 reverted: Vec::new(),
                 conflicts: Vec::new(),
                 desktop_mutated: !recovery.aborted.is_empty(),
+                intent_persisted: false,
+                // Recovery moved the desktop (or is mid-repair) → the cached scan is stale; fence it.
+                requires_rescan: true,
                 error: None,
                 degraded: Some(repair.join("; ")),
                 stores,
@@ -373,6 +390,10 @@ impl<'a> IconOps<'a> {
                     // the desktop mutated — treat it as possibly-changed so the host never says
                     // "nothing changed" (codex R5-#1). The `degraded` path already routes it there.
                     desktop_mutated: true,
+                    intent_persisted: false,
+                    // The heal set is unknown on a bare-Err (a poison row may already have been dropped
+                    // in preflight) — fence the scan on the safe side (codex R9-#1).
+                    requires_rescan: true,
                     error: None,
                     degraded: Some(repair.join("; ")),
                     stores,
@@ -395,20 +416,23 @@ impl<'a> IconOps<'a> {
         // freshly-styled desktop — codex R3-Block 4): record it into `repair` and press on, so the op
         // returns the authoritative persisted state + ok:false. (A crash BETWEEN these writes is the
         // separately-documented, self-healing finalize crash-window — a distinct, accepted gap.)
-        // ...AND only for a genuinely COMPLETED Apply that had a real desktop EFFECT (codex R5-#2 /
-        // R6-#2 / R7-#2 / R8-#2,#3). Two guards, kept IDENTICAL to the host's success verdict so the
-        // ②③ write and `ok:true`/dirty-clear never disagree:
-        //   • `repair.is_empty()` — no keep-restore fault ran. A partial revert (A reverted, B's restore
-        //     faulted → still styled) is NOT complete: writing ② ("everything original") while B wears
-        //     the old look would resume from a lie next launch.
-        //   • it styled OR reverted something (`committed || reverted`). `packaged.is_empty()` is NOT a
-        //     valid "intentional style-nothing" proxy — a restore-only batch that ALL-conflicted (every
-        //     opt-out was a hand-edit) also has no masters yet did nothing, and writing ② then would
-        //     poison the saved-style with a look the desktop never wears (R8-#2). A zero-effect apply
-        //     (nothing styled, nothing reverted — whether all-conflicts or a pure no-op) writes no ②③;
-        //     the host reports it as a no-effect, keeping the draft dirty.
+        // ...AND only for a genuinely COMPLETED Apply (codex R5-#2 / R6-#2 / R7-#2 / R8-#2,#3 /
+        // R9-#2). `intent_persisted` is THE single predicate — the host's verdict consumes it, so the
+        // ②③ write and `ok:true`/dirty-clear can never disagree. Completed means:
+        //   • no batch error and `repair.is_empty()` — no keep-restore fault ran. A partial revert (A
+        //     reverted, B's restore faulted → still styled) is NOT complete: writing ② ("everything
+        //     original") while B wears the old look would resume from a lie next launch.
+        //   • AND (a real desktop effect landed (`committed || reverted`) OR nothing was even refused
+        //     (`conflicts.is_empty()`)). The conflict-free zero-target case is a POLICY-ONLY /
+        //     intentionally-empty global Apply — no icon currently needs touching, but the new
+        //     kindPolicy/typeOverrides intent must still persist to ② (spec 07 §8.2, codex R9-#2) or
+        //     it is silently lost on restart. A zero-effect apply WITH conflicts (all-conflicts, or a
+        //     restore-only batch whose every opt-out was a hand-edit) did not complete: writing ② would
+        //     poison the saved-style with a look the desktop never wears (R8-#2).
         let meaningful_apply = !apply.committed.is_empty() || !reverted.is_empty();
-        if apply.error.is_none() && repair.is_empty() && meaningful_apply {
+        let intent_persisted =
+            apply.error.is_none() && repair.is_empty() && (meaningful_apply || conflicts.is_empty());
+        if intent_persisted {
             if let Err(e) = self.settings.set_saved_style(Some(&style)) {
                 repair.push(format!("save ② style: {e}"));
             }
@@ -443,6 +467,8 @@ impl<'a> IconOps<'a> {
             reverted,
             conflicts,
             desktop_mutated: apply.desktop_mutated,
+            intent_persisted,
+            requires_rescan: !apply.healed.is_empty(),
             error: apply.error,
             degraded: (!repair.is_empty()).then(|| repair.join("; ")),
             stores,

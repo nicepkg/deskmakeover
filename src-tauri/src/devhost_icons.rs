@@ -90,6 +90,14 @@ impl DevIconDesktop {
     fn put(&self, path: &str, bytes: Vec<u8>) {
         self.state.lock().unwrap().insert(path.to_string(), bytes);
     }
+
+    /// Test/dev hook: forces an item's surface back to its seeded original WITHOUT touching any
+    /// ledger — simulates a user manually restoring the icon OUTSIDE the app (the ambiguous
+    /// poison/manual-restore tuple the ABA fence protects, codex R9-#1).
+    #[cfg(test)]
+    pub(crate) fn force_original(&self, id: &str) {
+        self.put(&dev_path(id), format!("original:{id}").into_bytes());
+    }
 }
 
 /// Enumerates the fixed fake desktop (positions are the host's synthetic layout, [WV] on Windows).

@@ -626,6 +626,11 @@ fn a_poisoned_row_re_applied_directly_is_dropped_and_conflicts_then_a_second_app
     assert!(first.committed.is_empty(), "the ambiguous heal must NOT silently re-style");
     assert_eq!(first.conflicts, vec![ItemId::from_raw("a")], "it conflicts, forcing a fresh attempt");
     assert!(f.ledger.get(&a.id).unwrap().is_none(), "the poison row WAS dropped (un-poisoned)");
+    assert!(
+        first.requires_rescan,
+        "a heal demands the host fence the scan revision — a same-revision retry would pass the \
+         row-less fresh CAS and overwrite the possible hand-edit (codex R9-#1)",
+    );
 
     // Second apply: no ledger row now → an ordinary fresh apply styles it.
     let second = f.apply(&[("a", 0, [7, 7, 7, 255])], style(2), "B2", "v3", &[a.clone()]);
@@ -812,6 +817,21 @@ fn a_revert_only_apply_still_writes_the_saved_style_and_history() {
     assert!(out.committed.is_empty(), "nothing was styled");
     assert_eq!(f.settings.get_saved_style().unwrap(), Some(style(2)), "② reflects the revert-only Apply");
     assert_eq!(f.history.all().len(), history_before + 1, "③ recorded the completed Apply");
+}
+
+#[test]
+fn a_policy_only_apply_with_no_current_targets_still_persists_the_intent() {
+    // codex R9-#2: the user changes kindPolicy/typeOverrides when NO icon currently needs styling or
+    // reverting (zero-target). There is no desktop effect, but the global intent MUST persist to ②③
+    // (spec 07 §8.2) — the resident and the next launch resume from it. `packaged.is_empty()` alone is
+    // not a no-op: only a zero-effect apply WITH conflicts is an incomplete one.
+    let mut f = Fixture::new();
+    let out = f.apply(&[], style(7), "策略", "v1", &[]);
+
+    assert!(out.committed.is_empty() && out.reverted.is_empty() && out.conflicts.is_empty());
+    assert!(out.intent_persisted, "a conflict-free zero-target Apply IS completed");
+    assert_eq!(f.settings.get_saved_style().unwrap(), Some(style(7)), "② carries the policy intent");
+    assert_eq!(f.history.all().len(), 1, "③ recorded the completed Apply");
 }
 
 #[test]

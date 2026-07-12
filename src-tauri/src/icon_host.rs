@@ -337,6 +337,16 @@ impl IconHost {
         // This apply mutated the desktop → bump the epoch so any concurrent stale apply rejects.
         *op_epoch += 1;
         session_scan.clear();
+        // FENCE the scan revision when the ops demand it (codex R9-#1): a stale poison row was healed
+        // (dropped) this round — or a driver bare-Err left the heal set unknown — so a same-revision
+        // retry would find no ledger row and pass the ordinary fresh CAS, silently overwriting what
+        // could be the user's manual restore-to-original (the ABA). Advancing `scan_revision` off the
+        // shared counter makes every applyBakedBegin carrying the old revision fail "stale apply"
+        // until a REAL rescan publishes fresh fingerprints; the frontend's rescan-after-conflict UX is
+        // a follow-up, but this fence is the structural safety boundary, not the toast.
+        if outcome.requires_rescan {
+            st.scan_revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+        }
         let committed_any = !outcome.committed.is_empty();
         let dto = self.to_persisted_dto_locked(&outcome.stores);
         drop(st);
@@ -374,12 +384,13 @@ impl IconHost {
             }
         } else if outcome.degraded.is_some() {
             (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
-        } else if outcome.committed.is_empty() && outcome.reverted.is_empty() {
-            // A ZERO-EFFECT apply: nothing styled AND nothing reverted. This is NOT a completed Apply,
-            // so ②③ was deliberately NOT written (icons/mod.rs uses the SAME `meaningful_apply`
-            // predicate) — report a no-effect and keep the draft dirty, never a clean success that
-            // clears it (codex R8-#2,#3). Covers all-conflicts, a restore-only batch whose every opt-out
-            // was a hand-edit, and a pure no-op alike.
+        } else if !outcome.intent_persisted {
+            // The ops did NOT persist this Apply's intent — with error/degraded already handled above,
+            // this is exactly the zero-effect-WITH-conflicts case (all-conflicts, or a restore-only
+            // batch whose every opt-out was a hand-edit): nothing landed, something was refused, ②③
+            // untouched. Report a no-effect + keep the draft dirty (codex R8-#2/#3, R9-#2). A
+            // conflict-free zero-target (policy-only) Apply has `intent_persisted == true` — its ②③
+            // WAS written — and correctly falls through to a clean success.
             (false, Some(ToastDto { key: "Toast_ApplyNoEffect".into(), arg: None }))
         } else if !outcome.conflicts.is_empty() {
             // A PARTIAL success: some icons styled/reverted, others conflicted (changed under the user
@@ -708,22 +719,27 @@ mod tests {
     };
     use serde_json::json;
 
-    fn host(dir: &std::path::Path) -> IconHost {
+    fn host_with_desk(dir: &std::path::Path) -> (IconHost, Arc<DevIconDesktop>) {
         let desk = DevIconDesktop::new();
         let settings = Arc::new(SettingsStore::open(&dir.join("settings.sqlite3")).unwrap());
-        IconHost::new(
+        let host = IconHost::new(
             IconHostPorts {
                 scanner: Arc::new(DevDesktopScanner),
                 extractor: Arc::new(DevIconSourceExtractor),
                 reader: Arc::new(DevIconReader(desk.clone())),
-                applier: Arc::new(DevIconApplier(desk)),
+                applier: Arc::new(DevIconApplier(desk.clone())),
                 overlay: Arc::new(DevOverlayControl),
                 refresher: Arc::new(DevExplorerRefresher),
             },
             settings,
             dir,
             1,
-        )
+        );
+        (host, desk)
+    }
+
+    fn host(dir: &std::path::Path) -> IconHost {
+        host_with_desk(dir).0
     }
 
     fn style_json(seed: i64) -> String {
@@ -786,6 +802,47 @@ mod tests {
         // getPersisted reads the same truth on a cold call.
         let p = h.get_persisted().unwrap();
         assert!(p.applied && p.saved_style_json.is_some());
+    }
+
+    #[test]
+    fn an_ambiguous_heal_fences_the_scan_revision_until_a_real_rescan() {
+        // codex R9-#1: the ABA. scan(O, r1) → apply styles S → the user MANUALLY restores the icon to
+        // its exact original outside the app (indistinguishable from a poison row). Apply#2 at r1
+        // heals (drops the row) + conflicts — and the host must then FENCE r1: a THIRD apply at the
+        // same revision would find no ledger row, pass the ordinary fresh CAS (current O == scan O),
+        // and silently overwrite the manual restore. Only a REAL rescan reopens the gate, after which
+        // styling is the user's current, unambiguous intent.
+        let dir = tempfile::tempdir().unwrap();
+        let (h, desk) = host_with_desk(dir.path());
+        let scan1 = h.scan().unwrap();
+        let edge = scan1.items.iter().find(|i| i.id == "edge").unwrap().clone();
+
+        // Apply #1: style edge (ledger row: original=O, last_applied=S).
+        let sid = h.apply_baked_begin(scan1.revision, 1).unwrap();
+        h.apply_baked_chunk(&sid, vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }]).unwrap();
+        assert!(h.apply_baked_commit(&sid, style_json(1), vec![], Some("A".into())).unwrap().ok);
+
+        // The user manually restores edge to its exact original (ledger row lingers → ambiguous tuple).
+        desk.force_original("edge");
+
+        // Apply #2 at the SAME revision: the heal drops the row + conflicts — never silently restyles.
+        let sid2 = h.apply_baked_begin(scan1.revision, 1).unwrap();
+        h.apply_baked_chunk(&sid2, vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }]).unwrap();
+        let res2 = h.apply_baked_commit(&sid2, style_json(2), vec![], Some("B".into())).unwrap();
+        assert!(!res2.ok, "the ambiguous heal must not read as success");
+        assert_eq!(res2.toast.unwrap().key, "Toast_ApplyNoEffect");
+
+        // The fence: a THIRD apply at the same stale revision is REJECTED before it can slip through
+        // the now-row-less fresh CAS.
+        let err = h.apply_baked_begin(scan1.revision, 1).unwrap_err();
+        assert!(err.contains("stale apply"), "same-revision retry must be fenced: {err}");
+
+        // A real rescan reopens the gate; styling is now the user's current, unambiguous intent.
+        let scan2 = h.scan().unwrap();
+        assert!(scan2.revision > scan1.revision);
+        let sid3 = h.apply_baked_begin(scan2.revision, 1).unwrap();
+        h.apply_baked_chunk(&sid3, vec![IconChunkItemDto { id: edge.id.clone(), source_index: 0, master_png: tiny_master() }]).unwrap();
+        assert!(h.apply_baked_commit(&sid3, style_json(2), vec![], Some("B2".into())).unwrap().ok);
     }
 
     #[test]

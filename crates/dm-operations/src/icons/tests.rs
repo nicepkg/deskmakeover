@@ -518,6 +518,28 @@ fn keep_restore_revert_fault_reports_degraded_never_a_bare_err() {
 }
 
 #[test]
+fn a_lingering_row_whose_desktop_is_already_original_is_healed_not_skipped() {
+    // codex R4-Block 2: if a revert's `ledger.remove` faulted, the desktop is original but the row
+    // lingers (last_applied=styled). A later reset must HEAL it (remove the row), NOT read the
+    // mismatch as a hand-edit and skip it forever — which would poison re-apply with a stale CAS
+    // anchor and reset with a false "你自己改过".
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.apply(&[("a", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[a.clone()]);
+    assert!(f.ledger.get(&a.id).unwrap().is_some(), "styled → row present");
+    // Simulate "restore landed but the remove faulted": put the desktop back to the true original
+    // WITHOUT removing the ledger row (so last_applied still says styled).
+    f.world.borrow_mut().put(&a.path, b"orig-a");
+
+    let out = f.reset(false);
+
+    assert!(f.ledger.get(&a.id).unwrap().is_none(), "the lingering row was healed (removed)");
+    assert!(out.skipped.is_empty(), "it must NOT be counted as a hand-edit skip");
+    assert!(out.restored.is_empty(), "nothing to revert — the desktop was already original");
+}
+
+#[test]
 fn a_failed_styling_batch_that_still_reverted_a_kept_icon_reports_both() {
     // codex R4-Block 1: a keep-revert lands BEFORE the (transactional) styling batch, so if the
     // batch then rolls back, the desktop STILL changed — the outcome must carry error=Some AND a

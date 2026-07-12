@@ -246,12 +246,19 @@ impl<'a> IconOps<'a> {
                         repair.push(format!("keep-restore {id}: {e}"));
                         continue;
                     }
-                    // Reverted on disk; a remove fault leaves a lingering row that the next reset's CAS
-                    // resolves (the desktop is already correct) — record it, still count as reverted.
+                    // Reverted on disk; a remove fault leaves a lingering row — recorded, and the next
+                    // reset/apply now HEALS it via the original-fingerprint arm below (codex R4-Block 2).
                     if let Err(e) = ledger.remove(&item_id) {
                         repair.push(format!("keep-restore ledger remove {id}: {e}"));
                     }
                     reverted.push(item_id);
+                }
+                // Already pristine (a prior revert landed, its row lingered): heal the row so it can't
+                // poison a future reset/re-apply (codex R4-Block 2). NOT a hand-edit — checked before it.
+                Ok(cur) if cur == entry.original_fingerprint => {
+                    if let Err(e) = ledger.remove(&item_id) {
+                        repair.push(format!("keep-restore heal-remove {id}: {e}"));
+                    }
                 }
                 Ok(_) => {} // hand-edited since → leave it (trust-first)
                 Err(PortError::NotFound(_)) => {
@@ -437,8 +444,17 @@ impl<'a> IconOps<'a> {
                         repair.push(format!("reset ledger drop {}: {e}", entry.item.as_str()));
                     }
                 }
-                // ★ Trust-first: the current state no longer matches what we applied, so the user
-                // hand-edited it — leave it, count it toward "已跳过 N 项(你自己改过)".
+                // Already the pristine ORIGINAL: a prior revert landed but its ledger row lingered
+                // (e.g. a `ledger.remove` fault, codex R4-Block 2). This is NOT a hand-edit — heal the
+                // row so it can't later poison a reset (false "hand-edit") or a re-apply (stale CAS
+                // anchor). Checked BEFORE the hand-edit arm since `original != last_applied`.
+                Ok(cur) if cur == entry.original_fingerprint => {
+                    if let Err(e) = ledger.remove(&entry.item) {
+                        repair.push(format!("reset heal-remove {}: {e}", entry.item.as_str()));
+                    }
+                }
+                // ★ Trust-first: the current state matches neither what we applied NOR the original, so
+                // the user hand-edited it — leave it, count it toward "已跳过 N 项(你自己改过)".
                 Ok(cur) if cur != entry.last_applied_fingerprint => skipped.push(entry.item),
                 // Still exactly our applied state: revert to the true original and drop the row.
                 Ok(_) => {

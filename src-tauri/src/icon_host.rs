@@ -182,15 +182,20 @@ impl IconHost {
         }
     }
 
-    /// Sets + persists the arrow-overlay state (survives a restart; codex Block 5). Best-effort
-    /// persistence — a failed write leaves the in-memory truth authoritative for this session.
-    fn set_arrow(&self, arrow: ArrowOverlayDto) {
+    /// Sets the in-memory arrow-overlay state and persists it so it survives a restart (codex Block 5).
+    /// Returns the marker WRITE result: a lost `Hidden` marker is DANGEROUS (on restart the host loads
+    /// `native`, skips the elevated restore, and leaves the machine-wide overlay installed as residue —
+    /// codex R2 B-3), so a caller recording an INSTALL must surface the failure; a lost `Native` marker
+    /// is fail-safe (it only costs an extra idempotent restore next time), so those callers log + carry
+    /// on. [WINDOWS-VERIFY]: the complete fix also probes the REAL registry overlay state on startup and
+    /// before restore, rather than trusting this marker alone.
+    fn set_arrow(&self, arrow: ArrowOverlayDto) -> std::io::Result<()> {
         *self.arrow_overlay.lock().unwrap() = arrow;
         let text = match arrow {
             ArrowOverlayDto::Native => "native",
             ArrowOverlayDto::Hidden => "hidden",
         };
-        let _ = std::fs::write(&self.arrow_marker, text);
+        std::fs::write(&self.arrow_marker, text)
     }
 
     /// `icons.scan`: enumerate + classify + extract 256px sources (served over `dmicon://`) into raw
@@ -590,12 +595,27 @@ impl IconHost {
         // (native arrow hidden, ADR-0021), pointing the elevated helper at a real transparent ICO
         // (the helper rejects an empty path — codex Block 5). The elevated verb is the host's; on the
         // dev host it succeeds. A pure revert-only apply leaves the overlay state untouched.
+        // Fold the machine-wide overlay finalize into the result (codex R2 B-2/B-3): a styled apply must
+        // hide the native arrow, and any way that fails — the helper Declined (UAC cancel) / Failed /
+        // errored, OR the Applied state could not be PERSISTED (lost `Hidden` marker → restart residue)
+        // — leaves the desktop styled but the arrow still native (visually doubling the baked mark), so
+        // the op is NOT a clean success. Mirrors the full-restore path's `overlay_failed` handling.
+        let mut overlay_incomplete = false;
         if committed_any {
-            if let Ok(OverlayOutcome::Applied) = self
+            match self
                 .overlay
                 .apply(dm_domain::OverlayStyle::Transparent, &self.overlay_ico.to_string_lossy())
             {
-                self.set_arrow(ArrowOverlayDto::Hidden);
+                Ok(OverlayOutcome::Applied) => {
+                    if let Err(e) = self.set_arrow(ArrowOverlayDto::Hidden) {
+                        overlay_incomplete = true;
+                        log::warn!("icons apply: arrow overlay installed but its state was not persisted: {e}");
+                    }
+                }
+                other => {
+                    overlay_incomplete = true;
+                    log::warn!("icons apply: arrow overlay not installed ({other:?}) — native arrow remains");
+                }
             }
             let _ = self.refresher.notify_icons_changed();
         }
@@ -641,6 +661,14 @@ impl IconHost {
             )
         } else {
             (true, None)
+        };
+        // Downgrade an otherwise-clean success when the arrow-overlay finalize did not fully land
+        // (codex R2 B-2/B-3): keep the draft dirty for a retry + a degraded toast. A more-severe txn
+        // toast set above already wins.
+        let (ok, toast) = if ok && overlay_incomplete {
+            (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
+        } else {
+            (ok, toast)
         };
         Ok(IconOpResultDto { ok, toast, persisted: self.finish_persisted(dto) })
     }
@@ -688,7 +716,13 @@ impl IconHost {
             // icons reverted but the machine-wide arrow is still hidden, so the op is NOT a clean success.
             if *self.arrow_overlay.lock().unwrap() == ArrowOverlayDto::Hidden {
                 match self.overlay.restore() {
-                    Ok(OverlayOutcome::Applied) => self.set_arrow(ArrowOverlayDto::Native),
+                    Ok(OverlayOutcome::Applied) => {
+                        if let Err(e) = self.set_arrow(ArrowOverlayDto::Native) {
+                            // Fail-safe: the arrow IS native on the machine; a lost marker only costs an
+                            // extra idempotent restore next launch (codex R2 B-3), not a reset failure.
+                            log::warn!("icons reset: arrow restored but its state was not persisted: {e}");
+                        }
+                    }
                     _ => overlay_failed = true,
                 }
             }
@@ -750,6 +784,30 @@ impl IconHost {
         drop(st);
         let _ = self.refresher.notify_icons_changed();
 
+        // A version switch that committed styled icons must hide the native arrow exactly like a fresh
+        // apply (codex R2 B-7): without this the switch leaves `arrowOverlay: native` while the icons are
+        // styled — the browser mock hides it, so browser testing mispredicts the Windows state. Fold any
+        // failure (declined/failed/errored, or a lost `Hidden` marker) into the result. The native switch
+        // caller is currently unwired [T8]; this keeps the host honest for when it lands.
+        let mut overlay_incomplete = false;
+        if !outcome.outcome.committed.is_empty() {
+            match self
+                .overlay
+                .apply(dm_domain::OverlayStyle::Transparent, &self.overlay_ico.to_string_lossy())
+            {
+                Ok(OverlayOutcome::Applied) => {
+                    if let Err(e) = self.set_arrow(ArrowOverlayDto::Hidden) {
+                        overlay_incomplete = true;
+                        log::warn!("icons switchVersion: arrow overlay installed but its state was not persisted: {e}");
+                    }
+                }
+                other => {
+                    overlay_incomplete = true;
+                    log::warn!("icons switchVersion: arrow overlay not installed ({other:?}) — native arrow remains");
+                }
+            }
+        }
+
         let (ok, toast) = if outcome.deferred {
             // A prior crash's recovery ran; the switch stood down BEFORE ② was promoted, so
             // nothing changed. The UI re-syncs + retries — honest, never a phantom success.
@@ -763,6 +821,12 @@ impl IconHost {
             }))
         } else {
             (true, None)
+        };
+        // Downgrade a clean switch whose arrow finalize did not land (codex R2 B-7), as apply does.
+        let (ok, toast) = if ok && overlay_incomplete {
+            (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
+        } else {
+            (ok, toast)
         };
         Ok(IconOpResultDto { ok, toast, persisted: self.finish_persisted(dto) })
     }
@@ -793,7 +857,11 @@ impl IconHost {
         if outcome == OverlayOutcome::Applied {
             self.mut_state.lock().unwrap().op_epoch += 1;
         }
-        self.set_arrow(arrow);
+        if let Err(e) = self.set_arrow(arrow) {
+            // Fail-safe direction (Applied→Native, or Declined/Failed leaving the already-Hidden marker):
+            // a lost marker at worst re-runs an idempotent restore next launch (codex R2 B-3).
+            log::warn!("restore_overlay: arrow state not persisted: {e}");
+        }
         persisted.arrow_overlay = arrow; // the one field this op mutated; ②③ carried from the pre-read
         Ok(IconOpResultDto {
             ok,
@@ -1104,7 +1172,22 @@ mod tests {
     };
     use serde_json::json;
 
-    fn host_with_desk(dir: &std::path::Path) -> (IconHost, Arc<DevIconDesktop>) {
+    /// An overlay control that always DECLINES (models a cancelled UAC prompt), to drive the
+    /// overlay-incomplete finalize path (codex R2 B-2).
+    struct DeclinedOverlay;
+    impl OverlayControl for DeclinedOverlay {
+        fn apply(&self, _s: dm_domain::OverlayStyle, _ico: &str) -> dm_domain::PortResult<OverlayOutcome> {
+            Ok(OverlayOutcome::Declined)
+        }
+        fn restore(&self) -> dm_domain::PortResult<OverlayOutcome> {
+            Ok(OverlayOutcome::Declined)
+        }
+    }
+
+    fn host_with_overlay(
+        dir: &std::path::Path,
+        overlay: Arc<dyn OverlayControl + Send + Sync>,
+    ) -> (IconHost, Arc<DevIconDesktop>) {
         let desk = DevIconDesktop::new();
         let settings = Arc::new(SettingsStore::open(&dir.join("settings.sqlite3")).unwrap());
         let host = IconHost::new(
@@ -1113,7 +1196,7 @@ mod tests {
                 extractor: Arc::new(DevIconSourceExtractor(desk.clone())),
                 reader: Arc::new(DevIconReader(desk.clone())),
                 applier: Arc::new(DevIconApplier(desk.clone())),
-                overlay: Arc::new(DevOverlayControl),
+                overlay,
                 refresher: Arc::new(DevExplorerRefresher),
                 geometry: Arc::new(DevDesktopGeometry),
             },
@@ -1123,6 +1206,10 @@ mod tests {
             ScopeRoots::Unprivileged,
         );
         (host, desk)
+    }
+
+    fn host_with_desk(dir: &std::path::Path) -> (IconHost, Arc<DevIconDesktop>) {
+        host_with_overlay(dir, Arc::new(DevOverlayControl))
     }
 
     fn host(dir: &std::path::Path) -> IconHost {
@@ -1454,6 +1541,34 @@ mod tests {
         // getPersisted reads the same truth on a cold call.
         let p = h.get_persisted().unwrap();
         assert!(p.applied && p.saved_style_json.is_some());
+    }
+
+    #[test]
+    fn a_styled_apply_whose_overlay_is_declined_is_not_a_clean_success() {
+        // codex R2 B-2: the icons commit, but the arrow overlay was declined (a cancelled UAC) → the
+        // native arrow remains and can double the baked mark, so the op must report ok:false (draft
+        // stays dirty for a retry) with a toast, and leave the persisted arrow Native — never a phantom
+        // Hidden that the finalize did not actually reach.
+        let dir = tempfile::tempdir().unwrap();
+        let (h, _desk) = host_with_overlay(dir.path(), Arc::new(DeclinedOverlay));
+        let scan = h.scan().unwrap();
+        let edge = scan.items.iter().find(|i| i.id == "edge").unwrap();
+        let sid = h.apply_baked_begin(scan.revision, 1).unwrap();
+        h.apply_baked_chunk(&sid, vec![IconChunkItemDto {
+            id: edge.id.clone(),
+            source_index: 0,
+            master_png: tiny_master(),
+        }])
+        .unwrap();
+        let res = h.apply_baked_commit(&sid, style_json(1), vec![], Some("v1".into())).unwrap();
+        assert!(!res.ok, "a declined overlay makes the styled apply a degraded, retryable result");
+        assert!(res.toast.is_some(), "the user is told the finalize was incomplete");
+        assert!(res.persisted.applied, "the icons themselves committed");
+        assert_eq!(
+            res.persisted.arrow_overlay,
+            ArrowOverlayDto::Native,
+            "the arrow was never hidden, so its persisted state must not claim Hidden"
+        );
     }
 
     #[test]

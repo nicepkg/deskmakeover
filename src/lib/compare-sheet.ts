@@ -4,12 +4,13 @@
 // coral accent (never blue/violet). Composition happens HERE in the webview (it owns the fonts,
 // the CJK stack, and both image states — D1: Rust stays thin platform I/O and only saves bytes).
 
-/** One tile on the sheet: the raw original source and the styled master this apply baked. */
+/** One tile on the sheet: both frames are compositor-rendered master PNGs (raw base64). Before is
+ *  the resolved ORIGINAL render (not the raw source — a shortcut Before keeps its classic arrow,
+ *  matching the oracle); After is the styled render, or the original again for a kept/bareLook
+ *  tile so the sheet never shows a false makeover. */
 export interface CompareTile {
-  /** The original 256px source (a `dmicon://` URL the scan advertised). */
-  originalUrl: string
-  /** The styled master PNG, raw base64 (the same pixels the desktop received). */
-  styledPng: string
+  beforePng: string
+  afterPng: string
 }
 
 /** The localized strings the card draws (resolved by the caller so this stays framework-free). */
@@ -49,8 +50,8 @@ export async function composeCompareSheet(
 ): Promise<string> {
   const sample = tiles.slice(0, MAX_TILES)
   const [originals, styled] = await Promise.all([
-    Promise.all(sample.map((t) => loadImage(t.originalUrl))),
-    Promise.all(sample.map((t) => loadImage(`data:image/png;base64,${t.styledPng}`))),
+    Promise.all(sample.map((t) => loadImage(`data:image/png;base64,${t.beforePng}`))),
+    Promise.all(sample.map((t) => loadImage(`data:image/png;base64,${t.afterPng}`))),
   ])
 
   const canvas = document.createElement('canvas')
@@ -116,10 +117,16 @@ function drawText(
   ctx.fillText(value, x, y)
 }
 
-/** Loads one image; a single unloadable tile degrades to a blank cell, never fails the sheet. */
+/** Loads one image; a single unloadable tile degrades to a blank cell, never fails the sheet.
+ *  `crossOrigin='anonymous'` is REQUIRED (codex icons2-🔴4): on Windows the original sources ride
+ *  the cross-origin `http://dmicon.localhost` protocol (styled masters are same-origin data: URLs).
+ *  Without the CORS request mode, drawing a cross-origin `<img>` taints the canvas and the final
+ *  `toDataURL()` throws SecurityError — the protocol already returns `Access-Control-Allow-Origin: *`,
+ *  so an anonymous request is origin-clean. `data:` URLs ignore the attribute. */
 function loadImage(src: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image()
+    img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
     img.src = src

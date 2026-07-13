@@ -132,11 +132,23 @@ fn recycle_bin_display_name() -> Option<String> {
     }
 }
 
-/// If `lnk_path` is one of OUR file wrappers — `<file>.lnk` beside a Hidden+System `<file>` that
-/// the link targets — returns the reunified original RegularFile item. Any read failure or
-/// mismatch means "just an ordinary shortcut" (`None`).
+/// If `lnk_path` is one of OUR file wrappers, returns the reunified original RegularFile item.
+/// Ownership is proven by the DURABLE Description marker our wrapper writes (codex icons2-🟠6),
+/// NOT by structural shape — a user's own Hidden+System file beside a same-named `.lnk` is never
+/// mistaken for ours. Any read failure / non-marker means "just an ordinary shortcut" (`None`).
 fn reunify_wrapper(lnk_path: &str) -> Option<DesktopItem> {
-    let original = lnk_path.strip_suffix(".lnk").or_else(|| lnk_path.strip_suffix(".LNK"))?;
+    // The ownership gate FIRST: no marker → not ours, regardless of structure.
+    match shell_link::read_description(lnk_path).ok().flatten() {
+        Some(desc) if desc == shell_link::WRAPPER_MARKER => {}
+        _ => return None,
+    }
+    // Case-correct extension strip (handles `.LnK`, unicode-safe): the companion file is the
+    // `.lnk` path minus its extension.
+    let lnk = std::path::Path::new(lnk_path);
+    if !lnk.extension().map(|e| e.eq_ignore_ascii_case("lnk")).unwrap_or(false) {
+        return None;
+    }
+    let original = &lnk_path[..lnk_path.len() - 4]; // strip ".lnk"/".LNK"/… (4 bytes, ASCII dot+ext)
     let meta = std::fs::metadata(original).ok()?;
     if meta.is_dir() {
         return None;
@@ -144,6 +156,11 @@ fn reunify_wrapper(lnk_path: &str) -> Option<DesktopItem> {
     use std::os::windows::fs::MetadataExt;
     const HIDDEN_SYSTEM: u32 = 0x0000_0002 | 0x0000_0004;
     if meta.file_attributes() & HIDDEN_SYSTEM != HIDDEN_SYSTEM {
+        return None;
+    }
+    // Never derive an original that is itself a reparse point (symlink/junction) — a styled
+    // reparse original would resolve elsewhere (codex icons2-🟠6).
+    if has_reparse_point(std::path::Path::new(original)) {
         return None;
     }
     // The wrapper must actually POINT at the sibling (case-insensitive: NTFS paths).

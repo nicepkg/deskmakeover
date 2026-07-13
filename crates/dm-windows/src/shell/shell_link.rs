@@ -148,6 +148,31 @@ pub fn create_shortcut(
     crate::durable::finalize_saved(&tmp, &out)
 }
 
+/// The durable ownership signature stamped into a wrapper `.lnk`'s Description (codex
+/// icons2-🟠6): reunification checks THIS, not structural shape, so a user's own Hidden+System
+/// file beside a same-named `.lnk` is never mistaken for our wrapper, and our own wrapper is
+/// never missed on a case/Unicode path variant.
+pub const WRAPPER_MARKER: &str = "DeskMakeover:file-wrapper:v1";
+
+/// Reads a `.lnk`'s Description (the wrapper ownership marker lives here). `None` when unset.
+pub fn read_description(shortcut_path: &str) -> PortResult<Option<String>> {
+    // SAFETY: COM object confined to this STA thread.
+    unsafe {
+        let link: IShellLinkW =
+            CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com)?;
+        let file: IPersistFile = link.cast().map_err(com)?;
+        let path = extended_length_path(shortcut_path);
+        file.Load(&HSTRING::from(path.as_str()), STGM_READ).map_err(com)?;
+        let mut buf = [0u16; ICON_BUF];
+        // GetDescription fills the buffer; an empty description is a legal (unmarked) `.lnk`.
+        if link.GetDescription(&mut buf).is_err() {
+            return Ok(None);
+        }
+        let desc = wide_to_string(&buf);
+        Ok(if desc.is_empty() { None } else { Some(desc) })
+    }
+}
+
 /// Creates a fresh `.lnk` (target/working-dir/icon) and Saves it to `tmp`. Split out so the caller
 /// can clean up the temp on any failure. [WINDOWS-VERIFY] runtime.
 fn save_new_shortcut_to_temp(
@@ -163,6 +188,9 @@ fn save_new_shortcut_to_temp(
         link.SetPath(&HSTRING::from(target)).map_err(com)?;
         link.SetWorkingDirectory(&HSTRING::from(working_dir)).map_err(com)?;
         link.SetIconLocation(&HSTRING::from(icon_path), 0).map_err(com)?;
+        // The durable ownership marker: our wrappers are self-identifying, so reunification never
+        // guesses from structure (codex icons2-🟠6).
+        link.SetDescription(&HSTRING::from(WRAPPER_MARKER)).map_err(com)?;
         let file: IPersistFile = link.cast().map_err(com)?;
         // Save to a temp sibling, then flush + atomically publish over the target (P1-3).
         file.Save(&HSTRING::from(tmp), false).map_err(com)

@@ -79,7 +79,7 @@ async function handleBake(msg: BakeMsg): Promise<void> {
     wctx.postMessage({ t: 'baked', req: msg.req, id: msg.id, png: null })
     return
   }
-  const rgba = renderer.render(msg.id, msg.config, msg.isShortcut, false, MASTER_SIZE, msg.opts)
+  const rgba = renderer.render(msg.id, msg.config, msg.isShortcut, msg.showOriginal ?? false, MASTER_SIZE, msg.opts)
   if (!rgba) {
     wctx.postMessage({ t: 'baked', req: msg.req, id: msg.id, png: null })
     return

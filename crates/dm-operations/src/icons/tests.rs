@@ -92,7 +92,7 @@ impl Fixture {
                     .get(&it.path)
                     .map(|b| dm_domain::Fingerprint::of_bytes(&b))
                     .unwrap_or(dm_domain::Fingerprint::of_bytes(b""));
-                ScannedItem { item: it.clone(), fingerprint: fp }
+                ScannedItem { item: it.clone(), fingerprint: fp, source_ok: true }
             })
             .collect()
     }
@@ -380,7 +380,7 @@ fn commit_reconciles_a_committed_but_unledgered_txn_before_preparing() {
         let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
         let mut s = IconApplySession::begin(0, 1);
         s.push("app", 0, master_b64([1, 2, 3, 255]));
-        let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()) }];
+        let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()), source_ok: true }];
         ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &mut txn, &mut journal, &mut ledger_a, &mut history)
             .unwrap();
     }
@@ -395,7 +395,7 @@ fn commit_reconciles_a_committed_but_unledgered_txn_before_preparing() {
         let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
         let mut s = IconApplySession::begin(0, 1);
         s.push("app", 0, master_b64([9, 9, 9, 255]));
-        let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()) }];
+        let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()), source_ok: true }];
         let out = ops
             .commit_apply(s, style(2), Some("B".into()), "v2", 2, &scan, &[], &mut txn, &mut journal, &mut ledger_b, &mut history)
             .unwrap();
@@ -430,7 +430,7 @@ fn reset_checkpoints_the_journal_so_a_restart_cannot_revive_the_ledger() {
         let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
         let mut s = IconApplySession::begin(0, 1);
         s.push("app", 0, master_b64([1, 2, 3, 255]));
-        let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()) }];
+        let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()), source_ok: true }];
         ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &mut txn, &mut journal, &mut ledger, &mut history)
             .unwrap();
     }
@@ -774,7 +774,7 @@ fn a_poisoned_row_re_applied_with_a_stale_scan_is_healed_but_not_silently_restyl
     // Re-apply A directly with a STALE scan (styled fingerprint) — NOT the fixture's fresh re-scan.
     let mut session = IconApplySession::begin(0, 1);
     session.push("a", 0, master_b64([7, 7, 7, 255]));
-    let stale_scan = vec![ScannedItem { item: a.clone(), fingerprint: stale_fp }];
+    let stale_scan = vec![ScannedItem { item: a.clone(), fingerprint: stale_fp, source_ok: true }];
     let fake = FakePlatform::new(f.world.clone());
     let ops = IconOps::new(IconPlatform::new(&fake, &fake, &f.assets), &f.settings);
     let out = ops

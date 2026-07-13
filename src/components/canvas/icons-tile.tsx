@@ -37,7 +37,14 @@ function useTileBitmap(
   // 图标消失" bug — the old comparing-hold masked it by also flipping the styleKey).
   React.useLayoutEffect(() => {
     const compositor = getIconCompositor()
-    if (!sourceUrl) return
+    if (!sourceUrl) {
+      // A degraded item (no extractable source — codex icons2-🟡10) must not keep the previous
+      // render's pixels: clear to a blank cell so a tile that DEGRADED after once rendering shows
+      // empty, not a stale ghost of its old artwork.
+      const el = ref.current
+      if (el) el.getContext('2d')?.clearRect(0, 0, el.width, el.height)
+      return
+    }
     if (!compositor.hasSource(item.id, sourceUrl)) {
       // The store's loader owns sources + renderTick; failures are its problem.
       compositor.loadSource(item.id, sourceUrl).catch(() => {})

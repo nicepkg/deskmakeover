@@ -51,6 +51,11 @@ pub struct IconPlatform<'a> {
 pub struct ScannedItem {
     pub item: DesktopItem,
     pub fingerprint: Fingerprint,
+    /// The ONE apply-authority bit (codex icons2-🟠5): false when the scan could not establish a
+    /// trustworthy source/state for this item (extraction fault, unreadable fingerprint, or an
+    /// unreconciled journal). The commit REFUSES such an item even if a client submits a master
+    /// for it — the DTO's `styleable`, this bit, and the restore planner share one definition.
+    pub source_ok: bool,
 }
 
 /// The chunk-buffer for one apply (`begin` → `push`\* → commit). Owns no ports; it just
@@ -357,7 +362,7 @@ impl<'a> IconOps<'a> {
                 conflicts.push(ItemId::from_raw(&pkg.item_id));
                 continue;
             };
-            if !scanned.item.can_style() {
+            if !scanned.item.can_style() || !scanned.source_ok {
                 conflicts.push(scanned.item.id.clone());
                 continue;
             }

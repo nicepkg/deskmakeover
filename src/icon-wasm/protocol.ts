@@ -40,6 +40,9 @@ export interface BakeMsg {
   id: string
   config: ConfigDto
   isShortcut: boolean
+  /** Render the untouched original (compare-sheet Before) rather than the styled master.
+   *  Default false — the apply path only ever bakes styled masters. */
+  showOriginal?: boolean
   opts?: RenderOpts
 }
 export type ToWorker = ArrowMsg | SourceMsg | RenderMsg | BakeMsg

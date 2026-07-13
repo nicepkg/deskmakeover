@@ -388,11 +388,15 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
         return { ok: false, toast: { key: 'Toast_CompareFailed', arg: null }, persisted: persisted() } satisfies IconOpResultDto
       }
       const name = 'DeskMakeover-compare.png'
-      if (typeof document !== 'undefined') {
+      // DOM-gate on the actual capabilities used (codex icons2-🟡11), not just `document` — a
+      // partial test DOM without createElement/click must not throw here.
+      if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
         const a = document.createElement('a')
-        a.href = `data:image/png;base64,${png}`
-        a.download = name
-        a.click()
+        if (typeof a.click === 'function') {
+          a.href = `data:image/png;base64,${png}`
+          a.download = name
+          a.click()
+        }
       }
       return { ok: true, toast: { key: 'Toast_CompareSaved', arg: name }, persisted: persisted() } satisfies IconOpResultDto
     }

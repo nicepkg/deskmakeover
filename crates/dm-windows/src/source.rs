@@ -106,6 +106,75 @@ fn straight_bgra_to_rgba(bits: &[u8], mask: Option<&[u8]>) -> Vec<u8> {
     out
 }
 
+/// Parses a captured `desktop.ini`'s folder-icon reference into `(location, index)`, covering
+/// BOTH forms the shell honours: the modern `IconResource=path,index` and the classic
+/// `IconFile=path` + `IconIndex=n` pair (codex icons2-🔴3 sub-point — the old parser saw only
+/// `IconResource`). Decoding is UTF-8 → UTF-16LE(BOM) → lossy, so a non-UTF-8 `desktop.ini`
+/// still yields its icon path. Section headers are ignored; the `[.ShellClassInfo]` keys are
+/// unique enough that a flat key scan is faithful.
+#[cfg(any(windows, test))]
+fn parse_desktop_ini_icon_ref(bytes: &[u8]) -> Option<(String, i32)> {
+    let text = decode_ini_text(bytes);
+    let mut icon_file: Option<String> = None;
+    let mut icon_index: i32 = 0;
+    for line in text.lines() {
+        let Some(eq) = line.find('=') else { continue };
+        let key = line[..eq].trim();
+        let value = line[eq + 1..].trim().trim_matches('"');
+        if key.eq_ignore_ascii_case("IconResource") {
+            // `path,index` — split the LAST comma (paths can contain commas).
+            return Some(match value.rfind(',') {
+                Some(c) => (value[..c].trim().to_string(), value[c + 1..].trim().parse().unwrap_or(0)),
+                None => (value.to_string(), 0),
+            });
+        } else if key.eq_ignore_ascii_case("IconFile") {
+            icon_file = Some(value.to_string());
+        } else if key.eq_ignore_ascii_case("IconIndex") {
+            icon_index = value.parse().unwrap_or(0);
+        }
+    }
+    icon_file.map(|f| (f, icon_index))
+}
+
+/// Best-effort text decode for a captured `desktop.ini`: UTF-8 (BOM-stripped), else UTF-16LE
+/// (BOM), else lossy UTF-8.
+#[cfg(any(windows, test))]
+fn decode_ini_text(bytes: &[u8]) -> String {
+    if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        if let Ok(s) = std::str::from_utf8(rest) {
+            return s.to_string();
+        }
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+        let u16s: Vec<u16> =
+            rest.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        return String::from_utf16_lossy(&u16s);
+    }
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => String::from_utf8_lossy(bytes).into_owned(),
+    }
+}
+
+/// Resolves a possibly-RELATIVE `desktop.ini` icon path against its folder. `%ENV%` and
+/// drive-absolute / UNC paths pass through unchanged; a leading `.\`/bare name binds to the
+/// folder (the shell resolves a folder's `desktop.ini` icon relative to that folder).
+#[cfg(any(windows, test))]
+fn resolve_relative(folder: &str, location: &str) -> String {
+    let loc = location.trim();
+    let is_absolute = loc.starts_with('%')
+        || loc.starts_with("\\\\")
+        || loc.starts_with("//")
+        || loc.get(1..2) == Some(":"); // X:\...
+    if is_absolute || folder.is_empty() {
+        return loc.to_string();
+    }
+    let sep = if folder.contains('\\') { '\\' } else { '/' };
+    let base = folder.trim_end_matches(['\\', '/']);
+    let rel = loc.trim_start_matches("./").trim_start_matches(".\\");
+    format!("{base}{sep}{rel}")
+}
+
 /// Rasterizes a monochrome HICON (`hbmColor == NULL`) from its DOUBLE-height mask: the top half
 /// is the AND plane (white = transparent, black = draw), the bottom half the XOR plane carrying
 /// the 1-bit colour. Both arrive as top-down 32bpp BGRA renders of the respective half. An
@@ -179,7 +248,8 @@ mod win {
     };
 
     use super::{
-        expand_env, mono_planes_to_rgba, premul_bgra_to_rgba, straight_bgra_to_rgba, ICON_PX,
+        expand_env, mono_planes_to_rgba, parse_desktop_ini_icon_ref, premul_bgra_to_rgba,
+        resolve_relative, straight_bgra_to_rgba, ICON_PX,
     };
     use crate::apply::recyclebin;
     use crate::classify::parse_icon_location;
@@ -190,12 +260,19 @@ mod win {
     ) -> PortResult<Vec<DecodedImage>> {
         // Ledger-aware first (codex extractor-review 🔴1): the caller passing an anchor has
         // PROVEN the live surface is our own styled output — re-reading it would compound
-        // Style(Style(orig)). A stale/unresolvable anchor falls back to the live chain below
-        // rather than failing the scan.
+        // Style(Style(orig)). The anchor path is TERMINAL (codex icons2-🔴3): the host only
+        // passes an anchor once it has PROVEN live == last_applied — the live surface IS our
+        // styled output, so a fall-through to the live chain would read Style(orig) and re-bake it
+        // into Style(Style(orig)). An anchor that cannot resolve to a TRUSTED original therefore
+        // errors (→ per-item degradation upstream), never silently reads live.
         if let Some(anchor) = original {
-            if let Some(images) = original_images(item, anchor) {
-                return Ok(images);
-            }
+            return match original_images(item, anchor) {
+                Some(images) => Ok(images),
+                None => Err(PortError::NotFound(format!(
+                    "owned item {}: original anchor unresolvable — degraded (never read the styled live surface)",
+                    item.path
+                ))),
+            };
         }
         if item.kind == ItemKind::RecycleBin {
             return extract_recycle_bin(item);
@@ -226,7 +303,7 @@ mod win {
                 original_from_file_bytes(item, bytes).map(|i| vec![i])
             }
             RestoreAnchor::Folder { desktop_ini, .. } => {
-                original_folder_image(desktop_ini.as_ref()).map(|i| vec![i])
+                original_folder_image(&item.path, desktop_ini.as_ref()).map(|i| vec![i])
             }
             // A wrapped loose file: our styling lives on the companion wrapper `.lnk`; the file
             // itself still carries its own type icon — the live shell read IS the original.
@@ -238,12 +315,56 @@ mod win {
         }
     }
 
-    /// A collision-free scratch name for materialized anchor bytes (`%TEMP%` lives per-user).
-    fn scratch_path(stem: &str, ext: &str) -> std::path::PathBuf {
+    /// Atomically creates an unpredictable scratch file under `%TEMP%` and writes `bytes`,
+    /// returning its path (codex icons2-🟠12: the old predictable PID+counter name + plain
+    /// `fs::write` could clobber a pre-planted file or reparse/hardlink). The name mixes PID, a
+    /// process-lifetime counter, and a nanosecond clock; `create_new` fails on any pre-existing
+    /// entry (a symlink/hardlink an attacker planted included), and the loop reseeds on collision.
+    fn write_scratch(stem: &str, ext: &str, bytes: &[u8]) -> Option<std::path::PathBuf> {
+        use std::io::Write;
         use std::sync::atomic::{AtomicU64, Ordering};
         static N: AtomicU64 = AtomicU64::new(0);
-        let n = N.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("dm-orig-{stem}-{}-{n}.{ext}", std::process::id()))
+        let dir = std::env::temp_dir();
+        for _ in 0..8 {
+            let n = N.fetch_add(1, Ordering::Relaxed);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let path =
+                dir.join(format!("dm-orig-{stem}-{}-{n}-{nanos:x}.{ext}", std::process::id()));
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(mut f) => {
+                    f.write_all(bytes).ok()?;
+                    return Some(path);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(_) => return None,
+            }
+        }
+        None
+    }
+
+    /// An unpredictable, freshly-created scratch DIRECTORY under `%TEMP%` (same anti-clobber
+    /// discipline as `write_scratch`). `create_dir` fails on a pre-existing entry.
+    fn scratch_dir(stem: &str) -> Option<std::path::PathBuf> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir();
+        for _ in 0..8 {
+            let n = N.fetch_add(1, Ordering::Relaxed);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let path = dir.join(format!("dm-orig-{stem}-{}-{n}-{nanos:x}", std::process::id()));
+            match std::fs::create_dir(&path) {
+                Ok(()) => return Some(path),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(_) => return None,
+            }
+        }
+        None
     }
 
     /// The original `.lnk`/`.url` icon, derived from the CAPTURED file bytes: parse the original
@@ -260,9 +381,8 @@ mod win {
             }
         }
         let ext = if item.kind == ItemKind::UrlShortcut { "url" } else { "lnk" };
-        let tmp = scratch_path("link", ext);
+        let tmp = write_scratch("link", ext, bytes)?;
         let tmp_str = tmp.to_str()?.to_string();
-        std::fs::write(&tmp, bytes).ok()?;
         let img = (|| {
             if ext == "lnk" {
                 if let Some((loc, idx)) =
@@ -279,19 +399,24 @@ mod win {
         img
     }
 
-    /// The original folder icon: the captured `desktop.ini`'s `IconResource`/`IconFile` when one
-    /// existed, else the stock folder icon (a throwaway empty directory gives the shell's
-    /// theme-correct rendering; `shell32.dll,3` is the classic fallback).
-    fn original_folder_image(ini: Option<&DesktopIniAnchor>) -> Option<DecodedImage> {
+    /// The original folder icon: the captured `desktop.ini`'s icon reference — `IconResource`
+    /// AND the classic `IconFile`/`IconIndex` pair (codex icons2-🔴3 sub-point), with a relative
+    /// `location` resolved against the folder itself — else the stock folder icon (a throwaway
+    /// empty directory gives the shell's theme-correct rendering; `shell32.dll,3` is the classic
+    /// fallback).
+    fn original_folder_image(folder: &str, ini: Option<&DesktopIniAnchor>) -> Option<DecodedImage> {
         if let Some(ini) = ini {
-            if let Some((loc, idx)) = crate::textfmt::parse_desktop_ini_icon(&ini.content) {
-                if let Some(img) = icon_resource_image(&loc, idx).ok().flatten() {
+            if let Some((loc, idx)) = parse_desktop_ini_icon_ref(&ini.content) {
+                let resolved = resolve_relative(folder, &loc);
+                if let Some(img) = icon_resource_image(&resolved, idx).ok().flatten() {
                     return Some(img);
                 }
             }
         }
-        let tmp = scratch_path("folder", "d");
-        if std::fs::create_dir(&tmp).is_ok() {
+        // A throwaway empty directory renders the shell's theme-correct stock folder icon.
+        // `create_dir` (not `_all`) fails on any pre-existing entry — same anti-clobber posture
+        // as `write_scratch`.
+        if let Some(tmp) = scratch_dir("folder") {
             let img = tmp.to_str().and_then(|p| shell_item_image(p).ok().flatten());
             let _ = std::fs::remove_dir(&tmp);
             if img.is_some() {
@@ -302,9 +427,16 @@ mod win {
     }
 
     /// The original Recycle Bin pair from the CAPTURED registry values (`read_current()` would
-    /// read back our own styled ICOs). Anchor unusable → `None` → the live chain degrades.
+    /// read back our own styled ICOs). `full` is tried first, then `default` — INDEPENDENTLY, so
+    /// a present-but-unresolvable `full` still falls through to a valid `default` (codex
+    /// icons2-🔴3: the old `full.or(default)` short-circuited on the `Option` ref, never trying
+    /// `default` once `full` existed). Anchor fully unusable → `None` → terminal degrade upstream.
     fn original_recycle_bin(a: &RecycleBinAnchor) -> Option<Vec<DecodedImage>> {
-        let full = a.full.as_ref().or(a.default.as_ref()).and_then(|v| resource_from_value(&v.raw))?;
+        let full = a
+            .full
+            .as_ref()
+            .and_then(|v| resource_from_value(&v.raw))
+            .or_else(|| a.default.as_ref().and_then(|v| resource_from_value(&v.raw)))?;
         let empty =
             a.empty.as_ref().and_then(|v| resource_from_value(&v.raw)).unwrap_or_else(|| full.clone());
         Some(vec![full, empty])
@@ -578,6 +710,40 @@ mod tests {
         let rgba = mono_planes_to_rgba(&and_plane, &xor_plane);
         assert_eq!(&rgba[0..4], &[255, 255, 255, 255], "AND black → opaque, XOR white ink");
         assert_eq!(&rgba[4..8], &[0, 0, 0, 0], "AND white → transparent (invert-screen ignored)");
+    }
+
+    #[test]
+    fn desktop_ini_icon_ref_covers_both_forms_and_encodings() {
+        // Modern IconResource.
+        let a = b"[.ShellClassInfo]\r\nIconResource=C:\\ic\\folder.dll,4\r\n";
+        assert_eq!(parse_desktop_ini_icon_ref(a), Some((r"C:\ic\folder.dll".into(), 4)));
+        // Classic IconFile + IconIndex.
+        let b = b"[.ShellClassInfo]\r\nIconFile=custom.ico\r\nIconIndex=2\r\n";
+        assert_eq!(parse_desktop_ini_icon_ref(b), Some(("custom.ico".into(), 2)));
+        // IconFile with no explicit index defaults to 0.
+        let c = b"IconFile=only.ico\r\n";
+        assert_eq!(parse_desktop_ini_icon_ref(c), Some(("only.ico".into(), 0)));
+        // UTF-8 BOM stripped.
+        let d = [&[0xEFu8, 0xBB, 0xBF][..], b"IconResource=x.ico,0"].concat();
+        assert_eq!(parse_desktop_ini_icon_ref(&d), Some(("x.ico".into(), 0)));
+        // No icon reference → None.
+        assert_eq!(parse_desktop_ini_icon_ref(b"[.ShellClassInfo]\r\nConfirmFileOp=0\r\n"), None);
+    }
+
+    #[test]
+    fn relative_folder_icon_paths_bind_to_the_folder() {
+        assert_eq!(
+            resolve_relative(r"C:\Users\Dev\Desktop\Work", "custom.ico"),
+            r"C:\Users\Dev\Desktop\Work\custom.ico"
+        );
+        assert_eq!(
+            resolve_relative(r"C:\Work", r".\icons\a.ico"),
+            r"C:\Work\icons\a.ico"
+        );
+        // Absolute / env / UNC pass through.
+        assert_eq!(resolve_relative(r"C:\Work", r"D:\ext.dll"), r"D:\ext.dll");
+        assert_eq!(resolve_relative(r"C:\Work", "%SystemRoot%\\a.dll"), "%SystemRoot%\\a.dll");
+        assert_eq!(resolve_relative(r"C:\Work", r"\\srv\share\i.ico"), r"\\srv\share\i.ico");
     }
 
     #[test]

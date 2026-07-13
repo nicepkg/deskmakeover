@@ -1013,7 +1013,7 @@ export const useIcons = create<IconsState>((set, get) => {
         // first tiles stand in, exactly the oracle's fallback.
         const eligible = s.items.filter((i) => i.sourceUrls.length > 0)
         const styledSet = eligible.filter(
-          (i) => i.styleable && !effectiveTileConfig(i, config, policy, overrides).showOriginal,
+          (i) => i.styleable && !s.bareLook && !effectiveTileConfig(i, config, policy, overrides).showOriginal,
         )
         const pool = (styledSet.length > 0 ? styledSet : eligible).slice(0, 8)
         if (pool.length === 0) return fail()
@@ -1021,13 +1021,17 @@ export const useIcons = create<IconsState>((set, get) => {
         for (const item of pool) {
           await compositor.loadSource(item.id, item.sourceUrls[0])
           const eff = effectiveTileConfig(item, config, policy, overrides)
-          const png = await compositor.bakeMasterPng(
-            item.id,
-            eff.config,
-            item.isShortcut,
-            fieldRenderOpts(item.id),
-          )
-          if (png) tiles.push({ originalUrl: item.sourceUrls[0], styledPng: png })
+          const opts = fieldRenderOpts(item.id)
+          // Before = the untouched original render (codex icons2-🟠7: the oracle draws the
+          // resolved OriginalImage, not the raw source — a shortcut Before still gets its classic
+          // arrow). Both frames are compositor renders → same-origin data: URLs, so the sheet
+          // never loads a cross-origin dmicon:// URL (also fully sidesteps 🔴4).
+          const beforePng = await compositor.bakeMasterPng(item.id, eff.config, item.isShortcut, opts, true)
+          // After = styled, unless this tile is bareLook / kept / kind-excluded (then it stays
+          // original in the After column too — no false makeover).
+          const afterOriginal = s.bareLook || eff.showOriginal
+          const afterPng = await compositor.bakeMasterPng(item.id, eff.config, item.isShortcut, opts, afterOriginal)
+          if (beforePng && afterPng) tiles.push({ beforePng, afterPng })
         }
         if (tiles.length === 0) return fail()
         const sheet = await composeCompareSheet(tiles, {

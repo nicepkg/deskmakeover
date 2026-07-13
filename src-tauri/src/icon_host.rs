@@ -186,18 +186,66 @@ impl IconHost {
         // surface still equals our last-applied fingerprint, the live icon is this app's styled
         // output — extracting it as "the source" would compound Style(Style(orig)) on every
         // re-scan. Snapshot the committed anchors up front (short lock; extraction below is slow
-        // and must not hold `mut_state`).
-        let anchors: HashMap<String, (dm_domain::Fingerprint, dm_domain::RestoreAnchor)> = {
+        // and must not hold `mut_state`). The JOURNAL overlays the ledger (codex icons2-🔴1): a
+        // committed txn whose ledger upsert faulted is desktop truth the ledger has not caught up
+        // to — its Prepared anchor + Applied fingerprint win over a missing/stale row. An
+        // INCOMPLETE txn leaves an item's live provenance unknowable: that item is DEGRADED below
+        // (shown from live, never bake-able, never anchor-substituted) until recovery reconciles.
+        // The snapshot also pins `op_epoch` so a mutation landing during the slow extraction
+        // fails the publish fence instead of publishing just-styled pixels as "the raw source"
+        // (codex icons2-🔴2).
+        let (anchors, unknown_provenance, epoch_at_snapshot) = {
+            use dm_operations::{JournalRecord as JR, JournalSink as _};
             let st = self.mut_state.lock().unwrap();
-            st.ledger
-                .all()
-                .map_err(|e| e.to_string())?
-                .into_iter()
-                .filter(|e| e.state.is_committed())
-                .map(|e| {
-                    (e.item.as_str().to_string(), (e.last_applied_fingerprint, e.original_anchor))
+            let mut anchors: HashMap<String, (dm_domain::Fingerprint, dm_domain::RestoreAnchor)> =
+                st.ledger
+                    .all()
+                    .map_err(|e| e.to_string())?
+                    .into_iter()
+                    .filter(|e| e.state.is_committed())
+                    .map(|e| {
+                        (
+                            e.item.as_str().to_string(),
+                            (e.last_applied_fingerprint, e.original_anchor),
+                        )
+                    })
+                    .collect();
+            let mut unknown: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let records = st.journal.read_all().map_err(|e| e.to_string())?;
+            let terminal: HashMap<u64, bool> = records
+                .iter()
+                .filter_map(|r| match r {
+                    JR::TxnCommitted { txn } => Some((*txn, true)),
+                    JR::TxnRolledBack { txn } => Some((*txn, false)),
+                    _ => None,
                 })
-                .collect()
+                .collect();
+            let mut prepared: HashMap<(u64, String), dm_domain::RestoreAnchor> = HashMap::new();
+            for r in &records {
+                if let JR::ItemPrepared { txn, item, anchor, .. } = r {
+                    match terminal.get(txn) {
+                        Some(true) => {
+                            prepared.insert((*txn, item.as_str().to_string()), anchor.clone());
+                        }
+                        // Rolled back → the desktop was walked back; ledger/live are authoritative.
+                        Some(false) => {}
+                        None => {
+                            unknown.insert(item.as_str().to_string());
+                        }
+                    }
+                }
+            }
+            for r in &records {
+                if let JR::ItemApplied { txn, item, new_fingerprint } = r {
+                    if let Some(anchor) = prepared.get(&(*txn, item.as_str().to_string())) {
+                        anchors.insert(
+                            item.as_str().to_string(),
+                            (new_fingerprint.clone(), anchor.clone()),
+                        );
+                    }
+                }
+            }
+            (anchors, unknown, st.op_epoch)
         };
         // Build the new content-addressed source cache in a LOCAL map, then atomically swap it in
         // after extraction (codex R2-Major 3): a failed refresh must not leave the previous scan's
@@ -219,18 +267,27 @@ impl IconHost {
         let mut scanned = Vec::with_capacity(items.len());
         for (i, item) in items.into_iter().enumerate() {
             // Capture the CAS anchor AT SCAN TIME (codex Block 2): a hand-edit during the bake then
-            // fails the driver's CAS instead of being silently overwritten. An unreadable surface
-            // gets a sentinel fingerprint, so a fresh apply of it conflicts (skipped), never forced.
-            // Read BEFORE extraction: the fingerprint decides whether the live surface is our own
-            // styled output (→ extract from the original anchor instead).
-            let fingerprint = self
-                .reader
-                .read_fingerprint(&item.target())
-                .unwrap_or_else(|_| dm_domain::Fingerprint::of_bytes(b""));
-            let original = anchors
-                .get(item.id.as_str())
-                .filter(|(last_applied, _)| last_applied == &fingerprint)
-                .map(|(_, anchor)| anchor);
+            // fails the driver's CAS instead of being silently overwritten. Read BEFORE
+            // extraction: the fingerprint decides whether the live surface is our own styled
+            // output (→ extract from the original anchor instead). An unreadable surface keeps a
+            // sentinel fingerprint for display purposes but is stripped of APPLY AUTHORITY
+            // (`source_ok:false` → the commit refuses it; codex icons2-🟠5 — the sentinel is a
+            // legal CAS value for empty bytes, so it must never carry authority on its own).
+            let read = self.reader.read_fingerprint(&item.target());
+            let unreadable = read.is_err();
+            let fingerprint =
+                read.unwrap_or_else(|_| dm_domain::Fingerprint::of_bytes(b""));
+            // Journal-incomplete items have unknowable live provenance — never anchor-substitute,
+            // never offer for styling; show the live pixels with an honest reason.
+            let provenance_unknown = unknown_provenance.contains(item.id.as_str());
+            let original = if provenance_unknown || unreadable {
+                None
+            } else {
+                anchors
+                    .get(item.id.as_str())
+                    .filter(|(last_applied, _)| last_applied == &fingerprint)
+                    .map(|(_, anchor)| anchor)
+            };
             let (urls, extract_err) = match self.extractor.extract(&item, original) {
                 Ok(sources) => {
                     let mut urls = Vec::with_capacity(sources.len());
@@ -246,19 +303,29 @@ impl IconHost {
                 }
                 Err(e) => (Vec::new(), Some(format!("图标读取失败：{e}"))),
             };
+            let degraded_reason = if provenance_unknown {
+                Some("待修复：上次操作未完成，刷新后重试".to_string())
+            } else if unreadable {
+                Some("图标状态读取失败".to_string())
+            } else {
+                extract_err
+            };
             let (x, y) = live_slots.get(&item.name).copied().unwrap_or_else(|| synthetic_layout(i));
             dtos.push(IconItemDto {
                 id: item.id.as_str().into(),
                 label: item.name.clone(),
                 kind: map_kind(item.kind),
                 is_shortcut: item.kind.is_shortcut(),
-                styleable: item.can_style() && extract_err.is_none(),
-                status_reason: extract_err.or_else(|| item.status_message.clone()),
+                styleable: item.can_style() && degraded_reason.is_none(),
+                status_reason: degraded_reason.clone().or_else(|| item.status_message.clone()),
                 x,
                 y,
                 source_urls: urls,
             });
-            scanned.push(ScannedItem { item, fingerprint });
+            // `source_ok` is the ONE apply-authority bit shared with the commit path (codex
+            // icons2-🟠5): the DTO's styleable, the commit's acceptance, and the restore planner
+            // all derive from it instead of three drifting definitions.
+            scanned.push(ScannedItem { item, fingerprint, source_ok: degraded_reason.is_none() });
         }
         // Every extract succeeded → publish atomically, ALL inside one critical section ordered
         // acceptance-check → source cache → snapshot (codex R10-#B + R11-#1). The revision check runs
@@ -274,6 +341,16 @@ impl IconHost {
                 return Err(format!(
                     "scan superseded (revision {rev} <= current {}): rescan",
                     st.scan_revision
+                ));
+            }
+            // Epoch fence (codex icons2-🔴2): a desktop mutation (apply-commit / restore /
+            // overlay) that landed between the anchor snapshot and here means the extraction ran
+            // against a MIXED generation — its output could publish just-styled pixels as "the
+            // raw source". Lose without side effects; the caller rescans against the new epoch.
+            if st.op_epoch != epoch_at_snapshot {
+                return Err(format!(
+                    "scan raced a desktop mutation (epoch {} -> {}): rescan",
+                    epoch_at_snapshot, st.op_epoch
                 ));
             }
             self.sources.lock().unwrap().publish(next_sources);
@@ -618,16 +695,30 @@ impl IconHost {
         let persisted = self.get_persisted()?;
         let saved = (|| -> Result<PathBuf, String> {
             use base64::Engine;
+            // Bounded input (codex icons2-🟠8): the sheet is a ~1200x660 PNG — cap the encoded
+            // and decoded sizes so a hostile payload cannot balloon memory, and accept ONLY a
+            // real PNG (the image crate would happily decode other formats that then land on
+            // disk under a lying `.png` name).
+            if png_base64.len() > 12_000_000 {
+                return Err("compare sheet: payload too large".into());
+            }
             let bytes = base64::engine::general_purpose::STANDARD
                 .decode(png_base64.trim())
                 .map_err(|e| format!("compare sheet: bad base64: {e}"))?;
-            // A payload that does not decode as an image never lands on disk under our name.
-            image::load_from_memory(&bytes).map_err(|e| format!("compare sheet: not an image: {e}"))?;
+            if bytes.len() > 9_000_000 {
+                return Err("compare sheet: decoded payload too large".into());
+            }
+            if !bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+                return Err("compare sheet: not a PNG".into());
+            }
+            let img = image::load_from_memory(&bytes)
+                .map_err(|e| format!("compare sheet: not a decodable image: {e}"))?;
+            if (img.width() as u64) * (img.height() as u64) > 16_000_000 {
+                return Err("compare sheet: dimensions out of range".into());
+            }
             let dir = pictures.unwrap_or_else(|| self.export_fallback_dir.clone());
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            let path = unique_export_path(&dir, &utc_stamp(now_secs()));
-            std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
-            Ok(path)
+            create_export_file(&dir, &utc_stamp(now_secs()), &bytes)
         })();
         Ok(match saved {
             Ok(path) => IconOpResultDto {
@@ -860,20 +951,28 @@ fn utc_stamp(secs: i64) -> String {
     )
 }
 
-/// A non-clobbering export path: `DeskMakeover-<stamp>.png`, suffixed `-2`, `-3`, … when two
-/// exports land in the same second.
-fn unique_export_path(dir: &Path, stamp: &str) -> PathBuf {
-    let base = dir.join(format!("DeskMakeover-{stamp}.png"));
-    if !base.exists() {
-        return base;
-    }
-    for n in 2..100 {
-        let alt = dir.join(format!("DeskMakeover-{stamp}-{n}.png"));
-        if !alt.exists() {
-            return alt;
+/// Writes the export ATOMICALLY under a non-clobbering name: `DeskMakeover-<stamp>.png`,
+/// suffixed `-2`, `-3`, … on collision. `create_new` makes claim + create one syscall — no
+/// check-then-write window (codex icons2-🟠9) — and candidate exhaustion FAILS rather than
+/// falling back to an overwrite.
+fn create_export_file(dir: &Path, stamp: &str, bytes: &[u8]) -> Result<PathBuf, String> {
+    use std::io::Write;
+    for n in 1..100u32 {
+        let path = if n == 1 {
+            dir.join(format!("DeskMakeover-{stamp}.png"))
+        } else {
+            dir.join(format!("DeskMakeover-{stamp}-{n}.png"))
+        };
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut f) => {
+                f.write_all(bytes).map_err(|e| e.to_string())?;
+                return Ok(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.to_string()),
         }
     }
-    base
+    Err("compare sheet: export name space exhausted for this second".into())
 }
 
 #[cfg(all(test, not(windows)))]
@@ -1024,10 +1123,20 @@ mod tests {
         let arg2 = res2.toast.as_ref().unwrap().arg.clone().unwrap();
         assert_ne!(arg, arg2, "same-second exports never overwrite");
 
-        // Garbage payloads never land on disk — honest ok:false.
-        for bad in ["not-base64!!!", &base64::engine::general_purpose::STANDARD.encode(b"nonsense")] {
+        // A non-PNG payload (real GIF magic, so it is a plausible image but not our format) must
+        // be REJECTED by the magic-byte gate before decode (codex icons2-🟠8: PNG-only, so a
+        // non-PNG never lands under our `.png` name).
+        let gif = base64::engine::general_purpose::STANDARD.encode(b"GIF89a\x01\x00\x01\x00");
+        // Garbage / oversize / wrong-format payloads never land on disk — honest ok:false.
+        let oversize = "A".repeat(12_000_001);
+        for bad in [
+            "not-base64!!!",
+            &base64::engine::general_purpose::STANDARD.encode(b"nonsense"),
+            &gif,
+            &oversize,
+        ] {
             let res = h.export_compare(bad, Some(out.clone())).unwrap();
-            assert!(!res.ok);
+            assert!(!res.ok, "rejected payload stays off disk");
             assert_eq!(res.toast.as_ref().unwrap().key, "Toast_CompareFailed");
         }
         assert_eq!(
@@ -1044,6 +1153,114 @@ mod tests {
         assert_eq!(utc_stamp(1_783_900_800), "20260713-000000");
         // Leap-year day: 2024-02-29 12:34:56 UTC = 1709210096.
         assert_eq!(utc_stamp(1_709_210_096), "20240229-123456");
+    }
+
+    /// codex icons2-🔴1: a TxnCommitted whose ledger upsert faulted is desktop truth the ledger
+    /// hasn't caught up to. The scan must overlay the JOURNAL's Prepared anchor + Applied
+    /// fingerprint onto the (missing) ledger row, so it extracts the ORIGINAL — not the styled
+    /// surface the committed txn wrote — instead of compounding Style(Style(orig)).
+    #[test]
+    fn a_committed_but_unledgered_txn_extracts_the_original_via_the_journal_overlay() {
+        use dm_operations::txn::{FileJournal, JournalSink};
+        use dm_operations::JournalRecord;
+
+        let dir = tempfile::tempdir().unwrap();
+        // Baseline: what the ORIGINAL source renders to for edge.
+        let baseline_png = {
+            let bdir = dir.path().join("baseline");
+            std::fs::create_dir_all(&bdir).unwrap();
+            let h = host(&bdir);
+            let s = h.scan().unwrap();
+            served_png(&h, &s, "edge")
+        };
+
+        let (h, desk) = host_with_desk(dir.path());
+        // Simulate the committed write landing on the desktop (styled bytes) with NO ledger row.
+        desk.force_foreign("edge");
+        let live_styled = b"styled:foreign-hand-edit:edge".to_vec();
+        let new_fp = dm_domain::Fingerprint::of_bytes(&live_styled);
+        let original = b"original:edge".to_vec();
+        let orig_fp = dm_domain::Fingerprint::of_bytes(&original);
+        let target = dm_domain::ItemTarget::new(
+            dm_domain::ItemId::from_raw("edge"),
+            dm_domain::ItemKind::Shortcut,
+            "C:/Users/Dev/Desktop/edge",
+        );
+        {
+            let mut j = FileJournal::new(dir.path().join("txn.log"));
+            j.append(&JournalRecord::TxnBegin { txn: 1, items: vec![target.id.clone()] }).unwrap();
+            j.append(&JournalRecord::ItemPrepared {
+                txn: 1,
+                item: target.id.clone(),
+                target: target.clone(),
+                anchor: dm_domain::RestoreAnchor::FileBytes { bytes: original.clone() },
+                original_fingerprint: orig_fp.clone(),
+                expected_fingerprint: orig_fp,
+                asset_hash: "deadbeef".into(),
+                owned: dm_domain::OwnedFields::icon_only(),
+                pinned_seed: None,
+            })
+            .unwrap();
+            j.append(&JournalRecord::ItemApplied {
+                txn: 1,
+                item: target.id.clone(),
+                new_fingerprint: new_fp,
+            })
+            .unwrap();
+            j.append(&JournalRecord::TxnCommitted { txn: 1 }).unwrap();
+        }
+
+        let scan = h.scan().unwrap();
+        // The overlay recovered the original anchor → the served source is the ORIGINAL, not the
+        // styled live surface.
+        assert_eq!(
+            served_png(&h, &scan, "edge"),
+            baseline_png,
+            "the journal overlay extracts the true original, not Style(orig)"
+        );
+    }
+
+    /// codex icons2-🔴1 (the incomplete case): a Prepared item with NO terminal record has
+    /// unknowable live provenance. The scan must NEVER anchor-substitute or offer it for styling
+    /// — it degrades until recovery reconciles it.
+    #[test]
+    fn an_incomplete_journal_item_degrades_and_is_not_styleable() {
+        use dm_operations::txn::{FileJournal, JournalSink};
+        use dm_operations::JournalRecord;
+
+        let dir = tempfile::tempdir().unwrap();
+        let (h, _desk) = host_with_desk(dir.path());
+        let target = dm_domain::ItemTarget::new(
+            dm_domain::ItemId::from_raw("edge"),
+            dm_domain::ItemKind::Shortcut,
+            "C:/Users/Dev/Desktop/edge",
+        );
+        let orig_fp = dm_domain::Fingerprint::of_bytes(b"original:edge");
+        {
+            let mut j = FileJournal::new(dir.path().join("txn.log"));
+            j.append(&JournalRecord::TxnBegin { txn: 1, items: vec![target.id.clone()] }).unwrap();
+            j.append(&JournalRecord::ItemPrepared {
+                txn: 1,
+                item: target.id.clone(),
+                target: target.clone(),
+                anchor: dm_domain::RestoreAnchor::FileBytes { bytes: b"original:edge".to_vec() },
+                original_fingerprint: orig_fp.clone(),
+                expected_fingerprint: orig_fp,
+                asset_hash: "deadbeef".into(),
+                owned: dm_domain::OwnedFields::icon_only(),
+                pinned_seed: None,
+            })
+            .unwrap();
+            // No ItemApplied, no terminal record — an interrupted txn.
+        }
+        let scan = h.scan().unwrap();
+        let edge = scan.items.iter().find(|i| i.id == "edge").unwrap();
+        assert!(!edge.styleable, "unknown provenance is never offered for styling");
+        assert!(
+            edge.status_reason.as_deref().unwrap_or("").contains("待修复"),
+            "the degradation reason is honest: {:?}",
+            edge.status_reason
+        );
     }
 
     #[test]

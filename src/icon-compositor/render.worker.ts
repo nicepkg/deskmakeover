@@ -41,6 +41,9 @@ export interface BakeMsg {
   id: string
   config: ConfigDto
   isShortcut: boolean
+  /** Render the untouched original (compare-sheet Before) rather than the styled master.
+   *  Default false — the apply path only ever bakes styled masters. */
+  showOriginal?: boolean
   opts?: RenderOpts
 }
 export type ToWorker = ArrowMsg | SourceMsg | RenderMsg | BakeMsg
@@ -116,7 +119,7 @@ async function handle(msg: ToWorker): Promise<void> {
       wctx.postMessage({ t: 'baked', req: msg.req, id: msg.id, png: null })
       return
     }
-    const raster = renderTile(source, msg.config, msg.isShortcut, false, MASTER_SIZE, msg.opts)
+    const raster = renderTile(source, msg.config, msg.isShortcut, msg.showOriginal ?? false, MASTER_SIZE, msg.opts)
     const blob = await rasterToOffscreen(raster).convertToBlob({ type: 'image/png' })
     const png = await blob.arrayBuffer()
     wctx.postMessage({ t: 'baked', req: msg.req, id: msg.id, png }, [png])

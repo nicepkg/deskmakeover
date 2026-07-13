@@ -277,12 +277,20 @@ Documented follow-ups: the ①→②→③ finalize crash-window (not yet journa
    screenshots (panel ruling O4 `docs/reviews/2026-07-13-calm-schematic-panel.md`),
    NoiseGroup/ReflowGroup/ShrinkRect honest-motion (no hollow sockets), no done-ghost, no
    hero image, per-row 「恢复」, task-view glyph per owner pixels, shared `FullPage` shell
-   (清爽/设置 title parity) → **top-UX acceptance FAIL→`9e17d26`→re-verify PASS** (spec 08
-   §2/§2.1 amended). Gates: tsc · bun 575 · browser E2E evidence
-   `docs/plans/evidence/2026-07-calm/` + `.tmp-calm5` acceptance set. Owner calls open:
-   O1-O3 + 双成功色 (hero teal ✓已清爽 vs row coral ✓已生效 — unify or keep cross-module
-   teal). NEXT: codex adversarial review over the W0.6-viz diff, then Wave 1 Rust decision
-   core (bridge schema 7→8), Wave 2 dm-windows blind, Wave 3 cert lab = the D2 gate.
+   (清爽/设置 title parity) → top-UX acceptance FAIL→`9e17d26`→re-verify PASS.
+   **W0.6-viz-r2 (owner: text-wall + taskbar must re-centre):** type ladder 18>16>14>12>11,
+   cluster axis x54.5 (designer re-acceptance PASS 1.01:1/1.00:1) + **codex R3→R7 loop ALL
+   FIXED → R8 = APPROVE**: 'reopened' is a REAL CalmRowState (spec §6 drift notice
+   「重新关闭」 scoped re-apply; RESTORABLE_LEDGER keeps Restore alive when every write
+   drifts; ONE actionable set feeds notice/button/hero), quiet ghost frame dead,
+   reduced-motion sweep, walk-token races, hero synced wears coral (§10 — the 双成功色
+   owner call RESOLVED by spec), tray copy↔picture, celebration = ONE confetti per launch
+   across ALL modules (spec 02 §Ceremony; per-module keys were drift — flagged to owner,
+   one-line revert if per-module was intended), applyAll returns THIS call's summary.
+   Spec 08 §2.1 carries the schematic contract + type ladder + taskbar axis. Gates: tsc ·
+   bun 597 · browser E2E + `.tmp-calm5` acceptance set. Owner calls open: O1-O3.
+   NEXT: Wave 1 Rust decision core (bridge schema 7→8), Wave 2 dm-windows blind,
+   Wave 3 cert lab = the D2 gate.
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all
    designer PASS): seven coordinate-bookmark presets (spectrum default ·
    stationery · glass · pebble · ink · white · ascast), six mark styles

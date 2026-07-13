@@ -79,7 +79,11 @@ reopened set feeds notice/button/hero — synced unreachable while any row sits
 reopened) → R6 (celebration: spec §4 launch-first gate via claimCelebration;
 applyAll returns THIS call's summary, null on lock/no-op — stale-lastApply
 confetti race dead; owner-ordered confetti rides the shared icons/wallpaper
-module). Gates: tsc · bun 597. codex R7 verification in flight.
+module). R7 caught the celebration ledger still per-module against spec 02
+§Ceremony/spec 08 §4 global-once → single launch flag, all three modules ride
+claimCelebration() (`b68f62f`). **codex R8 = APPROVE (2026-07-13): R3→R7 all
+closed, no new defects.** Designer re-acceptance PASS (1.01:1/1.00:1 centring).
+Gates: tsc · bun 597. W0 is COMPLETE end to end — next: Wave 1.
 
 ## Wave 1 — Rust decision core + bridge (Mac)
 

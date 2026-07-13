@@ -285,3 +285,41 @@ fn a_feature_update_between_prepare_and_the_write_blocks_the_apply() {
     );
 }
 
+#[test]
+fn a_policy_taking_over_a_leaf_before_restore_never_overwrites_it() {
+    // codex R4 #1: the Undo path (restore) must refuse to write a leaf a policy took over since
+    // our apply — the managed value stands, the transaction stays pending.
+    let mut driver = driver();
+    driver.apply(&search()).unwrap();
+    // A policy takes over the (still last_applied) value after our write.
+    driver
+        .backend
+        .mark_policy_managed(addr(SEARCH, "SearchboxTaskbarMode"));
+    let result = driver.restore(&search());
+    assert!(matches!(result, Err(DriverError::Pending { .. })), "got {result:?}");
+    // Still owned (restore did not complete) and the managed value was never overwritten.
+    assert!(driver.managed_for_test(&search()).is_some());
+    assert_eq!(
+        driver.read_live_for_test(addr(SEARCH, "SearchboxTaskbarMode")).as_dword(),
+        Some(0)
+    );
+}
+
+#[test]
+fn a_policy_landing_during_settle_blocks_committing_ownership() {
+    // codex R4 #2: a policy that takes over a leaf during settle (after the CAS, before commit)
+    // must not let the driver claim Verified ownership on a now-managed leaf.
+    let mut registry = pushing_registry();
+    // After the search write succeeds, a policy takes over that leaf.
+    registry.mark_managed_after_writes(1, addr(SEARCH, "SearchboxTaskbarMode"));
+    let mut driver = driver_with(registry, MemoryVerifier::new());
+    let result = driver.apply(&search());
+    // The final re-auth sees the leaf managed → not committed. The undo also refuses to rewrite
+    // the managed leaf, so the transaction stays pending; either way it is NOT owned as Verified.
+    assert!(
+        matches!(result, Err(DriverError::Pending { .. })),
+        "a managed leaf must never be committed as Verified; got {result:?}"
+    );
+    assert!(driver.managed_for_test(&search()).is_none());
+}
+

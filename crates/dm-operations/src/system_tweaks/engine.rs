@@ -80,6 +80,19 @@ where
                 conflicts.push(format!("external edit at {}", value.address));
                 continue;
             }
+            // A policy that took over this leaf since our write is NEVER overwritten, even to undo
+            // (codex W1 R4 #1) — record a conflict and leave it prepared.
+            match self.backend.is_policy_managed(&value.address) {
+                Ok(true) => {
+                    conflicts.push(format!("policy-managed, not undone: {}", value.address));
+                    continue;
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    conflicts.push(format!("managed check {}: {error}", value.address));
+                    continue;
+                }
+            }
             if let Err(error) = self.backend.compare_exchange(
                 RegistryWriteIntent::Undo,
                 &value.address,
@@ -115,6 +128,17 @@ where
             if live != value.before {
                 conflicts.push(format!("external edit at {}", value.address));
                 continue;
+            }
+            match self.backend.is_policy_managed(&value.address) {
+                Ok(true) => {
+                    conflicts.push(format!("policy-managed, not restored: {}", value.address));
+                    continue;
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    conflicts.push(format!("managed check {}: {error}", value.address));
+                    continue;
+                }
             }
             if let Err(error) = self.backend.compare_exchange(
                 RegistryWriteIntent::Undo,

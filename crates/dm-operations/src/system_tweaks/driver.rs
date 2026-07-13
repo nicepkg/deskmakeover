@@ -255,9 +255,14 @@ where
         {
             return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &cause);
         }
-        // A final re-authentication AFTER the terminal proof, BEFORE committing ownership: a feature
-        // update during settle must not let us commit a Verified anchor on an uncertified env.
-        if let Err(cause) = self.reauth(&descriptor, &environment) {
+        // A final re-authentication AFTER the terminal proof, BEFORE committing ownership: an
+        // environment change, a new policy guard, OR a policy that took over ANY leaf during settle
+        // must not let us commit a Verified anchor (codex W1 R4 #2 — the final check covers every
+        // mutation leaf's backend-managed state, not just the env + descriptor guards).
+        let final_reauth = self
+            .reauth(&descriptor, &environment)
+            .and_then(|()| self.assert_no_leaf_managed(&values));
+        if let Err(cause) = final_reauth {
             return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &cause);
         }
 
@@ -335,19 +340,11 @@ where
             return Ok(RestoreOutcome::SkippedExternalConflict);
         }
 
-        // Clean restore: each live value is the last_applied we own → CAS it back to original.
-        for value in &values {
-            if let Err(error) = self.backend.compare_exchange(
-                RegistryWriteIntent::Undo,
-                &value.address,
-                &value.before,
-                &value.desired,
-            ) {
-                return Err(DriverError::Pending {
-                    transaction,
-                    cause: error.to_string(),
-                });
-            }
+        // Clean restore: drive each leaf forward from last_applied to original through the shared
+        // never-clobber path — it refuses to overwrite an external edit OR a leaf a policy has
+        // since taken over (codex W1 R4 #1), leaving the transaction Prepared on any conflict.
+        if let Err(cause) = self.advance_restore(&values) {
+            return Err(DriverError::Pending { transaction, cause });
         }
         if let Err(cause) = self.verify_terminal(
             VerificationPhase::RestoreOriginal,
@@ -439,6 +436,20 @@ where
                 incomplete.into_iter().map(|entry| entry.id).collect(),
             ))
         }
+    }
+
+    /// Assert no transaction leaf is backend-managed (a policy that took over any leaf during
+    /// settle must block committing ownership — codex W1 R4 #2).
+    fn assert_no_leaf_managed(&self, values: &[TransactionValue]) -> Result<(), String> {
+        for value in values {
+            if self
+                .is_backend_managed(&value.address)
+                .map_err(|error| error.to_string())?
+            {
+                return Err(format!("leaf became policy-managed: {}", value.address));
+            }
+        }
+        Ok(())
     }
 
     /// Whether the anchor's leaf addresses are exactly the descriptor's current mutation addresses

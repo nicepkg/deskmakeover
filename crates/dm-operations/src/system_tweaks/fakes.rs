@@ -32,6 +32,7 @@ pub struct MemoryRegistry {
     fail_on_cas: Option<usize>,
     interrupt_on_write: Option<usize>,
     replace_before_cas: Option<Replacement>,
+    manage_after: Option<(usize, RegistryAddress)>,
 }
 
 impl MemoryRegistry {
@@ -54,6 +55,12 @@ impl MemoryRegistry {
     pub fn mark_policy_managed(&mut self, address: RegistryAddress) {
         self.keys.insert(address.key_location());
         self.managed.insert(address);
+    }
+
+    /// After `after` successful writes, mark `address` policy-managed (emulates a policy landing
+    /// mid-transaction, e.g. during a verifier settle).
+    pub fn mark_managed_after_writes(&mut self, after: usize, address: RegistryAddress) {
+        self.manage_after = Some((after, address));
     }
 
     pub fn fail_compare_exchange_at(&mut self, call: usize) {
@@ -135,7 +142,11 @@ impl RegistryBackend for MemoryRegistry {
         desired: &RegistrySnapshot,
     ) -> Result<RegistryWriteOutcome, RegistryError> {
         self.cas_calls += 1;
-        if intent == RegistryWriteIntent::Apply && self.managed.contains(address) {
+        // A policy-managed value is never written — in EITHER direction. An Undo (rollback /
+        // restore / recovery) that would rewrite a leaf a policy has since taken over is refused
+        // just like an Apply (codex W1 R4 #1).
+        let _ = intent;
+        if self.managed.contains(address) {
             return Err(RegistryError::ManagedByPolicy(address.clone()));
         }
         if let Some(replacement) = self
@@ -170,6 +181,12 @@ impl RegistryBackend for MemoryRegistry {
         }
         self.write(address, desired);
         self.successful_writes += 1;
+        if let Some((after, managed)) = self.manage_after.clone() {
+            if self.successful_writes >= after {
+                self.manage_after = None;
+                self.managed.insert(managed);
+            }
+        }
         if self.interrupt_on_write == Some(self.successful_writes) {
             self.interrupt_on_write = None;
             return Err(RegistryError::Interrupted);

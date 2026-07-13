@@ -63,13 +63,25 @@ function Magnifier({ x, y, r = 1.8 }: { x: number; y: number; r?: number }) {
   )
 }
 
-/** Task view: two same-size outlined squares, the back one peeking TOP-RIGHT
- *  (a bottom-right filled offset reads as a COPY button — owner 2026-07-13). */
+/** Task view, per the owner's pixel description of the real button (2026-07-13):
+ *  a SOLID dark-grey square at the bottom, with a SEMI-TRANSPARENT WHITE square
+ *  overlapping its top-right corner — the overlap lightens through. */
 function TaskViewGlyph({ x, y }: { x: number; y: number }) {
   return (
-    <g fill="none" stroke={INK} strokeWidth="1" opacity="0.55">
-      <path d={`M ${x + 2.4} ${y + 0.6} h 2.6 a 1 1 0 0 1 1 1 v 2.6`} strokeLinecap="round" />
-      <rect x={x} y={y + 2} width="5" height="5" rx="1" fill="var(--chip)" />
+    <g>
+      <rect x={x} y={y + 2.2} width="5" height="5" rx="1.1" fill={INK} opacity="0.6" />
+      <rect
+        x={x + 2.4}
+        y={y}
+        width="5"
+        height="5"
+        rx="1.1"
+        fill="white"
+        fillOpacity="0.72"
+        stroke={INK}
+        strokeOpacity="0.28"
+        strokeWidth="0.5"
+      />
     </g>
   )
 }

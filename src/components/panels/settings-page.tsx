@@ -5,6 +5,7 @@ import { call } from '@/bridge/client'
 const appIcon = '/app-icon.svg'
 import { InspectorCard } from '@/components/common/inspector'
 import { ConfirmSheet } from '@/components/common/ceremony'
+import { FullPage } from '@/components/shell/full-page'
 import { arrowRowView } from '@/lib/arrow-overlay'
 import { Segmented } from '@/components/common/segmented'
 import { ToggleSwitch } from '@/components/common/toggle-switch'
@@ -73,12 +74,7 @@ export function SettingsPage() {
   const copyDiagnostics = async () => copyText(await buildReport())
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-[1080px] px-10 py-8">
-        <header className="mb-6">
-          <h1 className="text-display font-medium text-t1">{t('Panel_SettingsTitle')}</h1>
-        </header>
-
+    <FullPage title={t('Panel_SettingsTitle')}>
         <div className={compact ? 'flex flex-col gap-4' : 'flex gap-6'}>
           {/* Identity — one card: brand, trust facts as text, links as text links */}
           <aside className={cn('@container', !compact && 'w-[300px] shrink-0')}>
@@ -254,7 +250,6 @@ export function SettingsPage() {
             </InspectorCard>
           </main>
         </div>
-      </div>
 
       <ChangelogDialog open={logOpen} onOpenChange={setLogOpen} />
 
@@ -273,7 +268,7 @@ export function SettingsPage() {
         }}
         onCancel={() => setArrowRestoreOpen(false)}
       />
-    </div>
+    </FullPage>
   )
 }
 

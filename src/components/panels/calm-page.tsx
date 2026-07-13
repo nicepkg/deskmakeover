@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Check, ChevronDown, ExternalLink, Info, RotateCcw } from 'lucide-react'
 import { InspectorCard } from '@/components/common/inspector'
 import { ConfirmSheet } from '@/components/common/ceremony'
+import { FullPage } from '@/components/shell/full-page'
 import { CtaButton, type HeroPhase } from '@/components/common/cta-button'
 import { SurfaceSchematic, applyStaggerDelay } from '@/components/calm/surface-schematic'
 import { controlById, type CalmControl, type CalmControlId } from '@/lib/calm/catalog'
@@ -67,12 +68,7 @@ export function CalmPage() {
   const includedNames = candidates.map((id) => t(controlById(id).labelKey)).join(t('Calm_ListJoin'))
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-[880px] px-10 py-8">
-        <header className="mb-6">
-          <h1 className="text-display font-medium text-t1">{t('Panel_CalmTitle')}</h1>
-        </header>
-
+    <FullPage title={t('Panel_CalmTitle')}>
         {/* Hero: dynamic words only (owner 2026-07-13) — a fixed establishing image
             would hard-code the starter count and lie the moment the user excludes a
             row or new controls land. The row schematics carry all the visuals. */}
@@ -120,7 +116,6 @@ export function CalmPage() {
 
           {groups.held.length > 0 && <HeldGroup ids={groups.held} rows={rows} />}
         </div>
-      </div>
 
       {/* Explain before apply (spec 08 §4) — three lines, no dangling references. */}
       <ConfirmSheet
@@ -141,7 +136,7 @@ export function CalmPage() {
         }}
         onCancel={() => setConfirmOpen(false)}
       />
-    </div>
+    </FullPage>
   )
 }
 

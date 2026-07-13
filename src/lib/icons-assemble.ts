@@ -160,7 +160,10 @@ export function parseHistory(history: LookVersionDto[], savedStyleJson: string |
   })
 }
 
-function formatTime(unixSeconds: number): string {
+function formatTime(unixSeconds: number | null): string {
+  // A legacy history row can carry a null timestamp (codex R2 B-8); render no time rather than the
+  // 1970 epoch `new Date(null)` would produce. The label ('自定义') still identifies the entry.
+  if (unixSeconds == null) return ''
   const d = new Date(unixSeconds * 1000)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }

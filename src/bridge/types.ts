@@ -306,7 +306,10 @@ export interface IconScanDto {
  *  `{config, kindPolicy, typeOverrides}` recipe the frontend parses to render its mini. */
 export interface LookVersionDto {
   id: string
-  createdAt: number
+  // Nullable: the Rust `created_at` is `Option<i64>`, so the generated binding is `number | null`.
+  // The handwritten mirror drifted to a non-null `number`, which a legacy row (created before the
+  // field existed) would violate at runtime (codex R2 B-8). Kept in sync with `generated.ts`.
+  createdAt: number | null
   label: string | null
   pinned: boolean
   styleJson: string

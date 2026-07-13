@@ -14,10 +14,12 @@ use dm_contracts::{
 use dm_domain::{DecodedImage, ImageDecoder, MonitorTopology, Orientation, WallpaperApplier};
 use dm_operations::{SnapshotStore, WallpaperOps};
 
-/// One monitor's decoded current wallpaper, cached for the protocol handler. `rev`
-/// bumps whenever the underlying path changes, cache-busting the webview's image.
+/// One monitor's decoded current wallpaper, cached for the protocol handler. `content_hash` is the
+/// hash of the decoded PNG bytes — a CONTENT-addressed cache-buster in the protocol URL (codex R2 B-1),
+/// replacing the old per-process `rev` counter that reset to 1 every launch and let WebView2 serve a
+/// prior immutable image for a NEW wallpaper that happened to land the same reused rev after a restart.
 struct CachedSource {
-    rev: u64,
+    content_hash: String,
     path: String,
     image: DecodedImage,
 }
@@ -117,18 +119,25 @@ impl WallpaperHost {
     /// (baked files are content-hashed, so a re-apply always changes the path).
     fn decoded_source(&self, monitor_id: &str, path: &str) -> Option<WallpaperSourceDto> {
         let key = sanitize(monitor_id);
-        let mut cache = self.cache.lock().unwrap();
-        if let Some(hit) = cache.get(&key) {
-            if hit.path == path {
-                return Some(source_dto(&key, hit));
+        // Fast path: a same-path cache hit needs no decode. Hold the lock ONLY for this lookup.
+        {
+            let cache = self.cache.lock().unwrap();
+            if let Some(hit) = cache.get(&key) {
+                if hit.path == path {
+                    return Some(source_dto(&key, hit));
+                }
             }
         }
+        // Decode OUTSIDE the lock (codex R2 B-11): a cold decode of a large / network-backed image must
+        // not block `png_for` (and every OTHER monitor's lookup) behind this one monitor's decode. Two
+        // concurrent misses may both decode, but they produce the SAME content hash / URL, so a
+        // last-writer-wins insert is harmless — no in-flight coordination needed for a handful of monitors.
         match self.decoder.decode(path) {
             Ok(image) => {
-                let rev = cache.get(&key).map_or(1, |c| c.rev + 1);
-                let entry = CachedSource { rev, path: path.to_string(), image };
+                let content_hash = dm_icon_codec::content_hash(&image.png)[..16].to_string();
+                let entry = CachedSource { content_hash, path: path.to_string(), image };
                 let dto = source_dto(&key, &entry);
-                cache.insert(key, entry);
+                self.cache.lock().unwrap().insert(key, entry);
                 Some(dto)
             }
             // An undecodable current wallpaper degrades to "no readable source" for
@@ -144,19 +153,21 @@ impl WallpaperHost {
 
 fn source_dto(key: &str, cached: &CachedSource) -> WallpaperSourceDto {
     WallpaperSourceDto {
-        url: protocol_url(key, cached.rev),
+        url: protocol_url(key, &cached.content_hash),
         width: cached.image.width,
         height: cached.image.height,
     }
 }
 
-/// The platform-correct custom-protocol URL (what tauri's convertFileSrc would build).
+/// The platform-correct custom-protocol URL (what tauri's convertFileSrc would build). The `?v=<hash>`
+/// is CONTENT-derived, so the URL changes iff the pixels change — a restart that re-decodes a different
+/// wallpaper yields a different URL, and WebView2 can never serve a stale immutable image (codex R2 B-1).
 /// [WINDOWS-VERIFY] the `http://dmwallpaper.localhost` WebView2 form on the real box.
-fn protocol_url(key: &str, rev: u64) -> String {
+fn protocol_url(key: &str, content_hash: &str) -> String {
     if cfg!(windows) {
-        format!("http://dmwallpaper.localhost/{key}?rev={rev}")
+        format!("http://dmwallpaper.localhost/{key}?v={content_hash}")
     } else {
-        format!("dmwallpaper://localhost/{key}?rev={rev}")
+        format!("dmwallpaper://localhost/{key}?v={content_hash}")
     }
 }
 

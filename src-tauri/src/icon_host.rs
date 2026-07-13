@@ -312,7 +312,11 @@ impl IconHost {
             let (urls, extract_err) = match self.extractor.extract(&item, original) {
                 Ok(sources) => {
                     let mut urls = Vec::with_capacity(sources.len());
-                    for (slot, src) in sources.iter().enumerate() {
+                    // Consume the extracted sources: each PNG buffer MOVES into the cache instead of
+                    // being cloned (codex R2 B-12) — `extract` already handed us owned `DecodedImage`s
+                    // and the Vec is dropped right after, so a large desktop pays one fewer full copy
+                    // per source.
+                    for (slot, src) in sources.into_iter().enumerate() {
                         urls.push(cache_source_into(
                             &mut next_sources,
                             item.id.as_str(),
@@ -1100,11 +1104,10 @@ fn cache_source_into(
     sources: &mut HashMap<String, Vec<u8>>,
     item_id: &str,
     slot: u32,
-    src: &DecodedImage,
+    src: DecodedImage,
 ) -> String {
-    let hash = &dm_icon_codec::content_hash(&src.png)[..16];
-    let key = format!("{item_id}/{slot}/{hash}");
-    sources.insert(key.clone(), src.png.clone());
+    let key = format!("{item_id}/{slot}/{}", &dm_icon_codec::content_hash(&src.png)[..16]);
+    sources.insert(key.clone(), src.png); // MOVE the owned PNG buffer — no clone (codex R2 B-12)
     icon_protocol_url(&key)
 }
 

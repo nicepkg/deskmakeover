@@ -11,6 +11,18 @@ use dm_domain::system_tweaks::{
     RegistryValueKind, RegistryView, SettingId, SettingMutation,
 };
 
+/// The Windows-case-insensitive identity of a registry address (hive, view, lowercased key,
+/// lowercased value). Two recipes that differ only by case target the SAME registry value, so a
+/// collision check must fold case.
+fn address_identity(address: &RegistryAddress) -> (RegistryHive, RegistryView, String, String) {
+    (
+        address.hive,
+        address.view,
+        address.key.to_ascii_lowercase(),
+        address.value.to_ascii_lowercase(),
+    )
+}
+
 /// The tier a setting occupies in the honest three-group grammar (ADR-0023 D3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TweakTier {
@@ -225,12 +237,20 @@ pub struct TweakCatalog {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CatalogError {
     DuplicateId(SettingId),
-    /// Two settings write the same registry address — one apply would clobber the other's leaf.
+    /// Two settings write the same registry address (Windows-case-insensitive) — one apply would
+    /// clobber the other's leaf.
     ResourceCollision(RegistryAddress),
     /// An automatic/advanced recipe with no effect verifier could never prove it took effect.
     MissingEffectVerifier(SettingId),
     /// A writable recipe with no primary mutation.
     NoMutations(SettingId),
+    /// A guided descriptor carries a mutation (a guided row is never written).
+    GuidedWithMutation(SettingId),
+    /// A mutation writes a value the same descriptor lists as forbidden.
+    MutatesForbidden(RegistryAddress),
+    /// A writable desired value is not a concrete standard-kind write (a deletion, or `Other(raw)`
+    /// extension type, which a recipe must never establish).
+    IllegalDesired(RegistryAddress),
 }
 
 impl std::fmt::Display for CatalogError {
@@ -240,6 +260,9 @@ impl std::fmt::Display for CatalogError {
             Self::ResourceCollision(address) => write!(f, "registry resource collision: {address}"),
             Self::MissingEffectVerifier(id) => write!(f, "missing effect verifier: {id}"),
             Self::NoMutations(id) => write!(f, "writable recipe has no mutation: {id}"),
+            Self::GuidedWithMutation(id) => write!(f, "guided descriptor carries a mutation: {id}"),
+            Self::MutatesForbidden(address) => write!(f, "recipe mutates a forbidden value: {address}"),
+            Self::IllegalDesired(address) => write!(f, "illegal desired value: {address}"),
         }
     }
 }
@@ -256,6 +279,9 @@ impl TweakCatalog {
             }
             let writable =
                 matches!(descriptor.tier, TweakTier::AutomaticCandidate | TweakTier::Advanced);
+            if descriptor.tier == TweakTier::Guided && !descriptor.mutations.is_empty() {
+                return Err(CatalogError::GuidedWithMutation(descriptor.id.clone()));
+            }
             if writable {
                 if descriptor.mutations.is_empty() {
                     return Err(CatalogError::NoMutations(descriptor.id.clone()));
@@ -264,8 +290,19 @@ impl TweakCatalog {
                     return Err(CatalogError::MissingEffectVerifier(descriptor.id.clone()));
                 }
             }
+            let forbidden: std::collections::BTreeSet<_> = descriptor
+                .forbidden_mutations
+                .iter()
+                .map(|forbidden| address_identity(&forbidden.address))
+                .collect();
             for mutation in &descriptor.mutations {
-                if !seen_addresses.insert(mutation.address.clone()) {
+                if forbidden.contains(&address_identity(&mutation.address)) {
+                    return Err(CatalogError::MutatesForbidden(mutation.address.clone()));
+                }
+                if !is_legal_desired(&mutation.desired) {
+                    return Err(CatalogError::IllegalDesired(mutation.address.clone()));
+                }
+                if !seen_addresses.insert(address_identity(&mutation.address)) {
                     return Err(CatalogError::ResourceCollision(mutation.address.clone()));
                 }
             }
@@ -284,6 +321,15 @@ impl TweakCatalog {
 
     pub fn descriptor(&self, id: &SettingId) -> Option<&TweakDescriptor> {
         self.descriptors.iter().find(|d| &d.id == id)
+    }
+}
+
+/// A recipe may only ever establish a concrete standard-kind value. A deletion (`ValueMissing` /
+/// `KeyMissing`) or an `Other(raw)` extension type is never a legitimate desired write.
+fn is_legal_desired(desired: &RegistrySnapshot) -> bool {
+    match desired {
+        RegistrySnapshot::Present(value) => value.kind.is_standard(),
+        RegistrySnapshot::ValueMissing | RegistrySnapshot::KeyMissing => false,
     }
 }
 

@@ -1,28 +1,32 @@
-//! The calm settings transaction driver: inspect / apply / restore / recover.
+//! The calm settings transaction driver: inspect / apply / restore. Recovery lives in
+//! [`super::recovery`]; the shared rollback + terminal-verify engine internals live in
+//! [`super::engine`].
 //!
-//! Every write is fail-closed and fully reversible. Apply re-probes the environment, gates on the
-//! capability manifest, journals the transaction BEFORE the first write, does a logical CAS with
+//! Every write is fail-closed and fully reversible. Apply captures a typed pre-write receipt,
+//! journals the transaction under a writer lease BEFORE the first write, does a logical CAS with
 //! immediate read-back, then proves the terminal state (delayed read-back + effect) before it
-//! commits ownership. Restore walks back to the true original and refuses to overwrite a value the
-//! user changed externally. Recovery finishes any transaction a crash left prepared.
+//! commits ownership. A failed apply rolls back to originals ONLY where the live value is one we
+//! could have produced — never overwriting an external edit — and stays prepared for recovery when
+//! it cannot cleanly finish. Restore walks back to the true original and disowns (never clobbers)
+//! a value the user changed externally.
 //!
-//! W1 scope: value-level over pre-existing keys (the calm first batch never creates a registry
-//! key), an in-memory journal, Mac-testable end to end.
+//! W1 scope: value-level over pre-existing keys (the first batch creates no key), an in-memory
+//! journal, Mac-testable end to end.
 
 use dm_domain::system_tweaks::{
-    ApplyOutcome, Capability, ProbeOutcome, RegistryBackend, RegistryError, RegistrySnapshot,
-    RegistryWriteIntent, RestoreOutcome, SettingId, SettingMutation, SystemProfileProbe,
-    UnavailableReason, WindowsEnvironment,
+    ApplyOutcome, Capability, ProbeOutcome, RegistryAddress, RegistryBackend, RegistrySnapshot,
+    RegistryWriteIntent, RestoreOutcome, SettingId, SettingMutation, SkipReason,
+    SystemProfileProbe, UnavailableReason, WindowsEnvironment,
 };
 
 use super::capability::VerificationManifest;
 use super::catalog::{TweakCatalog, TweakDescriptor, TweakTier};
 use super::journal::{
-    JournalStore, ManagedSetting, ManagedValue, TransactionIntent, TransactionValue,
+    JournalStore, ManagedSetting, ManagedValue, PrepareRequest, TransactionIntent,
+    TransactionValue,
 };
 use super::verify::{
-    expected_terminal, ExecutionMode, VerificationBackend, VerificationContext, VerificationPhase,
-    VerificationPlan,
+    VerificationBackend, VerificationPhase, VerificationPlan, VerificationReceipt,
 };
 
 /// A driver failure. Coarse by kind so the host branches on the kind, not a deep cause chain.
@@ -33,15 +37,18 @@ pub enum DriverError {
     Guided(SettingId),
     /// Not writable on this environment (fail-closed reason).
     Unavailable(UnavailableReason),
-    /// The live environment moved between resolve and write.
-    EnvironmentChanged,
     /// A prepared transaction from a prior crash must be recovered before a new write.
     RecoveryRequired(Vec<u64>),
     /// The feature is not currently owned by DeskMakeover (restore has nothing to do).
     NotManaged(SettingId),
+    /// A write was interrupted; the transaction is prepared and awaits recovery.
+    Interrupted(u64),
+    /// A rollback/restore could not cleanly finish; the transaction stays prepared for recovery.
+    Pending { transaction: u64, cause: String },
     Registry(String),
     Journal(String),
     Verification(String),
+    Profile(String),
 }
 
 impl std::fmt::Display for DriverError {
@@ -50,33 +57,30 @@ impl std::fmt::Display for DriverError {
             Self::UnknownFeature(id) => write!(f, "unknown feature: {id}"),
             Self::Guided(id) => write!(f, "feature is guided, never written: {id}"),
             Self::Unavailable(reason) => write!(f, "unavailable: {reason:?}"),
-            Self::EnvironmentChanged => write!(f, "environment fingerprint changed"),
             Self::RecoveryRequired(ids) => write!(f, "recovery required for {ids:?}"),
             Self::NotManaged(id) => write!(f, "not managed: {id}"),
+            Self::Interrupted(txn) => write!(f, "interrupted, transaction {txn} awaits recovery"),
+            Self::Pending { transaction, cause } => {
+                write!(f, "transaction {transaction} pending recovery: {cause}")
+            }
             Self::Registry(m) => write!(f, "registry: {m}"),
             Self::Journal(m) => write!(f, "journal: {m}"),
             Self::Verification(m) => write!(f, "verification: {m}"),
+            Self::Profile(m) => write!(f, "profile probe: {m}"),
         }
     }
 }
 
 impl std::error::Error for DriverError {}
 
-/// The result of a crash-recovery pass.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RecoveryReport {
-    pub recovered: Vec<u64>,
-    pub conflicts: Vec<(u64, SettingId, String)>,
-}
-
 /// The calm settings driver over injected ports.
 pub struct TweakDriver<B, J, V, P> {
-    catalog: TweakCatalog,
-    manifest: VerificationManifest,
-    backend: B,
-    journal: J,
-    verifier: V,
-    profile: P,
+    pub(super) catalog: TweakCatalog,
+    pub(super) manifest: VerificationManifest,
+    pub(super) backend: B,
+    pub(super) journal: J,
+    pub(super) verifier: V,
+    pub(super) profile: P,
 }
 
 impl<B, J, V, P> TweakDriver<B, J, V, P>
@@ -108,28 +112,23 @@ where
     pub fn inspect(&self, feature: &SettingId) -> Result<ProbeOutcome, DriverError> {
         let descriptor = self.descriptor(feature)?;
         let environment = self.probe_environment()?;
+        let lease = self.lease()?;
 
         if descriptor.tier == TweakTier::Guided {
-            // Guided rows have no writable state; the frontend drives them via the route.
             return Ok(ProbeOutcome::Pushing);
         }
-
-        // A present policy guard means the feature is managed — reported, never written.
         if self.guard_present(descriptor)?.is_some() {
             return Ok(ProbeOutcome::Managed);
         }
 
-        // A managed anchor whose live values still match → owned; a moved value → drifted.
-        if let Some(managed) = self.managed(feature)? {
-            let mut all_match = true;
-            for value in &managed.values {
-                let live = self.read(&value.address)?;
-                if live != value.last_applied {
-                    all_match = false;
-                    break;
-                }
+        // An owned anchor: a crossed certification boundary outranks ownership; else intact →
+        // owned-quiet, moved → drifted.
+        if let Some(managed) = self.journal_managed(&lease, feature)? {
+            if environment != managed.environment {
+                return Ok(ProbeOutcome::NeedsReconfirm);
             }
-            return Ok(if all_match {
+            let intact = self.all_leaves_match(&managed)?;
+            return Ok(if intact {
                 ProbeOutcome::OwnedQuiet
             } else {
                 ProbeOutcome::OwnedDrifted
@@ -140,7 +139,6 @@ where
             Capability::Unavailable(reason) => Ok(ProbeOutcome::Unsupported(reason)),
             Capability::ManualOnly => Ok(ProbeOutcome::Pushing),
             Capability::Available | Capability::Advanced => {
-                // Certified-writable but not owned: already quiet if every desired value is live.
                 let mut already_quiet = true;
                 for mutation in &descriptor.mutations {
                     if self.read(&mutation.address)? != mutation.desired {
@@ -157,15 +155,20 @@ where
         }
     }
 
-    /// Apply one feature: journal, CAS-write with immediate read-back, prove the terminal state,
-    /// then commit ownership. Idempotent — re-applying an owned feature returns `Verified`.
+    /// Apply one feature: capture the receipt, journal, CAS-write with immediate read-back, prove
+    /// the terminal state, then commit ownership. A previously-owned feature is re-established
+    /// (its TRUE original is preserved), so a drifted row re-closes correctly.
     pub fn apply(&mut self, feature: &SettingId) -> Result<ApplyOutcome, DriverError> {
-        self.require_recovery_complete()?;
+        let lease = self.lease()?;
+        self.require_recovery_complete(&lease)?;
         let descriptor = self.descriptor(feature)?.clone();
         if descriptor.tier == TweakTier::Guided {
             return Err(DriverError::Guided(feature.clone()));
         }
         let environment = self.probe_environment()?;
+        if let Some(guard) = self.guard_present(&descriptor)? {
+            return Err(DriverError::Unavailable(UnavailableReason::PolicyManaged(guard)));
+        }
         let capability = self.manifest.evaluate(feature, &environment);
         if !capability.permits_write() {
             return match capability {
@@ -173,54 +176,61 @@ where
                 _ => Err(DriverError::Unavailable(UnavailableReason::FeatureNotVerified)),
             };
         }
-
-        // Idempotent: already owned → nothing to do, the write is verified.
-        if self.managed(feature)?.is_some() {
-            return Ok(ApplyOutcome::Verified);
+        // The capability variant MUST match the descriptor's tier — a manifest that pairs an
+        // Advanced recipe with a Standard rule (or vice versa) is a certification mismatch, never
+        // a licence to write through the wrong gate (codex W1 #6).
+        let expected = match descriptor.tier {
+            TweakTier::AutomaticCandidate => Capability::Available,
+            TweakTier::Advanced => Capability::Advanced,
+            TweakTier::Guided => unreachable!("guided returned above"),
+        };
+        if capability != expected {
+            return Err(DriverError::Unavailable(UnavailableReason::FeatureNotVerified));
         }
 
-        // A present policy guard means the feature is managed — never overwrite or delete it.
-        if let Some(guard) = self.guard_present(&descriptor)? {
-            return Err(DriverError::Unavailable(UnavailableReason::PolicyManaged(guard)));
-        }
-
-        // Reject a backend-managed target and validate the live base value of each leaf.
+        // Validate the live base of each leaf; a missing key, unexpected kind, or backend-managed
+        // target is skipped WITHOUT a write rather than clobbered.
         for mutation in &descriptor.mutations {
-            if self.is_policy_managed(&mutation.address)? {
+            if self.is_backend_managed(&mutation.address)? {
                 return Err(DriverError::Unavailable(UnavailableReason::PolicyManaged(
                     mutation.address.clone(),
                 )));
             }
-            let live = self.read(&mutation.address)?;
-            if !mutation.accepts(&live) {
-                // The environment changed between probe and apply, or an unexpected kind: skip
-                // without a write rather than clobber.
-                return Ok(ApplyOutcome::Skipped(
-                    dm_domain::system_tweaks::SkipReason::Changed,
-                ));
+            if !mutation.accepts(&self.read(&mutation.address)?) {
+                return Ok(ApplyOutcome::Skipped(SkipReason::Changed));
             }
         }
 
-        let values = self.transaction_values(&descriptor.mutations)?;
+        let managed_before = self.journal_managed(&lease, feature)?;
         let plan = VerificationPlan::new(
             descriptor
                 .effect_verifier
                 .expect("catalog guarantees a writable recipe has an effect verifier"),
         );
+        // Receipt captured BEFORE the first write (contract 5).
+        let receipt = self
+            .verifier
+            .prepare_receipt(&self.backend, plan)
+            .map_err(|error| DriverError::Verification(error.to_string()))?;
+        let values = self.apply_values(&descriptor.mutations, managed_before.as_ref())?;
+
         let transaction = self
             .journal
             .prepare(
-                feature.clone(),
-                descriptor.recipe_version,
-                environment.clone(),
-                plan,
-                TransactionIntent::Apply,
-                values.clone(),
-                None,
+                &lease,
+                PrepareRequest {
+                    feature: feature.clone(),
+                    recipe_version: descriptor.recipe_version,
+                    environment: environment.clone(),
+                    verification: plan,
+                    receipt: receipt.clone(),
+                    intent: TransactionIntent::Apply,
+                    values: values.clone(),
+                    managed_before: managed_before.clone(),
+                },
             )
             .map_err(|error| DriverError::Journal(error.to_string()))?;
 
-        // Write each leaf with a logical CAS, then confirm the raw read-back immediately.
         for value in &values {
             match self.backend.compare_exchange(
                 RegistryWriteIntent::Apply,
@@ -229,27 +239,27 @@ where
                 &value.desired,
             ) {
                 Ok(_) => {
-                    let readback = self.read(&value.address)?;
-                    if readback != value.desired {
-                        return self.rollback_apply(transaction, feature, &values, "read-back");
+                    if self.read(&value.address)? != value.desired {
+                        return self.fail_apply(&lease, transaction, feature, &values, plan, &receipt, "read-back");
                     }
                 }
-                Err(RegistryError::Interrupted) => {
-                    // The write may have committed; leave the transaction prepared for recovery.
-                    return Err(DriverError::Registry("interrupted".into()));
+                Err(dm_domain::system_tweaks::RegistryError::Interrupted) => {
+                    // The write may have committed; leave prepared for recovery.
+                    return Err(DriverError::Interrupted(transaction));
                 }
                 Err(error) => {
-                    return self.rollback_apply(transaction, feature, &values, &error.to_string());
+                    return self.fail_apply(&lease, transaction, feature, &values, plan, &receipt, &error.to_string());
                 }
             }
         }
 
-        // Terminal proof: the same environment, delayed read-back, and the effect verifier.
         if self.probe_environment()? != environment {
-            return self.rollback_apply(transaction, feature, &values, "environment changed");
+            return self.fail_apply(&lease, transaction, feature, &values, plan, &receipt, "environment changed");
         }
-        if let Err(cause) = self.verify_terminal(VerificationPhase::ApplyDesired, plan, &values) {
-            return self.rollback_apply(transaction, feature, &values, &cause);
+        if let Err(cause) =
+            self.verify_terminal(VerificationPhase::ApplyDesired, plan, &receipt, &values)
+        {
+            return self.fail_apply(&lease, transaction, feature, &values, plan, &receipt, &cause);
         }
 
         let managed = ManagedSetting {
@@ -257,6 +267,7 @@ where
             recipe_version: descriptor.recipe_version,
             environment,
             verification: plan,
+            apply_receipt: receipt,
             last_transaction: transaction,
             values: values
                 .into_iter()
@@ -268,30 +279,21 @@ where
                 .collect(),
         };
         self.journal
-            .commit_apply(transaction, managed)
+            .commit_apply(&lease, transaction, managed)
             .map_err(|error| DriverError::Journal(error.to_string()))?;
         Ok(ApplyOutcome::Verified)
     }
 
-    /// Restore one owned feature to its true original. Refuses to overwrite a value the user
-    /// changed externally (external conflict → the row is disowned, never clobbered).
+    /// Restore one owned feature to its true original. A value the user changed externally is
+    /// disowned through a generation-guarded restore transaction — never overwritten.
     pub fn restore(&mut self, feature: &SettingId) -> Result<RestoreOutcome, DriverError> {
-        self.require_recovery_complete()?;
+        let lease = self.lease()?;
+        self.require_recovery_complete(&lease)?;
         let managed = self
-            .managed(feature)?
+            .journal_managed(&lease, feature)?
             .ok_or_else(|| DriverError::NotManaged(feature.clone()))?;
 
-        for value in &managed.values {
-            let live = self.read(&value.address)?;
-            if live != value.last_applied {
-                // Hand-edited since our write → it is theirs now; disown, do not overwrite.
-                self.journal
-                    .commit_restore(managed.last_transaction, feature)
-                    .map_err(|error| DriverError::Journal(error.to_string()))?;
-                return Ok(RestoreOutcome::SkippedExternalConflict);
-            }
-        }
-
+        let external_conflict = !self.all_leaves_match(&managed)?;
         let values: Vec<TransactionValue> = managed
             .values
             .iter()
@@ -305,105 +307,92 @@ where
         let transaction = self
             .journal
             .prepare(
-                feature.clone(),
-                managed.recipe_version,
-                managed.environment.clone(),
-                managed.verification,
-                TransactionIntent::Restore,
-                values.clone(),
-                Some(managed.clone()),
+                &lease,
+                PrepareRequest {
+                    feature: feature.clone(),
+                    recipe_version: managed.recipe_version,
+                    environment: managed.environment.clone(),
+                    verification: managed.verification,
+                    receipt: managed.apply_receipt.clone(),
+                    intent: TransactionIntent::Restore,
+                    values: values.clone(),
+                    managed_before: Some(managed.clone()),
+                },
             )
             .map_err(|error| DriverError::Journal(error.to_string()))?;
 
-        for value in &values {
-            self.backend
-                .compare_exchange(
-                    RegistryWriteIntent::Undo,
-                    &value.address,
-                    &value.before,
-                    &value.desired,
-                )
-                .map_err(|error| DriverError::Registry(error.to_string()))?;
+        if external_conflict {
+            // Disown without writing — the user's values stand.
+            self.journal
+                .commit_restore(&lease, transaction, feature)
+                .map_err(|error| DriverError::Journal(error.to_string()))?;
+            return Ok(RestoreOutcome::SkippedExternalConflict);
         }
-        self.verify_terminal(
+
+        // Clean restore: each live value is the last_applied we own → CAS it back to original.
+        for value in &values {
+            if let Err(error) = self.backend.compare_exchange(
+                RegistryWriteIntent::Undo,
+                &value.address,
+                &value.before,
+                &value.desired,
+            ) {
+                return Err(DriverError::Pending {
+                    transaction,
+                    cause: error.to_string(),
+                });
+            }
+        }
+        if let Err(cause) = self.verify_terminal(
             VerificationPhase::RestoreOriginal,
             managed.verification,
+            &managed.apply_receipt,
             &values,
-        )
-        .map_err(DriverError::Verification)?;
+        ) {
+            return Err(DriverError::Pending { transaction, cause });
+        }
         self.journal
-            .commit_restore(transaction, feature)
+            .commit_restore(&lease, transaction, feature)
             .map_err(|error| DriverError::Journal(error.to_string()))?;
         Ok(RestoreOutcome::Restored)
     }
 
-    /// Finish every transaction a crash left prepared: roll an apply back to originals, or drive a
-    /// restore forward to originals, re-proving the terminal state under recovery mode.
-    pub fn recover(&mut self) -> Result<RecoveryReport, DriverError> {
-        let mut report = RecoveryReport::default();
-        let incomplete = self
-            .journal
-            .incomplete()
-            .map_err(|error| DriverError::Journal(error.to_string()))?;
-        for entry in incomplete {
-            let phase = match entry.intent {
-                TransactionIntent::Apply => VerificationPhase::ApplyRollback,
-                TransactionIntent::Restore => VerificationPhase::RestoreOriginal,
-            };
-            match self.recover_entry(&entry.values, phase, entry.verification) {
-                Ok(()) => {
-                    let result = match entry.intent {
-                        TransactionIntent::Apply => {
-                            self.journal.mark_apply_rolled_back(entry.id, &entry.feature)
-                        }
-                        TransactionIntent::Restore => {
-                            self.journal.commit_restore(entry.id, &entry.feature)
-                        }
-                    };
-                    result.map_err(|error| DriverError::Journal(error.to_string()))?;
-                    report.recovered.push(entry.id);
-                }
-                Err(cause) => report.conflicts.push((entry.id, entry.feature, cause)),
-            }
-        }
-        Ok(report)
-    }
+    // ---- internals shared with recovery / engine ----
 
-    // ---- internals ----
-
-    fn descriptor(&self, feature: &SettingId) -> Result<&TweakDescriptor, DriverError> {
+    pub(super) fn descriptor(&self, feature: &SettingId) -> Result<&TweakDescriptor, DriverError> {
         self.catalog
             .descriptor(feature)
             .ok_or_else(|| DriverError::UnknownFeature(feature.clone()))
     }
 
-    fn probe_environment(&self) -> Result<WindowsEnvironment, DriverError> {
-        self.profile
-            .probe()
-            .map_err(|_| DriverError::EnvironmentChanged)
+    pub(super) fn lease(&self) -> Result<J::Lease, DriverError> {
+        self.journal
+            .acquire_writer_lease()
+            .map_err(|error| DriverError::Journal(error.to_string()))
     }
 
-    fn read(&self, address: &dm_domain::system_tweaks::RegistryAddress) -> Result<RegistrySnapshot, DriverError> {
+    pub(super) fn probe_environment(&self) -> Result<WindowsEnvironment, DriverError> {
+        self.profile
+            .probe()
+            .map_err(|error| DriverError::Profile(error.to_string()))
+    }
+
+    pub(super) fn read(&self, address: &RegistryAddress) -> Result<RegistrySnapshot, DriverError> {
         self.backend
             .read(address)
             .map_err(|error| DriverError::Registry(error.to_string()))
     }
 
-    fn is_policy_managed(
-        &self,
-        address: &dm_domain::system_tweaks::RegistryAddress,
-    ) -> Result<bool, DriverError> {
+    fn is_backend_managed(&self, address: &RegistryAddress) -> Result<bool, DriverError> {
         self.backend
             .is_policy_managed(address)
             .map_err(|error| DriverError::Registry(error.to_string()))
     }
 
-    /// The first present policy-guard address for a descriptor, if any — its presence means the
-    /// feature is managed and the app must not write it (it is only ever read).
     fn guard_present(
         &self,
         descriptor: &TweakDescriptor,
-    ) -> Result<Option<dm_domain::system_tweaks::RegistryAddress>, DriverError> {
+    ) -> Result<Option<RegistryAddress>, DriverError> {
         for guard in &descriptor.policy_guards {
             if self.read(&guard.address)?.value().is_some() {
                 return Ok(Some(guard.address.clone()));
@@ -412,16 +401,30 @@ where
         Ok(None)
     }
 
-    fn managed(&self, feature: &SettingId) -> Result<Option<ManagedSetting>, DriverError> {
+    pub(super) fn journal_managed(
+        &self,
+        lease: &J::Lease,
+        feature: &SettingId,
+    ) -> Result<Option<ManagedSetting>, DriverError> {
         self.journal
-            .managed(feature)
+            .managed(lease, feature)
             .map_err(|error| DriverError::Journal(error.to_string()))
     }
 
-    fn require_recovery_complete(&self) -> Result<(), DriverError> {
+    /// Whether every owned leaf's live value still equals what we last applied.
+    fn all_leaves_match(&self, managed: &ManagedSetting) -> Result<bool, DriverError> {
+        for value in &managed.values {
+            if self.read(&value.address)? != value.last_applied {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    pub(super) fn require_recovery_complete(&self, lease: &J::Lease) -> Result<(), DriverError> {
         let incomplete = self
             .journal
-            .incomplete()
+            .incomplete(lease)
             .map_err(|error| DriverError::Journal(error.to_string()))?;
         if incomplete.is_empty() {
             Ok(())
@@ -432,19 +435,30 @@ where
         }
     }
 
-    /// Build the transaction leaves for a fresh apply: since we never owned the feature, the true
-    /// original AND the live-before value are both the current snapshot.
-    fn transaction_values(
+    /// Build the transaction leaves for an apply. The live-before is the current snapshot; the
+    /// TRUE original is preserved from the managed anchor on a re-apply (so a later restore returns
+    /// to the real original, not a drifted value), else it is the current snapshot.
+    fn apply_values(
         &self,
         mutations: &[SettingMutation],
+        managed_before: Option<&ManagedSetting>,
     ) -> Result<Vec<TransactionValue>, DriverError> {
         mutations
             .iter()
             .map(|mutation| {
                 let current = self.read(&mutation.address)?;
+                let original = managed_before
+                    .and_then(|managed| {
+                        managed
+                            .values
+                            .iter()
+                            .find(|value| value.address == mutation.address)
+                            .map(|value| value.original.clone())
+                    })
+                    .unwrap_or_else(|| current.clone());
                 Ok(TransactionValue {
                     address: mutation.address.clone(),
-                    original: current.clone(),
+                    original,
                     before: current,
                     desired: mutation.desired.clone(),
                 })
@@ -452,103 +466,4 @@ where
             .collect()
     }
 
-    /// Roll a failed apply back to originals in reverse order, then mark it rolled back.
-    fn rollback_apply(
-        &mut self,
-        transaction: u64,
-        feature: &SettingId,
-        values: &[TransactionValue],
-        cause: &str,
-    ) -> Result<ApplyOutcome, DriverError> {
-        self.rollback_to_original(values);
-        self.journal
-            .mark_apply_rolled_back(transaction, feature)
-            .map_err(|error| DriverError::Journal(error.to_string()))?;
-        // A failed apply is honestly reverted (retryable), not silently dropped. The cause is
-        // recorded for diagnostics; the row simply pushes again.
-        let _ = cause;
-        Ok(ApplyOutcome::Reverted)
-    }
-
-    /// Best-effort restore of each leaf to its original, reverse order; failures do not abort the
-    /// remaining rollbacks (an incomplete transaction stays for recovery).
-    fn rollback_to_original(&mut self, values: &[TransactionValue]) {
-        for value in values.iter().rev() {
-            let live = match self.backend.read(&value.address) {
-                Ok(live) => live,
-                Err(_) => continue,
-            };
-            let _ = self.backend.compare_exchange(
-                RegistryWriteIntent::Undo,
-                &value.address,
-                &live,
-                &value.original,
-            );
-        }
-    }
-
-    fn recover_entry(
-        &mut self,
-        values: &[TransactionValue],
-        phase: VerificationPhase,
-        plan: VerificationPlan,
-    ) -> Result<(), String> {
-        self.rollback_to_original(values);
-        self.verify_terminal_mode(phase, plan, values, ExecutionMode::UnattendedRecovery)
-    }
-
-    fn verify_terminal(
-        &mut self,
-        phase: VerificationPhase,
-        plan: VerificationPlan,
-        values: &[TransactionValue],
-    ) -> Result<(), String> {
-        self.verify_terminal_mode(phase, plan, values, ExecutionMode::Foreground)
-    }
-
-    /// Test-only: the journal, to assert ownership after a driver operation.
-    #[cfg(test)]
-    pub(crate) fn journal_ref(&self) -> &J {
-        &self.journal
-    }
-
-    /// Test-only: the backend, to inject an external edit between driver operations.
-    #[cfg(test)]
-    pub(crate) fn backend_mut(&mut self) -> &mut B {
-        &mut self.backend
-    }
-
-    fn verify_terminal_mode(
-        &mut self,
-        phase: VerificationPhase,
-        plan: VerificationPlan,
-        values: &[TransactionValue],
-        mode: ExecutionMode,
-    ) -> Result<(), String> {
-        let expected: Vec<_> = values
-            .iter()
-            .map(|value| (value.address.clone(), expected_terminal(phase, value)))
-            .collect();
-        let context = VerificationContext {
-            phase,
-            plan,
-            execution_mode: mode,
-            expected: expected.clone(),
-        };
-        self.verifier
-            .settle(&mut self.backend, &context)
-            .map_err(|error| error.to_string())?;
-        for (address, want) in &expected {
-            let live = self
-                .backend
-                .read(address)
-                .map_err(|error| error.to_string())?;
-            if &live != want {
-                return Err(format!("delayed read-back mismatch at {address}"));
-            }
-        }
-        self.verifier
-            .verify_effect(&self.backend, &context)
-            .map_err(|error| error.to_string())
-    }
 }

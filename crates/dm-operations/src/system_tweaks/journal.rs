@@ -2,17 +2,28 @@
 //!
 //! A separate contract from the icon `txn::JournalSink` (that spine is keyed on `ItemId` +
 //! `Fingerprint` + `RestoreAnchor` — icon concepts; a registry tweak is keyed on
-//! `RegistryAddress` + `RegistrySnapshot`). This mirrors the research reference's `JournalStore`:
-//! every transaction is durably PREPARED before the first registry write and only COMMITTED after
-//! terminal verification, so a crash at any point is recoverable.
+//! `RegistryAddress` + `RegistrySnapshot`). Every transaction is durably PREPARED before the first
+//! registry write and only COMMITTED after terminal verification, so a crash at any point is
+//! recoverable.
 //!
-//! W1 scope: an in-memory implementation, Mac-testable. A durable SQLite/WAL adapter with a
-//! cross-process writer lease is a later slice (the reference explicitly ships the memory journal
-//! and documents the SQLite requirement).
+//! Two guarantees the trait bakes in so a durable SQLite/WAL adapter can be dropped in later
+//! WITHOUT changing the protocol (codex W1 review #3):
+//!   1. an unforgeable [`WriterLease`] token threads `acquire → prepare → writes → commit`, so an
+//!      inspect-to-prepare lock gap is unrepresentable at the call boundary;
+//!   2. every terminal method is GENERATION-GUARDED — a commit is conditional on the managed
+//!      generation seen at prepare, and prepare refuses to run while any transaction is still
+//!      incomplete, so a stale writer can never clobber a newer managed record.
+//!
+//! W1 scope: an in-memory implementation. A durable cross-process adapter is a later slice.
 
 use dm_domain::system_tweaks::{RegistryAddress, RegistrySnapshot, SettingId, WindowsEnvironment};
 
-use super::verify::VerificationPlan;
+use super::verify::{VerificationPlan, VerificationReceipt};
+
+/// An unforgeable proof that the holder owns the cross-process writer lease for the whole
+/// transaction. `JournalStore` methods require the associated lease type, so a caller cannot
+/// prepare or commit without first acquiring it — closing the inspect-to-prepare gap.
+pub trait WriterLease {}
 
 /// Whether a journalled transaction is applying a recipe or restoring originals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,11 +59,13 @@ pub struct JournalEntry {
     pub environment: WindowsEnvironment,
     /// Persisted before any write so recovery cannot pick a weaker verifier than apply used.
     pub verification: VerificationPlan,
+    /// Persisted pre-write evidence reused verbatim by terminal verification and recovery.
+    pub receipt: VerificationReceipt,
     pub intent: TransactionIntent,
     pub state: TransactionState,
     pub values: Vec<TransactionValue>,
-    /// The anchor visible before prepare; a commit is conditional on this generation so a stale
-    /// writer can never overwrite a newer managed record.
+    /// The managed anchor visible before prepare; a commit is conditional on this generation so a
+    /// stale writer can never overwrite a newer managed record, and a rollback restores it.
     pub managed_before: Option<ManagedSetting>,
 }
 
@@ -63,6 +76,9 @@ pub struct ManagedSetting {
     pub recipe_version: u32,
     pub environment: WindowsEnvironment,
     pub verification: VerificationPlan,
+    /// The receipt proved at the apply that installed this anchor (audit trail; a restore writes a
+    /// fresh journal receipt of its own).
+    pub apply_receipt: VerificationReceipt,
     pub last_transaction: u64,
     pub values: Vec<ManagedValue>,
 }
@@ -87,53 +103,81 @@ impl std::fmt::Display for JournalError {
 
 impl std::error::Error for JournalError {}
 
-/// The durable transaction record. A production adapter combines a SQLite WAL transaction with an
-/// OS file lock; this contract already forbids an inspect-to-prepare gap by threading the same
-/// store through the whole apply/restore call.
-pub trait JournalStore {
-    /// Durably record a prepared transaction before any registry write; returns its id.
-    #[allow(clippy::too_many_arguments)]
-    fn prepare(
-        &mut self,
-        feature: SettingId,
-        recipe_version: u32,
-        environment: WindowsEnvironment,
-        verification: VerificationPlan,
-        intent: TransactionIntent,
-        values: Vec<TransactionValue>,
-        managed_before: Option<ManagedSetting>,
-    ) -> Result<u64, JournalError>;
+/// The arguments to [`JournalStore::prepare`], grouped so the call is not a wall of positional
+/// parameters.
+pub struct PrepareRequest {
+    pub feature: SettingId,
+    pub recipe_version: u32,
+    pub environment: WindowsEnvironment,
+    pub verification: VerificationPlan,
+    pub receipt: VerificationReceipt,
+    pub intent: TransactionIntent,
+    pub values: Vec<TransactionValue>,
+    /// The managed generation the caller observed under the lease; prepare rejects a stale value.
+    pub managed_before: Option<ManagedSetting>,
+}
 
-    /// Transactions that were prepared but never reached a terminal state (crash recovery input).
-    fn incomplete(&self) -> Result<Vec<JournalEntry>, JournalError>;
+/// The durable transaction record. A production adapter combines a SQLite WAL transaction with an
+/// OS file lock behind the same lease; the generation guards here are the protocol a durable
+/// adapter must honour.
+pub trait JournalStore {
+    type Lease: WriterLease;
+
+    /// Acquire the cross-process writer lease held for the whole transaction.
+    fn acquire_writer_lease(&self) -> Result<Self::Lease, JournalError>;
+
+    /// Durably record a prepared transaction before any registry write; returns its id. Rejects
+    /// if any transaction is still incomplete, or if `managed_before` no longer matches the live
+    /// managed generation for the feature (a stale caller observation).
+    fn prepare(&mut self, lease: &Self::Lease, request: PrepareRequest)
+        -> Result<u64, JournalError>;
+
+    /// Transactions prepared but never terminal (crash recovery input).
+    fn incomplete(&self, lease: &Self::Lease) -> Result<Vec<JournalEntry>, JournalError>;
 
     /// The committed anchor for one feature, if DeskMakeover currently owns it.
-    fn managed(&self, feature: &SettingId) -> Result<Option<ManagedSetting>, JournalError>;
+    fn managed(
+        &self,
+        lease: &Self::Lease,
+        feature: &SettingId,
+    ) -> Result<Option<ManagedSetting>, JournalError>;
 
     /// Every committed anchor.
-    fn managed_all(&self) -> Result<Vec<ManagedSetting>, JournalError>;
+    fn managed_all(&self, lease: &Self::Lease) -> Result<Vec<ManagedSetting>, JournalError>;
 
-    /// Commit an apply: install the managed anchor and mark the transaction committed.
+    /// Commit an apply: install the managed anchor and mark the transaction committed. Validates
+    /// the entry is `Prepared` + `Apply` for this feature and the managed generation still matches.
     fn commit_apply(
         &mut self,
+        lease: &Self::Lease,
         transaction: u64,
         setting: ManagedSetting,
     ) -> Result<(), JournalError>;
 
-    /// Commit a restore: drop the managed anchor and mark the transaction committed.
+    /// Commit a restore: drop the managed anchor and mark the transaction committed. Validates the
+    /// entry is `Prepared` + `Restore` for this feature and the managed generation still matches.
     fn commit_restore(
         &mut self,
+        lease: &Self::Lease,
         transaction: u64,
         feature: &SettingId,
     ) -> Result<(), JournalError>;
 
-    /// Mark a prepared apply as rolled back (its originals were restored).
+    /// Mark a prepared apply rolled back: RESTORE its `managed_before` anchor (never blindly
+    /// delete a possibly-newer one) and mark the transaction rolled back.
     fn mark_apply_rolled_back(
         &mut self,
+        lease: &Self::Lease,
         transaction: u64,
         feature: &SettingId,
     ) -> Result<(), JournalError>;
 }
+
+/// The in-memory lease — a zero-sized unforgeable token (only the store constructs it).
+#[derive(Debug)]
+pub struct MemoryLease(());
+
+impl WriterLease for MemoryLease {}
 
 /// Deterministic in-memory journal used by tests and the Mac devhost loop.
 #[derive(Debug, Default)]
@@ -148,42 +192,114 @@ impl MemoryJournal {
         Self::default()
     }
 
-    fn entry_mut(&mut self, transaction: u64) -> Result<&mut JournalEntry, JournalError> {
-        self.entries
-            .iter_mut()
+    fn managed_for(&self, feature: &SettingId) -> Option<ManagedSetting> {
+        self.managed
+            .iter()
+            .find(|setting| &setting.feature == feature)
+            .cloned()
+    }
+
+    /// The prepared (still-incomplete) entry for `transaction`, validated to match `intent` and
+    /// `feature` and to still agree with the live managed generation it was prepared against.
+    fn guarded_entry(
+        &self,
+        transaction: u64,
+        intent: TransactionIntent,
+        feature: &SettingId,
+    ) -> Result<&JournalEntry, JournalError> {
+        let entry = self
+            .entries
+            .iter()
             .find(|entry| entry.id == transaction)
-            .ok_or_else(|| JournalError(format!("unknown transaction {transaction}")))
+            .ok_or_else(|| JournalError(format!("unknown transaction {transaction}")))?;
+        if entry.state != TransactionState::Prepared {
+            return Err(JournalError(format!(
+                "transaction {transaction} is not prepared ({:?})",
+                entry.state
+            )));
+        }
+        if entry.intent != intent {
+            return Err(JournalError(format!(
+                "transaction {transaction} intent mismatch"
+            )));
+        }
+        if &entry.feature != feature {
+            return Err(JournalError(format!(
+                "transaction {transaction} feature mismatch"
+            )));
+        }
+        if self.managed_for(feature) != entry.managed_before {
+            return Err(JournalError(format!(
+                "managed generation moved under transaction {transaction}"
+            )));
+        }
+        Ok(entry)
+    }
+
+    fn set_state(&mut self, transaction: u64, state: TransactionState) {
+        if let Some(entry) = self.entries.iter_mut().find(|entry| entry.id == transaction) {
+            entry.state = state;
+        }
+    }
+
+    fn install_anchor(&mut self, setting: ManagedSetting) {
+        self.managed.retain(|s| s.feature != setting.feature);
+        self.managed.push(setting);
+    }
+
+    fn set_anchor(&mut self, feature: &SettingId, anchor: Option<ManagedSetting>) {
+        self.managed.retain(|s| &s.feature != feature);
+        if let Some(anchor) = anchor {
+            self.managed.push(anchor);
+        }
     }
 }
 
 impl JournalStore for MemoryJournal {
+    type Lease = MemoryLease;
+
+    fn acquire_writer_lease(&self) -> Result<Self::Lease, JournalError> {
+        Ok(MemoryLease(()))
+    }
+
     fn prepare(
         &mut self,
-        feature: SettingId,
-        recipe_version: u32,
-        environment: WindowsEnvironment,
-        verification: VerificationPlan,
-        intent: TransactionIntent,
-        values: Vec<TransactionValue>,
-        managed_before: Option<ManagedSetting>,
+        _lease: &Self::Lease,
+        request: PrepareRequest,
     ) -> Result<u64, JournalError> {
+        // A new transaction may not begin while another is incomplete (atomic gate).
+        if self
+            .entries
+            .iter()
+            .any(|entry| entry.state == TransactionState::Prepared)
+        {
+            return Err(JournalError("a prior transaction is still incomplete".into()));
+        }
+        // The caller's observed generation must still be live.
+        if self.managed_for(&request.feature) != request.managed_before {
+            return Err(JournalError(format!(
+                "managed generation moved before prepare of {}",
+                request.feature
+            )));
+        }
         self.next_id += 1;
         let id = self.next_id;
         self.entries.push(JournalEntry {
             id,
-            feature,
-            recipe_version,
-            environment,
-            verification,
-            intent,
+            feature: request.feature,
+            recipe_version: request.recipe_version,
+            environment: request.environment,
+            verification: request.verification,
+            receipt: request.receipt,
+            intent: request.intent,
             state: TransactionState::Prepared,
-            values,
-            managed_before,
+            values: request.values,
+            managed_before: request.managed_before,
         });
         Ok(id)
     }
 
-    fn incomplete(&self) -> Result<Vec<JournalEntry>, JournalError> {
+    fn incomplete(&self, _lease: &Self::Lease) -> Result<Vec<JournalEntry>, JournalError> {
         Ok(self
             .entries
             .iter()
@@ -192,60 +308,54 @@ impl JournalStore for MemoryJournal {
             .collect())
     }
 
-    fn managed(&self, feature: &SettingId) -> Result<Option<ManagedSetting>, JournalError> {
-        Ok(self
-            .managed
-            .iter()
-            .find(|setting| &setting.feature == feature)
-            .cloned())
+    fn managed(
+        &self,
+        _lease: &Self::Lease,
+        feature: &SettingId,
+    ) -> Result<Option<ManagedSetting>, JournalError> {
+        Ok(self.managed_for(feature))
     }
 
-    fn managed_all(&self) -> Result<Vec<ManagedSetting>, JournalError> {
+    fn managed_all(&self, _lease: &Self::Lease) -> Result<Vec<ManagedSetting>, JournalError> {
         Ok(self.managed.clone())
     }
 
     fn commit_apply(
         &mut self,
+        _lease: &Self::Lease,
         transaction: u64,
         setting: ManagedSetting,
     ) -> Result<(), JournalError> {
-        // Conditional on the generation seen at prepare: a stale writer cannot clobber a newer
-        // managed record (the reference's atomic entry+anchor rule).
-        let expected = self.entry_mut(transaction)?.managed_before.clone();
-        let current = self
-            .managed
-            .iter()
-            .find(|s| s.feature == setting.feature)
-            .cloned();
-        if current != expected {
-            return Err(JournalError(format!(
-                "managed generation moved under transaction {transaction}"
-            )));
-        }
-        self.entry_mut(transaction)?.state = TransactionState::Committed;
-        self.managed.retain(|s| s.feature != setting.feature);
-        self.managed.push(setting);
+        self.guarded_entry(transaction, TransactionIntent::Apply, &setting.feature)?;
+        self.set_state(transaction, TransactionState::Committed);
+        self.install_anchor(setting);
         Ok(())
     }
 
     fn commit_restore(
         &mut self,
+        _lease: &Self::Lease,
         transaction: u64,
         feature: &SettingId,
     ) -> Result<(), JournalError> {
-        self.entry_mut(transaction)?.state = TransactionState::Committed;
-        self.managed.retain(|s| &s.feature != feature);
+        self.guarded_entry(transaction, TransactionIntent::Restore, feature)?;
+        self.set_state(transaction, TransactionState::Committed);
+        self.set_anchor(feature, None);
         Ok(())
     }
 
     fn mark_apply_rolled_back(
         &mut self,
+        _lease: &Self::Lease,
         transaction: u64,
         feature: &SettingId,
     ) -> Result<(), JournalError> {
-        self.entry_mut(transaction)?.state = TransactionState::RolledBack;
-        // A rolled-back apply never owned the feature; ensure no anchor lingers.
-        self.managed.retain(|s| &s.feature != feature);
+        let entry = self.guarded_entry(transaction, TransactionIntent::Apply, feature)?;
+        // Restore the anchor that existed before this apply (None for a fresh apply, or the prior
+        // managed record for a re-apply). Never blindly delete a possibly-newer anchor.
+        let restore_to = entry.managed_before.clone();
+        self.set_state(transaction, TransactionState::RolledBack);
+        self.set_anchor(feature, restore_to);
         Ok(())
     }
 }

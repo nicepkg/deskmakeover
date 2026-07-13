@@ -153,7 +153,15 @@ impl RegistryBackend for MemoryRegistry {
             self.fail_on_cas = None;
             return Err(RegistryError::Io("injected compare-exchange failure".into()));
         }
-        // The calm recipes only write pre-existing keys, so a write never creates a key.
+        // W1 never creates a key: writing a value into a missing key is a driver bug, not a
+        // silent materialization. Fail closed so a regression test catches it.
+        if matches!(desired, RegistrySnapshot::Present(_))
+            && !self.keys.contains(&address.key_location())
+        {
+            return Err(RegistryError::Io(format!(
+                "refusing to create key for {address} (W1 writes only pre-existing keys)"
+            )));
+        }
         self.write(address, desired);
         self.successful_writes += 1;
         if self.interrupt_on_write == Some(self.successful_writes) {

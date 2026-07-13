@@ -8,8 +8,10 @@
 pub mod capability;
 pub mod catalog;
 pub mod driver;
+pub mod engine;
 pub mod fakes;
 pub mod journal;
+pub mod recovery;
 pub mod verify;
 
 #[cfg(test)]
@@ -22,13 +24,15 @@ pub use catalog::{
     first_batch, CatalogError, EffectVerifier, ForbiddenMutation, ManualRoute, PolicyGuard,
     TweakCatalog, TweakDescriptor, TweakTier,
 };
-pub use driver::{DriverError, RecoveryReport, TweakDriver};
+pub use driver::{DriverError, TweakDriver};
 pub use fakes::{MemoryProfileProbe, MemoryRegistry};
 pub use journal::{
     JournalEntry, JournalError, JournalStore, ManagedSetting, ManagedValue, MemoryJournal,
-    TransactionIntent, TransactionState, TransactionValue,
+    MemoryLease, PrepareRequest, TransactionIntent, TransactionState, TransactionValue,
+    WriterLease,
 };
+pub use recovery::{RecoveryConflict, RecoveryReport};
 pub use verify::{
     ExecutionMode, MemoryVerifier, VerificationBackend, VerificationBudget, VerificationContext,
-    VerificationError, VerificationPhase, VerificationPlan,
+    VerificationError, VerificationPhase, VerificationPlan, VerificationReceipt,
 };

@@ -268,12 +268,15 @@ impl RegistrySnapshot {
     }
 }
 
-/// Whether a recipe leaf may be created when its current value/key is missing.
+/// Whether a recipe leaf may be created when its current VALUE is missing. A missing KEY is a
+/// separate, stricter matter: W1 creates no registry key, so a `KeyMissing` snapshot is always
+/// fail-closed regardless of this policy (see [`SettingMutation::accepts`]). Key creation +
+/// reverse-order key cleanup is a documented later slice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MissingPolicy {
-    /// A documented primary preference may create a missing value (and, when journaled, its key).
+    /// A documented primary preference may create a missing VALUE when its key already exists.
     CreateAllowed,
-    /// An existing-only companion or advanced leaf. Missing is inapplicable, never created blindly.
+    /// An existing-only companion or advanced leaf. A missing value is inapplicable.
     MustAlreadyExist,
 }
 
@@ -288,14 +291,14 @@ pub struct SettingMutation {
 }
 
 impl SettingMutation {
-    /// Whether the current `snapshot` is an acceptable base for this mutation: a missing
-    /// value/key is fine only when creation is allowed; a present value must carry an accepted
-    /// kind (and a DWORD must be exactly 4 bytes wide).
+    /// Whether the current `snapshot` is an acceptable base for this mutation:
+    /// - a missing KEY is NEVER acceptable in W1 (no key creation — fail closed);
+    /// - a missing VALUE (key present) is acceptable only when creation is allowed;
+    /// - a present value must carry an accepted kind (and a DWORD must be exactly 4 bytes wide).
     pub fn accepts(&self, snapshot: &RegistrySnapshot) -> bool {
         match snapshot {
-            RegistrySnapshot::KeyMissing | RegistrySnapshot::ValueMissing => {
-                self.missing_policy == MissingPolicy::CreateAllowed
-            }
+            RegistrySnapshot::KeyMissing => false,
+            RegistrySnapshot::ValueMissing => self.missing_policy == MissingPolicy::CreateAllowed,
             RegistrySnapshot::Present(value) => {
                 self.accepted_existing_kinds.contains(&value.kind)
                     && (value.kind != RegistryValueKind::Dword || value.bytes.len() == 4)
@@ -366,7 +369,7 @@ mod tests {
             accepted_existing_kinds: vec![RegistryValueKind::Dword],
             missing_policy: MissingPolicy::MustAlreadyExist,
         };
-        // Missing, but creation is not allowed → rejected.
+        // Missing value, but creation is not allowed → rejected.
         assert!(!mutation.accepts(&RegistrySnapshot::ValueMissing));
         // Present with the accepted kind and a 4-byte width → accepted.
         assert!(mutation.accepts(&RegistrySnapshot::Present(RawRegistryValue::dword(1))));
@@ -375,5 +378,12 @@ mod tests {
             RegistryValueKind::String,
             b"x".to_vec()
         ))));
+        // A missing KEY is never acceptable in W1, even with CreateAllowed.
+        let create_allowed = SettingMutation {
+            missing_policy: MissingPolicy::CreateAllowed,
+            ..mutation.clone()
+        };
+        assert!(!create_allowed.accepts(&RegistrySnapshot::KeyMissing));
+        assert!(create_allowed.accepts(&RegistrySnapshot::ValueMissing));
     }
 }

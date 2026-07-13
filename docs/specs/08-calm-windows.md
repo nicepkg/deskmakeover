@@ -24,7 +24,10 @@ constitutionally untouchable.
 4th rail tile (above the pinned 设置). Shortcuts stay positional: Ctrl+1 图标 · Ctrl+2 壁纸 ·
 Ctrl+3 清爽 · Ctrl+4 设置 (spec 03 §1/§5 amended accordingly). The module replaces the work
 area like 设置 does (no desktop-mirror canvas in v1): a calm full page, page-scale type,
-using the grouped inset-card grammar. Anatomy top-to-bottom:
+using the grouped inset-card grammar. Full-page modules (清爽, 设置, any future page) share
+the ONE `FullPage` shell (`src/components/shell/full-page.tsx`): same max width, padding and
+header rhythm, so the h1 sits at the identical position on every page (owner 2026-07-13 —
+visual unity is a trust signal). Anatomy top-to-bottom:
 
 1. **Hero strip** — module title + one-line honest promise + the hero CTA 「一键清爽」
    (coral-ink solid; fires automatic-certified switches ONLY). After a successful apply the
@@ -37,8 +40,30 @@ using the grouped inset-card grammar. Anatomy top-to-bottom:
    default, quiet (tertiary text, existing disabled-slot grammar), each with a reason line.
    Never rendered as dead toggles.
 
-Groups render only when non-empty. Row grammar: 16px keyline glyph + label + status chip
-(right) + optional caption line (collateral disclosures, restart notes, asymmetry warnings).
+Groups render only when non-empty. Row grammar: per-row mini-screen schematic (104×64 SVG,
+`SurfaceSchematic`) + label + status chip (right) + optional caption line (collateral
+disclosures, restart notes, asymmetry warnings). Rows in groups 1–2 carry a per-row 「恢复」
+chip once the write is owned (`verified`/`setAwaiting`).
+
+### 2.1 Schematic contract (W0.6-viz, acceptance-passed 2026-07-13)
+
+The schematics are drawn AGAINST REAL Win11 screenshots (never from imagination; reference
+set archived in the session scratchpad, pixel truths inlined as comments in
+`src/components/calm/scenes.tsx`). Laws — each verifiable against the source:
+
+- **One coral highlight per frame** marks the operation area; `done` renders NO ghost
+  outline — the honest after-state is the clean surface, the row chip carries the receipt.
+- **No hollow sockets**: when noise leaves a surface, siblings REFLOW into the freed space
+  (`ReflowGroup`) or the panel RESIZES to hug remaining content (`ShrinkRect`), exactly like
+  the real desktop compacts. A faded element must never leave a phantom gap or width.
+- **The schematic is a view of `CalmRowState`** — it can never run ahead of verification;
+  noise exits only on `verified`/`confirmedOff`/`userAttested`/`quiet`; `setAwaiting` dims
+  in place.
+- **Copy and picture must agree**: what the copy promises stays (e.g. 开始菜单 keeps the
+  your-files row because the description says 「你自己的常用文件保留」).
+- **No establishing hero image** — it would hard-code a starter count the user can falsify.
+- Motion respects `prefers-reduced-motion` (fade-only / duration-0 fallbacks); OS-authentic
+  mirror hexes `#0067C0`/`#4CC2FF` are the reviewed banned-colors exception set.
 
 ## 3. Per-control state machine
 

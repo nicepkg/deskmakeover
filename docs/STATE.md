@@ -268,17 +268,21 @@ Documented follow-ups: the ①→②→③ finalize crash-window (not yet journa
 `notify`+`notify-debouncer-full`, spec 07 §3/§16). **Roadmap: B10 → M7.**
 
 **In flight / next (web):**
--2. **清爽 module Wave 0 + polish DONE (2026-07-13, ADR-0023 / spec 08 / plan
+-2. **清爽 module Wave 0 + polish + viz DONE (2026-07-13, ADR-0023 / spec 08 / plan
    2026-07-13-calm-windows-module.md):** web skeleton (catalog+state machine, CalmBackend
    port+mock, store, Direction-B page, rail 4th tile, i18n+copy gate) → codex R1 (2🔴+15🟠,
    ALL fixed) → owner complaint 「不知道关的是哪里」 → 3-seat polish panel → WHERE-axis
-   redesign (surface glyph pins + place tags + hero constellation band + located result
-   descs + inclusion checkboxes) + codex R2 closes (lost-reply=unknown+reprobe, never
-   unproven 已还原) → **designer acceptance PASS**
-   (`docs/reviews/2026-07-13-calm-page-polish-panel.md`; owner calls O1-O3 open; motion
-   pass deferred w/ re-acceptance booked). Gates: tsc · bun 568 · browser E2E evidence
-   `docs/plans/evidence/2026-07-calm/`. NEXT: Wave 1 Rust decision core (bridge schema
-   7→8), Wave 2 dm-windows blind, Wave 3 cert lab = the D2 gate.
+   redesign + codex R2 closes (lost-reply=unknown+reprobe, never unproven 已还原) →
+   **W0.6-viz (owner escalation ×3):** per-row 104×64 schematics drawn from REAL Win11
+   screenshots (panel ruling O4 `docs/reviews/2026-07-13-calm-schematic-panel.md`),
+   NoiseGroup/ReflowGroup/ShrinkRect honest-motion (no hollow sockets), no done-ghost, no
+   hero image, per-row 「恢复」, task-view glyph per owner pixels, shared `FullPage` shell
+   (清爽/设置 title parity) → **top-UX acceptance FAIL→`9e17d26`→re-verify PASS** (spec 08
+   §2/§2.1 amended). Gates: tsc · bun 575 · browser E2E evidence
+   `docs/plans/evidence/2026-07-calm/` + `.tmp-calm5` acceptance set. Owner calls open:
+   O1-O3 + 双成功色 (hero teal ✓已清爽 vs row coral ✓已生效 — unify or keep cross-module
+   teal). NEXT: codex adversarial review over the W0.6-viz diff, then Wave 1 Rust decision
+   core (bridge schema 7→8), Wave 2 dm-windows blind, Wave 3 cert lab = the D2 gate.
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all
    designer PASS): seven coordinate-bookmark presets (spectrum default ·
    stationery · glass · pebble · ink · white · ascast), six mark styles

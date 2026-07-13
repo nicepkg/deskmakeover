@@ -54,6 +54,17 @@ lost-reply=unknown+reprobe, skip reasons, strengthened copy gate. Gates green (t
 Open owner calls O1-O3 in the review record; motion pass + hero OS-mirror deferred with
 re-acceptance booked.
 
+**W0.6 viz DONE (2026-07-13, owner escalation ×3 → real-screenshot redraw → top-UX
+acceptance FAIL→fix→PASS):** per-row 104×64 schematics drawn from downloaded real Win11
+screenshots (schematic panel ruling O4 `docs/reviews/2026-07-13-calm-schematic-panel.md`);
+honest-motion vocabulary NoiseGroup/ReflowGroup/ShrinkRect (no hollow sockets — surfaces
+compact or shrink like the real desktop); done-state ghost outline removed; task-view glyph
+per owner pixel description; per-row 「恢复」; shared `FullPage` shell unifies 清爽/设置
+title geometry; group-1 subtitle discloses untick-to-skip. Spec 08 §2/§2.1 amended.
+Acceptance verdict PASS (start-menu P1 reflow hole fixed in `9e17d26`, copy↔picture
+contradiction resolved by keeping the your-files row). Gates green (tsc · bun 575).
+Owed at W0 close-out: codex adversarial review over the full W0.6-viz diff.
+
 ## Wave 1 — Rust decision core + bridge (Mac)
 
 Copy the reference boundaries into production per spec 08 §12: `crates/dm-domain/src/

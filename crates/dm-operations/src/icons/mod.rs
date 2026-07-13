@@ -15,6 +15,7 @@
 
 mod package;
 pub mod native_bake;
+pub mod scope;
 pub mod style_resolve;
 pub mod version_switch;
 
@@ -624,19 +625,11 @@ impl<'a> IconOps<'a> {
         }
         // Reset coupling (spec 07 §10 ★): a reset is not just a ledger walk — to read as "as if
         // never modified" it MUST, in the SAME operation, clear ② saved-style AND turn OFF the
-        // auto-format toggle. Skipping the toggle leaves a state that looks reset but silently
-        // re-styles the next new icon. (The arrow-overlay restore is the host's — it owns the
-        // elevated OverlayControl.)
-        if let Err(e) = self.settings.set_saved_style(None) {
-            repair.push(format!("reset clear ②: {e}"));
-        }
-        // Turn the toggle off directly; the precondition guard in `SettingsStore::set` would now
-        // reject re-enabling it anyway (② is empty), but leaving it `true` is a stale UI lie.
-        if let Err(e) = self.settings.set(&dm_contracts::SettingsPatch {
-            keep_new_icons_styled: Some(false),
-            ..Default::default()
-        }) {
-            repair.push(format!("reset disable auto-format: {e}"));
+        // auto-format toggle. ONE atomic transaction (codex m7b-🟠5) so a crash between them can't
+        // leave `②=NULL, toggle=true` (dormant, but the UI lies + a later Apply could revive it).
+        // (The arrow-overlay restore is the host's — it owns the elevated OverlayControl.)
+        if let Err(e) = self.settings.reset_style_and_autoformat() {
+            repair.push(format!("reset clear ②+toggle: {e}"));
         }
 
         let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);

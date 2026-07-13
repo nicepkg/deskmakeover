@@ -18,25 +18,35 @@ use dm_icon_core::render_session::RenderSession;
 
 use crate::error::{OperationError, Result};
 use crate::icons::native_bake::bake_master_png;
+use crate::icons::scope::privileged_scope;
 use crate::icons::style_resolve::StyleRecipe;
 use crate::icons::{package_masters, BufferedMaster};
 use crate::ledger::{LedgerStore, LookHistoryStore};
 use crate::settings_store::SettingsStore;
 use crate::txn::{recover_from_journal, ApplyOutcome, ApplyRequest, JournalSink, TxnDriver, TxnIdAllocator};
 
-/// The platform ports a version switch drives — the same set the foreground apply uses.
+/// The platform ports a version switch drives — the same set the foreground apply uses. The
+/// privileged roots (resolved by the host via `SHGetKnownFolderPath`) let the projection SKIP
+/// `Public Desktop`/`ProgramData` items (spec §6: version switching never touches them, §14 the
+/// background never elevates — codex m7a-🔴2).
 pub struct VersionSwitchPorts<'a> {
     pub scanner: &'a dyn DesktopScanner,
     pub extractor: &'a dyn IconSourceExtractor,
     pub reader: &'a dyn ItemStateReader,
     pub applier: &'a dyn IconApplier,
     pub assets: &'a dyn AssetStore,
+    /// `Public Desktop` known-folder roots (empty on the dev host).
+    pub public_roots: &'a [String],
+    /// `ProgramData` known-folder roots (empty on the dev host).
+    pub programdata_roots: &'a [String],
 }
 
-/// Switches the live desktop to a saved appearance version. Returns the driver's [`ApplyOutcome`]
-/// (committed / conflicts / rolled_back) plus a `deferred` flag when a prior crash's recovery ran
-/// and this switch stood down for the next pass. The look-history entry's recipe becomes ② in the
-/// same call (spec §8.4). A missing version id is an error (the UI must not offer a stale id).
+/// Switches the live desktop to a saved appearance version. A missing version id is an error (the
+/// UI must not offer a stale id). Ordering closes the ②-consistency + partial-commit gaps (codex
+/// m7a-🟠5): (1) recover any prior crash and (2) scan — both BEFORE ② is promoted — so a deferred
+/// switch never leaves ② pointing at a style the desktop never adopted; then (3) promote ② and
+/// project. A projection fault AFTER promotion returns STRUCTURED (`promoted:true` + `errors`),
+/// never a bare `Err` that hides that ② already moved.
 pub fn switch_to_version(
     version_id: &str,
     ports: &VersionSwitchPorts<'_>,
@@ -54,29 +64,45 @@ pub fn switch_to_version(
     let style = version.icon_style;
     let recipe = StyleRecipe::parse(&style)?;
 
-    // Reconcile any prior crash BEFORE anything — a recovery that moved or could not verify the
-    // desktop defers this switch, and crucially BEFORE ② is promoted so a deferred switch does not
-    // leave ② pointing at a style the desktop never adopted (codex-guard: ②/desktop consistency).
+    // (1) Recover any prior crash BEFORE promoting ② — a recovery that moved or could not verify
+    // the desktop defers this switch WITHOUT touching ② (②/desktop consistency).
     let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger)?;
     if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
-        return Ok(SwitchOutcome { outcome: ApplyOutcome::default(), deferred: true });
+        return Ok(SwitchOutcome { outcome: ApplyOutcome::default(), promoted: false, deferred: true, errors: Vec::new() });
     }
+    // (2) Scan — a pure read, no persistent side effect — before promotion.
+    let items = ports.scanner.scan().map_err(|e| OperationError::InvalidPayload(e.to_string()))?;
 
-    // ② becomes the new current global style (spec §8.3: switching sets ③'s recipe as ②). A
-    // one-shot switch creates its own RenderSession (no cross-call warm cache to preserve).
+    // (3) Promote ② (spec §8.3: switching sets ③'s recipe as ②), then project. A one-shot switch
+    // creates its own RenderSession (no cross-call warm cache to preserve).
     settings.set_saved_style(Some(&style))?;
     let mut session = RenderSession::new();
-    let items = ports.scanner.scan().map_err(|e| OperationError::InvalidPayload(e.to_string()))?;
-    let outcome = bake_and_apply(&items, &recipe, ports, &mut session, txn, journal, ledger)?;
-    Ok(SwitchOutcome { outcome, deferred: false })
+    let mut errors: Vec<String> = Vec::new();
+    let outcome =
+        match bake_and_apply(&items, &recipe, ports, &mut session, txn, journal, ledger, &mut errors) {
+            Ok(o) => o,
+            // A projection fault AFTER ② moved: surface it structured, never a bare Err (the
+            // caller would otherwise see "failed" while ② is already the new style).
+            Err(e) => {
+                errors.push(format!("projection: {e}"));
+                ApplyOutcome::default()
+            }
+        };
+    Ok(SwitchOutcome { outcome, promoted: true, deferred: false, errors })
 }
 
 /// The result of a version switch.
 #[derive(Debug, Clone)]
 pub struct SwitchOutcome {
     pub outcome: ApplyOutcome,
-    /// A prior crash's recovery ran; the switch stood down for the next pass (nothing applied).
+    /// Whether ② was promoted to the switched recipe (false only when a prior-crash recovery
+    /// deferred the switch before promotion).
+    pub promoted: bool,
+    /// A prior crash's recovery ran; the switch stood down for the next pass (② NOT promoted).
     pub deferred: bool,
+    /// Per-item / projection faults (extract/bake/package/driver) — the switch still promoted ②;
+    /// these tell the caller the projection was partial so it can surface a degraded result.
+    pub errors: Vec<String>,
 }
 
 /// Resolve → extract → native-bake → package → `TxnDriver::apply` over `items` under `recipe`.
@@ -91,10 +117,15 @@ fn bake_and_apply(
     txn: &mut TxnIdAllocator,
     journal: &mut dyn JournalSink,
     ledger: &mut dyn LedgerStore,
+    errors: &mut Vec<String>,
 ) -> Result<ApplyOutcome> {
     let mut masters: Vec<BufferedMaster> = Vec::new();
     let mut anchors: Vec<(DesktopItem, dm_domain::Fingerprint)> = Vec::new();
     for item in items {
+        // §6/§14: version switching never touches Public Desktop / ProgramData (codex m7a-🔴2).
+        if privileged_scope(&item.path, ports.public_roots, ports.programdata_roots).is_some() {
+            continue;
+        }
         if !item.can_style() {
             continue;
         }
@@ -105,11 +136,21 @@ fn bake_and_apply(
         // CAS anchor = the fingerprint read NOW; the driver skips an item hand-edited since.
         let fingerprint = match ports.reader.read_fingerprint(&item.target()) {
             Ok(f) => f,
-            Err(_) => continue, // vanished/unreadable → not projected this switch
+            Err(e) => {
+                errors.push(format!("read {}: {e}", item.id.as_str()));
+                continue;
+            }
         };
         let sources = match ports.extractor.extract(item, None) {
             Ok(s) if !s.is_empty() => s,
-            _ => continue,
+            Ok(_) => {
+                errors.push(format!("extract {}: no sources", item.id.as_str()));
+                continue;
+            }
+            Err(e) => {
+                errors.push(format!("extract {}: {e}", item.id.as_str()));
+                continue;
+            }
         };
         let mut ok = true;
         let mut item_masters = Vec::with_capacity(sources.len());
@@ -125,7 +166,8 @@ fn bake_and_apply(
                     source_index: slot as u32,
                     png_base64: png,
                 }),
-                Err(_) => {
+                Err(e) => {
+                    errors.push(format!("bake {}: {e}", item.id.as_str()));
                     ok = false;
                     break;
                 }
@@ -298,6 +340,8 @@ mod tests {
             reader: &reader,
             applier: &applier,
             assets: &assets,
+            public_roots: &[],
+            programdata_roots: &[],
         };
         let settings = SettingsStore::open_in_memory().unwrap();
         let mut history = LookHistoryStore::new(dir.path().join("history.json"));
@@ -345,6 +389,54 @@ mod tests {
         assert!(out2.outcome.conflicts.contains(&ItemId::from_raw("a")), "hand-edited item is skipped");
         assert_eq!(desk.surfaces.borrow()[&items[0].path], b"hand-edited", "never overwritten");
         assert!(out2.outcome.committed.contains(&ItemId::from_raw("b")), "the intact item re-projects");
+        assert!(out2.promoted, "the switch promoted ②");
+    }
+
+    #[test]
+    fn a_public_desktop_item_is_never_projected_by_a_version_switch() {
+        // codex m7a-🔴2 / spec §6: version switching never touches Public Desktop / ProgramData.
+        let dir = tempfile::tempdir().unwrap();
+        let desk = Rc::new(Desk::default());
+        let public = DesktopItem {
+            id: ItemId::from_raw("pub"),
+            name: "pub".into(),
+            path: "C:/Users/Public/Desktop/Tool.lnk".into(),
+            kind: ItemKind::Shortcut,
+            icon: None,
+            state: ItemState::Ready,
+            requires_explicit_consent: false,
+            status_message: None,
+        };
+        let mine = shortcut("mine");
+        let items = vec![public.clone(), mine.clone()];
+        for it in &items {
+            desk.surfaces.borrow_mut().insert(it.path.clone(), format!("orig:{}", it.id.as_str()).into_bytes());
+        }
+        let reader = DeskReader(desk.clone());
+        let applier = DeskApplier(desk.clone());
+        let assets = MemAssets::default();
+        let public_roots = vec!["C:/Users/Public/Desktop".to_string()];
+        let ports = VersionSwitchPorts {
+            scanner: &FakeScanner(items.clone()),
+            extractor: &FakeExtractor,
+            reader: &reader,
+            applier: &applier,
+            assets: &assets,
+            public_roots: &public_roots,
+            programdata_roots: &[],
+        };
+        let settings = SettingsStore::open_in_memory().unwrap();
+        let mut history = LookHistoryStore::new(dir.path().join("h.json"));
+        history
+            .push(LookVersion { id: "v".into(), created_at: 1, label: None, pinned: false, icon_style: style("Circle") })
+            .unwrap();
+        let mut txn = TxnIdAllocator::starting_at(1);
+        let mut journal = VecJournal::default();
+        let mut ledger = MemLedgerStore::default();
+
+        let out = switch_to_version("v", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger).unwrap();
+        assert_eq!(out.outcome.committed, vec![ItemId::from_raw("mine")], "only the user's own item");
+        assert!(!desk.surfaces.borrow()[&public.path].starts_with(b"styled:"), "public item untouched");
     }
 
     #[test]
@@ -360,6 +452,8 @@ mod tests {
             reader: &reader,
             applier: &applier,
             assets: &assets,
+            public_roots: &[],
+            programdata_roots: &[],
         };
         let settings = SettingsStore::open_in_memory().unwrap();
         let history = LookHistoryStore::new(dir.path().join("h.json"));

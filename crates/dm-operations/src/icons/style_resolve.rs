@@ -66,13 +66,23 @@ pub struct ConfigDtoJson {
     pub plate_fallback: String,
 }
 
-/// One bucket's override entry (`TypeOverrideEntry`): only `source == "custom"` with a patch
-/// participates in the ladder.
+/// A type override's source (`TypeOverrideEntry.source`, TS union): `follow` = takes the base
+/// config, `custom` = applies its patch. Modeled as an enum (codex m7a-🟠6): an unknown spelling
+/// like `"custmo"` MUST error, never silently fall through to `follow` and change the pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OverrideSource {
+    Follow,
+    Custom,
+}
+
+/// One bucket's override entry (`TypeOverrideEntry`): only `source == custom` with a patch
+/// participates in the ladder. A present entry with a garbage `source` is an ERROR at parse time.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TypeOverrideJson {
     #[serde(default)]
-    pub source: Option<String>,
+    pub source: Option<OverrideSource>,
     #[serde(default)]
     pub patch: Option<TypePatchJson>,
 }
@@ -107,7 +117,11 @@ where
     Ok(Some(Option::<String>::deserialize(d)?))
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+/// Per-bucket participation. Every bucket participates BY DEFAULT (the app beautifies everything
+/// until the user opts a bucket out — TS `DEFAULT_KIND_POLICY`). The hand-written `Default`
+/// (all-true) is load-bearing (codex m7a-🟠6): the derived all-FALSE default would make a recipe
+/// with a MISSING `kindPolicy` mean the OPPOSITE of `{}` — silently opting every bucket OUT.
+#[derive(Debug, Clone, Deserialize)]
 pub struct KindPolicyJson {
     #[serde(default = "yes", rename = "App")]
     pub app: bool,
@@ -117,6 +131,12 @@ pub struct KindPolicyJson {
     pub file: bool,
     #[serde(default = "yes", rename = "System")]
     pub system: bool,
+}
+
+impl Default for KindPolicyJson {
+    fn default() -> Self {
+        Self { app: true, folder: true, file: true, system: true }
+    }
 }
 
 fn yes() -> bool {
@@ -183,8 +203,7 @@ impl StyleRecipe {
         let mut cfg = self.config.clone();
         if let Some(bucket) = bucket_of(kind) {
             if let Some(entry) = self.override_for(bucket) {
-                let custom = entry.source.as_deref() == Some("custom");
-                if custom {
+                if entry.source == Some(OverrideSource::Custom) {
                     if let Some(patch) = &entry.patch {
                         apply_patch(&mut cfg, patch);
                     }
@@ -419,6 +438,35 @@ mod tests {
         let s = style(json!({ "config": cfg, "kindPolicy": {}, "typeOverrides": {} }));
         let recipe = StyleRecipe::parse(&s).unwrap();
         assert!(recipe.effective_config(ItemKind::Shortcut, true).is_err());
+    }
+
+    #[test]
+    fn the_kind_policy_default_participates_by_default_not_the_opposite() {
+        // codex m7a-🟠6: the default must be all-TRUE (participate). A derived all-false default
+        // would make a recipe whose `kindPolicy` deserializes via `#[serde(default)]` opt every
+        // bucket OUT — the exact opposite of `{}`.
+        let d = KindPolicyJson::default();
+        assert!(d.app && d.folder && d.file && d.system, "every bucket participates by default");
+        // And a StyleRecipe parsed from JSON with NO kindPolicy field takes that all-true default
+        // (serde-level, below IconStyle's envelope validation).
+        let recipe: StyleRecipe = serde_json::from_value(json!({
+            "config": base_config(), "typeOverrides": {}
+        }))
+        .unwrap();
+        assert!(recipe.effective_config(ItemKind::Folder, false).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_garbage_override_source_errors_instead_of_silently_following() {
+        // codex m7a-🟠6: `"custmo"` must fail parse, never be treated as a follower (silently
+        // dropping a custom patch and writing the base style).
+        let s = IconStyle::from_value(json!({
+            "config": base_config(),
+            "kindPolicy": {},
+            "typeOverrides": { "Folder": { "source": "custmo", "patch": { "shape": "Folder" } } }
+        }))
+        .unwrap();
+        assert!(StyleRecipe::parse(&s).is_err(), "unknown source spelling is a parse error");
     }
 
     #[test]

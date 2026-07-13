@@ -62,12 +62,16 @@ impl SettingsStore {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
         if patch.keep_new_icons_styled == Some(true) {
+            // The saved-style cell must be a VALID style, not merely non-NULL (codex m7b-🟡7):
+            // decode it with the canonical reader so malformed JSON / `"null"` / a BLOB / an empty
+            // string cannot slip the toggle on — the resident would then have no projectable
+            // style. `None` → precondition error; corrupt → surfaced as Corrupt.
             let raw: rusqlite::types::Value = tx.query_row(
                 "SELECT icon_style_json FROM app_settings WHERE id = 1",
                 [],
                 |row| row.get(0),
             )?;
-            if matches!(raw, rusqlite::types::Value::Null) {
+            if decode_saved_style(raw)?.is_none() {
                 return Err(OperationError::InvalidPayload(
                     "cannot enable auto-format before a style has been applied (spec 07 §2 precondition)"
                         .into(),
@@ -81,30 +85,33 @@ impl SettingsStore {
         Ok(current)
     }
 
+    /// ATOMICALLY clears ② saved-style AND turns the auto-format toggle off, in ONE transaction —
+    /// the reset coupling (spec 07 §10 ★, codex m7b-🟠5). Two separate autocommits could crash
+    /// between them, leaving `icon_style_json=NULL, keep_new_icons_styled=true` (dormant, but the
+    /// UI still claims automation is on, and a later global Apply that only restores ② would
+    /// silently revive it). One transaction closes that window.
+    pub fn reset_style_and_autoformat(&self) -> Result<()> {
+        let conn = self.lock();
+        conn.execute(
+            "UPDATE app_settings SET icon_style_json = NULL, keep_new_icons_styled = 0 WHERE id = 1",
+            [],
+        )?;
+        Ok(())
+    }
+
     /// Reads store ② of the appearance model (spec 07 §8.2) — the single saved-style recipe.
     /// `None` means no style has been saved (system default). Fail-closed like the ledger: a
     /// present-but-invalid cell is an [`OperationError::Corrupt`], never silently `None`, so a saved
     /// style that cannot be read (bad JSON, an envelope that fails [`IconStyle`] validation, or a
     /// non-TEXT cell) is visible rather than masquerading as "never applied."
     pub fn get_saved_style(&self) -> Result<Option<IconStyle>> {
-        use rusqlite::types::Value as SqlValue;
         let conn = self.lock();
-        let raw: SqlValue = conn.query_row(
+        let raw: rusqlite::types::Value = conn.query_row(
             "SELECT icon_style_json FROM app_settings WHERE id = 1",
             [],
             |row| row.get(0),
         )?;
-        match raw {
-            SqlValue::Null => Ok(None),
-            SqlValue::Text(text) => {
-                let value: serde_json::Value = serde_json::from_str(&text)
-                    .map_err(|e| OperationError::Corrupt(format!("saved style: {e}")))?;
-                IconStyle::from_value(value)
-                    .map(Some)
-                    .map_err(|e| OperationError::Corrupt(format!("saved style: {e}")))
-            }
-            other => Err(OperationError::Corrupt(format!("saved style cell is not text: {other:?}"))),
-        }
+        decode_saved_style(raw)
     }
 
     /// Writes store ② (spec 07 §8.2/§8.4) — called ONLY on a completed global Apply, never from
@@ -198,6 +205,24 @@ fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
         }
     }
     Ok(false)
+}
+
+/// Decodes a raw `icon_style_json` cell into store ② — the ONE canonical reader shared by
+/// `get_saved_style` and the enable precondition (codex m7b-🟡7): `Null` → `None`; valid text →
+/// `Some(IconStyle)`; malformed JSON / a non-style envelope / a non-TEXT cell → `Corrupt`.
+fn decode_saved_style(raw: rusqlite::types::Value) -> Result<Option<IconStyle>> {
+    use rusqlite::types::Value as SqlValue;
+    match raw {
+        SqlValue::Null => Ok(None),
+        SqlValue::Text(text) => {
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|e| OperationError::Corrupt(format!("saved style: {e}")))?;
+            IconStyle::from_value(value)
+                .map(Some)
+                .map_err(|e| OperationError::Corrupt(format!("saved style: {e}")))
+        }
+        other => Err(OperationError::Corrupt(format!("saved style cell is not text: {other:?}"))),
+    }
 }
 
 fn read_row(conn: &Connection) -> Result<SettingsDto> {
@@ -460,5 +485,40 @@ mod tests {
             .set(&SettingsPatch { keep_new_icons_styled: Some(true), ..Default::default() })
             .unwrap();
         assert!(after.keep_new_icons_styled, "enabling succeeds once ② is non-empty");
+    }
+
+    #[test]
+    fn the_precondition_rejects_a_corrupt_non_null_saved_style() {
+        // codex m7b-🟡7: a malformed/`"null"`/non-style ② must NOT let the toggle on — it would
+        // leave the resident with no projectable style. The precondition reuses the canonical
+        // decoder, so corruption is caught, not slipped through as "non-NULL therefore valid".
+        use dm_contracts::SettingsPatch;
+        let store = SettingsStore::open_in_memory().unwrap();
+        store.lock().execute("UPDATE app_settings SET icon_style_json = '{ bad json' WHERE id = 1", []).unwrap();
+        assert!(matches!(
+            store.set(&SettingsPatch { keep_new_icons_styled: Some(true), ..Default::default() }),
+            Err(OperationError::Corrupt(_))
+        ));
+        assert!(!store.get().unwrap().keep_new_icons_styled, "the toggle stayed off");
+    }
+
+    #[test]
+    fn reset_style_and_autoformat_clears_both_atomically() {
+        use dm_contracts::SettingsPatch;
+        let store = SettingsStore::open_in_memory().unwrap();
+        let style = IconStyle::from_value(serde_json::json!({
+            "config": { "shape": "Circle", "subject": "Original", "tint": "#FF6F5E",
+                "monoStyle": "Tonal", "plateBand": "Vivid", "shortcutShape": null,
+                "distinction": "None", "markStyle": "Glass", "markColor": null, "size": "Mid",
+                "filter": "None", "plateColor": null, "plateFallback": "derived" },
+            "kindPolicy": {}, "typeOverrides": {}
+        }))
+        .unwrap();
+        store.set_saved_style(Some(&style)).unwrap();
+        store.set(&SettingsPatch { keep_new_icons_styled: Some(true), ..Default::default() }).unwrap();
+
+        store.reset_style_and_autoformat().unwrap();
+        assert!(store.get_saved_style().unwrap().is_none(), "② cleared");
+        assert!(!store.get().unwrap().keep_new_icons_styled, "toggle off — both in one transaction");
     }
 }

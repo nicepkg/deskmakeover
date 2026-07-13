@@ -16,8 +16,10 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StabilitySnapshot {
     pub size: u64,
-    /// Whole-second mtime is enough — an installer still writing moves it.
-    pub mtime: i64,
+    /// mtime in NANOSECONDS (codex m7b-🟠4): NTFS mtime resolution is sub-second, so a
+    /// whole-second stamp would let a same-size rewrite within one second read as "settled" when
+    /// it is still being written. Nanosecond precision catches it.
+    pub mtime_nanos: u128,
     /// Whether the file opened readably without an exclusive-lock conflict this cycle.
     pub readable: bool,
 }
@@ -65,15 +67,15 @@ impl StabilityReader for FsStabilityReader {
     fn snapshot(&self, path: &str) -> StabilitySnapshot {
         let meta = std::fs::metadata(path).ok();
         let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-        let mtime = meta
+        let mtime_nanos = meta
             .as_ref()
             .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs() as i64)
+            .map(|d| d.as_nanos())
             .unwrap_or(0);
         let readable = meta.map(|m| m.is_dir()).unwrap_or(false)
             || std::fs::File::open(path).is_ok();
-        StabilitySnapshot { size, mtime, readable }
+        StabilitySnapshot { size, mtime_nanos, readable }
     }
 }
 
@@ -81,8 +83,8 @@ impl StabilityReader for FsStabilityReader {
 mod tests {
     use super::*;
 
-    fn snap(size: u64, mtime: i64, readable: bool) -> StabilitySnapshot {
-        StabilitySnapshot { size, mtime, readable }
+    fn snap(size: u64, mtime_nanos: u128, readable: bool) -> StabilitySnapshot {
+        StabilitySnapshot { size, mtime_nanos, readable }
     }
 
     #[test]
@@ -103,6 +105,19 @@ mod tests {
         // after one more quiet cycle.
         assert!(!p.observe("b.tmp", snap(220, 6, true)));
         assert!(p.observe("b.tmp", snap(220, 6, true)));
+    }
+
+    #[test]
+    fn a_sub_second_rewrite_at_the_same_size_does_not_settle() {
+        // codex m7b-🟠4: same size, different sub-second mtime → still being written, NOT settled.
+        let mut p = SettleProbe::new();
+        p.observe("x.tmp", snap(100, 1_000_000_000, true));
+        assert!(
+            !p.observe("x.tmp", snap(100, 1_000_000_500, true)),
+            "a same-size sub-second rewrite is caught by nanosecond mtime"
+        );
+        // Truly quiet (identical nanos) → settles the next cycle.
+        assert!(p.observe("x.tmp", snap(100, 1_000_000_500, true)));
     }
 
     #[test]

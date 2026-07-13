@@ -35,6 +35,15 @@ impl TrustState {
         !self.silent_earned()
     }
 
+    /// Whether the host MUST show the toast for a batch/proposal (codex m7b-🟠1): an ANOMALY (a
+    /// conflict, a partial failure, an item that needed elevation) ALWAYS surfaces the toast tier
+    /// regardless of the trust counter (spec §2 item 7 "anomalies never silently degrade");
+    /// otherwise the toast rides only while the trust-building tier is active. This is a separate
+    /// axis from silent-apply (which v1 never does) — it governs the NOTIFICATION, not the write.
+    pub fn toast_required(&self, anomaly: bool) -> bool {
+        anomaly || self.toast_tier_active()
+    }
+
     /// Records a batch outcome: an undo resets the ladder (the toast tier returns); a kept batch
     /// climbs it. Saturating — the counter never wraps.
     pub fn record_batch(&mut self, undone: bool) {
@@ -47,11 +56,17 @@ impl TrustState {
 }
 
 /// The two staleness signals of the intent-freshness health check (spec 07 §2 item 8), supplied
-/// by the host (it owns the stores the signals come from). Either one downgrades a would-be
-/// silent batch to a proposal FOR THAT RUN ONLY — the trust counter is not reset by a downgrade.
+/// by the host. Either one downgrades a would-be-silent batch to a proposal FOR THAT RUN ONLY.
+/// **v1 status:** dormant — v1 ALWAYS proposes (silent mode is a v1.1 opt-in), so nothing consumes
+/// this yet. **v1.1 wiring note (codex m7b-🟡6):** `last_apply_at` MUST come from ②'s OWN write
+/// timestamp (spec §2 item 8 = "saved-style's write timestamp"), NOT from ③'s look-history head —
+/// the two lifecycles diverge (switching an old look, or a ③ write fault). ② currently has no
+/// timestamp column; add an `updated_at` written atomically with `set_saved_style` when silent
+/// mode ships, and feed it here.
 #[derive(Debug, Clone, Copy)]
 pub struct FreshnessInputs {
-    /// When the last global Apply wrote ② (the look-history head's `created_at`); `None` = never.
+    /// When ② saved-style was last written (its own timestamp, per the v1.1 note above); `None`
+    /// = never / unknown.
     pub last_apply_at: Option<i64>,
     /// Whether the user individually reverted previously-styled icons since the last global
     /// Apply — read as stepping away from the style, not as noise.
@@ -89,6 +104,16 @@ mod tests {
         t.record_batch(true);
         assert!(!t.silent_earned());
         assert_eq!(t.batches_without_undo, 0);
+    }
+
+    #[test]
+    fn an_anomaly_always_forces_the_toast_even_past_the_earned_tier() {
+        let earned = TrustState { batches_without_undo: 5 };
+        assert!(!earned.toast_tier_active(), "the toast tier is dropped once earned");
+        assert!(earned.toast_required(true), "but an anomaly always toasts");
+        assert!(!earned.toast_required(false), "a clean batch past the tier is silent-notification");
+        let building = TrustState::default();
+        assert!(building.toast_required(false), "the trust-building tier toasts every batch");
     }
 
     #[test]

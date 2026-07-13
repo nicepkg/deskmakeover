@@ -14,20 +14,23 @@ mod tests;
 
 use dm_contracts::IconStyle;
 use dm_domain::{
-    ActivityMonitor, AssetStore, DesktopItem, DesktopScanner, IconApplier, IconSourceExtractor,
+    ActivityMonitor, AssetStore, DesktopItem, Fingerprint, IconApplier, IconSourceExtractor,
     ItemId, ItemStateReader, OwnedFields, PortError,
 };
+use dm_domain::DesktopScanner;
 use dm_icon_core::render_session::RenderSession;
 use dm_operations::icons::native_bake::bake_master_png;
 use dm_operations::icons::package_masters;
+use dm_operations::icons::scope::privileged_scope;
 use dm_operations::icons::style_resolve::StyleRecipe;
 use dm_operations::{
     recover_from_journal, ApplyRequest, BufferedMaster, JournalSink, LedgerStore, Result,
     TxnDriver, TxnIdAllocator,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::consent::{FreshnessInputs, TrustState};
-use crate::pending_privileged::{privileged_scope, PendingPrivilegedQueue};
+use crate::pending_privileged::PendingPrivilegedQueue;
 use crate::stability::{SettleProbe, StabilityReader};
 
 /// The platform ports one cycle drives — all shared with the foreground stack, so the background
@@ -46,21 +49,40 @@ pub struct ReconcilerPorts<'a> {
 pub struct ReconcileContext<'a> {
     /// ② saved-style. `None` = dormant — nothing to project (spec 07 §8.3).
     pub saved_style: Option<&'a IconStyle>,
-    /// The earned trust tier (spec 07 §2 item 7).
+    /// The earned trust tier (spec 07 §2 item 7) — consumed by the HOST to decide whether a
+    /// proposal rides a toast; the reconciler no longer gates its own apply on it.
     pub trust: &'a TrustState,
-    /// The intent-freshness signals (spec 07 §2 item 8).
+    /// The intent-freshness signals (spec 07 §2 item 8) — a v1.1 silent-mode signal; dormant in
+    /// v1 (which always proposes).
     pub freshness: FreshnessInputs,
-    /// The privileged roots (`Public Desktop`), resolved by the host via known folders.
+    /// `Public Desktop` known-folder roots (privileged-scope exclusion, §6/§14).
     pub public_roots: &'a [String],
+    /// `ProgramData` known-folder roots.
+    pub programdata_roots: &'a [String],
+}
+
+/// A candidate that has PASSED the full reconcile gate — scope-vetted (not privileged),
+/// participation-vetted (styleable + kind-policy in), stability-settled — with the CAS
+/// fingerprint SNAPSHOT captured at propose time. `apply_batch` uses this snapshot as the driver's
+/// `expected_fingerprint`, so any change between propose and confirm/timeout (a user hand-edit
+/// during the ≤2h window) fails CAS and is skipped, never overwritten (codex m7a-🔴1). Serializable
+/// so the host can persist a pending proposal durably across the timeout.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VettedCandidate {
+    pub item: DesktopItem,
+    /// The item's fingerprint at propose time — the CAS anchor for the eventual apply.
+    pub fingerprint: Fingerprint,
 }
 
 /// What one reconcile cycle did / decided.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ReconcileOutcome {
     /// Candidates surfaced as a batched PROPOSAL (not applied) — the host owns the confirm /
-    /// 2h-timeout surface and calls [`Reconciler::apply_batch`] with them on confirm/timeout.
-    pub proposed: Vec<ItemId>,
-    /// Items committed by a silent-tier apply THIS cycle.
+    /// 2h-timeout surface and calls [`Reconciler::apply_batch`] with them on confirm/timeout. Each
+    /// carries its snapshot CAS fingerprint (codex m7a-🔴1).
+    pub proposed: Vec<VettedCandidate>,
+    /// Items committed by `apply_batch` (the host's confirm/timeout entry). `reconcile` never
+    /// populates this in v1 — it only proposes (spec §2 item 4).
     pub applied: Vec<ItemId>,
     /// Items flagged, never touched: externally modified vs our ledger row, or ambiguous
     /// poison/manual-restore tuples (the background NEVER resolves ambiguity — the foreground
@@ -73,8 +95,6 @@ pub struct ReconcileOutcome {
     /// The whole wave deferred because the desktop was busy (spec 07 §11) — nothing was scanned
     /// past the gate; the next cycle re-reconciles.
     pub deferred_busy: bool,
-    /// Whether the silent tier was downgraded to a proposal by the freshness check this run.
-    pub freshness_downgraded: bool,
     /// Per-item degradations (extract/bake/read faults) — the rest of the cycle proceeds.
     pub errors: Vec<String>,
 }
@@ -102,18 +122,31 @@ impl Reconciler {
         }
     }
 
-    /// One reconcile cycle: classify the live desktop, queue privileged scopes, gate unstable
-    /// newcomers, flag conflicts, and either silently apply the candidate batch (earned tier +
-    /// fresh intent) or surface it as a proposal.
+    /// One reconcile cycle: recover any prior crash, classify the live desktop, queue privileged
+    /// scopes, gate unstable newcomers, flag genuine conflicts, and surface the styleable
+    /// newcomers as a batched PROPOSAL (v1 never auto-applies — spec §2 item 4). The host owns the
+    /// confirm/2h-timeout surface and calls [`apply_batch`] with the returned candidates.
     pub fn reconcile(
         &mut self,
         ports: &ReconcilerPorts<'_>,
         ctx: &ReconcileContext<'_>,
-        txn: &mut TxnIdAllocator,
+        _txn: &mut TxnIdAllocator,
         journal: &mut dyn JournalSink,
         ledger: &mut dyn LedgerStore,
     ) -> Result<ReconcileOutcome> {
         let mut out = ReconcileOutcome::default();
+        // Recover UNCONDITIONALLY, first thing, every cycle (codex m7a-🟠3): a crash-left
+        // non-committed txn must not sit as a permanent black hole waiting for some unrelated new
+        // item to happen along — the reconcile loop itself closes the recovery state machine. A
+        // recovery that moved or could not verify the desktop stands the cycle down (don't stack
+        // classification/proposals on a just-recovered desktop).
+        let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger)?;
+        if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
+            out.errors.push("recovered a prior crash — re-syncing before the next cycle".into());
+            out.deferred_busy = true; // treat as "not a clean cycle" so the host re-reconciles
+            out.pending_privileged = self.pending_privileged.len();
+            return Ok(out);
+        }
         // ② empty → dormant: nothing to project (spec 07 §8.3 — no special-case styling paths).
         let Some(style) = ctx.saved_style else {
             out.pending_privileged = self.pending_privileged.len();
@@ -130,10 +163,10 @@ impl Reconciler {
         let items = ports.scanner.scan().map_err(op_err)?;
         self.settle.retain_paths(items.iter().map(|i| i.path.as_str()));
 
-        let mut candidates: Vec<DesktopItem> = Vec::new();
+        let mut candidates: Vec<VettedCandidate> = Vec::new();
         for item in items {
             // §14 red line FIRST: privileged scope routes to the queue before ANY other path.
-            if let Some(reason) = privileged_scope(&item.path, ctx.public_roots) {
+            if let Some(reason) = privileged_scope(&item.path, ctx.public_roots, ctx.programdata_roots) {
                 self.pending_privileged.push(item.target(), reason);
                 continue;
             }
@@ -154,72 +187,96 @@ impl Reconciler {
                     match ports.reader.read_fingerprint(&item.target()) {
                         Ok(cur) if entry.is_unmodified(&cur) => {} // ours + intact — nothing to do
                         Ok(cur) if cur == entry.original_fingerprint => {
-                            // Ambiguous poison/manual-restore tuple: the background never
-                            // resolves ambiguity (the foreground heal + fence own it) — flag.
-                            out.conflicts.push(item.id.clone());
+                            // Poison/manual-restore tuple (current == original != last_applied): the
+                            // item is ALREADY at its true original, so there is nothing wrong for the
+                            // user to act on — SILENTLY skip (codex m7a-🟡7). Flagging it as a
+                            // conflict every cycle would re-alarm the tray forever (level-triggered);
+                            // healing it (drop the row) is worse — next cycle it becomes a `None`
+                            // new-item that, once settled, would restyle over a manual restore (the
+                            // ABA). The foreground heal+fence owns resolving the stale row.
                         }
+                        // A genuine external modification (current is neither ours nor the original):
+                        // flag it — the user/installer changed a styled icon; never touch it.
                         Ok(_) => out.conflicts.push(item.id.clone()),
                         Err(PortError::NotFound(_)) => {} // vanished mid-cycle; next scan settles it
                         Err(e) => out.errors.push(format!("read {}: {e}", item.id.as_str())),
                     }
                 }
-                // A non-committed row is an in-flight/recovering txn — recovery owns it; the
-                // background stays out.
+                // A non-committed row is an in-flight/recovering txn — the unconditional recovery
+                // above owns it; the classification stays out.
                 Some(_) => {}
                 None => {
-                    // A NEW item: it formats only once its bytes have settled (spec 07 §3).
+                    // A NEW item: it formats only once its bytes have settled (spec 07 §3). The
+                    // snapshot fingerprint captured HERE is the CAS anchor for the eventual apply.
                     let snap = ports.stability.snapshot(&item.path);
                     if !self.settle.observe(&item.path, snap) {
                         out.deferred_unstable.push(item.id.clone());
                         continue;
                     }
-                    candidates.push(item);
+                    let fingerprint = match ports.reader.read_fingerprint(&item.target()) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            out.errors.push(format!("anchor {}: {e}", item.id.as_str()));
+                            continue;
+                        }
+                    };
+                    candidates.push(VettedCandidate { item, fingerprint });
                 }
             }
         }
 
         out.pending_privileged = self.pending_privileged.len();
-        if candidates.is_empty() {
-            return Ok(out);
-        }
-        // Batch decision (spec 07 §2): silent only under an earned tier AND fresh intent; the
-        // freshness check downgrades to a proposal for THIS run, never suppresses.
-        if ctx.trust.silent_earned() {
-            if ctx.freshness.downgrades() {
-                out.freshness_downgraded = true;
-                out.proposed = candidates.into_iter().map(|i| i.id).collect();
-                return Ok(out);
-            }
-            let applied = self.apply_batch(ports, &recipe, candidates, txn, journal, ledger)?;
-            merge(&mut out, applied);
-        } else {
-            out.proposed = candidates.into_iter().map(|i| i.id).collect();
-        }
+        // v1 ALWAYS proposes (spec §2 item 4, codex m7b-🟠1): the host surfaces the confirmation +
+        // 2h timeout and calls [`apply_batch`]. Pure silent mode is an explicit v1.1 opt-in
+        // (item 5, out of scope); the 3-batch trust counter (`ctx.trust`) only decides whether the
+        // host's proposal notification rides a toast (item 7) — never whether the batch applies.
+        out.proposed = candidates;
         Ok(out)
     }
 
-    /// Applies one candidate batch through the shared driver — also the host's entry point when
-    /// a PROPOSAL is confirmed (or its timeout auto-applies). Re-checks the activity monitor
-    /// between every icon's bake (spec 07 §11); items past the busy point return to the pending
-    /// pool simply by not being applied (the next cycle re-derives them).
+    /// Applies a vetted candidate batch — the host's entry point when a PROPOSAL is confirmed (or
+    /// its 2h timeout fires). Uses each candidate's SNAPSHOT fingerprint as the driver's CAS anchor
+    /// (codex m7a-🔴1), so a hand-edit between propose and here fails CAS and is skipped, never
+    /// overwritten. Re-checks BOTH the §14 privileged scope (codex m7a-🔴2 — a scope that changed
+    /// while the proposal waited routes to the queue, never to a write) AND the activity monitor
+    /// (spec §11); a busy desktop ABORTS the WHOLE batch (codex m7a-🟠4 — no writes land while the
+    /// user is active), applying nothing, so the host retries the whole batch once idle.
     pub fn apply_batch(
         &mut self,
         ports: &ReconcilerPorts<'_>,
-        recipe: &StyleRecipe,
-        items: Vec<DesktopItem>,
+        ctx: &ReconcileContext<'_>,
+        candidates: Vec<VettedCandidate>,
         txn: &mut TxnIdAllocator,
         journal: &mut dyn JournalSink,
         ledger: &mut dyn LedgerStore,
     ) -> Result<ReconcileOutcome> {
         let mut out = ReconcileOutcome::default();
+        let recipe = match ctx.saved_style {
+            Some(style) => StyleRecipe::parse(style)?,
+            None => return Ok(out), // ② cleared while the proposal waited → nothing to apply
+        };
+        // A crash could have happened between propose and confirm — reconcile it before stacking a
+        // new apply; a recovery that moved/could-not-verify the desktop defers the whole batch.
+        let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger)?;
+        if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
+            out.errors.push("recovery pending — batch deferred".into());
+            out.deferred_busy = true;
+            return Ok(out);
+        }
         let mut masters: Vec<BufferedMaster> = Vec::new();
-        let mut anchors: Vec<(DesktopItem, dm_domain::Fingerprint)> = Vec::new();
-        for item in items {
-            // The per-icon activity re-check: a user who starts interacting mid-batch stops the
-            // batch mid-batch; the un-baked remainder defers to the next cycle.
+        let mut anchors: Vec<VettedCandidate> = Vec::new();
+        for candidate in candidates {
+            let item = &candidate.item;
+            // Busy → ABORT the whole batch: discard everything baked so far, apply NOTHING (§11).
             if ports.activity.is_desktop_busy().unwrap_or(true) {
                 out.deferred_busy = true;
-                break;
+                return Ok(out);
+            }
+            // Re-check the §14 scope: a path that became privileged while the proposal waited
+            // routes to the queue, never to the write path.
+            if let Some(reason) = privileged_scope(&item.path, ctx.public_roots, ctx.programdata_roots) {
+                self.pending_privileged.push(item.target(), reason);
+                continue;
             }
             let cfg = match recipe.effective_config(item.kind, item.kind.is_shortcut()) {
                 Ok(Some(c)) => c,
@@ -229,16 +286,7 @@ impl Reconciler {
                     continue;
                 }
             };
-            // The CAS anchor is the fingerprint read NOW, before the bake — a hand-edit between
-            // this read and the driver's prepare fails CAS and is skipped, never overwritten.
-            let fingerprint = match ports.reader.read_fingerprint(&item.target()) {
-                Ok(f) => f,
-                Err(e) => {
-                    out.errors.push(format!("anchor {}: {e}", item.id.as_str()));
-                    continue;
-                }
-            };
-            let sources = match ports.extractor.extract(&item, None) {
+            let sources = match ports.extractor.extract(item, None) {
                 Ok(s) if !s.is_empty() => s,
                 Ok(_) => {
                     out.errors.push(format!("extract {}: no sources", item.id.as_str()));
@@ -282,29 +330,24 @@ impl Reconciler {
             }
             if ok {
                 masters.extend(item_masters);
-                anchors.push((item, fingerprint));
+                anchors.push(candidate);
             }
         }
+        out.pending_privileged = self.pending_privileged.len();
         if anchors.is_empty() {
             return Ok(out);
         }
         let packaged = package_masters(&masters)?;
-        // Same discipline as the foreground: reconcile any prior crash BEFORE stacking a new
-        // apply; a recovery that moved or could not verify the desktop defers this batch.
-        let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger)?;
-        if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
-            out.errors.push("recovery pending — batch deferred to the next cycle".into());
-            return Ok(out);
-        }
-        let by_id: std::collections::HashMap<&str, &dm_domain::Fingerprint> =
-            anchors.iter().map(|(i, f)| (i.id.as_str(), f)).collect();
+        let by_id: std::collections::HashMap<&str, &Fingerprint> =
+            anchors.iter().map(|c| (c.item.id.as_str(), &c.fingerprint)).collect();
         let mut requests = Vec::with_capacity(packaged.len());
         for pkg in &packaged {
-            let Some((item, _)) = anchors.iter().find(|(i, _)| i.id.as_str() == pkg.item_id) else {
+            let Some(candidate) = anchors.iter().find(|c| c.item.id.as_str() == pkg.item_id) else {
                 continue;
             };
             requests.push(ApplyRequest {
-                target: item.target(),
+                target: candidate.item.target(),
+                // The SNAPSHOT fingerprint (codex m7a-🔴1): a change since propose fails CAS.
                 expected_fingerprint: (*by_id[pkg.item_id.as_str()]).clone(),
                 owned: OwnedFields::icon_only(),
                 asset_hash: pkg.primary.content_hash.clone(),
@@ -322,13 +365,6 @@ impl Reconciler {
         }
         Ok(out)
     }
-}
-
-fn merge(into: &mut ReconcileOutcome, from: ReconcileOutcome) {
-    into.applied.extend(from.applied);
-    into.conflicts.extend(from.conflicts);
-    into.errors.extend(from.errors);
-    into.deferred_busy |= from.deferred_busy;
 }
 
 fn op_err(e: PortError) -> dm_operations::OperationError {

@@ -169,9 +169,9 @@ impl StabilityReader for ScriptedStability {
         let mut u = self.unstable.borrow_mut();
         if let Some(counter) = u.get_mut(path) {
             *counter += 1;
-            StabilitySnapshot { size: 100 + *counter, mtime: 1, readable: true }
+            StabilitySnapshot { size: 100 + *counter, mtime_nanos: 1, readable: true }
         } else {
-            StabilitySnapshot { size: 100, mtime: 1, readable: true }
+            StabilitySnapshot { size: 100, mtime_nanos: 1, readable: true }
         }
     }
 }
@@ -253,7 +253,7 @@ impl World {
     }
 }
 
-/// Runs one reconcile cycle with the given policy knobs.
+/// Runs one reconcile cycle (which in v1 PROPOSES — never applies) with the given knobs.
 fn cycle(
     w: &mut World,
     rec: &mut Reconciler,
@@ -276,13 +276,58 @@ fn cycle(
         activity,
         stability,
     };
+    let public = [PUBLIC_ROOT.to_string()];
     let ctx = ReconcileContext {
         saved_style: Some(style),
         trust,
         freshness,
-        public_roots: &[PUBLIC_ROOT.to_string()],
+        public_roots: &public,
+        programdata_roots: &[],
     };
     rec.reconcile(&ports, &ctx, &mut w.txn, &mut w.journal, &mut w.ledger).unwrap()
+}
+
+/// Applies a vetted candidate batch (the host's confirm/timeout entry) with the given activity.
+fn apply(
+    w: &mut World,
+    rec: &mut Reconciler,
+    activity: &ScriptedActivity,
+    style: &IconStyle,
+    candidates: Vec<VettedCandidate>,
+) -> ReconcileOutcome {
+    let desk = w.desk.clone();
+    let reader = DeskReader(&desk);
+    let applier = DeskApplier(&desk);
+    let ports = ReconcilerPorts {
+        scanner: &FakeScanner(Vec::new()), // apply_batch never scans
+        extractor: &FakeExtractor,
+        reader: &reader,
+        applier: &applier,
+        assets: &w.assets,
+        activity,
+        stability: &ScriptedStability::default(),
+    };
+    let public = [PUBLIC_ROOT.to_string()];
+    let ctx = ReconcileContext {
+        saved_style: Some(style),
+        trust: &silent_trust(),
+        freshness: fresh(NOW),
+        public_roots: &public,
+        programdata_roots: &[],
+    };
+    rec.apply_batch(&ports, &ctx, candidates, &mut w.txn, &mut w.journal, &mut w.ledger).unwrap()
+}
+
+/// The propose→apply round-trip: cycle to a proposal, then apply the whole batch (idle).
+fn cycle_then_apply(
+    w: &mut World,
+    rec: &mut Reconciler,
+    scanner: &FakeScanner,
+    stability: &ScriptedStability,
+    style: &IconStyle,
+) -> ReconcileOutcome {
+    let proposed = cycle(w, rec, scanner, &ScriptedActivity::idle(), stability, style, &silent_trust(), fresh(NOW)).proposed;
+    apply(w, rec, &ScriptedActivity::idle(), style, proposed)
 }
 
 // ---- Gates -----------------------------------------------------------------------------------
@@ -309,13 +354,14 @@ fn an_empty_saved_style_keeps_the_resident_dormant() {
         trust: &silent_trust(),
         freshness: fresh(NOW),
         public_roots: &[],
+        programdata_roots: &[],
     };
     let out = rec.reconcile(&ports, &ctx, &mut w.txn, &mut w.journal, &mut w.ledger).unwrap();
     assert_eq!(out, ReconcileOutcome::default(), "② empty → nothing proposed, nothing applied");
 }
 
 #[test]
-fn a_new_item_defers_until_stable_then_applies_silently_under_the_earned_tier() {
+fn a_new_item_defers_until_stable_then_proposes_and_apply_writes_only_store_one() {
     let items = vec![user_item("fresh")];
     let mut w = World::new(&items);
     let mut rec = Reconciler::new();
@@ -323,88 +369,97 @@ fn a_new_item_defers_until_stable_then_applies_silently_under_the_earned_tier() 
     let stable = ScriptedStability::default();
     let trust = silent_trust();
 
-    // Cycle 1: first sight — the settle gate holds it back.
+    // Cycle 1: first sight — the settle gate holds it back (proposes nothing).
     let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
     assert_eq!(out.deferred_unstable, vec![ItemId::from_raw("fresh")]);
     assert!(out.applied.is_empty() && out.proposed.is_empty());
 
-    // Cycle 2: unchanged bytes — settled → silent apply writes ONLY store ① via the driver.
+    // Cycle 2: settled → PROPOSED (v1 never auto-applies), store ① untouched by the proposal.
     let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
-    assert_eq!(out.applied, vec![ItemId::from_raw("fresh")]);
+    assert_eq!(out.proposed.len(), 1, "the settled newcomer is proposed");
+    assert_eq!(out.proposed[0].item.id, ItemId::from_raw("fresh"));
+    assert!(out.applied.is_empty() && w.ledger.all().unwrap().is_empty());
+
+    // The host confirms (or the 2h timeout fires) → apply writes ONLY store ① via the driver.
+    let applied = apply(&mut w, &mut rec, &ScriptedActivity::idle(), &style(), out.proposed);
+    assert_eq!(applied.applied, vec![ItemId::from_raw("fresh")]);
     let entry = w.ledger.get(&ItemId::from_raw("fresh")).unwrap().expect("ledger row");
     assert!(entry.state.is_committed());
-    assert!(
-        w.desk.surfaces.borrow()[&items[0].path].starts_with(b"styled:"),
-        "the desktop surface is styled"
-    );
+    assert!(w.desk.surfaces.borrow()[&items[0].path].starts_with(b"styled:"), "surface styled");
 
-    // Cycle 3: owned + unmodified — nothing to do, nothing re-proposed (self-write suppression
-    // at the reconcile level: our own output is not a change).
+    // A later cycle: owned + unmodified → self-write suppression, nothing re-proposed.
     let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
-    assert!(out.applied.is_empty() && out.proposed.is_empty() && out.conflicts.is_empty());
+    assert!(out.proposed.is_empty() && out.conflicts.is_empty());
 }
 
 #[test]
-fn an_unearned_tier_proposes_instead_of_applying() {
+fn reconcile_always_proposes_regardless_of_the_trust_tier() {
+    // codex m7b-🟠1: v1 NEVER auto-applies; the trust counter only affects the HOST's toast, not
+    // whether the batch applies. So an "earned" tier proposes exactly like an unearned one.
     let items = vec![user_item("new1"), user_item("new2")];
+    let scanner = FakeScanner(items.clone());
+    let stable = ScriptedStability::default();
+
+    for trust in [TrustState::default(), silent_trust()] {
+        let mut rec = Reconciler::new();
+        let mut w = World::new(&items);
+        cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
+        let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
+        assert_eq!(out.proposed.len(), 2, "both tiers propose the batch");
+        assert!(out.applied.is_empty(), "reconcile never applies in v1");
+        assert!(w.ledger.all().unwrap().is_empty(), "store ① untouched by a proposal");
+    }
+}
+
+#[test]
+fn apply_uses_the_propose_time_snapshot_so_a_hand_edit_since_propose_is_not_overwritten() {
+    // codex m7a-🔴1: a hand-edit in the window between propose and confirm/timeout must survive —
+    // the snapshot fingerprint is the CAS anchor, so the driver skips the changed item.
+    let items = vec![user_item("edited"), user_item("kept")];
     let mut w = World::new(&items);
     let mut rec = Reconciler::new();
     let scanner = FakeScanner(items.clone());
     let stable = ScriptedStability::default();
-    let trust = TrustState { batches_without_undo: 2 }; // one short of the tier
 
-    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
-    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
-    assert_eq!(out.proposed.len(), 2, "the batch surfaces as one proposal");
-    assert!(out.applied.is_empty(), "nothing applies without confirm/timeout");
-    assert!(w.ledger.all().unwrap().is_empty(), "store ① untouched by a proposal");
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    assert_eq!(out.proposed.len(), 2);
+
+    // The user customizes `edited` AFTER the proposal but BEFORE the apply.
+    w.desk.surfaces.borrow_mut().insert(items[0].path.clone(), b"user-custom-icon".to_vec());
+    let applied = apply(&mut w, &mut rec, &ScriptedActivity::idle(), &style(), out.proposed);
+    assert!(applied.conflicts.contains(&ItemId::from_raw("edited")), "the since-propose edit fails CAS");
+    assert_eq!(w.desk.surfaces.borrow()[&items[0].path], b"user-custom-icon", "hand-edit preserved");
+    assert!(applied.applied.contains(&ItemId::from_raw("kept")), "the unchanged item still applies");
 }
 
 #[test]
-fn freshness_downgrades_a_would_be_silent_batch_to_a_proposal() {
-    let items = vec![user_item("stale")];
-    let mut w = World::new(&items);
-    let mut rec = Reconciler::new();
-    let scanner = FakeScanner(items.clone());
-    let stable = ScriptedStability::default();
-    let trust = silent_trust();
-    let stale = FreshnessInputs {
-        last_apply_at: Some(NOW - 61 * 86_400),
-        partial_reversion: false,
-        now: NOW,
-    };
-
-    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, stale);
-    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, stale);
-    assert!(out.freshness_downgraded);
-    assert_eq!(out.proposed, vec![ItemId::from_raw("stale")]);
-    assert!(out.applied.is_empty());
-}
-
-#[test]
-fn a_busy_desktop_defers_the_whole_wave_and_a_mid_batch_interruption_stops_the_batch() {
+fn a_busy_desktop_defers_the_wave_and_a_mid_batch_busy_aborts_the_whole_apply() {
     let items = vec![user_item("a"), user_item("b"), user_item("c")];
     let mut w = World::new(&items);
     let mut rec = Reconciler::new();
     let scanner = FakeScanner(items.clone());
     let stable = ScriptedStability::default();
-    let trust = silent_trust();
 
-    // Wave-start busy: nothing classified, nothing lost.
-    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::script(&[true]), &stable, &style(), &trust, fresh(NOW));
-    assert!(out.deferred_busy && out.applied.is_empty() && out.proposed.is_empty());
+    // Wave-start busy: nothing classified/proposed, nothing lost.
+    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::script(&[true]), &stable, &style(), &silent_trust(), fresh(NOW));
+    assert!(out.deferred_busy && out.proposed.is_empty());
 
-    // Settle pass (idle), then a batch whose activity flips busy after the first icon's check:
-    // call 1 = wave gate (idle), calls 2.. = per-icon checks.
-    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
-    let activity = ScriptedActivity::script(&[false, false, true]);
-    let out = cycle(&mut w, &mut rec, &scanner, &activity, &stable, &style(), &trust, fresh(NOW));
-    assert!(out.deferred_busy, "the interruption is visible");
-    assert_eq!(out.applied.len(), 1, "only the icon baked before the interruption applied");
+    // Settle + propose (idle).
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    let proposed = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW)).proposed;
+    assert_eq!(proposed.len(), 3);
 
-    // The user goes idle → the next cycle picks up the remainder — suppressed, never dropped.
-    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
-    assert_eq!(out.applied.len(), 2, "the deferred remainder applies once idle");
+    // Apply where the desktop goes busy after the first per-icon check: the WHOLE batch aborts —
+    // NOTHING is written while the user is active (codex m7a-🟠4), not a partial apply.
+    let out = apply(&mut w, &mut rec, &ScriptedActivity::script(&[false, true]), &style(), proposed.clone());
+    assert!(out.deferred_busy);
+    assert!(out.applied.is_empty(), "no writes land during activity — the whole batch aborts");
+    assert!(w.ledger.all().unwrap().is_empty());
+
+    // Idle → the same batch applies in full.
+    let out = apply(&mut w, &mut rec, &ScriptedActivity::idle(), &style(), proposed);
+    assert_eq!(out.applied.len(), 3, "the deferred batch applies once idle");
 }
 
 #[test]
@@ -414,18 +469,41 @@ fn an_externally_modified_owned_item_is_flagged_and_never_touched() {
     let mut rec = Reconciler::new();
     let scanner = FakeScanner(items.clone());
     let stable = ScriptedStability::default();
-    let trust = silent_trust();
 
-    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
-    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
-    assert_eq!(out.applied.len(), 1);
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    cycle_then_apply(&mut w, &mut rec, &scanner, &stable, &style());
+    assert!(w.ledger.get(&ItemId::from_raw("mine")).unwrap().is_some());
 
     // The user hand-edits the styled icon.
     w.desk.surfaces.borrow_mut().insert(items[0].path.clone(), b"hand-edited".to_vec());
     let before = w.desk.surfaces.borrow()[&items[0].path].clone();
-    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
+    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
     assert_eq!(out.conflicts, vec![ItemId::from_raw("mine")]);
     assert_eq!(w.desk.surfaces.borrow()[&items[0].path], before, "user/installer wins — untouched");
+}
+
+#[test]
+fn a_manually_restored_item_is_silently_skipped_not_flagged_forever() {
+    // codex m7a-🟡7: an owned item the user manually restored to its exact original (the
+    // current==original poison tuple) is ALREADY at its original — the reconciler silently skips
+    // it, never level-triggering a permanent conflict flag, never healing-then-restyling (ABA).
+    let items = vec![user_item("restored")];
+    let mut w = World::new(&items);
+    let mut rec = Reconciler::new();
+    let scanner = FakeScanner(items.clone());
+    let stable = ScriptedStability::default();
+
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    cycle_then_apply(&mut w, &mut rec, &scanner, &stable, &style());
+
+    // The user manually restores the icon to its exact original (outside the app).
+    w.desk.surfaces.borrow_mut().insert(items[0].path.clone(), b"original:restored".to_vec());
+    for _ in 0..3 {
+        let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+        assert!(out.conflicts.is_empty(), "the poison tuple is silently skipped, never re-flagged");
+        assert!(out.proposed.is_empty(), "never restyled over the manual restore (no ABA)");
+        assert_eq!(w.desk.surfaces.borrow()[&items[0].path], b"original:restored", "left at the user's original");
+    }
 }
 
 #[test]
@@ -439,7 +517,6 @@ fn kind_policy_opt_out_and_unstyleable_items_never_enter_a_batch() {
     let mut rec = Reconciler::new();
     let scanner = FakeScanner(items.clone());
     let stable = ScriptedStability::default();
-    let trust = silent_trust();
     let style = IconStyle::from_value(json!({
         "config": {
             "shape": "Circle", "subject": "Original", "tint": "#FF6F5E",
@@ -452,33 +529,45 @@ fn kind_policy_opt_out_and_unstyleable_items_never_enter_a_batch() {
     }))
     .unwrap();
 
-    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style, &trust, fresh(NOW));
-    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style, &trust, fresh(NOW));
-    assert_eq!(out.applied, vec![ItemId::from_raw("app")], "only the participating styleable item");
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style, &silent_trust(), fresh(NOW));
+    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style, &silent_trust(), fresh(NOW));
+    let proposed: Vec<_> = out.proposed.iter().map(|c| c.item.id.clone()).collect();
+    assert_eq!(proposed, vec![ItemId::from_raw("app")], "only the participating styleable item");
+    let applied = apply(&mut w, &mut rec, &ScriptedActivity::idle(), &style, out.proposed);
+    assert_eq!(applied.applied, vec![ItemId::from_raw("app")]);
     assert!(w.ledger.get(&ItemId::from_raw("docs")).unwrap().is_none(), "opted-out bucket untouched");
     assert!(w.ledger.get(&ItemId::from_raw("broken")).unwrap().is_none(), "unstyleable untouched");
 }
 
 /// The §14 release-gating red line (T12): a privileged-scope item is enqueued BEFORE any write
-/// path — the applier never sees it. The deeper guarantee is structural: this crate has no
+/// path — never proposed, never applied. The deeper guarantee is structural: this crate has no
 /// OverlayControl/dm-elevated dependency, so an elevation call from the reconciler cannot even
-/// be expressed; this test pins the queue routing half.
+/// be expressed; this test pins the queue routing half — at BOTH classify and apply_batch (the
+/// apply-time re-check, codex m7a-🔴2).
 #[test]
 fn the_privileged_red_line_public_desktop_items_are_enqueued_never_applied() {
     let public = item("tool", ItemKind::Shortcut, "C:/Users/Public/Desktop/Tool.lnk");
     let mine = user_item("mine");
-    let items = vec![public, mine];
+    let items = vec![public.clone(), mine];
     let mut w = World::new(&items);
     let mut rec = Reconciler::new();
     let scanner = FakeScanner(items.clone());
     let stable = ScriptedStability::default();
-    let trust = silent_trust();
 
-    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
-    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &trust, fresh(NOW));
-
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
     assert_eq!(out.pending_privileged, 1, "the tray count line sees the queued item");
-    assert_eq!(out.applied, vec![ItemId::from_raw("mine")]);
+    let proposed: Vec<_> = out.proposed.iter().map(|c| c.item.id.clone()).collect();
+    assert_eq!(proposed, vec![ItemId::from_raw("mine")], "the public item is never proposed");
+
+    // Even if a caller smuggles the public item into apply_batch (a stale proposal), the apply-time
+    // scope re-check routes it to the queue, never to the applier.
+    let smuggled = vec![VettedCandidate {
+        item: public.clone(),
+        fingerprint: dm_domain::Fingerprint::of_bytes(b"original:tool"),
+    }];
+    let applied = apply(&mut w, &mut rec, &ScriptedActivity::idle(), &style(), smuggled);
+    assert!(applied.applied.is_empty(), "the apply-time scope gate refuses the privileged item");
     let touched = w.desk.applied_paths.borrow();
     assert!(
         touched.iter().all(|p| !p.starts_with("C:/Users/Public")),
@@ -496,16 +585,61 @@ fn unstable_items_keep_retrying_until_their_bytes_settle() {
     let mut rec = Reconciler::new();
     let scanner = FakeScanner(items.clone());
     let moving = ScriptedStability::unstable(&[&items[0].path]);
-    let trust = silent_trust();
 
     for _ in 0..3 {
-        let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &moving, &style(), &trust, fresh(NOW));
+        let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &moving, &style(), &silent_trust(), fresh(NOW));
         assert_eq!(out.deferred_unstable, vec![ItemId::from_raw("dl")], "still writing → deferred");
-        assert!(out.applied.is_empty());
+        assert!(out.proposed.is_empty());
     }
-    // The write finishes: two quiet cycles later it formats.
+    // The write finishes: two quiet cycles later it is proposed, then applies.
     moving.unstable.borrow_mut().clear();
-    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &moving, &style(), &trust, fresh(NOW));
-    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &moving, &style(), &trust, fresh(NOW));
-    assert_eq!(out.applied, vec![ItemId::from_raw("dl")]);
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &moving, &style(), &silent_trust(), fresh(NOW));
+    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &moving, &style(), &silent_trust(), fresh(NOW));
+    assert_eq!(out.proposed.len(), 1);
+    let applied = apply(&mut w, &mut rec, &ScriptedActivity::idle(), &style(), out.proposed);
+    assert_eq!(applied.applied, vec![ItemId::from_raw("dl")]);
+}
+
+#[test]
+fn a_prior_crash_is_recovered_unconditionally_every_cycle_even_with_no_new_candidates() {
+    // codex m7a-🟠3: a crash-left journal must reconcile on the NEXT cycle regardless of whether a
+    // new item happens by. Here an INTERRUPTED txn (Prepared + Applied, no Commit) mutated the
+    // desktop; recovery aborts it (restores) and the reconcile stands the cycle down rather than
+    // proposing/applying on top of a just-recovered desktop.
+    use dm_operations::{JournalRecord, JournalSink};
+    let items = vec![user_item("a")];
+    let mut w = World::new(&items);
+    let mut rec = Reconciler::new();
+    let scanner = FakeScanner(items.clone());
+    // The desktop was mutated (styled) by the interrupted txn.
+    w.desk.surfaces.borrow_mut().insert(items[0].path.clone(), b"styled:crash".to_vec());
+    let orig = Fingerprint::of_bytes(b"original:a");
+    w.journal.append(&JournalRecord::TxnBegin { txn: 1, items: vec![ItemId::from_raw("a")] }).unwrap();
+    w.journal
+        .append(&JournalRecord::ItemPrepared {
+            txn: 1,
+            item: ItemId::from_raw("a"),
+            target: items[0].target(),
+            anchor: RestoreAnchor::FileBytes { bytes: b"original:a".to_vec() },
+            original_fingerprint: orig.clone(),
+            expected_fingerprint: orig,
+            asset_hash: "h".into(),
+            owned: dm_domain::OwnedFields::icon_only(),
+            pinned_seed: None,
+        })
+        .unwrap();
+    w.journal
+        .append(&JournalRecord::ItemApplied {
+            txn: 1,
+            item: ItemId::from_raw("a"),
+            new_fingerprint: Fingerprint::of_bytes(b"styled:crash"),
+        })
+        .unwrap();
+    // No TxnCommitted → interrupted → recovery restores.
+
+    let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &ScriptedStability::default(), &style(), &silent_trust(), fresh(NOW));
+    assert!(out.deferred_busy, "an unrecovered crash defers the cycle");
+    assert!(!out.errors.is_empty(), "the recovery is surfaced");
+    // Recovery ran unconditionally: the interrupted mutation was walked back to the original.
+    assert_eq!(w.desk.surfaces.borrow()[&items[0].path], b"original:a", "recovery restored the desktop");
 }

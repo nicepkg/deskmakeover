@@ -2,22 +2,21 @@
 //! path because they would need elevation (Public Desktop / ProgramData). The background never
 //! elevates — this queue is drained by ONE batched UAC when the user opens the window; its length
 //! backs the tray's "待处理特权项 (N)" line.
+//!
+//! Scope classification is the SHARED `dm_operations::icons::scope::privileged_scope` (a proper
+//! path-ancestry test), so the reconciler and the operations-layer version switch classify
+//! identically.
 
 use dm_domain::{ItemId, ItemTarget};
+pub use dm_operations::icons::scope::{privileged_scope, PrivilegedScope};
 
-/// Why an item is queued instead of formatted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PendingReason {
-    /// Lives under the shared `Public Desktop` root.
-    PublicDesktop,
-    /// Lives under `ProgramData` (installer-deployed).
-    ProgramData,
-}
+/// Back-compat alias: the queue's reason is the shared scope classification.
+pub type PendingReason = PrivilegedScope;
 
 #[derive(Debug, Clone)]
 struct Pending {
     target: ItemTarget,
-    reason: PendingReason,
+    reason: PrivilegedScope,
 }
 
 /// FIFO, deduplicated by item id (an item observed across many reconcile cycles queues once).
@@ -31,10 +30,14 @@ impl PendingPrivilegedQueue {
         Self::default()
     }
 
-    /// Enqueues once per item id; a repeat observation refreshes nothing (first reason wins —
-    /// the scope of a path does not change while it sits queued).
-    pub fn push(&mut self, target: ItemTarget, reason: PendingReason) {
-        if self.items.iter().any(|p| p.target.id == target.id) {
+    /// Enqueues, deduplicated by item id. A REPEAT observation UPDATES the target + reason in
+    /// place while keeping its FIFO position (codex m7b-🟠8: an item renamed while queued must
+    /// hand the batched-UAC drain its CURRENT path, not the first-seen one — file identity, not
+    /// the stale locator).
+    pub fn push(&mut self, target: ItemTarget, reason: PrivilegedScope) {
+        if let Some(existing) = self.items.iter_mut().find(|p| p.target.id == target.id) {
+            existing.target = target;
+            existing.reason = reason;
             return;
         }
         self.items.push(Pending { target, reason });
@@ -46,7 +49,7 @@ impl PendingPrivilegedQueue {
         std::mem::take(&mut self.items).into_iter().map(|p| p.target).collect()
     }
 
-    /// Drops one queued item (it vanished from the desktop before the drain).
+    /// Drops one queued item (it vanished from the desktop, or moved out of privileged scope).
     pub fn remove(&mut self, id: &ItemId) {
         self.items.retain(|p| &p.target.id != id);
     }
@@ -60,27 +63,9 @@ impl PendingPrivilegedQueue {
     }
 
     /// The queued reasons, for the review UI (id → reason).
-    pub fn reasons(&self) -> impl Iterator<Item = (&ItemId, PendingReason)> {
+    pub fn reasons(&self) -> impl Iterator<Item = (&ItemId, PrivilegedScope)> {
         self.items.iter().map(|p| (&p.target.id, p.reason))
     }
-}
-
-/// Classifies a path's write scope against the privileged roots (the host resolves the real
-/// known-folder paths; tests inject). Comparison is case-insensitive on the ASCII range — NTFS
-/// path semantics; the roots come from `SHGetKnownFolderPath`, so casing is already canonical in
-/// practice and this guard only covers hand-typed/registry-echoed variants.
-pub fn privileged_scope(path: &str, public_roots: &[String]) -> Option<PendingReason> {
-    let lower = path.to_ascii_lowercase().replace('\\', "/");
-    for root in public_roots {
-        let root_l = root.to_ascii_lowercase().replace('\\', "/");
-        if !root_l.is_empty() && lower.starts_with(&root_l) {
-            return Some(PendingReason::PublicDesktop);
-        }
-    }
-    if lower.contains("/programdata/") {
-        return Some(PendingReason::ProgramData);
-    }
-    None
 }
 
 #[cfg(test)]
@@ -93,40 +78,24 @@ mod tests {
     }
 
     #[test]
-    fn push_dedups_by_id_and_drain_empties() {
+    fn push_dedups_by_id_but_updates_the_target_in_place() {
         let mut q = PendingPrivilegedQueue::new();
-        q.push(target("a", "C:/Users/Public/Desktop/a.lnk"), PendingReason::PublicDesktop);
-        q.push(target("a", "C:/Users/Public/Desktop/a.lnk"), PendingReason::PublicDesktop);
-        q.push(target("b", "C:/ProgramData/x/b.lnk"), PendingReason::ProgramData);
+        q.push(target("a", "C:/Users/Public/Desktop/a.lnk"), PrivilegedScope::PublicDesktop);
+        q.push(target("b", "C:/ProgramData/x/b.lnk"), PrivilegedScope::ProgramData);
+        // A rename of `a` while queued updates its path, does NOT add a second entry.
+        q.push(target("a", "C:/Users/Public/Desktop/a-renamed.lnk"), PrivilegedScope::PublicDesktop);
         assert_eq!(q.len(), 2, "repeat observations queue once");
         let drained = q.drain_for_elevation();
         assert_eq!(drained.len(), 2);
+        let a = drained.iter().find(|t| t.id == ItemId::from_raw("a")).unwrap();
+        assert_eq!(a.path, "C:/Users/Public/Desktop/a-renamed.lnk", "the drain sees the current path");
         assert!(q.is_empty());
-    }
-
-    #[test]
-    fn scope_classification_matches_public_roots_and_programdata() {
-        let roots = vec![r"C:\Users\Public\Desktop".to_string()];
-        assert_eq!(
-            privileged_scope(r"C:\Users\Public\Desktop\Tool.lnk", &roots),
-            Some(PendingReason::PublicDesktop),
-        );
-        assert_eq!(
-            privileged_scope("c:/users/public/desktop/tool.lnk", &roots),
-            Some(PendingReason::PublicDesktop),
-            "case-insensitive, separator-agnostic"
-        );
-        assert_eq!(
-            privileged_scope(r"C:\ProgramData\App\i.lnk", &roots),
-            Some(PendingReason::ProgramData),
-        );
-        assert_eq!(privileged_scope(r"C:\Users\Dev\Desktop\mine.lnk", &roots), None);
     }
 
     #[test]
     fn remove_drops_a_vanished_item() {
         let mut q = PendingPrivilegedQueue::new();
-        q.push(target("a", "C:/Users/Public/Desktop/a.lnk"), PendingReason::PublicDesktop);
+        q.push(target("a", "C:/Users/Public/Desktop/a.lnk"), PrivilegedScope::PublicDesktop);
         q.remove(&ItemId::from_raw("a"));
         assert!(q.is_empty());
     }

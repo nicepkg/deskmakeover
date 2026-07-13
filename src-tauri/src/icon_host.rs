@@ -111,6 +111,11 @@ pub struct IconHost {
     active_user_profiles: u32,
     /// Where `exportCompare` saves when the platform offers no Pictures known-folder.
     export_fallback_dir: PathBuf,
+    /// `Public Desktop` known-folder roots (spec §6/§14 privileged-scope exclusion). Empty on the
+    /// dev host; [WINDOWS-VERIFY] resolved via `SHGetKnownFolderPath` on the box.
+    public_desktop_roots: Vec<String>,
+    /// `ProgramData` known-folder roots. Empty on the dev host; [WINDOWS-VERIFY] on the box.
+    programdata_roots: Vec<String>,
 }
 
 impl IconHost {
@@ -163,6 +168,11 @@ impl IconHost {
             overlay_ico,
             active_user_profiles,
             export_fallback_dir: data_dir.join("exports"),
+            // [WINDOWS-VERIFY] resolve the real Public Desktop / ProgramData known folders on the
+            // box (SHGetKnownFolderPath FOLDERID_PublicDesktop / FOLDERID_ProgramData); the dev
+            // host has no such items, so the exclusion is a no-op here.
+            public_desktop_roots: Vec::new(),
+            programdata_roots: Vec::new(),
         }
     }
 
@@ -662,6 +672,10 @@ impl IconHost {
             reader: &*self.reader,
             applier: &*self.applier,
             assets: &self.assets,
+            // [WINDOWS-VERIFY] the real Public Desktop / ProgramData known folders; the dev host
+            // has none, so nothing is scope-excluded there.
+            public_roots: &self.public_desktop_roots,
+            programdata_roots: &self.programdata_roots,
         };
         let IconMutState { ledger, journal, history, txn, op_epoch, .. } = &mut *st;
         let outcome = switch_to_version(

@@ -14,10 +14,9 @@ use dm_domain::{
     AssetStore, DesktopItem, DesktopScanner, IconApplier, IconSourceExtractor, ItemStateReader,
     OwnedFields,
 };
-use dm_icon_core::render_session::RenderSession;
 
 use crate::error::{OperationError, Result};
-use crate::icons::native_bake::bake_master_png;
+use crate::icons::native_bake::{bake_masters_par, BakeJob};
 use crate::icons::scope;
 use crate::icons::style_resolve::StyleRecipe;
 use crate::icons::{package_masters, BufferedMaster};
@@ -82,13 +81,11 @@ pub fn switch_to_version(
     // (2) Scan — a pure read, no persistent side effect — before promotion.
     let items = ports.scanner.scan().map_err(|e| OperationError::InvalidPayload(e.to_string()))?;
 
-    // (3) Promote ② (spec §8.3: switching sets ③'s recipe as ②), then project. A one-shot switch
-    // creates its own RenderSession (no cross-call warm cache to preserve).
+    // (3) Promote ② (spec §8.3: switching sets ③'s recipe as ②), then project.
     settings.set_saved_style(Some(&style))?;
-    let mut session = RenderSession::new();
     let mut errors: Vec<String> = Vec::new();
     let outcome =
-        match bake_and_apply(&items, &recipe, ports, &mut session, txn, journal, ledger, &mut errors) {
+        match bake_and_apply(&items, &recipe, ports, txn, journal, ledger, &mut errors) {
             Ok(o) => o,
             // A projection fault AFTER ② moved: surface it structured, never a bare Err (the
             // caller would otherwise see "failed" while ② is already the new style).
@@ -122,14 +119,24 @@ fn bake_and_apply(
     items: &[DesktopItem],
     recipe: &StyleRecipe,
     ports: &VersionSwitchPorts<'_>,
-    session: &mut RenderSession,
     txn: &mut TxnIdAllocator,
     journal: &mut dyn JournalSink,
     ledger: &mut dyn LedgerStore,
     errors: &mut Vec<String>,
 ) -> Result<ApplyOutcome> {
-    let mut masters: Vec<BufferedMaster> = Vec::new();
-    let mut anchors: Vec<(DesktopItem, dm_domain::Fingerprint)> = Vec::new();
+    // One prepared item: its CAS anchor + resolved config + extracted sources, ready to bake. Collected
+    // in PHASE A so PHASE B can render every icon in ONE parallel batch (M6 Phase 3, codex R2 C-7) —
+    // holding the owned sources + config alive for the borrowing `BakeJob`s.
+    struct Prepared {
+        item: DesktopItem,
+        fingerprint: dm_domain::Fingerprint,
+        cfg: dm_icon_core::config::Config,
+        is_shortcut: bool,
+        sources: Vec<dm_domain::DecodedImage>,
+    }
+
+    // ── Phase A: resolve + extract (pure reads; no desktop mutation) ────────────────────────────
+    let mut prepared: Vec<Prepared> = Vec::new();
     for item in items {
         // §6/§14: version switching never touches Public Desktop / ProgramData (codex m7a-🔴2).
         // An `Unresolved` scope classifies EVERY item privileged, so a Windows host that has not
@@ -170,30 +177,53 @@ fn bake_and_apply(
                 continue;
             }
         };
+        prepared.push(Prepared {
+            item: item.clone(),
+            fingerprint,
+            cfg,
+            is_shortcut: item.kind.is_shortcut(),
+            sources,
+        });
+    }
+
+    // ── Phase B: bake every (item, slot) in ONE parallel batch, then distribute per item ────────
+    // Flatten to `BakeJob`s in a stable order; `owner[k]` records which prepared item job `k` feeds.
+    let jobs: Vec<BakeJob> = prepared
+        .iter()
+        .flat_map(|p| {
+            p.sources
+                .iter()
+                .map(move |src| BakeJob { source_png: &src.png, config: &p.cfg, is_shortcut: p.is_shortcut })
+        })
+        .collect();
+    let baked = bake_masters_par(&jobs); // byte-identical to a serial session bake (native_bake tests)
+
+    let mut masters: Vec<BufferedMaster> = Vec::new();
+    let mut anchors: Vec<(DesktopItem, dm_domain::Fingerprint)> = Vec::new();
+    let mut k = 0usize;
+    for p in &prepared {
+        let mut item_masters = Vec::with_capacity(p.sources.len());
         let mut ok = true;
-        let mut item_masters = Vec::with_capacity(sources.len());
-        for (slot, src) in sources.iter().enumerate() {
-            let bake_id = if slot == 0 {
-                item.id.as_str().to_string()
-            } else {
-                format!("{}#{slot}", item.id.as_str())
-            };
-            match bake_master_png(session, &bake_id, &src.png, &cfg, item.kind.is_shortcut(), None) {
+        for slot in 0..p.sources.len() {
+            match &baked[k] {
                 Ok(png) => item_masters.push(BufferedMaster {
-                    item_id: item.id.as_str().to_string(),
+                    item_id: p.item.id.as_str().to_string(),
                     source_index: slot as u32,
-                    png_base64: png,
+                    png_base64: png.clone(),
                 }),
+                // Record only the FIRST fault per item (mirrors the old break) and skip the item whole.
                 Err(e) => {
-                    errors.push(format!("bake {}: {e}", item.id.as_str()));
+                    if ok {
+                        errors.push(format!("bake {}: {e}", p.item.id.as_str()));
+                    }
                     ok = false;
-                    break;
                 }
             }
+            k += 1;
         }
         if ok {
             masters.extend(item_masters);
-            anchors.push((item.clone(), fingerprint));
+            anchors.push((p.item.clone(), p.fingerprint));
         }
     }
     if anchors.is_empty() {

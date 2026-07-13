@@ -266,11 +266,11 @@ export class IconCompositor {
   }
 
   /** The 256px bake master as PNG base64 — the ONLY size the bridge accepts. */
-  async bakeMasterPng(id: string, config: ConfigDto, isShortcut: boolean, opts?: RenderOpts): Promise<string | null> {
+  async bakeMasterPng(id: string, config: ConfigDto, isShortcut: boolean, opts?: RenderOpts, showOriginal = false): Promise<string | null> {
     if (!workersSupported) {
       const renderer = this.localRenderer
       if (!renderer || !renderer.hasSource(id)) return null
-      const rgba = renderer.render(id, config, isShortcut, false, MASTER_SIZE, opts)
+      const rgba = renderer.render(id, config, isShortcut, showOriginal, MASTER_SIZE, opts)
       if (!rgba) return null
       return canvasToPngBase64(rgbaToCanvas(rgba, MASTER_SIZE))
     }
@@ -278,7 +278,7 @@ export class IconCompositor {
     const req = ++this.reqSeq
     const png = await new Promise<ArrayBuffer | null>((resolve) => {
       this.bakeWaiters.set(req, resolve)
-      this.post(id, { t: 'bake', req, id, config, isShortcut, opts })
+      this.post(id, { t: 'bake', req, id, config, isShortcut, showOriginal, opts })
     })
     if (!png) return null
     let binary = ''

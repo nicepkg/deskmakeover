@@ -120,8 +120,7 @@ fn sync_parent_dir(_target: &Path) -> PortResult<()> {
 fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
     use windows::core::HSTRING;
     use windows::Win32::Storage::FileSystem::{
-        MoveFileExW, ReplaceFileW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-        REPLACE_FILE_FLAGS,
+        MoveFileExW, ReplaceFileW, MOVEFILE_WRITE_THROUGH, REPLACE_FILE_FLAGS,
     };
 
     // try_exists(), not exists() (audit F3): a metadata error must NOT read as "fresh target" and
@@ -154,12 +153,15 @@ fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
         // durable before we return — the barrier the journal fsync assumes (a plain rename left the
         // fresh write non-durable, so a cross-volume item's write could be lost after its txn
         // committed on another volume, poisoning CAS). [WINDOWS-VERIFY] the write-through on NTFS.
+        // NO MOVEFILE_REPLACE_EXISTING (audit F3, codex B3-🟠): we already proved the target ABSENT,
+        // so a file created in the race between `try_exists()` and here must make the move FAIL
+        // (fail closed) rather than be silently overwritten through this metadata-dropping path.
         // SAFETY: both paths are valid UTF-16; no buffers are retained past the call.
         unsafe {
             MoveFileExW(
                 &HSTRING::from(tmp.as_os_str()),
                 &HSTRING::from(target.as_os_str()),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+                MOVEFILE_WRITE_THROUGH,
             )
         }
         .map_err(|e| PortError::Io(e.to_string()))

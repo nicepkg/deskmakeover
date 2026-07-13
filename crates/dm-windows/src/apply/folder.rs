@@ -24,7 +24,7 @@ pub fn apply(folder_path: &str, icon_path: &str) -> PortResult<()> {
     }
     let ini = ini_path(folder_path);
     attrs::clear_readonly(folder_path)?;
-    if Path::new(&ini).exists() {
+    if present(&ini)? {
         attrs::set(&ini, attrs::NORMAL)?;
     }
     // Durable + atomic so a crash mid-write can't tear `desktop.ini` (P1-9).
@@ -52,7 +52,9 @@ pub fn restore(
     }
     let ini = ini_path(folder_path);
     attrs::clear_readonly(folder_path)?;
-    if Path::new(&ini).exists() {
+    // try_exists(), not exists() (audit F3, codex B3-🟠): a `desktop.ini` metadata error must not
+    // silently skip normalizing/removing OUR file and return success with styling stranded.
+    if present(&ini)? {
         attrs::set(&ini, attrs::NORMAL)?;
     }
 
@@ -61,13 +63,22 @@ pub fn restore(
             crate::durable::write_atomic(&ini, &anchor.content)?;
             attrs::set(&ini, anchor.attributes)?;
         }
-        None if Path::new(&ini).exists() => {
-            std::fs::remove_file(&ini).map_err(|e| PortError::Io(e.to_string()))?;
+        None => {
+            if present(&ini)? {
+                std::fs::remove_file(&ini).map_err(|e| PortError::Io(e.to_string()))?;
+            }
         }
-        None => {}
     }
 
     attrs::set(folder_path, folder_attributes)
+}
+
+/// `try_exists()` with the fail-CLOSED contract (audit F3): a metadata error PROPAGATES instead of
+/// reading as "absent" (which would silently skip a normalize/remove and strand styled state).
+fn present(path: &str) -> PortResult<bool> {
+    Path::new(path)
+        .try_exists()
+        .map_err(|e| PortError::Io(format!("cannot access {path}: {e}")))
 }
 
 fn ini_path(folder_path: &str) -> String {

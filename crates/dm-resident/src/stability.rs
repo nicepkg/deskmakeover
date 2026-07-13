@@ -67,15 +67,20 @@ impl StabilityReader for FsStabilityReader {
     fn snapshot(&self, path: &str) -> StabilitySnapshot {
         let meta = std::fs::metadata(path).ok();
         let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-        let mtime_nanos = meta
+        // A FAILED mtime read must NOT settle (codex r3-🟡): a `0` sentinel would let two same-size
+        // rewrites both read `mtime_nanos: 0` and settle. Track whether the timestamp was actually
+        // read; a failure forces `readable: false`, which never settles.
+        let mtime = meta
             .as_ref()
             .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let readable = meta.map(|m| m.is_dir()).unwrap_or(false)
-            || std::fs::File::open(path).is_ok();
-        StabilitySnapshot { size, mtime_nanos, readable }
+            .map(|d| d.as_nanos());
+        let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+        let opens = is_dir || std::fs::File::open(path).is_ok();
+        // A directory has no meaningful mtime-for-settling but IS stable; a file needs both a
+        // successful open AND a readable mtime to be considered readable.
+        let readable = if is_dir { true } else { opens && mtime.is_some() };
+        StabilitySnapshot { size, mtime_nanos: mtime.unwrap_or(0), readable }
     }
 }
 

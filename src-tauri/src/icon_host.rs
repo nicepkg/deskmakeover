@@ -169,8 +169,11 @@ impl IconHost {
             active_user_profiles,
             export_fallback_dir: data_dir.join("exports"),
             // [WINDOWS-VERIFY] resolve the real Public Desktop / ProgramData known folders on the
-            // box (SHGetKnownFolderPath FOLDERID_PublicDesktop / FOLDERID_ProgramData); the dev
-            // host has no such items, so the exclusion is a no-op here.
+            // box (SHGetKnownFolderPath FOLDERID_PublicDesktop / FOLDERID_ProgramData). ⚠️ These
+            // MUST be non-empty on Windows (both folders always exist) — if resolution FAILS on
+            // the box, the wiring must FAIL CLOSED (refuse version-switch / auto-format), never run
+            // with empty roots, which would let §14-privileged items be styled (codex r2-🔴). The
+            // dev host legitimately has none, so the exclusion is a correct no-op here.
             public_desktop_roots: Vec::new(),
             programdata_roots: Vec::new(),
         }

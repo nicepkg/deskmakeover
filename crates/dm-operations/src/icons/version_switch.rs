@@ -29,15 +29,25 @@ use crate::txn::{recover_from_journal, ApplyOutcome, ApplyRequest, JournalSink, 
 /// privileged roots (resolved by the host via `SHGetKnownFolderPath`) let the projection SKIP
 /// `Public Desktop`/`ProgramData` items (spec §6: version switching never touches them, §14 the
 /// background never elevates — codex m7a-🔴2).
+///
+/// ⚠️ **[WINDOWS-VERIFY] fail-closed root resolution (codex r2-🔴):** `Public Desktop` and
+/// `ProgramData` ALWAYS exist on Windows, so the host MUST resolve non-empty roots there. Empty
+/// roots mean "no privileged scope" — correct on the dev host (which has no such items) but a
+/// §14 FAIL-OPEN if a real Windows `SHGetKnownFolderPath` failed. The host must therefore refuse
+/// to run version-switch / the reconciler with empty roots WHEN ON WINDOWS (fail closed), never
+/// silently proceed. (Recovery in this function reconciles only OUR OWN journal, which never
+/// contains a privileged target — we never style one — so recovery cannot restore a privileged
+/// item we styled; the fail-open risk is purely the projection loop, gated by these roots.)
 pub struct VersionSwitchPorts<'a> {
     pub scanner: &'a dyn DesktopScanner,
     pub extractor: &'a dyn IconSourceExtractor,
     pub reader: &'a dyn ItemStateReader,
     pub applier: &'a dyn IconApplier,
     pub assets: &'a dyn AssetStore,
-    /// `Public Desktop` known-folder roots (empty on the dev host).
+    /// `Public Desktop` known-folder roots. NON-EMPTY on Windows (fail-closed, see the struct doc);
+    /// empty on the dev host.
     pub public_roots: &'a [String],
-    /// `ProgramData` known-folder roots (empty on the dev host).
+    /// `ProgramData` known-folder roots. NON-EMPTY on Windows; empty on the dev host.
     pub programdata_roots: &'a [String],
 }
 
@@ -181,7 +191,19 @@ fn bake_and_apply(
     if anchors.is_empty() {
         return Ok(ApplyOutcome::default());
     }
-    let packaged = package_masters(&masters)?;
+    // Distinguish a PRE-apply package fault from a driver fault (codex r2-🟠). A package error is
+    // a pure pre-mutation failure (nothing touched the desktop) → surface it, empty outcome. The
+    // driver returns Ok-with-error for a rollback (its `ApplyOutcome` carries committed/rolled_back
+    // + `error`), and a bare `Err` only on a durable journal fault — either way we return the
+    // outcome (or record the driver error) so the transaction's real state is never silently
+    // folded into "nothing happened".
+    let packaged = match package_masters(&masters) {
+        Ok(p) => p,
+        Err(e) => {
+            errors.push(format!("package: {e}"));
+            return Ok(ApplyOutcome::default());
+        }
+    };
     let by_id: std::collections::HashMap<&str, &dm_domain::Fingerprint> =
         anchors.iter().map(|(i, f)| (i.id.as_str(), f)).collect();
     let mut requests = Vec::with_capacity(packaged.len());
@@ -199,7 +221,15 @@ fn bake_and_apply(
             pinned_seed: None,
         });
     }
-    TxnDriver::new(ports.reader, ports.applier, ports.assets).apply(txn.next_id(), requests, journal, ledger)
+    match TxnDriver::new(ports.reader, ports.applier, ports.assets).apply(txn.next_id(), requests, journal, ledger) {
+        Ok(outcome) => Ok(outcome), // committed/rolled_back/error all carried on the outcome
+        Err(e) => {
+            // A bare driver Err = a durable journal fault; there is no ApplyOutcome to carry. Record
+            // it distinctly (not "package") so the caller knows the desktop MAY have been mutated.
+            errors.push(format!("driver: {e}"));
+            Ok(ApplyOutcome { desktop_mutated: true, ..Default::default() })
+        }
+    }
 }
 
 #[cfg(test)]

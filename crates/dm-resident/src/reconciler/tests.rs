@@ -483,6 +483,52 @@ fn an_externally_modified_owned_item_is_flagged_and_never_touched() {
 }
 
 #[test]
+fn a_proposal_goes_stale_if_a_ledger_row_appears_before_apply() {
+    // codex r1-🟠1: the proposal was for a FRESH (un-ledgered) item. If something styles it (a
+    // committed row appears) between propose and apply, the old proposal must NOT apply on top —
+    // it is skipped as a conflict, not silently re-styled via the ledger's last_applied CAS.
+    let items = vec![user_item("x")];
+    let mut w = World::new(&items);
+    let mut rec = Reconciler::new();
+    let scanner = FakeScanner(items.clone());
+    let stable = ScriptedStability::default();
+
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    let proposed = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW)).proposed;
+    assert_eq!(proposed.len(), 1);
+
+    // Something styles `x` first (a committed row appears) — e.g. a prior apply_batch or the
+    // foreground. Apply the SAME batch: it must be a conflict, not a re-style.
+    apply(&mut w, &mut rec, &ScriptedActivity::idle(), &style(), proposed.clone());
+    let styled_once = w.desk.surfaces.borrow()[&items[0].path].clone();
+    let out = apply(&mut w, &mut rec, &ScriptedActivity::idle(), &style(), proposed);
+    assert!(out.conflicts.contains(&ItemId::from_raw("x")), "the stale proposal is a conflict");
+    assert!(out.applied.is_empty(), "the stale proposal applies nothing");
+    assert_eq!(w.desk.surfaces.borrow()[&items[0].path], styled_once, "no re-style on top");
+}
+
+#[test]
+fn a_busy_starting_during_the_last_bake_still_aborts_before_the_write() {
+    // codex r1-🟠2: the final fail-closed activity check before the driver apply — a busy that
+    // begins during the LAST candidate's extract/bake (after the per-item check) must still abort.
+    let items = vec![user_item("only")];
+    let mut w = World::new(&items);
+    let mut rec = Reconciler::new();
+    let scanner = FakeScanner(items.clone());
+    let stable = ScriptedStability::default();
+
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    let proposed = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW)).proposed;
+    assert_eq!(proposed.len(), 1);
+
+    // Per-item check (call 1) = idle → the item bakes; the FINAL pre-write check (call 2) = busy →
+    // abort. Nothing is written.
+    let out = apply(&mut w, &mut rec, &ScriptedActivity::script(&[false, true]), &style(), proposed);
+    assert!(out.deferred_busy && out.applied.is_empty(), "the final gate aborts the write");
+    assert!(w.ledger.all().unwrap().is_empty(), "nothing landed");
+}
+
+#[test]
 fn a_manually_restored_item_is_silently_skipped_not_flagged_forever() {
     // codex m7a-🟡7: an owned item the user manually restored to its exact original (the
     // current==original poison tuple) is ALREADY at its original — the reconciler silently skips
@@ -638,7 +684,8 @@ fn a_prior_crash_is_recovered_unconditionally_every_cycle_even_with_no_new_candi
     // No TxnCommitted → interrupted → recovery restores.
 
     let out = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &ScriptedStability::default(), &style(), &silent_trust(), fresh(NOW));
-    assert!(out.deferred_busy, "an unrecovered crash defers the cycle");
+    assert!(out.deferred_recovery, "an unrecovered crash defers the cycle as a re-sync, not busy");
+    assert!(!out.deferred_busy, "recovery re-sync is distinct from activity (codex r1-🟡3)");
     assert!(!out.errors.is_empty(), "the recovery is surfaced");
     // Recovery ran unconditionally: the interrupted mutation was walked back to the original.
     assert_eq!(w.desk.surfaces.borrow()[&items[0].path], b"original:a", "recovery restored the desktop");

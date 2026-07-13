@@ -95,16 +95,20 @@ pub struct ReconcileOutcome {
     /// The whole wave deferred because the desktop was busy (spec 07 §11) — nothing was scanned
     /// past the gate; the next cycle re-reconciles.
     pub deferred_busy: bool,
+    /// A prior crash was recovered this cycle so the reconcile stood down to re-sync (codex
+    /// r1-🟡3): distinct from `deferred_busy` (activity) so the host/UI reads the right reason.
+    pub deferred_recovery: bool,
     /// Per-item degradations (extract/bake/read faults) — the rest of the cycle proceeds.
     pub errors: Vec<String>,
 }
 
-/// The long-lived reconciler: settle-probe memory, the pending-privileged queue, and the warm
-/// render session (profile analysis persists across cycles, spec 07 §5).
+/// The long-lived reconciler: settle-probe memory + the pending-privileged queue. (The bake
+/// RenderSession is created per `apply_batch` call, not held here — an aborted batch must not
+/// leave registered-but-uncommitted sources in a shared session, codex r1-🟠3; a one-shot batch
+/// gains little from a cross-call warm cache.)
 pub struct Reconciler {
     settle: SettleProbe,
     pub pending_privileged: PendingPrivilegedQueue,
-    session: RenderSession,
 }
 
 impl Default for Reconciler {
@@ -115,11 +119,7 @@ impl Default for Reconciler {
 
 impl Reconciler {
     pub fn new() -> Self {
-        Self {
-            settle: SettleProbe::new(),
-            pending_privileged: PendingPrivilegedQueue::new(),
-            session: RenderSession::new(),
-        }
+        Self { settle: SettleProbe::new(), pending_privileged: PendingPrivilegedQueue::new() }
     }
 
     /// One reconcile cycle: recover any prior crash, classify the live desktop, queue privileged
@@ -143,7 +143,7 @@ impl Reconciler {
         let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger)?;
         if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
             out.errors.push("recovered a prior crash — re-syncing before the next cycle".into());
-            out.deferred_busy = true; // treat as "not a clean cycle" so the host re-reconciles
+            out.deferred_recovery = true; // a re-sync, NOT activity (codex r1-🟡3)
             out.pending_privileged = self.pending_privileged.len();
             return Ok(out);
         }
@@ -215,6 +215,9 @@ impl Reconciler {
                     }
                     let fingerprint = match ports.reader.read_fingerprint(&item.target()) {
                         Ok(f) => f,
+                        // Vanished between scan and the anchor read → benign, like the committed
+                        // NotFound arm (codex r1-🟡2), not a fake error alarm.
+                        Err(PortError::NotFound(_)) => continue,
                         Err(e) => {
                             out.errors.push(format!("anchor {}: {e}", item.id.as_str()));
                             continue;
@@ -251,6 +254,7 @@ impl Reconciler {
         ledger: &mut dyn LedgerStore,
     ) -> Result<ReconcileOutcome> {
         let mut out = ReconcileOutcome::default();
+        out.pending_privileged = self.pending_privileged.len();
         let recipe = match ctx.saved_style {
             Some(style) => StyleRecipe::parse(style)?,
             None => return Ok(out), // ② cleared while the proposal waited → nothing to apply
@@ -260,9 +264,12 @@ impl Reconciler {
         let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger)?;
         if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
             out.errors.push("recovery pending — batch deferred".into());
-            out.deferred_busy = true;
+            out.deferred_recovery = true;
             return Ok(out);
         }
+        // A FRESH RenderSession per batch (codex r1-🟠3): an aborted batch never leaves
+        // registered-but-uncommitted sources in a shared session.
+        let mut session = RenderSession::new();
         let mut masters: Vec<BufferedMaster> = Vec::new();
         let mut anchors: Vec<VettedCandidate> = Vec::new();
         for candidate in candidates {
@@ -276,6 +283,16 @@ impl Reconciler {
             // routes to the queue, never to the write path.
             if let Some(reason) = privileged_scope(&item.path, ctx.public_roots, ctx.programdata_roots) {
                 self.pending_privileged.push(item.target(), reason);
+                out.pending_privileged = self.pending_privileged.len();
+                continue;
+            }
+            // Stale-proposal guard (codex r1-🟠1): the proposal was for a FRESH (un-ledgered) item.
+            // If a committed row appeared while the proposal waited (something styled it since),
+            // the proposal is stale — skip it as a conflict rather than re-styling with the driver
+            // silently switching to the ledger's `last_applied` CAS anchor (which an old proposal
+            // could pass and overwrite a newer application).
+            if ledger.get(&item.id)?.is_some() {
+                out.conflicts.push(item.id.clone());
                 continue;
             }
             let cfg = match recipe.effective_config(item.kind, item.kind.is_shortcut()) {
@@ -306,7 +323,7 @@ impl Reconciler {
                     format!("{}#{slot}", item.id.as_str())
                 };
                 match bake_master_png(
-                    &mut self.session,
+                    &mut session,
                     &bake_id,
                     &src.png,
                     &cfg,
@@ -335,6 +352,13 @@ impl Reconciler {
         }
         out.pending_privileged = self.pending_privileged.len();
         if anchors.is_empty() {
+            return Ok(out);
+        }
+        // FINAL fail-closed activity check right before the write (codex r1-🟠2): the per-item
+        // check above misses a busy that started during the LAST candidate's extract/bake/package,
+        // so re-check here — a busy desktop aborts the whole apply, writing nothing.
+        if ports.activity.is_desktop_busy().unwrap_or(true) {
+            out.deferred_busy = true;
             return Ok(out);
         }
         let packaged = package_masters(&masters)?;

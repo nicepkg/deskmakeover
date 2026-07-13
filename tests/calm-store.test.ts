@@ -125,6 +125,24 @@ describe('calm store', () => {
     expect(countOwnedWrites(s.rows)).toBe(3)
   })
 
+  test('restoreOne undoes exactly one row and leaves the rest owned', async () => {
+    await useCalm.getState().probe()
+    await useCalm.getState().applyAll()
+    await useCalm.getState().restoreOne('taskbar.search')
+    const s = useCalm.getState()
+    expect(s.rows['taskbar.search']).toBe('pushing') // that surface pushes again
+    expect(s.rows['taskbar.taskview']).toBe('verified') // others untouched
+    expect(countOwnedWrites(s.rows)).toBe(2)
+  })
+
+  test('restoreOne on a hand-edited row marks it external, never clobbers', async () => {
+    resetStore(new MockCalmBackend({ latencyMs: 0, drifted: ['taskbar.search'] }))
+    await useCalm.getState().probe()
+    await useCalm.getState().applyAll()
+    await useCalm.getState().restoreOne('taskbar.search')
+    expect(useCalm.getState().rows['taskbar.search']).toBe('external')
+  })
+
   test("restore marks hand-edited rows external (mark, don't clobber) — no longer ours, not counted", async () => {
     resetStore(new MockCalmBackend({ latencyMs: 0, drifted: ['taskbar.search'] }))
     await useCalm.getState().probe()

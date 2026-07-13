@@ -303,6 +303,13 @@ function OneClickRow({ id, oneClickIds }: { id: CalmControlId; oneClickIds: Calm
             {state === 'reverted' && <StateChip state={state} />}
             <IncludeCheckbox checked={!excluded} onChange={() => useCalm.getState().toggleExcluded(id)} label={t(control.labelKey)} />
           </div>
+        ) : state === 'verified' || state === 'setAwaiting' ? (
+          // Per-row undo (owner 2026-07-13): a quieted surface must be individually
+          // recoverable, not only through the global restore.
+          <div className="flex items-center gap-2">
+            <StateChip state={state} />
+            <ChipButton onClick={() => void useCalm.getState().restoreOne(id)}>{t('Calm_RestoreOne')}</ChipButton>
+          </div>
         ) : (
           <StateChip state={state} />
         )

@@ -61,14 +61,16 @@ export function NoiseGroup({ state, delay = 0, children }: { state: CalmRowState
 }
 
 /** The single coral highlight marking the operation area. Pulse dot while armed
- *  (hover-linked via .calm-pulse), coral-ink check once done, dashed while the
- *  effect waits for sign-in. Never a security palette. */
+ *  (hover-linked via .calm-pulse), dashed while the effect waits for sign-in.
+ *  Once DONE the highlight disappears entirely (owner 2026-07-13): the honest
+ *  after-state is the clean reflowed surface, not a ghost outline — the row's
+ *  ✓已生效 chip carries the receipt. Never a security palette. */
 export function Highlight({ region, visual }: { region: SchematicRegion; visual: HighlightVisual }) {
   const { x, y, w, h, rx = 3 } = region
+  if (visual === 'done') return null
   if (visual === 'muted') {
     return <rect x={x} y={y} width={w} height={h} rx={rx} fill="none" stroke="var(--hair-strong)" strokeWidth="1" />
   }
-  const done = visual === 'done'
   const awaiting = visual === 'awaiting'
   return (
     <g>
@@ -78,11 +80,11 @@ export function Highlight({ region, visual }: { region: SchematicRegion; visual:
         width={w}
         height={h}
         rx={rx}
-        fill={done || awaiting ? 'none' : 'var(--coral)'}
-        fillOpacity={done || awaiting ? 0 : 0.12}
-        className={done || awaiting ? undefined : 'calm-wash'}
-        stroke={done || awaiting ? 'var(--coral-ink)' : 'var(--coral)'}
-        strokeWidth={done || awaiting ? 1 : 1.5}
+        fill={awaiting ? 'none' : 'var(--coral)'}
+        fillOpacity={awaiting ? 0 : 0.12}
+        className={awaiting ? undefined : 'calm-wash'}
+        stroke={awaiting ? 'var(--coral-ink)' : 'var(--coral)'}
+        strokeWidth={awaiting ? 1 : 1.5}
         strokeDasharray={awaiting ? '3 2' : undefined}
       />
       {visual === 'armed' && (
@@ -101,12 +103,37 @@ export function Highlight({ region, visual }: { region: SchematicRegion; visual:
           transition={{ duration: 1.1, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut' }}
         />
       )}
-      {done && (
-        <g transform={`translate(${x + w - 3.5}, ${y + 3.5})`}>
-          <circle r="3.4" fill="var(--coral-ink)" />
-          <path d="M -1.5 0 L -0.4 1.2 L 1.6 -1.1" fill="none" stroke="white" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-        </g>
-      )}
     </g>
   )
+}
+
+/** Trailing content that REFLOWS into the removed element's place (owner
+ *  2026-07-13: no empty sockets — the surface compacts exactly like the real
+ *  desktop does). Wrap the siblings that sit after the noise and give the shift. */
+export function ReflowGroup({
+  gone,
+  dx = 0,
+  dy = 0,
+  children,
+}: {
+  gone: boolean
+  dx?: number
+  dy?: number
+  children: ReactNode
+}) {
+  const reduced = useReducedMotion()
+  return (
+    <motion.g
+      initial={false}
+      animate={{ x: gone ? dx : 0, y: gone ? dy : 0 }}
+      transition={reduced ? { duration: 0 } : { duration: 0.35, ease: [0.33, 1, 0.68, 1], delay: 0.18 }}
+    >
+      {children}
+    </motion.g>
+  )
+}
+
+/** Shared: has this row's noise honestly left the surface? (view helper) */
+export function noiseGone(state: CalmRowState): boolean {
+  return NOISE_GONE.has(state)
 }

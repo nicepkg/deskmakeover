@@ -63,6 +63,8 @@ interface CalmState {
   toggleExcluded: (id: CalmControlId) => void
   applyAll: () => Promise<void>
   restoreAll: () => Promise<void>
+  /** Per-row undo (owner 2026-07-13): one control back to its original. */
+  restoreOne: (id: CalmControlId) => Promise<void>
   walkGuided: (id: CalmControlId) => Promise<void>
   /** Refocus/return probe for the last-walked guided row (idempotent). */
   reProbeWalked: () => Promise<void>
@@ -228,6 +230,23 @@ export const useCalm = create<CalmState>((set, get) => {
         const toasts = useToasts.getState()
         if (skipped > 0) toasts.show(format(t('Calm_Toast_RestoredSkipped'), restored, skipped))
         else toasts.show(format(t('Calm_Toast_Restored'), restored))
+      } finally {
+        set({ op: 'idle' })
+      }
+    },
+
+    restoreOne: async (id) => {
+      if (get().op !== 'idle') return
+      set({ op: 'restore' })
+      try {
+        const r = await backend.restoreOne(id)
+        if (r.outcome === 'restored') {
+          setRow(id, 'pushing') // the surface pushes again — stated plainly
+          useToasts.getState().show(format(t('Calm_Toast_RestoredOne'), t(controlById(id).labelKey)))
+        } else {
+          setRow(id, 'external') // hand-edited since: theirs now, untouched
+          useToasts.getState().show(format(t('Calm_Toast_RestoredSkipped'), 0, 1))
+        }
       } finally {
         set({ op: 'idle' })
       }

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import type { CalmControlId } from '@/lib/calm/catalog'
 import type { CalmRowState } from '@/lib/calm/states'
 import type { CalmScene } from '@/lib/calm/schematic-map'
-import { NoiseGroup } from './schematic-parts'
+import { NoiseGroup, ReflowGroup, noiseGone } from './schematic-parts'
 
 // The nine mini-screen scenes, drawn AGAINST DOWNLOADED REAL SCREENSHOTS
 // (win11-screenshot-hunter 2026-07-13, scratchpad/win11-shots/ — taskbar
@@ -63,12 +63,13 @@ function Magnifier({ x, y, r = 1.8 }: { x: number; y: number; r?: number }) {
   )
 }
 
-/** Two overlapping rounded rects (task view, as in tb-left.png). */
+/** Task view: two same-size outlined squares, the back one peeking TOP-RIGHT
+ *  (a bottom-right filled offset reads as a COPY button — owner 2026-07-13). */
 function TaskViewGlyph({ x, y }: { x: number; y: number }) {
   return (
     <g fill="none" stroke={INK} strokeWidth="1" opacity="0.55">
-      <rect x={x} y={y} width="4.6" height="4.6" rx="1" />
-      <rect x={x + 2} y={y + 2} width="4.6" height="4.6" rx="1" fill="var(--chip)" />
+      <path d={`M ${x + 2.4} ${y + 0.6} h 2.6 a 1 1 0 0 1 1 1 v 2.6`} strokeLinecap="round" />
+      <rect x={x} y={y + 2} width="5" height="5" rx="1" fill="var(--chip)" />
     </g>
   )
 }
@@ -110,8 +111,12 @@ function PinnedApps({ x, y }: { x: number; y: number }) {
   )
 }
 
-/** The Win11 taskbar drawn from tb-left/tb-right (shared by taskbar scenes). */
+/** The Win11 taskbar drawn from tb-left/tb-right (shared by taskbar scenes).
+ *  When this row's element is verified-gone, the cluster REFLOWS left exactly
+ *  like the real taskbar compacts — no empty socket is ever left behind. */
 function TaskbarStrip({ control, state, delay }: SceneProps) {
+  const searchGone = control === 'taskbar.search' && noiseGone(state)
+  const taskviewGone = control === 'taskbar.taskview' && noiseGone(state)
   const search = (
     <g>
       <rect x="34" y="47.5" width="26" height="9" rx="4.5" fill="var(--raised)" stroke="var(--hair)" />
@@ -127,14 +132,30 @@ function TaskbarStrip({ control, state, delay }: SceneProps) {
     <>
       <rect x="4" y="44" width="96" height="16" rx="4" fill="var(--chip)" />
       {/* far left: live weather entry (icon + two text lines) */}
-      <WeatherEntry x={6} y={47.5} />
+      {control === 'taskbar.widgetsButton' ? (
+        <NoiseGroup state={state} delay={delay}>
+          <WeatherEntry x={6} y={47.5} />
+        </NoiseGroup>
+      ) : (
+        <WeatherEntry x={6} y={47.5} />
+      )}
       {/* centered cluster: blue start → search capsule → task view → pinned apps */}
       <StartSquares x={26} y={48.5} />
       {control === 'taskbar.search' ? <NoiseGroup state={state} delay={delay}>{search}</NoiseGroup> : search}
-      {control === 'taskbar.taskview' ? <NoiseGroup state={state} delay={delay}>{taskview}</NoiseGroup> : taskview}
-      <PinnedApps x={73} y={49.5} />
+      <ReflowGroup gone={searchGone} dx={-28}>
+        {control === 'taskbar.taskview' ? <NoiseGroup state={state} delay={delay}>{taskview}</NoiseGroup> : taskview}
+        <ReflowGroup gone={taskviewGone} dx={-10.5}>
+          <PinnedApps x={73} y={49.5} />
+        </ReflowGroup>
+      </ReflowGroup>
       {/* right: hidden-icons caret · status pills · two-line clock */}
-      <ChevronUp x={91.5} y={52} />
+      {control === 'tray.entries' ? (
+        <NoiseGroup state={state} delay={delay}>
+          <ChevronUp x={91.5} y={52} />
+        </NoiseGroup>
+      ) : (
+        <ChevronUp x={91.5} y={52} />
+      )}
       <Placeholder x={94} y={48.5} w={4.5} h={3} o={0.35} rx={1} />
       <Placeholder x={94} y={53} w={4.5} h={3} o={0.3} rx={1} />
     </>
@@ -231,11 +252,14 @@ function NotifScene({ state, delay }: SceneProps) {
         <Placeholder x={68} y={24} w={18} h={1.8} o={0.4} rx={0.9} />
         <Placeholder x={68} y={27.5} w={12} h={1.8} o={0.3} rx={0.9} />
       </NoiseGroup>
-      <rect x="60" y="33.5" width="34" height="6" rx="2" fill="var(--chip)" />
-      {/* clock + month calendar at the bottom */}
-      <rect x="60" y="42" width="34" height="11" rx="2" fill="var(--chip)" />
-      <Placeholder x={63} y={44.5} w={10} h={3} o={0.45} rx={1} />
-      {[48.5].map((y) => [63, 68, 73, 78, 83, 88].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={3} h={2.2} o={0.25} rx={0.6} />))}
+      {/* the stack below the suggestion card compacts up once it is gone */}
+      <ReflowGroup gone={noiseGone(state)} dy={-11.5}>
+        <rect x="60" y="33.5" width="34" height="6" rx="2" fill="var(--chip)" />
+        {/* clock + month calendar at the bottom */}
+        <rect x="60" y="42" width="34" height="11" rx="2" fill="var(--chip)" />
+        <Placeholder x={63} y={44.5} w={10} h={3} o={0.45} rx={1} />
+        {[48.5].map((y) => [63, 68, 73, 78, 83, 88].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={3} h={2.2} o={0.25} rx={0.6} />))}
+      </ReflowGroup>
     </>
   )
 }
@@ -293,16 +317,23 @@ function ExplorerScene({ state, delay }: SceneProps) {
         <rect x="30" y="30.5" width="14" height="3.5" rx="1.75" fill={INK} opacity="0.45" />
       </NoiseGroup>
       <rect x="12" y="20" width="11" height="30" rx="2.5" fill="var(--chip)" opacity="0.7" />
-      {[40, 47].map((y) => [26, 44, 62, 80].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={14} h={5} o={0.25} rx={2} />))}
+      {/* the file grid slides up into the freed space */}
+      <ReflowGroup gone={noiseGone(state)} dy={-16}>
+        {[40, 47].map((y) => [26, 44, 62, 80].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={14} h={5} o={0.25} rx={2} />))}
+      </ReflowGroup>
     </>
   )
 }
 
 /** SCOOBE (scoobe-hero.webp): full-screen takeover — floating app icons left,
- *  title + feature rows centre-right, the primary Continue bottom-right. */
+ *  title + feature rows centre-right, the primary Continue bottom-right. The
+ *  calm desktop sits underneath, revealed when the takeover exits. */
 function SystemFullScene({ state, delay }: SceneProps) {
   return (
-    <NoiseGroup state={state} delay={delay}>
+    <>
+      <rect x="6" y="8" width="92" height="42" rx="4" fill="var(--chip)" opacity="0.4" />
+      <TaskbarAnchor />
+      <NoiseGroup state={state} delay={delay}>
       <rect x="3" y="3" width="98" height="58" rx="6" fill="var(--chip)" />
       {/* floating decorative app icons on the left */}
       {[
@@ -323,7 +354,8 @@ function SystemFullScene({ state, delay }: SceneProps) {
       {/* remind-me link + the primary Continue, bottom-right */}
       <Placeholder x={58} y={51} w={14} h={2} o={0.3} rx={1} />
       <rect x="76" y="49" width="16" height="5.5" rx="2.5" fill={WIN_BLUE} opacity="0.85" />
-    </NoiseGroup>
+      </NoiseGroup>
+    </>
   )
 }
 

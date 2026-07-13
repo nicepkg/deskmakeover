@@ -35,6 +35,8 @@ export interface CalmBackend {
   apply(ids: CalmControlId[]): Promise<CalmApplyRow[]>
   /** Restore every DeskMakeover-written value toward its recorded original. */
   restore(): Promise<CalmRestoreRow[]>
+  /** Restore ONE control toward its recorded original (per-row undo). */
+  restoreOne(id: CalmControlId): Promise<CalmRestoreRow>
   /** Open the documented route for a guided row (ms-settings / Win+W instruction). */
   openRoute(id: CalmControlId): Promise<void>
   /** Guided return-probe: readable rows report off(true)/on(false); unreadable → null. */
@@ -108,6 +110,14 @@ export class MockCalmBackend implements CalmBackend {
       return { id, outcome: 'restored' }
     })
     return rows
+  }
+
+  async restoreOne(id: CalmControlId): Promise<CalmRestoreRow> {
+    await this.wait()
+    controlById(id)
+    if (this.opts.drifted?.includes(id)) return { id, outcome: 'skippedDrift' }
+    this.applied.delete(id)
+    return { id, outcome: 'restored' }
   }
 
   async openRoute(id: CalmControlId): Promise<void> {

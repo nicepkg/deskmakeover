@@ -387,6 +387,44 @@ fn a_user_edit_between_crash_and_restart_is_preserved_never_clobbered() {
     assert!(out.degraded.is_empty(), "a deliberate preserve is not a runtime fault");
 }
 
+#[test]
+fn crash_after_write_before_journal_preserves_our_own_uncommitted_style() {
+    // The one window L1 leaves (owner chose stop-at-L1 on 2026-07-14; the full close is the deferred
+    // intended-fp L2, codex nc-review 🟠): a crash AFTER `applier.apply` mutated the desktop but BEFORE
+    // `ItemApplied` is durable → `new_fingerprint` is absent, so recovery cannot recognise our OWN
+    // styled state and PRESERVES it (never clobbers) rather than reverting. Documented + pinned, not
+    // silently accepted: it is surfaced, and — with no ledger row and the anchor checkpointed away —
+    // the app no longer tracks it.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+
+    // Journal truncated to just before ItemApplied; the world stays at the STYLED state apply produced.
+    let records: Vec<JournalRecord> = journal
+        .records()
+        .iter()
+        .take_while(|r| !matches!(r, JournalRecord::ItemApplied { .. }))
+        .cloned()
+        .collect();
+    assert!(records.iter().any(|r| matches!(r, JournalRecord::AssetWritten { .. })));
+    assert!(!records.iter().any(|r| matches!(r, JournalRecord::ItemApplied { .. })));
+    let styled = styled_bytes("hashA");
+    assert_eq!(world.borrow().get(&a.path).unwrap(), styled, "world is our styled state at the crash");
+
+    let mut fresh = MemLedgerStore::new();
+    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+
+    assert_eq!(out.preserved, vec![ItemId::from_raw("A")], "our unrecognised style is preserved");
+    assert!(out.aborted.is_empty(), "nothing was reverted");
+    assert_eq!(world.borrow().get(&a.path).unwrap(), styled, "left exactly as found — never clobbered");
+    assert!(fresh.get(&a.id).unwrap().is_none(), "no ledger row — the app no longer tracks it");
+}
+
 /// The kill-point battery: run a two-item apply, then for every truncation of the journal
 /// replay recovery against the world as it was at that fsync — plus a "torn/foreign write" variant —
 /// and assert: a CLEAN crash restores each incomplete item EXACTLY to its original (or leaves a

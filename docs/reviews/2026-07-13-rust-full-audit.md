@@ -104,6 +104,22 @@
     for SOURCE is resolved live separately (`source::original_system` reads the machine default when the
     anchor value is None). recyclebin reverted to raw-per-user (restore-exact); its empty-key
     source-degrade is a PRE-EXISTING [WV] edge (3-value live-machine fallback deferred).
+- **2026-07-14 — recovery:265 never-clobber (owner-approved, then STOP-at-L1) — L1 DONE.** `e64086e` +
+  honest-scoping follow-up. Owner picked "never-clobber" through the極致-UX lens (never silently
+  destroy a user's customization on recovery). L1: `abort_incomplete` reads the live surface and
+  restores ONLY a state it can identify as ours (the true original OR this txn's applied
+  `new_fingerprint`); ANY other state is `preserved` (a FINAL, checkpointed, surfaced decision, not a
+  retryable `degraded`). All callers surface it via `moved_or_uncertain()`. Kill-point battery flipped:
+  clean crash still restores, a torn/foreign write is now PRESERVED. Headline test proves a user icon
+  edit survives. **codex nc-review — L1 is a strict improvement but NOT a total guarantee (honestly
+  re-scoped, owner chose to stop here):** 🔴 #1 the CAS `Fingerprint` is icon-only for `.lnk`/`.url`/
+  folder while restore is wider → a NON-icon edit (shortcut target/args) is not yet protected; a total
+  guarantee needs a full-restore-surface identity ([WV], real-platform — the fake's fingerprint is
+  already full-surface). 🔴 #2 check-then-restore is not atomic = the known **F1 platform-CAS [WV]**.
+  🟠 #3 the crash-after-write-before-`ItemApplied` window strands our OWN uncommitted style
+  (preserved, anchor checkpointed away) = the deferred **intended-fp L2** the owner declined; pinned by
+  a test. Owner decision: **stop at L1** — L1 protects the ICON customization (the app's purpose), the
+  rest is recorded [WV]/deferred.
 
 ### F4b — allocation caps run AFTER the IPC payload is materialized (codex B2-🔴 residual)
 The command-body caps prevent the DECODE/second allocation, but Tauri/Serde deserializes the FULL

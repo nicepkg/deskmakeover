@@ -314,13 +314,23 @@ fn abort_incomplete(
         }
         let rec = &group.items[id.as_str()];
         // NEVER-CLOBBER (codex `recovery:265`, owner-approved 2026-07-14 for極致 UX): only undo a
-        // state we can POSITIVELY identify as ours. Read the live surface and restore ONLY when it is
-        // the item's true original (we never wrote, or a prior pass already restored — undo is a
-        // no-op) OR exactly the style this txn applied (`new_fingerprint`, present once `ItemApplied`
-        // was journaled). ANY other live state — the user's own edit made between crash and restart,
-        // or a torn/foreign write — is PRESERVED, never blind-restored: silently destroying the user's
-        // customization is the one outcome we never accept. A read fault cannot confirm the state, so
-        // it is a runtime fault (degraded → retried), NOT a licence to clobber.
+        // state we can identify as ours. Read the live surface and restore ONLY when it is the item's
+        // true original (we never wrote, or a prior pass already restored — undo is a no-op) OR exactly
+        // the style this txn applied (`new_fingerprint`, present once `ItemApplied` was journaled). ANY
+        // other live state — the user's own ICON edit made between crash and restart, or a torn/foreign
+        // write — is PRESERVED, never blind-restored. A read fault cannot confirm the state, so it is a
+        // runtime fault (degraded → retried), NOT a licence to clobber.
+        //
+        // SCOPE, honestly (codex nc-review): the identity here is the CAS `Fingerprint`, which for the
+        // registry-icon kinds (Recycle Bin / System) IS the full restore surface, but for a `.lnk`/
+        // `.url` covers only the icon path/index while restore replays the WHOLE file (folder/wrapper
+        // attrs are similar). So this fully protects the user's ICON customization — the app's purpose,
+        // and a strict improvement over the old blind-restore — but a user edit to a NON-icon field
+        // (a shortcut's target/args) whose icon is unchanged is NOT yet protected. Two [WINDOWS-VERIFY]
+        // gaps remain for a total guarantee: (1) a full-restore-surface identity (a wider capture than
+        // the icon fingerprint), and (2) an ATOMIC compare-and-swap restore (this read-then-restore is
+        // not atomic vs a concurrent external edit — the F1 platform-CAS item). Both are real-platform
+        // work (the in-memory fake's fingerprint is already full-surface, so it cannot exercise gap 1).
         let live = match reader.read_fingerprint(&rec.target) {
             Ok(fp) => fp,
             Err(e) => {

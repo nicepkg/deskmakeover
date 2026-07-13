@@ -96,6 +96,14 @@
     `parse_clsid` accepted any `{...}` incl. `\`-injection → strict `{8-4-4-4-12}` GUID validation. 🟡
     enabled-check failed OPEN on all errors → fail-closed on non-NotFound. 🟡 shared-helper error text =
     MOOT (generic is correct for a shared helper). codex verified the System post-apply CAS consistency.
+  - **codex re-review-2 (`336cc37`): the #2 fix was OVER-corrected → 1 new 🟠, fixed.** Baking the
+    EFFECTIVE (machine) value into the anchor's `value` broke exact restore: after fresh→apply→restore
+    (leaves an empty per-user key), the next apply captured machine values and its restore WROTE them
+    INTO the per-user key = persistent override / residue. Corrected: `value` stays the RAW per-user
+    override (restore rewrites/removes it exactly — empty key restores to empty); the effective original
+    for SOURCE is resolved live separately (`source::original_system` reads the machine default when the
+    anchor value is None). recyclebin reverted to raw-per-user (restore-exact); its empty-key
+    source-degrade is a PRE-EXISTING [WV] edge (3-value live-machine fallback deferred).
 
 ### F4b — allocation caps run AFTER the IPC payload is materialized (codex B2-🔴 residual)
 The command-body caps prevent the DECODE/second allocation, but Tauri/Serde deserializes the FULL

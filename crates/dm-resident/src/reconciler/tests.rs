@@ -276,13 +276,16 @@ fn cycle(
         activity,
         stability,
     };
-    let public = [PUBLIC_ROOT.to_string()];
+    let scope_roots = ScopeRoots::resolved(
+        vec![PUBLIC_ROOT.to_string()],
+        vec!["C:/ProgramData".to_string()],
+    )
+    .unwrap();
     let ctx = ReconcileContext {
         saved_style: Some(style),
         trust,
         freshness,
-        public_roots: &public,
-        programdata_roots: &[],
+        scope: &scope_roots,
     };
     rec.reconcile(&ports, &ctx, &mut w.txn, &mut w.journal, &mut w.ledger).unwrap()
 }
@@ -307,13 +310,16 @@ fn apply(
         activity,
         stability: &ScriptedStability::default(),
     };
-    let public = [PUBLIC_ROOT.to_string()];
+    let scope_roots = ScopeRoots::resolved(
+        vec![PUBLIC_ROOT.to_string()],
+        vec!["C:/ProgramData".to_string()],
+    )
+    .unwrap();
     let ctx = ReconcileContext {
         saved_style: Some(style),
         trust: &silent_trust(),
         freshness: fresh(NOW),
-        public_roots: &public,
-        programdata_roots: &[],
+        scope: &scope_roots,
     };
     rec.apply_batch(&ports, &ctx, candidates, &mut w.txn, &mut w.journal, &mut w.ledger).unwrap()
 }
@@ -349,12 +355,12 @@ fn an_empty_saved_style_keeps_the_resident_dormant() {
         activity: &ScriptedActivity::idle(),
         stability: &ScriptedStability::default(),
     };
+    let scope_roots = ScopeRoots::Unprivileged;
     let ctx = ReconcileContext {
         saved_style: None,
         trust: &silent_trust(),
         freshness: fresh(NOW),
-        public_roots: &[],
-        programdata_roots: &[],
+        scope: &scope_roots,
     };
     let out = rec.reconcile(&ports, &ctx, &mut w.txn, &mut w.journal, &mut w.ledger).unwrap();
     assert_eq!(out, ReconcileOutcome::default(), "② empty → nothing proposed, nothing applied");

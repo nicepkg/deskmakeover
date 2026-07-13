@@ -26,6 +26,7 @@ use dm_operations::{
     FsAssetStore, IconApplySession, IconOps, IconPlatform, IconStoreState, JsonLedgerStore,
     LedgerStore, LookHistoryStore, LookVersion, ScannedItem, SettingsStore, TxnIdAllocator,
 };
+use dm_operations::icons::scope::ScopeRoots;
 use dm_operations::txn::FileJournal;
 
 /// The mutable transaction state, all under the host's apply/GC lock.
@@ -111,11 +112,11 @@ pub struct IconHost {
     active_user_profiles: u32,
     /// Where `exportCompare` saves when the platform offers no Pictures known-folder.
     export_fallback_dir: PathBuf,
-    /// `Public Desktop` known-folder roots (spec §6/§14 privileged-scope exclusion). Empty on the
-    /// dev host; [WINDOWS-VERIFY] resolved via `SHGetKnownFolderPath` on the box.
-    public_desktop_roots: Vec<String>,
-    /// `ProgramData` known-folder roots. Empty on the dev host; [WINDOWS-VERIFY] on the box.
-    programdata_roots: Vec<String>,
+    /// The privileged-scope roots (spec §6/§14). `Unprivileged` on the dev host; `Unresolved` on
+    /// Windows until `SHGetKnownFolderPath` resolves the real known folders ([WINDOWS-VERIFY]). An
+    /// `Unresolved` scope makes version-switch / resident auto-format FAIL CLOSED (styles nothing),
+    /// so a blind host can never bypass the §14 red line by shipping empty roots.
+    scope_roots: ScopeRoots,
 }
 
 impl IconHost {
@@ -124,6 +125,7 @@ impl IconHost {
         settings: Arc<SettingsStore>,
         data_dir: &Path,
         active_user_profiles: u32,
+        scope: ScopeRoots,
     ) -> Self {
         // Materialize the transparent overlay ICO once (best-effort) so the elevated helper always
         // has a real path to validate + copy into ProgramData (codex Block 5).
@@ -168,14 +170,11 @@ impl IconHost {
             overlay_ico,
             active_user_profiles,
             export_fallback_dir: data_dir.join("exports"),
-            // [WINDOWS-VERIFY] resolve the real Public Desktop / ProgramData known folders on the
-            // box (SHGetKnownFolderPath FOLDERID_PublicDesktop / FOLDERID_ProgramData). ⚠️ These
-            // MUST be non-empty on Windows (both folders always exist) — if resolution FAILS on
-            // the box, the wiring must FAIL CLOSED (refuse version-switch / auto-format), never run
-            // with empty roots, which would let §14-privileged items be styled (codex r2-🔴). The
-            // dev host legitimately has none, so the exclusion is a correct no-op here.
-            public_desktop_roots: Vec::new(),
-            programdata_roots: Vec::new(),
+            // The §14 privileged-scope roots (see the field doc). `Unprivileged` on the dev host;
+            // `Unresolved` on Windows until the composition resolves the real known folders, which
+            // makes automation FAIL CLOSED so a blind host can never style §14-privileged items with
+            // empty roots (codex r2-🔴 / F-scope). The type makes the fail-OPEN state unrepresentable.
+            scope_roots: scope,
         }
     }
 
@@ -675,10 +674,8 @@ impl IconHost {
             reader: &*self.reader,
             applier: &*self.applier,
             assets: &self.assets,
-            // [WINDOWS-VERIFY] the real Public Desktop / ProgramData known folders; the dev host
-            // has none, so nothing is scope-excluded there.
-            public_roots: &self.public_desktop_roots,
-            programdata_roots: &self.programdata_roots,
+            // §14 privileged-scope roots — `Unresolved` on an unwired Windows host fails CLOSED here.
+            scope: &self.scope_roots,
         };
         let IconMutState { ledger, journal, history, txn, op_epoch, .. } = &mut *st;
         let outcome = switch_to_version(
@@ -1069,6 +1066,7 @@ mod tests {
             settings,
             dir,
             1,
+            ScopeRoots::Unprivileged,
         );
         (host, desk)
     }
@@ -1365,6 +1363,7 @@ mod tests {
             settings,
             dir.path(),
             1,
+            ScopeRoots::Unprivileged,
         );
         let scan = h.scan().unwrap();
         let bad = scan.items.iter().find(|i| i.id == "edge").unwrap();
@@ -1431,6 +1430,7 @@ mod tests {
             settings,
             dir.path(),
             1,
+            ScopeRoots::Unprivileged,
         );
 
         // Before ANY scan: no valid snapshot → Begin rejects.

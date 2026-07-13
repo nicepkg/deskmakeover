@@ -8,7 +8,7 @@
 //! identically.
 
 use dm_domain::{ItemId, ItemTarget};
-pub use dm_operations::icons::scope::{privileged_scope, PrivilegedScope};
+pub use dm_operations::icons::scope::{privileged_scope, PrivilegedScope, ScopeRoots};
 
 /// Back-compat alias: the queue's reason is the shared scope classification.
 pub type PendingReason = PrivilegedScope;

@@ -19,6 +19,7 @@ mod devhost_icons;
 mod icon_host;
 mod wallpaper_host;
 
+use dm_operations::icons::scope::ScopeRoots;
 use icon_host::{IconHost, IconHostPorts};
 use wallpaper_host::WallpaperHost;
 
@@ -102,7 +103,10 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
             geometry: Arc::new(dm_windows::WindowsDesktopGeometry::new(exec)),
         };
         // Real active-profile count is a [WINDOWS-VERIFY] ProfileList enum; default single-user.
-        Ok(IconHost::new(ports, settings, data_dir, 1))
+        // [WINDOWS-VERIFY] the §14 scope is UNRESOLVED until SHGetKnownFolderPath resolves the real
+        // Public Desktop / ProgramData folders — until then version-switch / auto-format fail CLOSED
+        // (style nothing), never open. Swapping to live = `ScopeRoots::resolved(public, programdata)?`.
+        Ok(IconHost::new(ports, settings, data_dir, 1, ScopeRoots::Unresolved))
     }
     #[cfg(not(windows))]
     {
@@ -116,7 +120,8 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
             refresher: Arc::new(devhost_icons::DevExplorerRefresher),
             geometry: Arc::new(devhost_icons::DevDesktopGeometry),
         };
-        Ok(IconHost::new(ports, settings, data_dir, 1))
+        // The dev host has no shared/privileged desktop scope — nothing is scope-excluded.
+        Ok(IconHost::new(ports, settings, data_dir, 1, ScopeRoots::Unprivileged))
     }
 }
 

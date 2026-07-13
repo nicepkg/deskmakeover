@@ -18,7 +18,7 @@ use dm_icon_core::render_session::RenderSession;
 
 use crate::error::{OperationError, Result};
 use crate::icons::native_bake::bake_master_png;
-use crate::icons::scope::privileged_scope;
+use crate::icons::scope;
 use crate::icons::style_resolve::StyleRecipe;
 use crate::icons::{package_masters, BufferedMaster};
 use crate::ledger::{LedgerStore, LookHistoryStore};
@@ -44,11 +44,10 @@ pub struct VersionSwitchPorts<'a> {
     pub reader: &'a dyn ItemStateReader,
     pub applier: &'a dyn IconApplier,
     pub assets: &'a dyn AssetStore,
-    /// `Public Desktop` known-folder roots. NON-EMPTY on Windows (fail-closed, see the struct doc);
-    /// empty on the dev host.
-    pub public_roots: &'a [String],
-    /// `ProgramData` known-folder roots. NON-EMPTY on Windows; empty on the dev host.
-    pub programdata_roots: &'a [String],
+    /// The privileged-scope roots (spec §6/§14). `Unresolved` on Windows before known-folder
+    /// resolution makes the projection loop FAIL CLOSED (styles nothing); `Unprivileged` on the dev
+    /// host excludes nothing. The type makes "Windows with empty roots" (fail-open) unrepresentable.
+    pub scope: &'a scope::ScopeRoots,
 }
 
 /// Switches the live desktop to a saved appearance version. A missing version id is an error (the
@@ -133,7 +132,9 @@ fn bake_and_apply(
     let mut anchors: Vec<(DesktopItem, dm_domain::Fingerprint)> = Vec::new();
     for item in items {
         // §6/§14: version switching never touches Public Desktop / ProgramData (codex m7a-🔴2).
-        if privileged_scope(&item.path, ports.public_roots, ports.programdata_roots).is_some() {
+        // An `Unresolved` scope classifies EVERY item privileged, so a Windows host that has not
+        // resolved its known folders styles nothing here rather than failing open (codex F-scope).
+        if ports.scope.classify(&item.path).is_some() {
             continue;
         }
         if !item.can_style() {
@@ -364,14 +365,14 @@ mod tests {
         let reader = DeskReader(desk.clone());
         let applier = DeskApplier(desk.clone());
         let assets = MemAssets::default();
+        let scope_roots = scope::ScopeRoots::Unprivileged;
         let ports = VersionSwitchPorts {
             scanner: &FakeScanner(items.clone()),
             extractor: &FakeExtractor,
             reader: &reader,
             applier: &applier,
             assets: &assets,
-            public_roots: &[],
-            programdata_roots: &[],
+            scope: &scope_roots,
         };
         let settings = SettingsStore::open_in_memory().unwrap();
         let mut history = LookHistoryStore::new(dir.path().join("history.json"));
@@ -445,15 +446,18 @@ mod tests {
         let reader = DeskReader(desk.clone());
         let applier = DeskApplier(desk.clone());
         let assets = MemAssets::default();
-        let public_roots = vec!["C:/Users/Public/Desktop".to_string()];
+        let scope_roots = scope::ScopeRoots::resolved(
+            vec!["C:/Users/Public/Desktop".to_string()],
+            vec!["C:/ProgramData".to_string()],
+        )
+        .unwrap();
         let ports = VersionSwitchPorts {
             scanner: &FakeScanner(items.clone()),
             extractor: &FakeExtractor,
             reader: &reader,
             applier: &applier,
             assets: &assets,
-            public_roots: &public_roots,
-            programdata_roots: &[],
+            scope: &scope_roots,
         };
         let settings = SettingsStore::open_in_memory().unwrap();
         let mut history = LookHistoryStore::new(dir.path().join("h.json"));
@@ -476,14 +480,14 @@ mod tests {
         let reader = DeskReader(desk.clone());
         let applier = DeskApplier(desk.clone());
         let assets = MemAssets::default();
+        let scope_roots = scope::ScopeRoots::Unprivileged;
         let ports = VersionSwitchPorts {
             scanner: &FakeScanner(vec![]),
             extractor: &FakeExtractor,
             reader: &reader,
             applier: &applier,
             assets: &assets,
-            public_roots: &[],
-            programdata_roots: &[],
+            scope: &scope_roots,
         };
         let settings = SettingsStore::open_in_memory().unwrap();
         let history = LookHistoryStore::new(dir.path().join("h.json"));

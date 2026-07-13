@@ -21,7 +21,7 @@ use dm_domain::DesktopScanner;
 use dm_icon_core::render_session::RenderSession;
 use dm_operations::icons::native_bake::bake_master_png;
 use dm_operations::icons::package_masters;
-use dm_operations::icons::scope::privileged_scope;
+use dm_operations::icons::scope::ScopeRoots;
 use dm_operations::icons::style_resolve::StyleRecipe;
 use dm_operations::{
     recover_from_journal, ApplyRequest, BufferedMaster, JournalSink, LedgerStore, Result,
@@ -55,10 +55,10 @@ pub struct ReconcileContext<'a> {
     /// The intent-freshness signals (spec 07 §2 item 8) — a v1.1 silent-mode signal; dormant in
     /// v1 (which always proposes).
     pub freshness: FreshnessInputs,
-    /// `Public Desktop` known-folder roots (privileged-scope exclusion, §6/§14).
-    pub public_roots: &'a [String],
-    /// `ProgramData` known-folder roots.
-    pub programdata_roots: &'a [String],
+    /// The privileged-scope roots (§6/§14). `Unresolved` on a Windows host that has not resolved its
+    /// known folders classifies EVERY item privileged, so the reconciler routes them all to the
+    /// pending-privileged queue rather than auto-styling machine-wide state (fail closed).
+    pub scope: &'a ScopeRoots,
 }
 
 /// A candidate that has PASSED the full reconcile gate — scope-vetted (not privileged),
@@ -166,7 +166,7 @@ impl Reconciler {
         let mut candidates: Vec<VettedCandidate> = Vec::new();
         for item in items {
             // §14 red line FIRST: privileged scope routes to the queue before ANY other path.
-            if let Some(reason) = privileged_scope(&item.path, ctx.public_roots, ctx.programdata_roots) {
+            if let Some(reason) = ctx.scope.classify(&item.path) {
                 self.pending_privileged.push(item.target(), reason);
                 continue;
             }
@@ -281,7 +281,7 @@ impl Reconciler {
             }
             // Re-check the §14 scope: a path that became privileged while the proposal waited
             // routes to the queue, never to the write path.
-            if let Some(reason) = privileged_scope(&item.path, ctx.public_roots, ctx.programdata_roots) {
+            if let Some(reason) = ctx.scope.classify(&item.path) {
                 self.pending_privileged.push(item.target(), reason);
                 out.pending_privileged = self.pending_privileged.len();
                 continue;

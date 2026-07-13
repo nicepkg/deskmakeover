@@ -161,14 +161,15 @@ plan's DONE blocks, this is the pointer):**
   + dead-code removal + a self-caught test regression. Full findings ledger + verification notes +
   held/deferred items + the blake3/msvc note + the codex-background-death root cause:
   `docs/reviews/2026-07-12-audit-fix-run.md`. Archived: `docs/journal/2026-07.md`.
-- **#7 — owner-approved, NOT started:** `diagnostics.getInfo` real system info (Rust, [WIN]) + 3
-  marginal P3 (ELEV-3 elevated command-line escaping / APPLY-3 recyclebin registry value type /
-  CORE-1 `WaitForSingleObject`). Independent of M7/Wave B. Detail:
-  `docs/reviews/2026-07-12-audit-fix-run.md` §3.
-- **Held — owner has NOT ruled, do not touch:** `ICON-5` (`clamp_u8_round_half_even`, suspected
-  dead/rounding issue) / `ICON-9` (mono dead branch) / `ICON-11` (`color.rs`, suspected superseded
-  by the field-plate path) — described to the owner in audit item #6. `SHELL-2 read_target()` is
-  confirmed NOT dead code (the M7 resident scan will need it).
+- **#7 + 3 P3s — ✅ DONE (owner 这些都做 2026-07-13, `c8ded4a`):** `diagnostics.getInfo` is a real
+  Rust command (SystemInfoDto), ELEV-3 (CommandLineToArgvW quoting) / APPLY-3 (non-string DefaultIcon
+  type fails closed) / CORE-1 (`WaitForSingleObject` result checked) all hardened. Dispositions +
+  evidence: `docs/ship-readiness.md` §Open owner decisions.
+- **ICON-5/9/11 — ✅ RESOLVED (owner 这些都做 2026-07-13, `5ac018a`):** ICON-5
+  (`clamp_u8_round_half_even`) DELETED (Rust-only orphan, no oracle mirror, lying doc). ICON-9 (mono
+  tail) + ICON-11 (5 `color.rs` fns) RETAINED + documented — each is a 1:1 port of a NAMED
+  frozen-oracle export, dead in the oracle too; deleting the Rust halves would diverge the certified
+  byte-parity port (ADR-0019). `SHELL-2 read_target()` remains confirmed NOT dead code.
 
 ## M7 常驻自动 format — design FINALIZED, build BLOCKED on Wave B
 

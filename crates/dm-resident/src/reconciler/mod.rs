@@ -354,13 +354,7 @@ impl Reconciler {
         if anchors.is_empty() {
             return Ok(out);
         }
-        // FINAL fail-closed activity check right before the write (codex r1-🟠2): the per-item
-        // check above misses a busy that started during the LAST candidate's extract/bake/package,
-        // so re-check here — a busy desktop aborts the whole apply, writing nothing.
-        if ports.activity.is_desktop_busy().unwrap_or(true) {
-            out.deferred_busy = true;
-            return Ok(out);
-        }
+        // Package + build the requests (pure computation, no desktop writes) BEFORE the final gate.
         let packaged = package_masters(&masters)?;
         let by_id: std::collections::HashMap<&str, &Fingerprint> =
             anchors.iter().map(|c| (c.item.id.as_str(), &c.fingerprint)).collect();
@@ -379,6 +373,14 @@ impl Reconciler {
                 empty_asset_bytes: pkg.empty.as_ref().map(|e| e.bytes.clone()),
                 pinned_seed: None,
             });
+        }
+        // FINAL fail-closed activity check IMMEDIATELY before the write (codex r1-🟠2 + r4-🟠): the
+        // per-item check misses a busy that began during the last bake, and packaging/request
+        // building above is a further window — so re-check right here, the last statement before
+        // `apply`. A busy desktop aborts the whole batch, writing nothing.
+        if ports.activity.is_desktop_busy().unwrap_or(true) {
+            out.deferred_busy = true;
+            return Ok(out);
         }
         let outcome = TxnDriver::new(ports.reader, ports.applier, ports.assets)
             .apply(txn.next_id(), requests, journal, ledger)?;

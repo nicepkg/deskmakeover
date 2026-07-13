@@ -58,27 +58,29 @@ fn machine_key(clsid: &str) -> String {
 /// (P2-#3). [WINDOWS-VERIFY] runtime.
 pub fn read_current(clsid: &str) -> PortResult<SystemIconAnchor> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let (key_existed, per_user_value) = match hkcu.open_subkey(user_key(clsid)) {
-        Ok(key) => (true, read_value(&key, "")?),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (false, None),
-        Err(e) => return Err(PortError::Io(format!("open HKCU System DefaultIcon {clsid}: {e}"))),
-    };
-    // `key_existed` (per-user key present) drives RESTORE — rewrite vs remove — and is captured as
-    // read. The EFFECTIVE `value` (for source extraction + the CAS fingerprint) is decoupled from it:
-    // the per-user override when it carries one, ELSE the machine class default. This matters because
-    // our own restore leaves an EMPTY per-user key behind (removing only the value we wrote): a naive
-    // "key exists → use its value" would then read `value:None` and forget the machine default,
-    // stranding a value-less "original" that can no longer be restyled (codex System-review 🟠).
-    let value = match per_user_value {
-        Some(v) => Some(v),
-        None => machine_value(clsid)?,
-    };
-    Ok(SystemIconAnchor { clsid: clsid.to_string(), key_existed, value })
+    match hkcu.open_subkey(user_key(clsid)) {
+        // The per-user key exists → capture its RAW value (exactly what restore rewrites or removes).
+        // `key_existed` is TRUE even when the value is empty — our own restore leaves an empty
+        // per-user key — so a later restore removes it EXACTLY and never writes a machine default INTO
+        // the per-user key (codex re-review 🟠: `value` is restore-critical, so it must stay the raw
+        // per-user value, NOT the effective one). The machine default is resolved for SOURCE
+        // extraction separately, live, in `source::original_system`.
+        Ok(key) => {
+            Ok(SystemIconAnchor { clsid: clsid.to_string(), key_existed: true, value: read_value(&key, "")? })
+        }
+        // No per-user override → capture the effective machine value (the true original for source),
+        // key_existed:false so restore removes nothing.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Ok(SystemIconAnchor { clsid: clsid.to_string(), key_existed: false, value: machine_value(clsid)? })
+        }
+        Err(e) => Err(PortError::Io(format!("open HKCU System DefaultIcon {clsid}: {e}"))),
+    }
 }
 
 /// The machine (HKCR) class-default `DefaultIcon` value for `clsid`, or `None` when absent. A
-/// non-NotFound error propagates (P2-#3).
-fn machine_value(clsid: &str) -> PortResult<Option<RegistryValue>> {
+/// non-NotFound error propagates (P2-#3). `pub(crate)` so source extraction can recover the original
+/// for an owned item whose per-user override key is empty (our restore leaves it empty).
+pub(crate) fn machine_value(clsid: &str) -> PortResult<Option<RegistryValue>> {
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
     match hkcr.open_subkey(machine_key(clsid)) {
         Ok(key) => read_value(&key, ""),

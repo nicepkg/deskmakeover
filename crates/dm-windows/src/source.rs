@@ -316,13 +316,19 @@ mod win {
         }
     }
 
-    /// The original System icon from the CAPTURED per-CLSID `DefaultIcon` value — the LIVE shell
-    /// image would be OUR styled icon, so it must never be re-read here (that would compound
-    /// `Style(Style(original))`). A value-less anchor (the original was a pure shell built-in with no
-    /// registry `DefaultIcon`) is unrecoverable → `None` → terminal degrade upstream, never a fallback
-    /// to the styled live surface.
+    /// The original System icon. The anchor's `value` is the RAW per-user override (restore-exact);
+    /// when it is empty — our own restore leaves an empty per-user key — the original was the MACHINE
+    /// default, so read that LIVE (styling never touches HKCR, so the machine default is still the true
+    /// original). This recovers the source for a re-style after a reset cycle WITHOUT polluting the
+    /// restore-critical `value` (codex re-review 🟠). The live shell image is never re-read here (it
+    /// would be OUR styled icon → `Style(Style(original))`); a value that resolves to nothing is
+    /// unrecoverable → `None` → terminal degrade upstream.
     fn original_system(a: &SystemIconAnchor) -> Option<Vec<DecodedImage>> {
-        a.value.as_ref().and_then(|v| resource_from_value(&v.raw)).map(|i| vec![i])
+        let value = match &a.value {
+            Some(v) => Some(v.clone()),
+            None => crate::apply::system::machine_value(&a.clsid).ok().flatten(),
+        };
+        value.and_then(|v| resource_from_value(&v.raw)).map(|i| vec![i])
     }
 
     /// Atomically creates an unpredictable scratch file under `%TEMP%` and writes `bytes`,

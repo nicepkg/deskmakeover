@@ -97,9 +97,12 @@ policy as owned) → `56d40ae`(Tauri host + 6 specta commands + TauriCalmBackend
 icon txn spine is ItemId/fingerprint-keyed — incompatible with registry snapshots), with an
 unforgeable WriterLease + generation guards so a durable SQLite/WAL adapter drops in later. W1
 scope (honest): value-level over pre-existing keys (no key creation), DWORD-only, in-memory
-journal, devhost fakes on every platform. Gates: cargo 243 (system_tweaks 45) · dm-domain
-msvc-clean · clippy clean · tsc · bun 598 · check:bindings green · files ≤500. **codex R6
-verification in flight.** OWED at W1 close: codex Approve. NEXT: Wave 2 (real winreg backend).
+journal, devhost fakes on every platform. codex loop R1→R7 (R6 `a99b916`: recovery re-proves a restore, never launders a failed effect
+proof into a no-proof disown; R7 `30a32d0` doc + **codex R7 = APPROVE**, 16 real transaction/
+policy bugs fixed across 7 rounds). Gates: cargo 244 (system_tweaks 46) · dm-domain msvc-clean ·
+clippy clean · tsc · bun 598 · check:bindings green · files ≤500. **W1 CLOSED (codex Approve).**
+Documented coverage gap: multi-leaf restore recovery is correct by inspection but not directly
+tested (all writable recipes are single-leaf today). NEXT: Wave 2 (real winreg backend).
 
 ## Wave 1 — Rust decision core + bridge (Mac)
 

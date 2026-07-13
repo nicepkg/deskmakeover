@@ -298,10 +298,10 @@ Documented follow-ups: the ①→②→③ finalize crash-window (not yet journa
    **codex R1→R5 adversarial loop, ~15 real bugs fixed** (false-verified, clobbering rollback,
    generation-guard bypass, missing receipt, missing-key, effect-proof skip, no pre-write re-auth,
    policy-managed-via-Undo, restore-race block, inspect ownership misreport) — commits
-   224e3e0/798fc5e/08675c7/2e0fb66/2cafe0d/4906ba9/e4733b6/ec1c0df/56d40ae. W1 scope (honest):
-   value-level over pre-existing keys, DWORD-only, in-memory journal, devhost fakes on all
-   platforms. Gates: cargo 243 · dm-domain msvc-clean · clippy · tsc · bun 598 · check:bindings ·
-   files ≤500. codex R6 verification pending. NEXT: Wave 2 dm-windows real winreg backend +
+   224e3e0…a99b916/30a32d0 — **codex R1→R7 loop, R7 = APPROVE (16 real bugs fixed, converged).**
+   W1 scope (honest): value-level over pre-existing keys, DWORD-only, in-memory journal, devhost
+   fakes on all platforms. Gates: cargo 244 · dm-domain msvc-clean · clippy · tsc · bun 598 ·
+   check:bindings · files ≤500. **W1 CLOSED.** NEXT: Wave 2 dm-windows real winreg backend +
    WindowsSystemProfileProbe (blind [WV]), Wave 3 cert lab = the D2 gate.
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all
    designer PASS): seven coordinate-bookmark presets (spectrum default ·

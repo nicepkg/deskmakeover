@@ -632,13 +632,21 @@ impl<'a> IconOps<'a> {
                     // §14 red-line (audit F2b, owner#6 = SKIP + surface): a privileged-scope target
                     // still in OUR applied state — a Public Desktop / ProgramData row that only the
                     // legitimate ELEVATED path may have styled — cannot be reverted by the NON-elevated
-                    // applier. Leave the row AND the desktop untouched and count it as skipped (so the
-                    // host's "跳过 N 项" surfaces it honestly, never a false "restored"), rather than
-                    // attempting a restore that only fails. This gate is DEEP — inside this arm only —
-                    // so the SAFE ledger-healing arms above (a deleted icon's stale-row drop, an
-                    // already-original heal-remove) still run for a privileged row: they touch only the
-                    // local ledger, never the privileged desktop (codex F2b-review). `Unresolved` scope
-                    // classifies every still-applied row privileged → an unwired host reverts nothing.
+                    // applier. Leave the row AND the desktop untouched and count it toward `skipped`
+                    // (an accurate "left this item alone" count, ok:true, never a false "restored" nor a
+                    // runtime-fault `degraded`), rather than attempting a restore that only fails. The
+                    // gate is DEEP — inside this arm only — so the SAFE ledger-healing arms above (a
+                    // deleted icon's stale-row drop, an already-original heal-remove) still run for a
+                    // privileged row: they touch only the local ledger, never the privileged desktop
+                    // (codex F2b-review). `Unresolved` scope classifies every still-applied row
+                    // privileged → an unwired host reverts nothing.
+                    //
+                    // Reason-text caveat (codex F2b-review 🟡): this rides the hand-edit `skipped`
+                    // bucket, whose toast reads "你自己改过" — imprecise for a privileged item, whose real
+                    // reason is "needs elevation". A DISTINCT needs-elevation surface (its own outcome
+                    // field + toast key) is M8 elevated-feature work, and UNREACHABLE until then: no
+                    // elevated apply path exists yet, so no privileged row can enter the ledger to hit
+                    // this arm. Deferred, not conflated silently.
                     if scope.classify(&entry.target.path).is_some() {
                         skipped.push(entry.item);
                         continue;

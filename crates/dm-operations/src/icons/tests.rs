@@ -510,12 +510,14 @@ fn reset_leaves_privileged_scope_rows_untouched_and_surfaces_them() {
         ops.reset_to_original(&privileged, &mut journal, &mut ledger, &history).unwrap()
     };
 
-    // Untouched: the desktop keeps its styled bytes, the ledger keeps the row, and it is surfaced as
-    // a SKIP (honest "跳过 N 项", never a false "restored" / misleading degraded — codex F2b-review).
+    // Observable contract: the desktop keeps its styled bytes, the ledger keeps the row, and it is
+    // counted toward `skipped` (left-alone, ok:true) — never restored, never a false runtime-fault
+    // degrade. (The toast REASON text ("你自己改过") is imprecise for a privileged item; a distinct
+    // "needs elevation" surface is M8 work — see the gate comment — and unreachable until then.)
     assert_eq!(world.borrow().get(&app.path).unwrap(), styled, "privileged desktop must NOT be restored");
     assert!(ledger.get(&app.id).unwrap().is_some(), "privileged row must NOT be dropped");
     assert!(out.restored.is_empty(), "nothing restored under a privileged scope");
-    assert_eq!(out.skipped, vec![app.id.clone()], "the privileged row is surfaced as a skip");
+    assert_eq!(out.skipped, vec![app.id.clone()], "the privileged row is left alone (counted as skipped)");
     assert!(out.degraded.is_none(), "a privileged skip is NOT a runtime-fault degrade");
 }
 

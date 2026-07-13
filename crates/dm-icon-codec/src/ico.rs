@@ -176,17 +176,55 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<IcoEntry>, String> {
         }
 
         let h = start;
+        let dib_size = u32::from_le_bytes([bytes[h], bytes[h + 1], bytes[h + 2], bytes[h + 3]]);
         let dib_width = i32::from_le_bytes([bytes[h + 4], bytes[h + 5], bytes[h + 6], bytes[h + 7]]);
         let dib_height = i32::from_le_bytes([bytes[h + 8], bytes[h + 9], bytes[h + 10], bytes[h + 11]]);
+        let dib_planes = u16::from_le_bytes([bytes[h + 12], bytes[h + 13]]);
         let dib_bit_count = u16::from_le_bytes([bytes[h + 14], bytes[h + 15]]);
+        let dib_compression =
+            u32::from_le_bytes([bytes[h + 16], bytes[h + 17], bytes[h + 18], bytes[h + 19]]);
         let dib_size_image =
             i32::from_le_bytes([bytes[h + 20], bytes[h + 21], bytes[h + 22], bytes[h + 23]]);
 
         if dib_width <= 0 || dib_height <= 0 || dib_height % 2 != 0 {
             return Err(format!("frame {i}: bad DIB dims {dib_width}x{dib_height}"));
         }
+        // ENFORCE THE WRITER'S EXACT DIB CONTRACT (codex R2 C-2). A matching `bytes_in_res` alone did
+        // NOT prove the frame is the uncompressed 32-bpp BI_RGB BITMAPINFOHEADER `dib_payload` produces:
+        // a crafted header (wrong biSize, planes, bit-count, a BI_RLE/BI_BITFIELDS compression, or a PNG
+        // frame whose byte length happens to match the 32-bpp calc) would pass and be handed to the
+        // ELEVATED helper's ProgramData copy for Windows Shell to decode however IT reads those fields.
+        // Reject anything but our precise format. (bit_count != 32 also rejects palette 1/4/8-bpp; a PNG
+        // frame fails biSize == 40.)
+        if dib_size as usize != DIB_HEADER_LEN {
+            return Err(format!("frame {i}: DIB header size {dib_size} != {DIB_HEADER_LEN}"));
+        }
+        if dib_planes != 1 {
+            return Err(format!("frame {i}: planes {dib_planes} != 1"));
+        }
+        if dib_bit_count != 32 {
+            return Err(format!("frame {i}: bit count {dib_bit_count} != 32"));
+        }
+        if dib_compression != 0 {
+            return Err(format!("frame {i}: compression {dib_compression} != BI_RGB (0)"));
+        }
         let w = dib_width as usize;
         let hh = (dib_height / 2) as usize;
+        // The directory-declared size must match the DIB (0 encodes ≥256, IcoWriter's `dimension_byte`).
+        let dir_dim = |v: usize| -> u8 { if v >= 256 { 0 } else { v as u8 } };
+        if bytes[e] != dir_dim(w) || bytes[e + 1] != dir_dim(hh) {
+            return Err(format!(
+                "frame {i}: directory {}x{} disagrees with DIB {w}x{hh}",
+                bytes[e], bytes[e + 1]
+            ));
+        }
+        // biSizeImage is the XOR-plane byte count the writer stamps (w·hh·4); a lie here is malformed
+        // even when the total bytes_in_res (header + body + mask) checks out below.
+        if dib_size_image < 0
+            || w.checked_mul(hh).and_then(|px| px.checked_mul(4)) != Some(dib_size_image as usize)
+        {
+            return Err(format!("frame {i}: biSizeImage {dib_size_image} mismatches DIB {w}x{hh}"));
+        }
         let mask_stride = ((w + 31) / 32) * 4;
         // Checked so a crafted header cannot wrap the size arithmetic (wasm32 usize is
         // 32-bit; a malformed ICO must be rejected, never silently accepted after a wrap).
@@ -365,6 +403,34 @@ mod tests {
         b[6 + 8] = 0xff;
         b[6 + 9] = 0xff;
         assert!(parse(&b).unwrap_err().contains("escapes buffer"));
+    }
+
+    #[test]
+    fn parse_rejects_a_malformed_dib_header_even_when_the_size_matches() {
+        // codex R2 C-2: a header lie that leaves bytesInRes correct (still the 32-bpp size) must be
+        // refused BEFORE it reaches the elevated helper. The single 16px frame's BITMAPINFOHEADER
+        // starts right after the 6+16-byte directory.
+        let good = write_ico(&[solid(16, 1, 2, 3, 255)]);
+        let dib = ICONDIR_LEN + ICONDIRENTRY_LEN; // 22
+        // biCompression (dib+16) != BI_RGB — a BI_RLE/BI_BITFIELDS lie.
+        let mut b = good.clone();
+        b[dib + 16] = 1;
+        assert!(parse(&b).unwrap_err().contains("compression"), "compressed DIB must be rejected");
+        // biBitCount (dib+14) != 32 — a palette 8-bpp claim.
+        let mut b = good.clone();
+        b[dib + 14] = 8;
+        b[dib + 15] = 0;
+        assert!(parse(&b).unwrap_err().contains("bit count"), "non-32bpp must be rejected");
+        // biSize (dib+0) != 40 — a BITMAPV4/PNG-frame lie.
+        let mut b = good.clone();
+        b[dib] = 108;
+        assert!(parse(&b).unwrap_err().contains("header size"), "wrong DIB header size must be rejected");
+        // biPlanes (dib+12) != 1.
+        let mut b = good.clone();
+        b[dib + 12] = 2;
+        assert!(parse(&b).unwrap_err().contains("planes"), "planes != 1 must be rejected");
+        // The untouched ICO still parses.
+        assert!(parse(&good).is_ok());
     }
 
     #[test]

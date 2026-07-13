@@ -1,26 +1,36 @@
 //! `WindowsSystemProfileProbe` — the live environment fingerprint gatherer. `[WINDOWS-VERIFY]`.
 //!
-//! Reads the certification fingerprint almost entirely from the registry (through the same faithful
-//! [`WinregBackend`]), plus one `GetProductInfo` call for the SKU, then hands the raw fields to the
-//! host-tested [`assemble_environment`] for ALL canonicalization. Version comes from the registry
-//! `CurrentVersion` keys — the unshimmed build number, unlike `GetVersionEx` — so no `Wdk` /
-//! `RtlGetVersion` dependency is pulled; a Wave 3 hardening may cross-check `RtlGetVersion`.
+//! Reads the certification fingerprint from AUTHORITATIVE sources, never derived or hardcoded
+//! (codex W2 R1 Major-3): `RtlGetVersion` for the unshimmed OS version AND `wProductType`
+//! (`is_workstation`), `GetNativeSystemInfo` for the native architecture, `GetCurrentPackageFullName`
+//! for package identity, `GetProductInfo` for the SKU, and the registry `CurrentVersion` keys for
+//! UBR / DisplayVersion / EditionID / InstallationType / region. Every registry field is read
+//! strictly: absent may default, but PRESENT-BUT-MALFORMED fails the whole probe closed, so corrupt
+//! or hostile data can never assemble a certifiable tuple. All canonicalization is the host-tested
+//! [`assemble_environment`].
 
 use dm_domain::system_tweaks::{
-    RegistryAddress, RegistryBackend, RegistryHive, RegistrySnapshot, RegistryView,
-    SystemProfileError, SystemProfileProbe, WindowsEnvironment,
+    RegistryAddress, RegistryBackend, RegistryHive, RegistryView, SystemProfileError,
+    SystemProfileProbe, WindowsEnvironment,
 };
-use windows::Win32::System::SystemInformation::{GetProductInfo, OS_PRODUCT_TYPE};
+use windows::Wdk::System::SystemServices::RtlGetVersion;
+use windows::Win32::Storage::Packaging::Appx::GetCurrentPackageFullName;
+use windows::Win32::System::SystemInformation::{
+    GetNativeSystemInfo, GetProductInfo, OSVERSIONINFOEXW, OS_PRODUCT_TYPE, SYSTEM_INFO,
+};
 
 use super::backend::WinregBackend;
 use super::profile_facts::{
-    assemble_environment, map_processor_architecture, snapshot_dword, snapshot_string,
-    RawProfileFacts,
+    assemble_environment, map_native_arch, snapshot_dword, snapshot_string, RawProfileFacts,
 };
 
 const CURRENT_VERSION: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
 const GEO: &str = r"Control Panel\International\Geo";
-const ENVIRONMENT: &str = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment";
+
+/// `OSVERSIONINFOEXW.wProductType` for a workstation (client) install.
+const VER_NT_WORKSTATION: u8 = 1;
+/// `GetCurrentPackageFullName` error when the process has no package identity.
+const APPMODEL_ERROR_NO_PACKAGE: u32 = 15_700;
 
 /// This process's architecture at build time. On a native run it equals the machine arch; under
 /// emulation it differs, which is exactly the separation [`WindowsEnvironment`] keeps between the
@@ -35,7 +45,7 @@ const PROCESS_ARCH: &str = if cfg!(target_arch = "x86_64") {
     "unknown"
 };
 
-/// Reads the live Windows environment via the registry + `GetProductInfo`. Stateless.
+/// Reads the live Windows environment. Stateless.
 #[derive(Debug, Default)]
 pub struct WindowsSystemProfileProbe;
 
@@ -56,70 +66,129 @@ fn hkcu(key: &str, value: &str) -> RegistryAddress {
 impl SystemProfileProbe for WindowsSystemProfileProbe {
     fn probe(&self) -> Result<WindowsEnvironment, SystemProfileError> {
         let reg = WinregBackend::new();
-        let read = |address: RegistryAddress| -> Result<RegistrySnapshot, SystemProfileError> {
-            reg.read(&address)
-                .map_err(|error| SystemProfileError(error.to_string()))
-        };
-        let required =
-            |field: &str| SystemProfileError(format!("environment field {field} is unreadable"));
+        let version = os_version()?;
 
-        // Version: the registry build number is authoritative and unshimmed. Major/minor are DWORDs
-        // on Windows 10+/11; the build is a decimal string; UBR is a DWORD that is absent on some
-        // early builds (defaults to 0 — never a hard failure).
-        let major = snapshot_dword(&read(hklm(CURRENT_VERSION, "CurrentMajorVersionNumber"))?)
-            .ok_or_else(|| required("CurrentMajorVersionNumber"))?;
-        let minor = snapshot_dword(&read(hklm(CURRENT_VERSION, "CurrentMinorVersionNumber"))?)
-            .ok_or_else(|| required("CurrentMinorVersionNumber"))?;
-        let build = snapshot_string(&read(hklm(CURRENT_VERSION, "CurrentBuildNumber"))?)
-            .and_then(|raw| raw.trim().parse::<u32>().ok())
-            .ok_or_else(|| required("CurrentBuildNumber"))?;
-        let ubr = snapshot_dword(&read(hklm(CURRENT_VERSION, "UBR"))?).unwrap_or(0);
-
-        // Identity: EditionID + the GetProductInfo SKU must later agree for certification. A soft
-        // field that is absent stays empty and fails `is_certifiable` rather than aborting the probe.
-        let display_version =
-            snapshot_string(&read(hklm(CURRENT_VERSION, "DisplayVersion"))?).unwrap_or_default();
-        let edition_id = snapshot_string(&read(hklm(CURRENT_VERSION, "EditionID"))?)
-            .ok_or_else(|| required("EditionID"))?;
+        // Registry fields. UBR is absent on some early builds → 0; a PRESENT-but-malformed UBR
+        // fails closed (codex W2 R1 Major-4). EditionID is required; the rest default to empty and
+        // fail `is_certifiable` if absent, but a malformed string fails the probe (Major-5).
+        let ubr = read_dword_or(&reg, hklm(CURRENT_VERSION, "UBR"), "UBR", 0)?;
+        let display_version = read_string(&reg, hklm(CURRENT_VERSION, "DisplayVersion"), false)?;
+        let edition_id = read_string(&reg, hklm(CURRENT_VERSION, "EditionID"), true)?;
         let installation_type =
-            snapshot_string(&read(hklm(CURRENT_VERSION, "InstallationType"))?).unwrap_or_default();
-        let region = snapshot_string(&read(hkcu(GEO, "Name"))?).unwrap_or_default();
-        let native_architecture =
-            snapshot_string(&read(hklm(ENVIRONMENT, "PROCESSOR_ARCHITECTURE"))?)
-                .map(|raw| map_processor_architecture(&raw))
-                .unwrap_or_default();
+            read_string(&reg, hklm(CURRENT_VERSION, "InstallationType"), false)?;
+        let region = read_string(&reg, hkcu(GEO, "Name"), false)?;
 
-        let product_type = product_sku(major, minor)?;
+        let product_type = product_sku(version.major, version.minor)?;
 
         Ok(assemble_environment(RawProfileFacts {
-            major,
-            minor,
-            build,
+            major: version.major,
+            minor: version.minor,
+            build: version.build,
             ubr,
             display_version,
             edition_id,
-            // A `Client` installation is the workstation case the calm module certifies. The domain
-            // keeps `is_workstation` a separate field and `is_certifiable` requires BOTH, so
-            // deriving it from the same InstallationType is the one honest signal available without
-            // an `RtlGetVersion`/`OSVERSIONINFOEXW` read (a Wave 3 hardening may split them).
-            is_workstation: installation_type.trim().eq_ignore_ascii_case("Client"),
             installation_type,
             product_type,
+            is_workstation: version.is_workstation,
             region,
-            native_architecture,
+            native_architecture: native_arch(),
             process_architecture: PROCESS_ARCH.to_string(),
-            // DeskMakeover ships as an unpackaged desktop binary; a packaged (MSIX) build would
-            // re-derive this true and re-certify under package registry virtualization.
-            packaged: false,
+            packaged: has_package_identity(),
         }))
     }
+}
+
+/// A required-or-optional registry string read: absent → an error (required) or empty (optional);
+/// PRESENT-but-malformed → always an error (never silently coerced).
+fn read_string(
+    reg: &WinregBackend,
+    address: RegistryAddress,
+    required: bool,
+) -> Result<String, SystemProfileError> {
+    let label = format!("{}\\{}", address.key, address.value);
+    let snapshot = reg
+        .read(&address)
+        .map_err(|error| SystemProfileError(format!("{label}: {error}")))?;
+    match snapshot_string(&snapshot)
+        .map_err(|malformed| SystemProfileError(format!("{label}: {}", malformed.0)))?
+    {
+        Some(text) => Ok(text),
+        None if required => Err(SystemProfileError(format!("environment field {label} is unreadable"))),
+        None => Ok(String::new()),
+    }
+}
+
+/// A registry DWORD read that defaults when ABSENT but fails closed when PRESENT-but-malformed.
+fn read_dword_or(
+    reg: &WinregBackend,
+    address: RegistryAddress,
+    name: &str,
+    default: u32,
+) -> Result<u32, SystemProfileError> {
+    let snapshot = reg
+        .read(&address)
+        .map_err(|error| SystemProfileError(format!("{name}: {error}")))?;
+    Ok(snapshot_dword(&snapshot)
+        .map_err(|malformed| SystemProfileError(format!("{name}: {}", malformed.0)))?
+        .unwrap_or(default))
+}
+
+/// The unshimmed OS version + `is_workstation`, from `RtlGetVersion`.
+struct OsVersion {
+    major: u32,
+    minor: u32,
+    build: u32,
+    is_workstation: bool,
+}
+
+fn os_version() -> Result<OsVersion, SystemProfileError> {
+    let mut info = OSVERSIONINFOEXW {
+        dwOSVersionInfoSize: std::mem::size_of::<OSVERSIONINFOEXW>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: `RtlGetVersion` fills the extended `OSVERSIONINFOEXW` fields (incl. `wProductType`)
+    // when `dwOSVersionInfoSize` is the EXW size; the pointer is a valid, correctly-sized, mutable
+    // `OSVERSIONINFOEXW` reinterpreted as the `OSVERSIONINFOW` the API takes.
+    let status = unsafe { RtlGetVersion((&mut info as *mut OSVERSIONINFOEXW).cast()) };
+    if status.0 != 0 {
+        return Err(SystemProfileError(format!(
+            "RtlGetVersion failed: NTSTATUS {}",
+            status.0
+        )));
+    }
+    Ok(OsVersion {
+        major: info.dwMajorVersion,
+        minor: info.dwMinorVersion,
+        build: info.dwBuildNumber,
+        is_workstation: info.wProductType == VER_NT_WORKSTATION,
+    })
+}
+
+/// The native machine architecture, from `GetNativeSystemInfo` (unaffected by WOW64 emulation).
+fn native_arch() -> String {
+    let mut info = SYSTEM_INFO::default();
+    // SAFETY: `info` is a valid out-param that `GetNativeSystemInfo` fully initializes.
+    unsafe { GetNativeSystemInfo(&mut info) };
+    // SAFETY: after the call the anonymous union's struct arm holds `wProcessorArchitecture`.
+    let raw = unsafe { info.Anonymous.Anonymous.wProcessorArchitecture.0 };
+    map_native_arch(raw)
+}
+
+/// Whether the process runs with package identity, from `GetCurrentPackageFullName`. A length-only
+/// query returns `APPMODEL_ERROR_NO_PACKAGE` when unpackaged; any other status means packaged.
+fn has_package_identity() -> bool {
+    let mut length: u32 = 0;
+    // SAFETY: a length-only query (null buffer); it writes only through `length` and returns a
+    // status code, never touching caller memory.
+    let status = unsafe { GetCurrentPackageFullName(&mut length, None) };
+    status.0 != APPMODEL_ERROR_NO_PACKAGE
 }
 
 /// The `GetProductInfo` SKU for the running OS version (service pack 0,0).
 fn product_sku(major: u32, minor: u32) -> Result<u32, SystemProfileError> {
     let mut sku = OS_PRODUCT_TYPE(0);
-    // SAFETY: all inputs are plain integers and `sku` is a valid out-param; the call reads no
-    // caller-owned memory and writes only through `sku`.
+    // SAFETY: all inputs are plain integers and `sku` is a valid out-param; the call writes only
+    // through `sku`.
     let ok = unsafe { GetProductInfo(major, minor, 0, 0, &mut sku) };
     if ok.as_bool() {
         Ok(sku.0)

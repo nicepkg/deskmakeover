@@ -148,8 +148,11 @@ impl RegistryBackend for WinregBackend {
     }
 
     fn is_policy_managed(&self, address: &RegistryAddress) -> Result<bool, RegistryError> {
-        // Request write access to the CONTAINING key; a denial means a policy protects the leaf.
-        // This writes nothing — it only asks for the right — so it is safe in a read-only classify.
+        // A WRITE-PROTECTION probe: request write access to the containing key; a denial means the
+        // leaf is ACL-protected. This writes nothing (it only asks for the right) so it is safe in a
+        // read-only classify. It is NOT a policy-provenance detector — a GPP/managed value that is
+        // still user-writable reads as unmanaged here; that limitation and the fail-closed contract
+        // are documented on `translate::managed_from_open`.
         let (status, _handle) = open_key(&address.key_location(), KEY_SET_VALUE);
         translate::managed_from_open(address, status)
     }
@@ -204,6 +207,14 @@ impl RegistryBackend for WinregBackend {
             WriteAction::DeleteValue => unsafe { RegDeleteValueW(handle.0, name) },
         };
         match translate::classify(write_status.0) {
+            // `Ok` means the OS committed the write; the backend returns success THE INSTANT the
+            // syscall commits (matching the reference `MemoryRegistry`). It must NOT do its own
+            // post-write read-back: the driver already re-reads and compares AFTER recording the
+            // leaf as written (driver.rs, right after this returns Ok), so a transient read failure
+            // there keeps the committed leaf tracked for undo/recovery. Verifying inside the CAS
+            // instead would turn a committed write whose confirming read momentarily failed into an
+            // `Err` — the driver would then treat the mutated leaf as never-written and record the
+            // transaction as rolled back over a registry it actually changed (codex W2 R1 Block-1).
             Status::Ok => {}
             // Deleting an already-absent value is idempotent to the ValueMissing we intended.
             Status::NotFound if matches!(desired, RegistrySnapshot::ValueMissing) => {}
@@ -214,13 +225,10 @@ impl RegistryBackend for WinregBackend {
                 )))
             }
         }
-        drop(handle); // close the write handle before the verifying re-read
 
-        // Post-write verification: the value must now read back exactly as written.
-        let readback = self.read(address)?;
-        translate::verify_readback(address, &readback, desired)?;
-
-        // W1 opens keys, never creates them, so there are no created prefixes to record.
+        // W1 opens keys, never creates them, so there are no created prefixes to record. The
+        // authoritative post-write effect proof is the engine's `VerificationBackend`, run after
+        // the driver records the write — not this backend.
         Ok(RegistryWriteOutcome::default())
     }
 

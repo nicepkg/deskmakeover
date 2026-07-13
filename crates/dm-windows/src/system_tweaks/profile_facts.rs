@@ -82,45 +82,79 @@ pub fn assemble_environment(facts: RawProfileFacts) -> WindowsEnvironment {
 // ── Pure extractors for the raw registry reads the probe gathers ─────────────────────────────
 // The `cfg(windows)` probe reads each field through `WinregBackend`; these turn the resulting
 // `RegistrySnapshot`s into the plain scalars `RawProfileFacts` holds, with the decode logic
-// host-tested here rather than behind `[WINDOWS-VERIFY]`.
+// host-tested here rather than behind `[WINDOWS-VERIFY]`. Every extractor distinguishes ABSENT
+// (`Ok(None)` — the caller decides whether that is fatal or a legitimate default) from PRESENT BUT
+// MALFORMED (`Err` — never silently coerced), so hostile or corrupt registry data can never be
+// folded into a benign default and then match a certified profile (codex W2 R1 Major-4/5).
 
-/// The `u32` a present DWORD snapshot holds, else `None` (a missing value or a non-DWORD/malformed
-/// width never reads as a silent zero).
-pub fn snapshot_dword(snapshot: &RegistrySnapshot) -> Option<u32> {
-    snapshot.value().and_then(|value| value.as_dword())
-}
+/// A present-but-malformed certification field: the value existed but could not be read as the
+/// expected type/shape. Kept distinct from an absent field so the probe fails closed on it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MalformedField(pub String);
 
-/// The string a present `REG_SZ`/`REG_EXPAND_SZ` snapshot holds (UTF-16LE, NUL-trimmed), else
-/// `None` (a missing value or a non-string type is not a string field).
-pub fn snapshot_string(snapshot: &RegistrySnapshot) -> Option<String> {
-    use dm_domain::system_tweaks::RegistryValueKind::{ExpandString, String as Sz};
-    let value = snapshot.value()?;
-    match value.kind {
-        Sz | ExpandString => Some(decode_utf16le(&value.bytes)),
-        _ => None,
+/// The `u32` a present DWORD snapshot holds:
+/// - key/value absent → `Ok(None)` (the caller may default, e.g. a missing UBR is 0 on old builds);
+/// - present, a well-formed 4-byte DWORD → `Ok(Some(value))`;
+/// - present but a non-DWORD kind or a malformed width → `Err` (never a silent `0`).
+pub fn snapshot_dword(snapshot: &RegistrySnapshot) -> Result<Option<u32>, MalformedField> {
+    match snapshot.value() {
+        None => Ok(None),
+        Some(value) => value.as_dword().map(Some).ok_or_else(|| {
+            MalformedField(format!(
+                "expected a 4-byte DWORD, found kind {:?} of {} bytes",
+                value.kind,
+                value.bytes.len()
+            ))
+        }),
     }
 }
 
-/// Decode a registry UTF-16LE string blob, stopping at the first NUL terminator. An odd trailing
-/// byte is dropped (a well-formed registry string is always an even byte count).
-pub fn decode_utf16le(bytes: &[u8]) -> String {
+/// The string a present `REG_SZ`/`REG_EXPAND_SZ` snapshot holds:
+/// - key/value absent → `Ok(None)`;
+/// - present, a valid UTF-16LE string → `Ok(Some(text))`;
+/// - present but a non-string kind, an odd byte length, or invalid UTF-16 → `Err`.
+pub fn snapshot_string(snapshot: &RegistrySnapshot) -> Result<Option<String>, MalformedField> {
+    use dm_domain::system_tweaks::RegistryValueKind::{ExpandString, String as Sz};
+    match snapshot.value() {
+        None => Ok(None),
+        Some(value) => match value.kind {
+            Sz | ExpandString => decode_utf16le(&value.bytes).map(Some),
+            ref other => Err(MalformedField(format!(
+                "expected a string value, found kind {other:?}"
+            ))),
+        },
+    }
+}
+
+/// Decode a registry UTF-16LE string blob, stopping at the first NUL terminator. Fails closed on an
+/// ODD byte length (a well-formed registry string is always an even byte count) and on INVALID
+/// UTF-16 (unpaired surrogates) — `String::from_utf16` (not `_lossy`) is used, because a
+/// certification identity must never accept a mangled string as a valid field.
+pub fn decode_utf16le(bytes: &[u8]) -> Result<String, MalformedField> {
+    if !bytes.len().is_multiple_of(2) {
+        return Err(MalformedField(format!(
+            "registry string has an odd byte length ({})",
+            bytes.len()
+        )));
+    }
     let units: Vec<u16> = bytes
         .chunks_exact(2)
         .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
         .collect();
     let end = units.iter().position(|&unit| unit == 0).unwrap_or(units.len());
-    String::from_utf16_lossy(&units[..end])
+    String::from_utf16(&units[..end])
+        .map_err(|error| MalformedField(format!("registry string is not valid UTF-16: {error}")))
 }
 
-/// Map a `PROCESSOR_ARCHITECTURE` environment string to the canonical architecture the domain
-/// certifies. An unrecognized value is passed through lowercased so it fails `is_certifiable`
-/// closed rather than masquerading as a supported arch.
-pub fn map_processor_architecture(raw: &str) -> String {
-    match raw.trim().to_ascii_uppercase().as_str() {
-        "AMD64" | "X64" => "x64".to_string(),
-        "ARM64" => "arm64".to_string(),
-        "X86" => "x86".to_string(),
-        other => other.to_ascii_lowercase(),
+/// Map a raw `PROCESSOR_ARCHITECTURE` value (from `GetNativeSystemInfo`) to the canonical
+/// architecture the domain certifies. An unrecognized value becomes a distinct non-certifiable
+/// string rather than masquerading as a supported arch.
+pub fn map_native_arch(raw: u16) -> String {
+    match raw {
+        9 => "x64".to_string(),    // PROCESSOR_ARCHITECTURE_AMD64
+        12 => "arm64".to_string(), // PROCESSOR_ARCHITECTURE_ARM64
+        0 => "x86".to_string(),    // PROCESSOR_ARCHITECTURE_INTEL
+        other => format!("arch{other}"),
     }
 }
 
@@ -217,42 +251,53 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_dword_reads_only_a_present_well_formed_dword() {
+    fn snapshot_dword_absent_is_none_present_is_some_malformed_is_err() {
         assert_eq!(
             snapshot_dword(&RegistrySnapshot::Present(RawRegistryValue::dword(8_737))),
-            Some(8_737)
+            Ok(Some(8_737))
         );
-        assert_eq!(snapshot_dword(&RegistrySnapshot::ValueMissing), None);
-        assert_eq!(snapshot_dword(&RegistrySnapshot::KeyMissing), None);
-        // A string value is not a DWORD.
-        assert_eq!(snapshot_dword(&sz("26100")), None);
+        assert_eq!(snapshot_dword(&RegistrySnapshot::ValueMissing), Ok(None));
+        assert_eq!(snapshot_dword(&RegistrySnapshot::KeyMissing), Ok(None));
+        // A string value at a DWORD field is malformed, NOT a silent absence (codex W2 R1 Major-4).
+        assert!(snapshot_dword(&sz("26100")).is_err());
+        // A present but wrong-width DWORD is malformed, never a silent 0.
+        let narrow = RegistrySnapshot::Present(RawRegistryValue::new(
+            RegistryValueKind::Dword,
+            vec![0, 0],
+        ));
+        assert!(snapshot_dword(&narrow).is_err());
     }
 
     #[test]
-    fn snapshot_string_decodes_sz_and_rejects_non_strings() {
-        assert_eq!(snapshot_string(&sz("24H2")).as_deref(), Some("24H2"));
-        assert_eq!(snapshot_string(&sz("")).as_deref(), Some(""));
-        assert_eq!(
-            snapshot_string(&RegistrySnapshot::Present(RawRegistryValue::dword(0))),
-            None
-        );
-        assert_eq!(snapshot_string(&RegistrySnapshot::ValueMissing), None);
+    fn snapshot_string_absent_is_none_valid_is_some_malformed_is_err() {
+        assert_eq!(snapshot_string(&sz("24H2")), Ok(Some("24H2".to_string())));
+        assert_eq!(snapshot_string(&sz("")), Ok(Some(String::new())));
+        assert_eq!(snapshot_string(&RegistrySnapshot::ValueMissing), Ok(None));
+        // A DWORD at a string field is malformed, not a silent absence.
+        assert!(snapshot_string(&RegistrySnapshot::Present(RawRegistryValue::dword(0))).is_err());
     }
 
     #[test]
-    fn decode_utf16le_stops_at_the_nul() {
+    fn decode_utf16le_stops_at_the_nul_but_rejects_malformed() {
         let mut bytes: Vec<u8> = "Professional".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         bytes.extend_from_slice(&[0, 0]);
         bytes.extend_from_slice(&[0x41, 0x00]); // trailing garbage after the NUL, must be ignored
-        assert_eq!(decode_utf16le(&bytes), "Professional");
+        assert_eq!(decode_utf16le(&bytes).unwrap(), "Professional");
+        // An odd trailing byte is a malformed field, NOT silently dropped (codex W2 R1 Major-5).
+        let mut odd: Vec<u8> = "Professional".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        odd.push(0x41);
+        assert!(decode_utf16le(&odd).is_err());
+        // An unpaired high surrogate is invalid UTF-16 → Err (from_utf16, not _lossy).
+        let bad_surrogate: Vec<u8> = vec![0x00, 0xD8]; // U+D800 alone
+        assert!(decode_utf16le(&bad_surrogate).is_err());
     }
 
     #[test]
-    fn processor_architecture_maps_to_the_canonical_arch() {
-        assert_eq!(map_processor_architecture("AMD64"), "x64");
-        assert_eq!(map_processor_architecture("arm64"), "arm64");
-        assert_eq!(map_processor_architecture("x86"), "x86");
-        // Unknown → lowercased passthrough, which is not a certifiable native arch.
-        assert_eq!(map_processor_architecture("IA64"), "ia64");
+    fn native_arch_maps_to_the_canonical_arch() {
+        assert_eq!(map_native_arch(9), "x64"); // PROCESSOR_ARCHITECTURE_AMD64
+        assert_eq!(map_native_arch(12), "arm64"); // PROCESSOR_ARCHITECTURE_ARM64
+        assert_eq!(map_native_arch(0), "x86"); // PROCESSOR_ARCHITECTURE_INTEL
+        // Unknown → a distinct non-certifiable string.
+        assert_eq!(map_native_arch(6), "arch6"); // IA64, not certifiable
     }
 }

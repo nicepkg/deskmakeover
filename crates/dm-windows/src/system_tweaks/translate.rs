@@ -88,17 +88,24 @@ pub fn snapshot_from_query(
     }
 }
 
-/// Whether a leaf is policy-managed, from the status of opening its CONTAINING key for
+/// Whether a leaf is WRITE-PROTECTED, from the status of opening its containing key for
 /// `KEY_SET_VALUE` (a side-effect-free write-access request that writes nothing):
-/// - open succeeded → writable → not managed;
-/// - `NotFound` → the key is absent, so nothing there is policy-managed (W1 never created it);
-/// - `AccessDenied` → the write is refused → treated as policy-managed (do not clobber);
+/// - open succeeded → the token may write → not write-protected;
+/// - `NotFound` → the key is absent, so nothing there blocks a (non-existent) write;
+/// - `AccessDenied` → the write is refused → write-protected (do not attempt to clobber);
 /// - any other status fails closed as an error so the undo/restore caller keeps the transaction
 ///   prepared rather than proceeding on an unknown state.
 ///
-/// This is the raw-Windows proxy for "can a policy block our write here". It composes with the
-/// catalog's declared HKLM `policy_guards`, which the engine reads separately to catch a policy
-/// that shadows the value at READ time without denying the write.
+/// IMPORTANT — this is NOT a policy-PROVENANCE detector. `KEY_SET_VALUE` succeeding proves only
+/// that this token CAN write; it does NOT prove the value is unmanaged. A Group Policy PREFERENCE
+/// (GPP) or another management component that WRITES a normal user-writable HKCU value leaves the
+/// value fully writable, so this probe reports `false` for it. Real policy-ownership detection for a
+/// recipe is the catalog's declared administrative-template `policy_guards` (the engine reads those
+/// separately); GPP / direct-registry management of a user-writable value with no guard leaf has NO
+/// reliable registry provenance and is UNDETECTABLE here. That gap is why the write slice stays
+/// fail-closed (empty capability manifest) until the Wave 3 cert lab enumerates every recipe's guard
+/// set and rules on the GPP limitation (the ADR-0023 D2 gate). This probe is the last-line ACL guard
+/// under that contract, not the whole policy story (codex W2 R1 Block-2).
 pub fn managed_from_open(address: &RegistryAddress, open: Status) -> Result<bool, RegistryError> {
     match open {
         Status::Ok | Status::NotFound => Ok(false),
@@ -168,23 +175,6 @@ pub fn plan_write<'a>(
         RegistrySnapshot::KeyMissing => Err(RegistryError::Io(format!(
             "refusing to delete a key via CAS at {address} (W1 creates no keys)"
         ))),
-    }
-}
-
-/// Post-write verification: the value re-read after the set must byte-match the desired write. A
-/// mismatch (a torn write, a virtualized redirect, an instant external overwrite) fails closed so
-/// the transaction never records a write that did not land as intended.
-pub fn verify_readback(
-    address: &RegistryAddress,
-    readback: &RegistrySnapshot,
-    desired: &RegistrySnapshot,
-) -> Result<(), RegistryError> {
-    if readback == desired {
-        Ok(())
-    } else {
-        Err(RegistryError::Io(format!(
-            "post-write readback at {address} did not match the value written"
-        )))
     }
 }
 
@@ -346,16 +336,5 @@ mod tests {
             vec![0, 0, 0, 0],
         ));
         assert!(plan_write(&addr(), &other).is_err());
-    }
-
-    #[test]
-    fn verify_readback_requires_byte_equality_with_the_write() {
-        let desired = RegistrySnapshot::Present(RawRegistryValue::dword(0));
-        assert_eq!(verify_readback(&addr(), &desired, &desired), Ok(()));
-        let torn = RegistrySnapshot::Present(RawRegistryValue::dword(1));
-        assert!(matches!(
-            verify_readback(&addr(), &torn, &desired),
-            Err(RegistryError::Io(_))
-        ));
     }
 }

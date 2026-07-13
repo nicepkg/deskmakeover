@@ -21,6 +21,11 @@
 | `52369e5` | B-2, B-3, B-7 | overlay finalize honesty (apply/switch fold outcome; set_arrow returns Result) |
 | `78e27cf` | B-1, B-11, B-12, B-8 | wallpaper content-addressed URL + decode-off-lock; icon PNG move; DTO drift |
 | `220ef5b` | C-5 | skip discarded analysis on no-look + original renders (byte-identical) |
+| `1c54214` | B-5 | hard per-scan source-preview budget (bounded scan; owner picked this over defer) |
+
+**Owner decisions (2026-07-14):** D-1 → **keep current** auto-wrap (Boss's product call; risk flagged,
+declined the consent gate). B-5 → **do it** (done, `1c54214`). B-9 → **split now** (per the ≤500-line
+rule; in progress). B-6, C-8 → **defer** (recorded below, not this round).
 
 ### Finding detail (fixed)
 
@@ -69,20 +74,20 @@
 
 ## Recorded — not a plain fix (owner decision / [WINDOWS-VERIFY] / deeper follow-up)
 
-- **D-1 🟠** `shell/scan.rs:88` — a fresh regular file scans `Ready` + `requires_explicit_consent=false`
-  with NO production consent transition, so Apply may wrap it (create `.lnk`, Hidden+System the
-  original) without the per-file confirmation the design implies. **OWNER product decision**: do we
-  require explicit per-file consent before wrapping a loose file, and what is the acknowledgement flow?
-- **B-5 🟠** `icon_host.rs:986` — `SourceCache` pins the whole current generation and stops trimming
-  when only pinned keys remain, so one scan of thousands of high-entropy 256² icons can hold hundreds
-  of MiB past the 32 MiB cap (never evicts a live key mid-serve = a correctness reason). **OWNER
-  policy**: a hard per-scan item/byte budget → a bounded/degraded scan means dropping some icons'
-  previews; which policy (drop oldest / show a warning / raise the cap)?
-- **B-6 🟠** `bridge/tauri.ts` + `stores/app.ts` — `app.getInfo` isn't in HANDLED, so under Tauri the
-  startup schema handshake compares the web const against itself (mock) and version shows 0.0.0. FIX:
-  Rust `app_get_host_info` → `HostInfoDto{schemaVersion,version}` (Rust `BRIDGE_SCHEMA_VERSION` const +
-  `env!(CARGO_PKG_VERSION)`) + specta regen + a new bridge method used by the handshake. **Deferred**:
-  heaviest plumbing for the lowest impact (host+bundle ship together → prod mismatch ~impossible).
+- **D-1 🟠 — OWNER DECIDED: keep current (2026-07-14).** `shell/scan.rs:88` — a fresh regular file scans
+  `Ready` + `requires_explicit_consent=false` with no consent transition, so Apply may wrap it (create
+  `.lnk`, Hidden+System the original) without a per-file confirmation. Ace flagged the risk + recommended
+  requiring consent; **Boss chose to keep the current auto-wrap behavior** (his product call — the
+  wrapping is reversible via restore). No change.
+- **B-5 🟠 — DONE `1c54214`.** Hard per-scan source-preview budget (`SCAN_SOURCE_BUDGET`, 3/4 of the
+  cache cap); items past it are served preview-less (honest bounded scan, logged once). Boss picked this
+  over defer.
+- **B-6 🟠 — OWNER: DEFER (2026-07-14).** `bridge/tauri.ts` + `stores/app.ts` — `app.getInfo` isn't in
+  HANDLED, so under Tauri the startup schema handshake compares the web const against itself (mock) and
+  version shows 0.0.0. FIX: Rust `app_get_host_info` → `HostInfoDto{schemaVersion,version}` (Rust
+  `BRIDGE_SCHEMA_VERSION` const + `env!(CARGO_PKG_VERSION)`) + specta regen + a new bridge method used by
+  the handshake. Deferred: heaviest plumbing for the lowest impact (host+bundle ship together → prod
+  mismatch ~impossible).
 - **B-4 🟠** `src-tauri/src/lib.rs:105` — `IconHost::new(..., 1, ...)` hard-codes `activeUserProfiles=1`,
   so a multi-profile PC lets the user dismiss a non-skippable disclosure. Real count needs the Windows
   ProfileList enumeration — **[WINDOWS-VERIFY]**, blind-writable but box-confirmed.
@@ -93,13 +98,15 @@
   multi-icon batcher have NO production caller (native bake/switch/reconcile call RenderSession
   directly, sequentially). Their advertised warm-render + parallel speedups are currently zero →
   wire with the native resident/version-switch loop (**T8**, the recorded unwired-decision-core gap).
-- **C-8 🔵** `marks/styles.rs:411` — Glass runs a full-tile 4-channel f64 `backdrop_blur` but reads only
-  the ~34% seat. **Deferred (parity-sensitive)**: needs a windowed blur that outputs only the seat±blur
-  radius ROI while SAMPLING the full tile with the same tile-relative clamping (byte-identical at the
-  seat), plus a targeted parity test (seat near a tile edge). Left for test-first dedicated work.
-- **B-9 🔵** `icon_host.rs` (~1100 prod lines) is a god-module coordinating 7 ports + 4 mutex state
-  areas. Split candidate: `scan` / `source_cache` / `apply_session` / `mutations` / `overlay_state` /
-  `persisted` / `export` behind an `IconHost` façade. **OWNER**: worth the churn now, or defer?
+- **C-8 🔵 — OWNER: DEFER (2026-07-14).** `marks/styles.rs:411` — Glass runs a full-tile 4-channel f64
+  `backdrop_blur` but reads only the ~34% seat. Deferred (parity-sensitive): needs a windowed blur that
+  outputs only the seat±blur radius ROI while SAMPLING the full tile with the same tile-relative clamping
+  (byte-identical at the seat), plus a targeted parity test (seat near a tile edge). Left for test-first
+  dedicated work.
+- **B-9 🔵 — OWNER: SPLIT NOW (2026-07-14), in progress.** `icon_host.rs` (~1200 prod lines) is a
+  god-module coordinating 7 ports + 4 mutex state areas. Split into `mod` / `source_cache` / `dto` /
+  `export` / `scan` / `mutations` / `tests` behind the `IconHost` façade, each ≤500 lines. Byte-identical;
+  the 35 host tests gate it.
 - **B-10 🟡** `bridge/mock-desktop.ts` accepts apply sequences the real host rejects (no revision/count/
   budget/style-envelope checks), so a regression passes browser dev but fails at Tauri. Dev-parity
   hardening — low priority.

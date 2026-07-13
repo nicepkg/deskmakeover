@@ -30,6 +30,25 @@
   / 256 MiB b64), 🟡 IHDR length/structure unchecked + test fixture not a real PNG (fixed: IHDR len==13
   + complete-header fixture). Residuals → F4b.
 
+- **2026-07-13 — B3 fail-open metadata (audit F3, dm-windows [WV]) — DONE + codex Approve.** `f4e3b3a`
+  + `8c4ce86`. `apply/{folder,file_wrapper,shortcut}.rs` + `durable.rs`: `exists()`/`is_dir()` →
+  `try_exists()`/`metadata()` propagating non-NotFound errors (a `present()` DRY helper in folder.rs);
+  durable fresh-move dropped `MOVEFILE_REPLACE_EXISTING` (a create-race now fails closed). codex
+  re-review caught 2 residual 🟠 (ini exists() + fresh-move flag) — both fixed → Approve. Source review
+  only (msvc-clean).
+- **2026-07-13 — B6 quick correctness (F6/F7/F11) — DONE + codex Approve.** `0fc5997`. `from_hex`
+  byte-indexed (was a UTF-8 mid-codepoint slice panic); `can_style` honours `requires_explicit_consent`;
+  `background.rs` float division to match the frozen oracle (`85 < 256/3` integer vs `85.333`
+  diverged); `txn/id` + `ledger/store` `checked_add`. codex: all correct. **NOTE: rerun the TS↔Rust
+  parity cert for the 85/256 boundary.**
+- **2026-07-13 — B7 dead code (F10) — DONE + codex Approve.** `1feb91b`. Removed `OverrideModeDto` (dead
+  after setLook left the bridge; bindings unaffected), the unused `filters::glass` re-export, and the
+  stale icon-core Spike-4/M5 status doc. Parity-retained frozen-oracle mirrors deliberately kept.
+- **2026-07-13 — F7 non-square guard — DONE.** `RenderSession::register` drops a non-square/zero source
+  (the analysis assumes a square canvas; a non-square raster panics the width-for-both-axes ring probe)
+  so the id degrades to the original icon rather than crashing. Minimal defensive guard; deeper
+  width/height-aware analysis deferred. Owner-decision #5 resolved to reject-at-boundary.
+
 ### F4b — allocation caps run AFTER the IPC payload is materialized (codex B2-🔴 residual)
 The command-body caps prevent the DECODE/second allocation, but Tauri/Serde deserializes the FULL
 invoke payload (a multi-GB base64 string, huge `items` array) BEFORE the command sees its length; and

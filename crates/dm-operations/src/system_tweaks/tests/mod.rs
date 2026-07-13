@@ -341,6 +341,65 @@ fn recovery_refuses_when_a_policy_guard_appeared() {
     assert_eq!(driver.read_live_for_test(search_leaf()).as_dword(), Some(0));
 }
 
+// ── codex W2 R4: lock the drift-immunity + committed-write contracts so a future refactor cannot
+// silently reintroduce the bugs. ────────────────────────────────────────────────────────────────
+
+#[test]
+fn restore_uses_the_persisted_guard_not_the_current_catalog() {
+    let mut driver = driver();
+    driver.apply(&search()).unwrap(); // the search guard is persisted into the ownership anchor
+    // The catalog is UPGRADED: the current taskbar.search descriptor no longer lists that guard.
+    let mut descriptors = first_batch();
+    for descriptor in &mut descriptors {
+        if descriptor.id.as_str() == "taskbar.search" {
+            descriptor.policy_guards.clear();
+        }
+    }
+    driver.replace_catalog_for_test(TweakCatalog::try_new(descriptors).unwrap());
+    // The old guard now appears. The CURRENT catalog has NO guard for search, so a restore that
+    // (wrongly) consulted the current catalog would proceed and clobber — but the transaction's
+    // PERSISTED guard must still block it. This is the drift-immunity the Block fix promised.
+    driver.set_live_for_test(search_guard(), RawRegistryValue::dword(1));
+    assert!(matches!(
+        driver.restore(&search()),
+        Err(DriverError::Pending { .. })
+    ));
+    assert_eq!(driver.read_live_for_test(search_leaf()).as_dword(), Some(0));
+    assert!(driver.managed_for_test(&search()).is_some());
+}
+
+#[test]
+fn a_migrated_recipe_can_still_be_restored() {
+    let mut driver = driver();
+    driver.apply(&search()).unwrap();
+    // Simulate a recipe migration: the owned anchor's recorded version no longer matches the catalog.
+    driver.bump_managed_version_for_test(&search());
+    // Re-apply is blocked (the design says restore-before-reapply)...
+    assert!(matches!(
+        driver.apply(&search()),
+        Err(DriverError::MigrationRequired(_))
+    ));
+    // ...but restore STILL succeeds — the escape hatch is never deadlocked by a version gate (the
+    // reason the guards are persisted rather than looked up by recipe_version; codex W2 R4).
+    assert_eq!(driver.restore(&search()).unwrap(), RestoreOutcome::Restored);
+    assert!(driver.managed_for_test(&search()).is_none());
+}
+
+#[test]
+fn a_read_error_after_a_committed_write_routes_through_rollback() {
+    let mut registry = pushing_registry();
+    // The single write succeeds, then the confirming post-write read-back errors.
+    registry.fail_read_after_writes(search_leaf(), 1);
+    let mut driver = driver_with(registry, MemoryVerifier::new());
+    // The committed write is NOT hidden behind a bare registry error: it routes through fail_apply,
+    // which cleanly undoes it → Reverted (codex W2 R4). A plain `?` would have leaked Err(Registry)
+    // and left the transaction pretending nothing was written.
+    assert_eq!(driver.apply(&search()).unwrap(), ApplyOutcome::Reverted);
+    // The leaf is back at its original (1); the feature is not owned.
+    assert_eq!(driver.read_live_for_test(search_leaf()).as_dword(), Some(1));
+    assert!(driver.managed_for_test(&search()).is_none());
+}
+
 mod regression;
 
 // Small test-only accessors over the driver's pub(super) ports (same-crate submodule access).
@@ -352,6 +411,11 @@ impl Driver {
 
     fn set_live_for_test(&mut self, address: RegistryAddress, value: RawRegistryValue) {
         self.backend.set_value(address, value);
+    }
+
+    /// Swap the catalog (simulate a recipe/guard-set upgrade after a feature is already owned).
+    fn replace_catalog_for_test(&mut self, catalog: TweakCatalog) {
+        self.catalog = catalog;
     }
 
     fn read_live_for_test(&self, address: RegistryAddress) -> RawRegistryValue {

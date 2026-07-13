@@ -34,6 +34,11 @@ pub struct MemoryRegistry {
     replace_before_cas: Option<Replacement>,
     manage_after: Option<(usize, RegistryAddress)>,
     set_value_after: Option<(usize, RegistryAddress, RawRegistryValue)>,
+    /// One-shot read fault: fail the FIRST read of a target address that occurs once at least N
+    /// writes have succeeded, then disarm (interior-mutable because `RegistryBackend::read` is
+    /// `&self`). The CAS re-reads via `snapshot`, not `read`, so this fires precisely on the
+    /// post-write read-back.
+    fail_read_after_writes: std::cell::RefCell<Option<(RegistryAddress, usize)>>,
 }
 
 impl MemoryRegistry {
@@ -78,6 +83,13 @@ impl MemoryRegistry {
 
     pub fn fail_compare_exchange_at(&mut self, call: usize) {
         self.fail_on_cas = Some(call);
+    }
+
+    /// Fail the first read of `address` that occurs once `min_writes` writes have succeeded, then
+    /// disarm. Used to prove a committed write whose confirming read-back errors still routes through
+    /// fail_apply, never bubbling a bare error that hides the write from recovery (codex W2 R4).
+    pub fn fail_read_after_writes(&mut self, address: RegistryAddress, min_writes: usize) {
+        *self.fail_read_after_writes.borrow_mut() = Some((address, min_writes));
     }
 
     /// Fail the NEXT compare-exchange regardless of how many have already run (cumulative-count
@@ -136,6 +148,15 @@ impl MemoryRegistry {
 
 impl RegistryBackend for MemoryRegistry {
     fn read(&self, address: &RegistryAddress) -> Result<RegistrySnapshot, RegistryError> {
+        // Bind the clone in its own statement so the immutable `borrow()` is released before the
+        // `borrow_mut()` below (an `if let` scrutinee keeps the temporary alive for the whole block).
+        let fault = self.fail_read_after_writes.borrow().clone();
+        if let Some((target, min_writes)) = fault {
+            if &target == address && self.successful_writes >= min_writes {
+                *self.fail_read_after_writes.borrow_mut() = None; // one-shot
+                return Err(RegistryError::Io("injected read failure".into()));
+            }
+        }
         Ok(self.snapshot(address))
     }
 

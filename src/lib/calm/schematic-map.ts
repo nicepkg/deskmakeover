@@ -50,5 +50,7 @@ export const SCHEMATICS: Record<CalmControlId, SchematicSpec> = {
   'widgets.feed': { scene: 'widgets', region: { x: 26, y: 7, w: 38, h: 44, rx: 3 } },
   'taskbar.widgetsButton': { scene: 'taskbar', region: { x: 4.5, y: 45.5, w: 17, h: 13, rx: 4 } },
   'lockscreen.status': { scene: 'lock', region: { x: 24, y: 29, w: 56, h: 14, rx: 3 } },
-  'tray.entries': { scene: 'taskbar', region: { x: 79, y: 45.5, w: 21.5, h: 13, rx: 4 } },
+  // tray region hugs the OVERFLOWABLE app icons (x81..89.6) plus the caret
+  // entrance edge — the clock/status pills (x≥94) are NOT the operation area.
+  'tray.entries': { scene: 'taskbar', region: { x: 80, y: 45.5, w: 13.5, h: 13, rx: 4 } },
 }

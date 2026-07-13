@@ -15,6 +15,10 @@ export type CalmRowState =
   | 'pending' // write issued, verification running (shimmer)
   | 'verified' // 已生效 — raw + delayed + effect verification all passed
   | 'setAwaiting' // 已设置 — written, effect needs sign-out / surface reopen
+  | 'reopened' // HealthCheck drift (spec 08 §6): we quieted it, it was turned back
+  //             on since — a candidate again WITH provenance (drives the additive
+  //             「又打开了 → 重新关闭」 notice; re-closing is a normal scoped apply,
+  //             NEVER an auto-replay)
   | 'reverted' // apply failed, rolled back to original (honest toast; retryable)
   | 'needsReconfirm' // certification boundary crossed (feature update) — never auto-replay
   | 'external' // we wrote it, the user changed it since — theirs now, untouched
@@ -35,13 +39,16 @@ export const HELD_STATES: ReadonlySet<CalmRowState> = new Set(['unsupported', 'm
 // Legal transitions for WRITABLE (automatic/advanced) rows. Guided rows have their
 // own map below — they can never enter the write pipeline.
 const WRITABLE_TRANSITIONS: Readonly<Record<CalmRowState, readonly CalmRowState[]>> = {
-  unknown: ['quiet', 'pushing', 'unsupported', 'managed', 'needsReconfirm'],
+  unknown: ['quiet', 'pushing', 'reopened', 'unsupported', 'managed', 'needsReconfirm'],
   quiet: ['pushing', 'unsupported', 'managed', 'needsReconfirm'], // drift / re-probe
-  pushing: ['pending', 'quiet', 'unsupported', 'managed', 'needsReconfirm'],
+  pushing: ['pending', 'quiet', 'reopened', 'unsupported', 'managed', 'needsReconfirm'],
   pending: ['verified', 'setAwaiting', 'reverted', 'pushing', 'unknown'], // pushing = skipped; unknown = reply lost, re-probe required
-  verified: ['pushing', 'needsReconfirm', 'quiet', 'external', 'unknown'], // unknown = restore reply lost
-  setAwaiting: ['verified', 'pushing', 'needsReconfirm', 'external', 'unknown'],
-  reverted: ['pushing', 'pending', 'quiet', 'unsupported', 'managed'], // retry or re-probe
+  verified: ['pushing', 'reopened', 'needsReconfirm', 'quiet', 'external', 'unknown'], // reopened = HealthCheck drift; unknown = restore reply lost
+  setAwaiting: ['verified', 'pushing', 'reopened', 'needsReconfirm', 'external', 'unknown'],
+  // reopened is a CANDIDATE with provenance: it re-enters the write pipeline via
+  // pending, is disowned to pushing/external, or follows fresh probe truth.
+  reopened: ['pending', 'pushing', 'quiet', 'external', 'unsupported', 'managed', 'needsReconfirm', 'unknown'],
+  reverted: ['pushing', 'pending', 'quiet', 'reopened', 'unsupported', 'managed'], // retry or re-probe
   needsReconfirm: ['pushing', 'quiet', 'unsupported', 'managed'], // only via a fresh probe
   external: ['pushing', 'quiet', 'unsupported', 'managed'], // re-probe reads it fresh
   unsupported: ['pushing', 'quiet', 'managed', 'needsReconfirm'], // a later certified probe may open it
@@ -59,6 +66,7 @@ const GUIDED_TRANSITIONS: Readonly<Record<CalmRowState, readonly CalmRowState[]>
   pending: [],
   verified: [],
   setAwaiting: [],
+  reopened: [], // guided rows have no ledger — drift provenance is writable-only
   reverted: [],
   needsReconfirm: [],
   external: [],
@@ -85,15 +93,16 @@ export type CalmProbeState = 'quiet' | 'pushing' | 'unsupported' | 'managed' | '
 /**
  * The PROBE channel (ledger-backed). `ownedByUs` = the backend's durable ledger says
  * DeskMakeover wrote this row AND the raw value still matches what it wrote.
- * - owned + quiet  → verified   (ownership restored — the ledger re-verified it)
- * - owned + pushing → pushing   (drift: the value moved; ownership is NOT claimed)
- * - not owned      → the probe state as-is
+ * - owned + quiet          → verified  (ownership restored — the ledger re-verified it)
+ * - driftedFromUs + pushing → reopened (HealthCheck: our quieted row was turned back
+ *                             on — a candidate again WITH the §6 re-propose notice)
+ * - not owned              → the probe state as-is
  * A probe can never produce pending, and never mints verified without ownership.
  */
 export function probeTransition(
   kind: 'writable' | 'guided',
   from: CalmRowState,
-  probe: { state: CalmProbeState; ownedByUs?: boolean },
+  probe: { state: CalmProbeState; ownedByUs?: boolean; driftedFromUs?: boolean },
 ): CalmRowState {
   if (kind === 'guided') {
     // Guided rows have no ledger — settled guided outcomes survive a re-probe of
@@ -109,6 +118,9 @@ export function probeTransition(
     return from === 'needsReconfirm' ? from : assertTransition('writable', from, 'needsReconfirm')
   }
   if (probe.ownedByUs && probe.state === 'quiet') return 'verified'
+  if (probe.driftedFromUs && probe.state === 'pushing') {
+    return from === 'reopened' ? from : assertTransition('writable', from, 'reopened')
+  }
   const to = probe.state
   return from === to ? from : assertTransition('writable', from, to)
 }

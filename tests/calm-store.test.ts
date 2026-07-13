@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { CALM_CATALOG, type CalmControlId } from '../src/lib/calm/catalog'
 import type { CalmRowState } from '../src/lib/calm/states'
 import { MockCalmBackend } from '../src/bridge/mock-calm'
-import { countOwnedWrites, countQuieted, groupedRows, setCalmBackend, useCalm } from '../src/stores/calm'
+import { countOwnedWrites, countQuieted, groupedRows, reopenedRows, setCalmBackend, useCalm } from '../src/stores/calm'
 
 // Store behaviour tests over the CalmBackend mock (plan W0.3 + codex R1 fixes).
 // The mock's fake environment: starter slice certified, other automatic rows
@@ -16,7 +16,6 @@ function resetStore(backend: MockCalmBackend) {
     rows: Object.fromEntries(CALM_CATALOG.map((c) => [c.id, 'unknown'])) as Record<CalmControlId, CalmRowState>,
     excluded: new Set(),
     skipReasons: {},
-    reopened: [],
     walkedId: null,
     lastApply: null,
   })
@@ -147,18 +146,38 @@ describe('calm store', () => {
   test('a row we quieted that turns back on RE-PROPOSES — never a silent replay, never a plain candidate', async () => {
     resetStore(new MockCalmBackend({ latencyMs: 0, drifted: ['taskbar.search'] }))
     await useCalm.getState().probe()
-    await useCalm.getState().applyAll() // all three verified (drift happens after)
+    await useCalm.getState().applyAll() // all three verified (the flip fires after our write)
     await useCalm.getState().probe() // HealthCheck: ledger-owned + the value moved
     let s = useCalm.getState()
-    expect(s.rows['taskbar.search']).toBe('pushing') // candidate again — with provenance
-    expect(s.reopened).toEqual(['taskbar.search'])
+    expect(s.rows['taskbar.search']).toBe('reopened') // candidate again — WITH provenance
+    expect(reopenedRows(s.rows)).toEqual(['taskbar.search'])
     expect(s.rows['taskbar.taskview']).toBe('verified') // intact rows untouched
     // 「重新关闭」 = a SCOPED re-apply through the same verify pipeline.
-    await useCalm.getState().applyAll(s.reopened)
+    await useCalm.getState().applyAll(reopenedRows(s.rows))
     s = useCalm.getState()
     expect(s.rows['taskbar.search']).toBe('verified')
-    expect(s.reopened).toEqual([])
+    expect(reopenedRows(s.rows)).toEqual([])
     expect(s.lastApply?.verified).toBe(1) // scoped: nothing else re-ran
+    // The re-close must SURVIVE the next HealthCheck (codex R4 #1: the mock's
+    // drift is a real one-shot flip, not an immortal option).
+    await useCalm.getState().probe()
+    s = useCalm.getState()
+    expect(s.rows['taskbar.search']).toBe('verified')
+    expect(reopenedRows(s.rows)).toEqual([])
+  })
+
+  test('restore over a reopened row disowns it as external — never an illegal-transition crash (codex R4 #1)', async () => {
+    resetStore(new MockCalmBackend({ latencyMs: 0, drifted: ['taskbar.search'] }))
+    await useCalm.getState().probe()
+    await useCalm.getState().applyAll()
+    await useCalm.getState().probe() // drift lands: taskbar.search → reopened
+    expect(useCalm.getState().rows['taskbar.search']).toBe('reopened')
+    await useCalm.getState().restoreAll() // must not throw
+    const s = useCalm.getState()
+    expect(s.rows['taskbar.search']).toBe('external') // theirs now — marked, not clobbered
+    expect(s.rows['taskbar.taskview']).toBe('pushing') // intact rows restored normally
+    expect(reopenedRows(s.rows)).toEqual([]) // the notice is gone with the disown
+    expect(countOwnedWrites(s.rows)).toBe(0)
   })
 
   test('a stale guided re-probe never clears a NEWER walk token (codex R3 #4)', async () => {
@@ -171,6 +190,17 @@ describe('calm store', () => {
     const s = useCalm.getState()
     expect(s.rows['taskbar.widgetsButton']).toBe('confirmedOff') // the probe's truth still lands
     expect(s.walkedId).toBe('widgets.feed') // the NEW token survives
+  })
+
+  test('two concurrent re-probes of the SAME row are idempotent — never a double confirmedOff crash (codex R4 #4)', async () => {
+    resetStore(new MockCalmBackend({ latencyMs: 15 }))
+    await useCalm.getState().probe()
+    await useCalm.getState().walkGuided('taskbar.widgetsButton')
+    // Two window-focus events racing — both must settle without throwing.
+    await Promise.all([useCalm.getState().reProbeWalked(), useCalm.getState().reProbeWalked()])
+    const s = useCalm.getState()
+    expect(s.rows['taskbar.widgetsButton']).toBe('confirmedOff')
+    expect(s.walkedId).toBeNull()
   })
 
   test('a lost restoreOne reply never claims restored — the row recovers via probe', async () => {

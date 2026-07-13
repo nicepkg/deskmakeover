@@ -8,7 +8,7 @@ import { CtaButton, type HeroPhase } from '@/components/common/cta-button'
 import { SurfaceSchematic, applyStaggerDelay } from '@/components/calm/surface-schematic'
 import { controlById, type CalmControl, type CalmControlId } from '@/lib/calm/catalog'
 import type { CalmRowState } from '@/lib/calm/states'
-import { applyCandidates, countOwnedWrites, countQuieted, groupedRows, useCalm } from '@/stores/calm'
+import { applyCandidates, countOwnedWrites, countQuieted, groupedRows, reopenedRows, useCalm } from '@/stores/calm'
 import { format, useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -24,7 +24,6 @@ export function CalmPage() {
   const op = useCalm((s) => s.op)
   const rows = useCalm((s) => s.rows)
   const excluded = useCalm((s) => s.excluded)
-  const reopened = useCalm((s) => s.reopened)
   const [confirmOpen, setConfirmOpen] = React.useState(false)
 
   // Guided return-probe: when the window regains focus after a walk, re-check the
@@ -39,6 +38,7 @@ export function CalmPage() {
   const quieted = countQuieted(rows)
   const owned = countOwnedWrites(rows)
   const candidates = applyCandidates(rows, excluded)
+  const reopened = reopenedRows(rows)
   const awaiting = groups.oneClick.filter((id) => rows[id] === 'setAwaiting').length
 
   // Honest hero phases: ready only with real candidates; synced only when our
@@ -308,7 +308,7 @@ function OneClickRow({ id, oneClickIds }: { id: CalmControlId; oneClickIds: Calm
   const state = useCalm((s) => s.rows[id])
   const excluded = useCalm((s) => s.excluded.has(id))
   const skipReason = useCalm((s) => s.skipReasons[id])
-  const selectable = state === 'pushing' || state === 'reverted'
+  const selectable = state === 'pushing' || state === 'reverted' || state === 'reopened'
   return (
     <RowShell
       control={control}

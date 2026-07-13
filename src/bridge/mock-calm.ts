@@ -67,9 +67,16 @@ export interface MockCalmOptions {
 export class MockCalmBackend implements CalmBackend {
   private applied = new Set<CalmControlId>()
   private walked = new Set<CalmControlId>()
+  /** One-shot external-flip simulation (codex R4 #1). `armedFlips` (from opts)
+   *  fires right after OUR first write → moves to `flipped` (the value moved,
+   *  probe reports driftedFromUs). A successful RE-apply overwrites the flip and
+   *  clears it — the environment then reads as ours again. */
+  private armedFlips: Set<CalmControlId>
+  private flipped = new Set<CalmControlId>()
   private opts: MockCalmOptions
   constructor(opts: MockCalmOptions = {}) {
     this.opts = opts
+    this.armedFlips = new Set(opts.drifted ?? [])
   }
 
   private async wait() {
@@ -89,7 +96,7 @@ export class MockCalmBackend implements CalmBackend {
       if (this.applied.has(c.id)) {
         // Ledger-owned but the value moved: the surface pushes again — report the
         // drift so the store can re-propose (never silently a plain candidate).
-        if (this.opts.drifted?.includes(c.id)) return { id: c.id, state: 'pushing', driftedFromUs: true }
+        if (this.flipped.has(c.id)) return { id: c.id, state: 'pushing', driftedFromUs: true }
         return { id: c.id, state: 'quiet', ownedByUs: true }
       }
       return { id: c.id, state: 'pushing' }
@@ -103,6 +110,12 @@ export class MockCalmBackend implements CalmBackend {
       if (this.opts.failing?.includes(id)) return { id, outcome: 'reverted' }
       if (this.opts.skipping?.includes(id)) return { id, outcome: 'skipped', reason: 'changed' }
       this.applied.add(id)
+      if (this.flipped.has(id)) {
+        this.flipped.delete(id) // the re-write overwrites the external flip
+      } else if (this.armedFlips.has(id)) {
+        this.armedFlips.delete(id)
+        this.flipped.add(id) // the one-shot external flip fires after OUR write
+      }
       if (this.opts.awaiting?.includes(id)) return { id, outcome: 'setAwaiting' }
       return { id, outcome: 'verified' }
     })
@@ -114,7 +127,7 @@ export class MockCalmBackend implements CalmBackend {
       // A restore-skip DISOWNS the ledger row (theirs now) — a later probe must
       // not keep re-proposing a row we no longer claim.
       this.applied.delete(id)
-      if (this.opts.drifted?.includes(id)) return { id, outcome: 'skippedDrift' }
+      if (this.flipped.has(id)) return { id, outcome: 'skippedDrift' }
       return { id, outcome: 'restored' }
     })
     return rows
@@ -124,7 +137,7 @@ export class MockCalmBackend implements CalmBackend {
     await this.wait()
     controlById(id)
     this.applied.delete(id) // restored or disowned — either way no longer ours
-    if (this.opts.drifted?.includes(id)) return { id, outcome: 'skippedDrift' }
+    if (this.flipped.has(id)) return { id, outcome: 'skippedDrift' }
     return { id, outcome: 'restored' }
   }
 

@@ -56,10 +56,6 @@ interface CalmState {
   excluded: Set<CalmControlId>
   /** Honest per-row skip captions from the last apply (cleared on apply/probe). */
   skipReasons: Partial<Record<CalmControlId, 'changed'>>
-  /** HealthCheck drift (spec 08 §6): rows WE quieted that were turned back on
-   *  since — surfaces the 「又打开了 → 重新关闭」 re-propose notice. Probe-derived,
-   *  recomputed every probe; re-closing goes through the NORMAL apply pipeline. */
-  reopened: CalmControlId[]
   /** The guided row whose route we last opened — re-probed on window refocus. */
   walkedId: CalmControlId | null
   lastApply: CalmApplySummary | null
@@ -84,7 +80,8 @@ function kindOf(id: CalmControlId): 'writable' | 'guided' {
   return controlById(id).tier === 'guided' ? 'guided' : 'writable'
 }
 
-/** Rows the one-click may write right now: in the package, not excluded, actionable. */
+/** Rows the one-click may write right now: in the package, not excluded, actionable.
+ *  'reopened' (HealthCheck drift) is a candidate again — with provenance. */
 export function applyCandidates(
   rows: Record<CalmControlId, CalmRowState>,
   excluded: Set<CalmControlId>,
@@ -94,8 +91,14 @@ export function applyCandidates(
       groupOf(c, rows[c.id]) === 'oneClick' &&
       c.inDefaultPackage &&
       !excluded.has(c.id) &&
-      (rows[c.id] === 'pushing' || rows[c.id] === 'reverted'),
+      (rows[c.id] === 'pushing' || rows[c.id] === 'reverted' || rows[c.id] === 'reopened'),
   ).map((c) => c.id)
+}
+
+/** Rows we quieted that were turned back on since (spec 08 §6) — feeds the
+ *  「Windows 更新后，有 N 项推送又打开了 [重新关闭]」 additive notice. */
+export function reopenedRows(rows: Record<CalmControlId, CalmRowState>): CalmControlId[] {
+  return CALM_CATALOG.filter((c) => rows[c.id] === 'reopened').map((c) => c.id)
 }
 
 export const useCalm = create<CalmState>((set, get) => {
@@ -119,7 +122,6 @@ export const useCalm = create<CalmState>((set, get) => {
     rows: initialRows(),
     excluded: loadExcluded(),
     skipReasons: {},
-    reopened: [],
     walkedId: null,
     lastApply: null,
 
@@ -130,15 +132,13 @@ export const useCalm = create<CalmState>((set, get) => {
         const probed = await backend.probe()
         set((s) => {
           const rows = { ...s.rows }
-          // Drift provenance (codex R3 #1): a row we quieted that was turned back
-          // on must NOT collapse into a plain candidate — it carries the §6
-          // re-propose notice. Recomputed from ledger truth on every probe.
-          const reopened: CalmControlId[] = []
           for (const p of probed) {
+            // Drift provenance rides IN the state machine: driftedFromUs+pushing
+            // probes to 'reopened' (codex R3 #1 / R4 #1) — never a plain candidate,
+            // never a parallel array the transitions cannot see.
             rows[p.id] = probeTransition(kindOf(p.id), rows[p.id], p)
-            if (p.driftedFromUs && rows[p.id] === 'pushing') reopened.push(p.id)
           }
-          return { rows, probed: true, skipReasons: {}, reopened }
+          return { rows, probed: true, skipReasons: {} }
         })
         if (excludedLoadFailed) {
           excludedLoadFailed = false
@@ -173,9 +173,7 @@ export const useCalm = create<CalmState>((set, get) => {
         useToasts.getState().show(t('Calm_Toast_NothingToDo'))
         return
       }
-      // The dispatched rows leave the re-propose notice — their fate is now the
-      // apply pipeline's truth (verified / reverted / skipped, all self-evident).
-      set((s) => ({ op: 'apply', skipReasons: {}, reopened: s.reopened.filter((id) => !ids.includes(id)) }))
+      set({ op: 'apply', skipReasons: {} })
       let lostReply = false
       try {
         for (const id of ids) setRow(id, 'pending')
@@ -306,7 +304,10 @@ export const useCalm = create<CalmState>((set, get) => {
         return
       }
       const off = await backend.reProbeGuided(id)
-      if (off === true) {
+      // Re-check AFTER the await (codex R4 #4): a concurrent re-probe of the SAME
+      // row may have landed first — writing confirmedOff twice is an illegal
+      // transition, so only the probe that finds the row still pushing writes.
+      if (off === true && get().rows[id] === 'pushing') {
         setRow(id, 'confirmedOff')
       }
       // Compare-and-set (codex R3 #4): the user may have walked ANOTHER guided

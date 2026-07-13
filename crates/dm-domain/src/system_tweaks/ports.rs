@@ -68,7 +68,18 @@ pub trait RegistryBackend {
 
     fn key_exists(&self, key: &RegistryKey) -> Result<bool, RegistryError>;
 
-    /// Whether a policy guard value is present at `address` (HKLM/HKCU policy leaf).
+    /// A conservative "do not write this leaf" signal: `true` means the leaf must NOT be
+    /// overwritten because it appears managed or write-protected. Implementations answer with the
+    /// best AUTHORITATIVE signal they have — a real policy-guard read, or (the `winreg` adapter) a
+    /// side-effect-free `KEY_SET_VALUE` write-access probe reporting ACL write-protection. It is
+    /// deliberately CONSERVATIVE and may have FALSE NEGATIVES: a Group Policy PREFERENCE or a
+    /// direct-registry management that leaves the value user-writable is NOT detectable here, and a
+    /// custom ACL denial that is not policy at all still reads `true` (a conservative "managed"
+    /// classification the UI may surface). The authoritative per-recipe administrative-template
+    /// detection is the catalog `policy_guards` (read separately by the engine); the write slice
+    /// stays fail-closed (empty capability manifest) until the certification lab enumerates every
+    /// recipe's guard set. An implementation must NOT treat this as a complete policy-provenance
+    /// oracle.
     fn is_policy_managed(&self, address: &RegistryAddress) -> Result<bool, RegistryError>;
 
     /// Process-serialized logical CAS: re-read, compare against `expected`, then write `desired`.

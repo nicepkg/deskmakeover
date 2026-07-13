@@ -14,6 +14,7 @@ use dm_domain::system_tweaks::{
     SystemProfileProbe, WindowsEnvironment,
 };
 use windows::Wdk::System::SystemServices::RtlGetVersion;
+use windows::Win32::Foundation::{APPMODEL_ERROR_NO_PACKAGE, ERROR_INSUFFICIENT_BUFFER};
 use windows::Win32::Storage::Packaging::Appx::GetCurrentPackageFullName;
 use windows::Win32::System::SystemInformation::{
     GetNativeSystemInfo, GetProductInfo, OSVERSIONINFOEXW, OS_PRODUCT_TYPE, SYSTEM_INFO,
@@ -29,8 +30,6 @@ const GEO: &str = r"Control Panel\International\Geo";
 
 /// `OSVERSIONINFOEXW.wProductType` for a workstation (client) install.
 const VER_NT_WORKSTATION: u8 = 1;
-/// `GetCurrentPackageFullName` error when the process has no package identity.
-const APPMODEL_ERROR_NO_PACKAGE: u32 = 15_700;
 
 /// This process's architecture at build time. On a native run it equals the machine arch; under
 /// emulation it differs, which is exactly the separation [`WindowsEnvironment`] keeps between the
@@ -93,7 +92,7 @@ impl SystemProfileProbe for WindowsSystemProfileProbe {
             region,
             native_architecture: native_arch(),
             process_architecture: PROCESS_ARCH.to_string(),
-            packaged: has_package_identity(),
+            packaged: has_package_identity()?,
         }))
     }
 }
@@ -175,13 +174,24 @@ fn native_arch() -> String {
 }
 
 /// Whether the process runs with package identity, from `GetCurrentPackageFullName`. A length-only
-/// query returns `APPMODEL_ERROR_NO_PACKAGE` when unpackaged; any other status means packaged.
-fn has_package_identity() -> bool {
+/// query returns `APPMODEL_ERROR_NO_PACKAGE` (unpackaged) or `ERROR_INSUFFICIENT_BUFFER` with the
+/// required length (packaged). Any OTHER status is unclassifiable and fails the probe closed — a
+/// real API error must never be fabricated into a `packaged` certification fact (codex W2 R2 Block).
+fn has_package_identity() -> Result<bool, SystemProfileError> {
     let mut length: u32 = 0;
     // SAFETY: a length-only query (null buffer); it writes only through `length` and returns a
     // status code, never touching caller memory.
     let status = unsafe { GetCurrentPackageFullName(&mut length, None) };
-    status.0 != APPMODEL_ERROR_NO_PACKAGE
+    if status == APPMODEL_ERROR_NO_PACKAGE {
+        Ok(false)
+    } else if status == ERROR_INSUFFICIENT_BUFFER && length > 0 {
+        Ok(true)
+    } else {
+        Err(SystemProfileError(format!(
+            "GetCurrentPackageFullName returned an unclassifiable status: {}",
+            status.0
+        )))
+    }
 }
 
 /// The `GetProductInfo` SKU for the running OS version (service pack 0,0).

@@ -28,6 +28,7 @@ use crate::compose::{render_tile_cached, ComposeDiagnostics, RenderOpts};
 use crate::config::Config;
 use crate::mask_cache::MaskCache;
 use crate::raster::Raster;
+use crate::render_scratch::RenderScratch;
 
 /// One independent icon render request, borrowing its inputs from the caller's frozen
 /// set (source + config + arrow are immutable during a batch).
@@ -45,7 +46,7 @@ impl IconJob<'_> {
     /// (`profile` / `source_facts` = `None`) — a batch is distinct sources, so there
     /// is nothing to reuse across icons; the per-worker `MaskCache` still collapses the
     /// shared shape-mask geometry.
-    fn render(&self, mask_cache: &mut MaskCache) -> Raster {
+    fn render(&self, mask_cache: &mut MaskCache, render_scratch: &mut RenderScratch) -> Raster {
         let mut diag = ComposeDiagnostics::default();
         render_tile_cached(
             self.source,
@@ -57,6 +58,7 @@ impl IconJob<'_> {
             &mut diag,
             None,
             mask_cache,
+            render_scratch,
             None,
         )
     }
@@ -70,7 +72,10 @@ impl IconJob<'_> {
 /// scaffold).
 pub fn render_icons_par(jobs: &[IconJob]) -> Vec<Raster> {
     jobs.par_iter()
-        .map_init(MaskCache::new, |cache, job| job.render(cache))
+        .map_init(
+            || (MaskCache::new(), RenderScratch::new()),
+            |(cache, scratch), job| job.render(cache, scratch),
+        )
         .collect()
 }
 
@@ -126,7 +131,7 @@ mod tests {
     }
 
     fn serial(jobs: &[IconJob]) -> Vec<Vec<u8>> {
-        jobs.iter().map(|j| j.render(&mut MaskCache::new()).data).collect()
+        jobs.iter().map(|j| j.render(&mut MaskCache::new(), &mut RenderScratch::new()).data).collect()
     }
 
     /// The parallel collector must be byte-identical to a serial render, per job, and

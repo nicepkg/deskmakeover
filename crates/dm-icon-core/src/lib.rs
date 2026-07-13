@@ -38,6 +38,7 @@ pub mod mono;
 pub mod output_cache;
 pub mod profile;
 pub mod raster;
+pub mod render_scratch;
 pub mod render_session;
 pub mod sampling;
 pub mod segment;

@@ -13,6 +13,7 @@ use crate::config::Config;
 use crate::mask_cache::MaskCache;
 use crate::profile::IconProfile;
 use crate::raster::Raster;
+use crate::render_scratch::RenderScratch;
 use crate::source_facts::{build_analysis_bundle, AnalysisBundle, SOURCE_FACTS_SCHEMA_VERSION};
 
 /// Bumped whenever the analysis/profile algorithm changes — invalidates cached
@@ -71,6 +72,11 @@ pub struct RenderSession {
     /// dominant `shape_mask` recompute collapses to a warm hit (M6 Phase 1). Under
     /// the default (scalar) build this is a passthrough; `--features fast` caches.
     mask_cache: MaskCache,
+    /// Session-owned reusable render scratch (P2-SCRATCH) — the per-size shadow/blur/seat
+    /// buffers, reused across every `render` so the interactive slider-drag path stops
+    /// allocating them per frame. Byte-neutral: reused buffers are reset to the
+    /// fresh-alloc state (see [`RenderScratch`]).
+    render_scratch: RenderScratch,
 }
 
 impl RenderSession {
@@ -166,7 +172,7 @@ impl RenderSession {
         let entry = self.analyses.get(&key);
         let profile = entry.map(|c| &c.bundle.profile);
         let facts = entry.map(|c| &c.bundle.facts);
-        Some(render_tile_cached(raster, config, is_shortcut, show_original, size, opts, diag, profile, &mut self.mask_cache, facts))
+        Some(render_tile_cached(raster, config, is_shortcut, show_original, size, opts, diag, profile, &mut self.mask_cache, &mut self.render_scratch, facts))
     }
 
     #[cfg(test)]

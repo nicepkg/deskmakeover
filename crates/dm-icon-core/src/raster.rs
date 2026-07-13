@@ -209,6 +209,20 @@ pub fn box_blur(src: &[f64], size: usize, radius: i32) -> Vec<f64> {
     if radius < 1 {
         return src.to_vec();
     }
+    let mut o = vec![0.0f64; size * size];
+    let mut tmp = vec![0.0f64; size * size];
+    box_blur_into(&mut o, src, &mut tmp, size, radius);
+    o
+}
+
+/// The `box_blur` body writing into caller-owned `o` (output) + `tmp` (transpose
+/// scratch), so `BlurScratch` can reuse both across the four channel blurs of
+/// `backdrop_blur` without per-call heap churn. BYTE-IDENTICAL to `box_blur`: same
+/// arithmetic, same loop order, same f64 running sums. Requires `radius >= 1` and
+/// `o.len() == tmp.len() == size*size`. The horizontal pass FULLY overwrites `tmp`
+/// before the vertical pass reads it, and the vertical pass FULLY overwrites `o`, so
+/// reusing dirty buffers is parity-safe (no zeroing needed).
+pub(crate) fn box_blur_into(o: &mut [f64], src: &[f64], tmp: &mut [f64], size: usize, radius: i32) {
     let w = (2 * radius + 1) as f64;
     let r = radius as isize;
     let n = size as isize;
@@ -221,7 +235,6 @@ pub fn box_blur(src: &[f64], size: usize, radius: i32) -> Vec<f64> {
             v as usize
         }
     };
-    let mut tmp = vec![0.0f64; size * size];
     for y in 0..size {
         let mut sum = 0.0f64;
         for x in -r..=r {
@@ -233,7 +246,6 @@ pub fn box_blur(src: &[f64], size: usize, radius: i32) -> Vec<f64> {
             sum += src[y * size + clamp_i(xi + r + 1)] - src[y * size + clamp_i(xi - r)];
         }
     }
-    let mut o = vec![0.0f64; size * size];
     for x in 0..size {
         let mut sum = 0.0f64;
         for y in -r..=r {
@@ -245,7 +257,6 @@ pub fn box_blur(src: &[f64], size: usize, radius: i32) -> Vec<f64> {
             sum += tmp[clamp_i(yi + r + 1) * size + x] - tmp[clamp_i(yi - r) * size + x];
         }
     }
-    o
 }
 
 /// `RasterOps.Shift` — offset an alpha field by (dx, dy) (raster.ts `shift`).
@@ -270,30 +281,11 @@ pub fn shift(src: &[f64], size: usize, dx: i32, dy: i32) -> Vec<f64> {
 /// `RasterOps.BackdropBlur` — blurred copy of the buffer's colour (raster.ts
 /// `backdropBlur`; the frosted Glass-seat backdrop). Assumes a square buffer.
 pub fn backdrop_blur(src: &Raster, radius: i32) -> Raster {
-    if radius < 1 {
-        return src.clone();
-    }
-    let size = src.width;
-    let n = size * size;
-    let mut chans: [Vec<f64>; 4] =
-        [vec![0.0; n], vec![0.0; n], vec![0.0; n], vec![0.0; n]];
-    for i in 0..n {
-        let i4 = i * 4;
-        chans[0][i] = src.data[i4] as f64;
-        chans[1][i] = src.data[i4 + 1] as f64;
-        chans[2][i] = src.data[i4 + 2] as f64;
-        chans[3][i] = src.data[i4 + 3] as f64;
-    }
-    let blurred: Vec<Vec<f64>> = chans.iter().map(|c| box_blur(c, size, radius)).collect();
-    let mut o = Raster::new(size, size);
-    for i in 0..n {
-        let i4 = i * 4;
-        o.data[i4] = clamp_byte(blurred[0][i]);
-        o.data[i4 + 1] = clamp_byte(blurred[1][i]);
-        o.data[i4 + 2] = clamp_byte(blurred[2][i]);
-        o.data[i4 + 3] = clamp_byte(blurred[3][i]);
-    }
-    o
+    // The reuse-free entry (tests + any standalone caller): build a one-shot scratch
+    // and clone out its result. The hot Glass-seat path calls
+    // `RenderScratch::blur::backdrop_blur` directly to reuse the buffers across renders.
+    // The scratch method is byte-identical, so this stays a faithful reference.
+    crate::render_scratch::BlurScratch::new().backdrop_blur(src, radius).clone()
 }
 
 /// raster.ts `smoothStep01`.

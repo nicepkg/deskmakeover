@@ -14,6 +14,7 @@ use crate::mask_cache::{MaskCache, MaskKey};
 use crate::raster::{
     dist_to_segment, from_rgb_int, in_triangle, paint, shape_mask, smooth_step01, Raster, Rgba,
 };
+use crate::render_scratch::RenderScratch;
 use crate::sampling::draw_scaled;
 
 /// 品牌珊瑚 — accent used when the user has not chosen a mark colour.
@@ -47,7 +48,9 @@ pub trait Mark {
         false
     }
     fn carve_card(&self, _card_mask: &mut [f64], _ctx: &MarkContext) {}
-    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext, masks: &mut MaskCache);
+    /// `scratch` carries the reusable render buffers (Glass frost/backdrop + seat); it is
+    /// threaded alongside `masks` so a mark that allocates hot scratch can reuse it.
+    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext, masks: &mut MaskCache, scratch: &mut RenderScratch);
 }
 
 pub(crate) fn is_light_tile(ctx: &MarkContext) -> bool {

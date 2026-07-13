@@ -11,9 +11,9 @@ use crate::config::IconShape;
 use crate::mask_cache::MaskCache;
 use crate::js_math::{clamp_u8_int, js_round, js_trunc};
 use crate::raster::{
-    backdrop_blur, box_blur, fade, from_rgb_int, mix, paint, rgba_of, shift, smooth_step01, Raster,
-    Rgba, WHITE,
+    box_blur, fade, from_rgb_int, mix, paint, rgba_of, shift, smooth_step01, Raster, Rgba, WHITE,
 };
+use crate::render_scratch::RenderScratch;
 
 // ---- 投影 ShadowMark ----
 
@@ -27,7 +27,7 @@ impl Mark for ShadowMark {
     fn card_inset(&self, ctx: &MarkContext) -> usize {
         1.max(js_round(ctx.size as f64 * 0.06) as usize)
     }
-    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, masks: &mut MaskCache) {
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, masks: &mut MaskCache, _scratch: &mut RenderScratch) {
         let size = ctx.size;
         let pad = self.card_inset(ctx);
         let card_size = size - 2 * pad;
@@ -58,7 +58,7 @@ impl Mark for HaloMark {
     fn card_inset(&self, ctx: &MarkContext) -> usize {
         1.max(js_round(ctx.size as f64 * 0.07) as usize)
     }
-    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
+    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache, _scratch: &mut RenderScratch) {
         let size = ctx.size;
         let sil: &[f64] = if ctx.shape == IconShape::None { &ctx.tile_alpha[..] } else { card_mask };
         let dist = outside_distance(sil, size);
@@ -101,7 +101,7 @@ impl Mark for RingMark {
     fn card_inset(&self, ctx: &MarkContext) -> usize {
         ring_stroke(ctx.size)
     }
-    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache, _scratch: &mut RenderScratch) {
         let ring = if ctx.mark_color.is_some() {
             mark_rgb(ctx)
         } else if is_light_tile(ctx) {
@@ -139,7 +139,7 @@ impl Mark for SatinMark {
     fn placement(&self) -> Placement {
         Placement::Over
     }
-    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache, _scratch: &mut RenderScratch) {
         let size = ctx.size;
         let tone = if ctx.mark_color.is_some() {
             if is_light_tile(ctx) {
@@ -193,7 +193,7 @@ impl Mark for ArcMark {
     fn placement(&self) -> Placement {
         Placement::Over
     }
-    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache, _scratch: &mut RenderScratch) {
         let size = ctx.size;
         let arc = if is_light_tile(ctx) {
             mix(mark_rgb(ctx), from_rgb_int(0x141414), 0.78)
@@ -302,7 +302,7 @@ impl Mark for FoldMark {
             }
         }
     }
-    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
+    fn render(&self, target: &mut Raster, card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache, _scratch: &mut RenderScratch) {
         let size = ctx.size;
         let c0 = fold_depth(ctx);
         let tone = if ctx.mark_color.is_some() {
@@ -366,7 +366,7 @@ impl Mark for GlassMark {
     fn placement(&self) -> Placement {
         Placement::Over
     }
-    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache) {
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache, scratch: &mut RenderScratch) {
         let size = ctx.size;
         let cs = (size as f64 * 0.34).max(16.0).min(size as f64 * 0.94);
         let sx = (size as f64 * 0.055).max(0.0).min(size as f64 - cs);
@@ -390,7 +390,10 @@ impl Mark for GlassMark {
             from_rgb_int(0xf4f4f1)
         };
 
-        let mut seat_cov = vec![0.0f64; size * size];
+        // Reuse `scratch.seat_cov`: written ONLY inside the seat's bounding box, so it is
+        // ZEROED to length n first to match the fresh `vec![0.0; size*size]` (the arrow
+        // glyph reads a strict sub-box, so the un-written margin must read 0 as before).
+        scratch.reset_seat_cov(size * size);
         let mut y = js_trunc(cy - seat_r - 2.0) as i64;
         while (y as f64) <= cy + seat_r + 2.0 {
             if y >= 0 && (y as usize) < size {
@@ -400,7 +403,7 @@ impl Mark for GlassMark {
                         let ddx = x as f64 + 0.5 - cx;
                         let ddy = y as f64 + 0.5 - cy;
                         let dist = libm::sqrt(ddx * ddx + ddy * ddy);
-                        seat_cov[y as usize * size + x as usize] = (seat_r - dist + 0.5).clamp(0.0, 1.0);
+                        scratch.seat_cov[y as usize * size + x as usize] = (seat_r - dist + 0.5).clamp(0.0, 1.0);
                     }
                     x += 1;
                 }
@@ -408,7 +411,9 @@ impl Mark for GlassMark {
             y += 1;
         }
 
-        let blurred = backdrop_blur(target, 1.max(js_round(size as f64 * 0.06) as i64) as i32);
+        // Reuse the blur scratch (byte-identical to the free `backdrop_blur`). `blurred`
+        // borrows `scratch.blur`; `scratch.seat_cov` (a disjoint field) stays readable.
+        let blurred = scratch.blur.backdrop_blur(target, 1.max(js_round(size as f64 * 0.06) as i64) as i32);
         let mut y = js_trunc(cy - seat_r - 2.0) as i64;
         while (y as f64) <= cy + seat_r + 2.0 {
             if y >= 0 && (y as usize) < size {
@@ -416,7 +421,7 @@ impl Mark for GlassMark {
                 while (x as f64) <= cx + seat_r + 2.0 {
                     if x >= 0 && (x as usize) < size {
                         let i = y as usize * size + x as usize;
-                        let cov = seat_cov[i];
+                        let cov = scratch.seat_cov[i];
                         if cov > 0.0 {
                             let i4 = i * 4;
                             let bd = &blurred.data;
@@ -444,6 +449,6 @@ impl Mark for GlassMark {
             y += 1;
         }
 
-        draw_arrow_glyph(target, size, cx, cy, cs * 0.3, ink, &seat_cov);
+        draw_arrow_glyph(target, size, cx, cy, cs * 0.3, ink, &scratch.seat_cov);
     }
 }

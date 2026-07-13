@@ -24,6 +24,7 @@ use crate::source_facts::{
     SourceFacts,
 };
 use crate::raster::{clip_to_mask, from_rgb_int, over_at, shape_mask, Raster, WHITE};
+use crate::render_scratch::RenderScratch;
 use crate::sampling::{draw_scaled, sample_bilinear};
 
 /// Per-icon inputs resolved OUTSIDE the tile (compose.ts `RenderOpts`).
@@ -131,7 +132,8 @@ pub fn render_tile(
     diag: &mut ComposeDiagnostics,
 ) -> Raster {
     let mut mask_cache = MaskCache::new();
-    render_tile_cached(artwork, config, is_shortcut, show_original, size, opts, diag, None, &mut mask_cache, None)
+    let mut render_scratch = RenderScratch::new();
+    render_tile_cached(artwork, config, is_shortcut, show_original, size, opts, diag, None, &mut mask_cache, &mut render_scratch, None)
 }
 
 /// `render_tile` with an optional RenderSession-cached profile (same raster →
@@ -148,6 +150,7 @@ pub fn render_tile_cached(
     diag: &mut ComposeDiagnostics,
     profile: Option<&IconProfile>,
     mask_cache: &mut MaskCache,
+    render_scratch: &mut RenderScratch,
     source_facts: Option<&SourceFacts>,
 ) -> Raster {
     assert!(size > 0, "size must be positive");
@@ -212,7 +215,7 @@ pub fn render_tile_cached(
     };
 
     let (mut tile, pass_through) =
-        compose_tile(artwork, size, pad, card_size, shape, config, tint, opts, diag, profile, source_facts);
+        compose_tile(artwork, size, pad, card_size, shape, config, tint, opts, diag, profile, source_facts, render_scratch);
     diag.pass_through = pass_through;
 
     if !pass_through || carves {
@@ -240,11 +243,11 @@ pub fn render_tile_cached(
                 tile_alpha: mark_alpha,
             };
             if m.placement() == Placement::Behind {
-                m.render(&mut target, card_mask.as_slice(), &ctx, mask_cache);
+                m.render(&mut target, card_mask.as_slice(), &ctx, mask_cache, render_scratch);
             }
             composite_over(&mut target, &tile);
             if m.placement() == Placement::Over {
-                m.render(&mut target, card_mask.as_slice(), &ctx, mask_cache);
+                m.render(&mut target, card_mask.as_slice(), &ctx, mask_cache, render_scratch);
             }
         }
         None => {
@@ -308,6 +311,7 @@ fn compose_tile(
     diag: &mut ComposeDiagnostics,
     profile: Option<&IconProfile>,
     source_facts: Option<&SourceFacts>,
+    render_scratch: &mut RenderScratch,
 ) -> (Raster, bool) {
     let mut content = Raster::new(size, size);
 
@@ -323,7 +327,7 @@ fn compose_tile(
         && shape != IconShape::None
     {
         diag.lane = ComposeLane::DerivedField;
-        field::compose_field(artwork, &mut content, size, pad, card_size, shape, config, opts, diag, profile, source_facts);
+        field::compose_field(artwork, &mut content, size, pad, card_size, shape, config, opts, diag, profile, source_facts, render_scratch);
         return (content, false);
     }
 
@@ -451,7 +455,8 @@ pub fn render_slice_tile(artwork: &Raster, size: usize) -> Raster {
     let mut tile = Raster::new(size, size);
     let box_size = field_content_box(IconShape::Circle, card_size);
     fill_region(&mut tile, size, 0, card_size, WHITE.r, WHITE.g, WHITE.b);
-    field::draw_bare_with_shadow(artwork, &mut tile, size, 0, card_size, box_size, WHITE, field::ShadowMode::Dock, None);
+    let mut render_scratch = RenderScratch::new();
+    field::draw_bare_with_shadow(artwork, &mut tile, size, 0, card_size, box_size, WHITE, field::ShadowMode::Dock, None, &mut render_scratch);
     let card_mask = shape_mask(IconShape::Circle, size, card_size, 0.0, 0.0);
     clip_to_mask(&mut tile, &card_mask);
     let mut target = Raster::new(size, size);

@@ -13,6 +13,7 @@ use crate::config::{Config, IconShape};
 use crate::js_math::{clamp_u8_int, js_round};
 use crate::profile::{icon_profile, IconProfile, IconProfileKind};
 use crate::raster::{from_rgb_int, over_at, Raster, Rgba};
+use crate::render_scratch::RenderScratch;
 use crate::sampling::draw_scaled;
 use crate::source_facts::{content_bounds, segmentation, SourceFacts};
 
@@ -52,6 +53,7 @@ pub(crate) fn compose_field(
     diag: &mut ComposeDiagnostics,
     profile_override: Option<&IconProfile>,
     source_facts: Option<&SourceFacts>,
+    scratch: &mut RenderScratch,
 ) {
     let band = config.plate_band;
     let box_ = field_content_box(shape, card_size);
@@ -84,7 +86,7 @@ pub(crate) fn compose_field(
         }
         diag.field_lane = Some(ComposeFieldLane::UserPlateBare);
         fill_region(content, size, pad, card_size, user_plate.r, user_plate.g, user_plate.b);
-        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, user_plate, ShadowMode::Dock, source_facts);
+        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, user_plate, ShadowMode::Dock, source_facts, scratch);
         return;
     }
 
@@ -110,7 +112,7 @@ pub(crate) fn compose_field(
 
     if profile.transparent_edges {
         diag.field_lane = Some(ComposeFieldLane::DerivedBareShadow);
-        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, plate, ShadowMode::Dock, source_facts);
+        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, plate, ShadowMode::Dock, source_facts, scratch);
         return;
     }
     diag.field_lane = Some(ComposeFieldLane::DerivedPlate);
@@ -118,8 +120,12 @@ pub(crate) fn compose_field(
 }
 
 /// The artwork drawn ORIGINAL over a soft silhouette shadow (compose.ts
-/// `drawBareWithShadow`). Fresh scratch — the frozen per-size scratch is fully
-/// overwritten before every read, so allocating is parity-neutral.
+/// `drawBareWithShadow`). Reuses `scratch.shadow` instead of allocating fresh per call:
+/// `layer` is ZEROED by `prepare` (its border pixels are never written by `draw_centred`
+/// but ARE read below — `layer.data[i*4+3]` for the whole layer, then `composite_over`
+/// — so they must read 0 exactly like the fresh `Raster::new`), while `alpha` + `tmp`
+/// are fully overwritten before any read (only their length is restored). Byte-identical
+/// to the former fresh-alloc version.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_bare_with_shadow(
     artwork: &Raster,
@@ -131,19 +137,19 @@ pub(crate) fn draw_bare_with_shadow(
     plate: Rgba,
     mode: ShadowMode,
     source_facts: Option<&SourceFacts>,
+    scratch: &mut RenderScratch,
 ) {
     let spec = shadow_spec(mode);
-    let mut layer = Raster::new(size, size);
-    let mut alpha = vec![0.0f32; size * size];
-    let mut tmp = vec![0.0f32; size * size];
-    draw_centred(artwork, content_bounds(source_facts, artwork), &mut layer, size, pad, card_size, box_);
+    let sc = &mut scratch.shadow;
+    sc.prepare(size);
+    draw_centred(artwork, content_bounds(source_facts, artwork), &mut sc.layer, size, pad, card_size, box_);
 
-    for (i, a) in alpha.iter_mut().enumerate() {
-        *a = (layer.data[i * 4 + 3] as f64 / 255.0) as f32;
+    for (i, a) in sc.alpha.iter_mut().enumerate() {
+        *a = (sc.layer.data[i * 4 + 3] as f64 / 255.0) as f32;
     }
     let radius = 1.max(js_round(size as f64 * spec.blur_fraction) as usize);
-    box_blur_in_place(&mut alpha, &mut tmp, size, size, radius);
-    box_blur_in_place(&mut alpha, &mut tmp, size, size, radius);
+    box_blur_in_place(&mut sc.alpha, &mut sc.tmp, size, size, radius);
+    box_blur_in_place(&mut sc.alpha, &mut sc.tmp, size, size, radius);
 
     let shadow = field_shadow_tone(Rgba { a: 255, ..plate });
     let dy = if spec.offset_fraction == 0.0 {
@@ -157,7 +163,7 @@ pub(crate) fn draw_bare_with_shadow(
         }
         let sy = y - dy;
         for x in 0..size {
-            let a = alpha[sy * size + x] as f64 * spec.alpha;
+            let a = sc.alpha[sy * size + x] as f64 * spec.alpha;
             if a <= 0.004 {
                 continue;
             }
@@ -171,7 +177,7 @@ pub(crate) fn draw_bare_with_shadow(
             );
         }
     }
-    composite_over(content, &layer);
+    composite_over(content, &sc.layer);
 }
 
 /// Separable box blur on an **f32** coverage field with **f64** running sums

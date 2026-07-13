@@ -39,15 +39,37 @@ pub struct DesktopIniAnchor {
 pub struct WrapperAnchor {
     /// The original file's `FILE_ATTRIBUTE_*` bits (restored on unwrap).
     pub file_attributes: u32,
-    /// Whether a same-named wrapper `.lnk` already existed before the apply.
-    pub wrapper_existed: bool,
-    /// If a wrapper existed, its original bytes (our apply overwrote it; restore resurrects it).
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "opt_bytes_base64")]
-    pub wrapper_content: Option<Vec<u8>>,
+    /// The pre-existing same-named wrapper `.lnk` state. An enum so "a wrapper existed but we saved
+    /// no bytes" — a state where restore silently leaves OUR styled wrapper in place instead of
+    /// resurrecting the user's file — is UNREPRESENTABLE (audit A1-🔴: the old `wrapper_existed:true`
+    /// + `wrapper_content:None` pair passed `has_material` yet could not be restored).
+    pub prior_wrapper: PriorWrapper,
 }
 
-/// The captured original Recycle Bin `DefaultIcon` registry values, kinds preserved so
-/// restore writes byte-identical state (REG_SZ vs REG_EXPAND_SZ, unexpanded `%SystemRoot%`).
+/// A loose file's pre-apply wrapper state — either no wrapper existed, or one did and its exact
+/// bytes are captured. Present ALWAYS carries the content restore needs (audit A1-🔴).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PriorWrapper {
+    /// No same-named wrapper `.lnk` existed before the apply → restore just removes ours.
+    Absent,
+    /// A wrapper existed; our apply overwrote it, so restore resurrects these exact bytes.
+    Present {
+        #[serde(with = "bytes_base64")]
+        content: Vec<u8>,
+    },
+}
+
+/// The captured original Recycle Bin `DefaultIcon` state, kinds preserved so restore writes
+/// byte-identical values (REG_SZ vs REG_EXPAND_SZ, unexpanded `%SystemRoot%`).
+///
+/// `key_existed` refers ONLY to the PER-USER (HKCU) override key — the one apply writes and restore
+/// tears down. It drives restore unambiguously: `true` → rewrite these exact values; `false` →
+/// REMOVE the per-user key we created (never rewrite). The `default`/`empty`/`full` fields serve a
+/// SECOND, independent purpose: they are the EFFECTIVE current values for source extraction — read
+/// from the per-user key when it exists, else from the machine (HKCR) fallback. So the
+/// `key_existed:false` + present-values shape is NOT a contradiction (audit A1-🟠 二次核实: it is the
+/// legitimate machine-default fallback — the per-user key is absent yet the shell shows the machine
+/// icon, whose values source extraction must still read); restore ignores the values in that case.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecycleBinAnchor {
     pub key_existed: bool,
@@ -96,30 +118,6 @@ impl RestoreAnchor {
     }
 }
 
-/// Optional bytes as base64 (for `WrapperAnchor::wrapper_content`).
-mod opt_bytes_base64 {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error> {
-        match bytes {
-            Some(b) => s.serialize_str(&STANDARD.encode(b)),
-            None => s.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Vec<u8>>, D::Error> {
-        let opt = Option::<String>::deserialize(d)?;
-        match opt {
-            Some(text) => STANDARD
-                .decode(text.as_bytes())
-                .map(Some)
-                .map_err(serde::de::Error::custom),
-            None => Ok(None),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,18 +143,27 @@ mod tests {
     fn wrapper_anchor_round_trips_with_and_without_prior_wrapper() {
         let with = RestoreAnchor::RegularFile(WrapperAnchor {
             file_attributes: 0x80,
-            wrapper_existed: true,
-            wrapper_content: Some(b"prior lnk".to_vec()),
+            prior_wrapper: PriorWrapper::Present { content: b"prior lnk".to_vec() },
         });
         let without = RestoreAnchor::RegularFile(WrapperAnchor {
             file_attributes: 0x80,
-            wrapper_existed: false,
-            wrapper_content: None,
+            prior_wrapper: PriorWrapper::Absent,
         });
         for a in [with, without] {
             let back: RestoreAnchor = serde_json::from_str(&serde_json::to_string(&a).unwrap()).unwrap();
             assert_eq!(a, back);
         }
+    }
+
+    #[test]
+    fn present_prior_wrapper_serializes_content_as_base64() {
+        let a = RestoreAnchor::RegularFile(WrapperAnchor {
+            file_attributes: 0,
+            prior_wrapper: PriorWrapper::Present { content: b"prior lnk".to_vec() },
+        });
+        let json = serde_json::to_string(&a).unwrap();
+        // Compact base64 blob, not a numeric byte array.
+        assert!(json.contains("cHJpb3IgbG5r"), "expected base64 content, got {json}");
     }
 
     #[test]
@@ -200,7 +207,7 @@ mod tests {
         let variants = [
             RestoreAnchor::FileBytes { bytes: b"x".to_vec() },
             RestoreAnchor::Folder { attributes: 0, desktop_ini: None },
-            RestoreAnchor::RegularFile(WrapperAnchor { file_attributes: 0, wrapper_existed: false, wrapper_content: None }),
+            RestoreAnchor::RegularFile(WrapperAnchor { file_attributes: 0, prior_wrapper: PriorWrapper::Absent }),
             RestoreAnchor::RecycleBin(RecycleBinAnchor { key_existed: false, default: None, empty: None, full: None }),
         ];
         for v in variants {

@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use dm_domain::{PortError, PortResult, WrapperAnchor};
+use dm_domain::{PortError, PortResult, PriorWrapper, WrapperAnchor};
 
 use crate::fingerprint_surface::wrapper_working_dir;
 use crate::shell::{attrs, shell_link};
@@ -40,18 +40,23 @@ pub fn apply(file_path: &str, icon_path: &str) -> PortResult<()> {
 /// Mirrors `Unwrap`. No COM — plain filesystem.
 pub fn restore(file_path: &str, anchor: &WrapperAnchor) -> PortResult<()> {
     let wrapper = wrapper_path(file_path);
-    if !anchor.wrapper_existed {
-        // try_exists(), not exists() (audit F3): a metadata error must not silently skip removing
-        // OUR wrapper (leaving styled state); only a genuine absence is a no-op.
-        match Path::new(&wrapper).try_exists() {
-            Ok(true) => std::fs::remove_file(&wrapper).map_err(|e| PortError::Io(e.to_string()))?,
-            Ok(false) => {}
-            Err(e) => return Err(PortError::Io(format!("cannot access {wrapper}: {e}"))),
+    match &anchor.prior_wrapper {
+        // No wrapper existed before the apply → remove OURS.
+        PriorWrapper::Absent => {
+            // try_exists(), not exists() (audit F3): a metadata error must not silently skip removing
+            // OUR wrapper (leaving styled state); only a genuine absence is a no-op.
+            match Path::new(&wrapper).try_exists() {
+                Ok(true) => std::fs::remove_file(&wrapper).map_err(|e| PortError::Io(e.to_string()))?,
+                Ok(false) => {}
+                Err(e) => return Err(PortError::Io(format!("cannot access {wrapper}: {e}"))),
+            }
         }
-    } else if let Some(bytes) = &anchor.wrapper_content {
-        // The apply overwrote a user-made shortcut of the same name — put its bytes back, durably
-        // and atomically so a crash mid-restore can't tear it (P1-9).
-        crate::durable::write_atomic(&wrapper, bytes)?;
+        // The apply overwrote a user-made shortcut of the same name — put its exact bytes back,
+        // durably and atomically so a crash mid-restore can't tear it (P1-9). The enum guarantees the
+        // bytes are present (audit A1-🔴: no "existed but no content" state to silently no-op on).
+        PriorWrapper::Present { content } => {
+            crate::durable::write_atomic(&wrapper, content)?;
+        }
     }
     // try_exists() (audit F3): a metadata error must not silently skip restoring the file's original
     // attributes (leaving it Hidden+System); only a genuine absence is a no-op.

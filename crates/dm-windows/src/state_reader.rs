@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use dm_domain::{
     DesktopIniAnchor, Fingerprint, ItemKind, ItemStateReader, ItemTarget, PortError, PortResult,
-    RestoreAnchor, WrapperAnchor,
+    PriorWrapper, RestoreAnchor, WrapperAnchor,
 };
 
 use crate::apply::{file_wrapper, recyclebin};
@@ -168,18 +168,16 @@ fn capture_file(file_path: &str) -> PortResult<RestoreAnchor> {
     // unreadable wrapper recorded as `wrapper_existed:false` would be irreversibly DELETED on
     // restore (the "not existed → remove it" branch). Fail closed instead (P2-#3).
     let wrapper = file_wrapper::wrapper_path(file_path);
-    let wrapper_existed =
-        Path::new(&wrapper).try_exists().map_err(|e| PortError::Io(e.to_string()))?;
-    let wrapper_content = if wrapper_existed {
-        Some(std::fs::read(&wrapper).map_err(|e| PortError::Io(e.to_string()))?)
+    let prior_wrapper = if Path::new(&wrapper).try_exists().map_err(|e| PortError::Io(e.to_string()))? {
+        // A present wrapper ALWAYS captures its bytes — the enum makes "existed but no content"
+        // (which restore could not undo) unrepresentable (audit A1-🔴). A read fault propagates
+        // (fail closed) rather than recording an unrestorable present-with-no-bytes anchor.
+        let content = std::fs::read(&wrapper).map_err(|e| PortError::Io(e.to_string()))?;
+        PriorWrapper::Present { content }
     } else {
-        None
+        PriorWrapper::Absent
     };
-    Ok(RestoreAnchor::RegularFile(WrapperAnchor {
-        file_attributes,
-        wrapper_existed,
-        wrapper_content,
-    }))
+    Ok(RestoreAnchor::RegularFile(WrapperAnchor { file_attributes, prior_wrapper }))
 }
 
 /// The `desktop.ini` bytes for a folder: absent ⇒ empty (an unstyled folder); a present-but-

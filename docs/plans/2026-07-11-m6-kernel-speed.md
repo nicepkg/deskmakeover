@@ -5,6 +5,33 @@
 (preview) ↔ native (apply/background), and byte-identical to the frozen TS oracle until it retires.
 Cert anchor: 1487-cell corpus, **0 / 389,808,128 diff bytes**, setHash `8a6c19ee69235d95…`.
 
+**Owner decision 2026-07-11 (SIMD stays in scope):** Boss confirmed the FULL byte-safe perf line runs to
+completion — **Phase 6 SIMD is NOT dropped**, done properly (opcode disassembly + four-way scalar/SIMD ×
+native/wasm cert) rather than skipped for speed ("不差时间"). Rationale accepted: the cert is the fuse —
+any SIMD path that diverges by even one bit on any target reddens the cert and is rejected, so *attempting*
+SIMD carries zero single-truth risk (worst case: that path doesn't ship, output untouched); the only cost
+is engineering time, which is explicitly not the constraint. Bet remains caching(1-4)+LUT(5) for the
+guaranteed wins; SIMD(6) is pursued too, gated on a profile proving it's still needed AND the cert proving
+bit-identity. Only the genuinely non-reproducible SIMD (vectorized transcendentals, FMA, horizontal
+reductions, fast-math/relaxed) stays permanently red-lined — those are cross-system-inconsistent by nature.
+
+## Implementation status — 2026-07-14 (all m6-cert byte-verified, unpushed)
+
+| Phase | What | Status |
+|-------|------|--------|
+| 0 cert-harden | anchor + four-way + sweep | ✅ done — and `614dcd5` restored the synthetic shape×mark sweep guard that R2's C-1 `MAX_RENDER_SIZE=256` clamp had silently disabled since `41ff448` (512 probe → 255, in-contract) |
+| 1 mask cache | `mask_cache.rs` | ✅ done + wired (production) |
+| 2 source-fact cache | `source_facts.rs` | ✅ done — **C-5 shared analysis bundle** (`fe0aaf8`) collapsed the double `segment_subject`/background/bounds into one compute; **P2-SCRATCH** (`4ecbc06`) reuses the shadow/blur/seat scratch instead of allocating per render (helps warm renders) |
+| 3 rayon batch | `batch.rs` | ✅ **wired** into version-switch (`5347bb5`, C-7) via `native_bake::bake_masters_par`; resident wiring deferred (its per-item `is_desktop_busy` abort granularity is a design decision, and the resident is still unwired) |
+| 4 output cache | `output_cache.rs` | 🔨 built + tested, unwired — needs cross-operation ownership from IconHost; the real ROI is the frequent resident path (unwired), not the occasional version-switch, so wire it with the resident |
+| 5 sRGB pow LUT | `color.rs` | ⏳ deferred — NEEDS a reprofile confirming `libm::pow` is still material AND a cell-enclosure verifier (any cell touching a byte transition / branch join falls back to scalar) |
+| 6 SIMD | — | ⏳ deferred — RED-to-ship; needs opcode disassembly proving lane-wise add/sub/mul/div only (no FMA / horizontal reduction / reassociation) across native+wasm before the cert can even judge it |
+
+Remaining PROVEN-byte-safe wins still queued (codex R2 focused perf pass, each cert-gated): exact Glass-distance
+`(size,int-dist)` cache, `matches_shape`+`max_scale_auto` config/shape memo, `subject_rim` erosion-buffer reuse,
+RGB→OKLab 24-bit memo (cold-only). Full ranking + exact changes: `/private/tmp/dm-r2-review/out-perf2.json` +
+the R2 review ledger `docs/reviews/2026-07-14-rust-audit-round2.md`.
+
 ## Why this exists (the load-bearing finding)
 
 Two independent researchers (senior perf-eng subagent + Codex) profiled the ~3× WASM-vs-TS preview

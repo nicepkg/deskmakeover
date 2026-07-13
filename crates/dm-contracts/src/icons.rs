@@ -48,17 +48,6 @@ pub enum IconKindDto {
     Unsupported,
 }
 
-/// A per-icon override's kind. Serialized lowercase to match the TS `'keep' | 'tint'` union.
-/// `keep` leaves the icon at its original; `tint` recolours it — both are FRONTEND draft state
-/// (the master a `tint` produces is baked frontend-side, a `keep` item is simply never sent), so
-/// this rides only the `setLook`-adjacent frontend layer and the apply input, never a scan item.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum OverrideModeDto {
-    Keep,
-    Tint,
-}
-
 /// One desktop item as the scanner observed it — raw platform truth ONLY (no override, no style).
 /// The frontend overlays its own draft per-icon overrides + renders the styling locally from
 /// `sourceUrls` (256px, `[0]` primary; the Recycle Bin ships TWO — empty + full). Positions are
@@ -206,9 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn override_mode_and_arrow_serialize_lowercase() {
-        assert_eq!(serde_json::to_string(&OverrideModeDto::Keep).unwrap(), "\"keep\"");
-        assert_eq!(serde_json::to_string(&OverrideModeDto::Tint).unwrap(), "\"tint\"");
+    fn arrow_overlay_serializes_lowercase() {
         assert_eq!(serde_json::to_string(&ArrowOverlayDto::Native).unwrap(), "\"native\"");
         assert_eq!(serde_json::to_string(&ArrowOverlayDto::Hidden).unwrap(), "\"hidden\"");
         assert_eq!(serde_json::from_str::<ArrowOverlayDto>("\"hidden\"").unwrap(), ArrowOverlayDto::Hidden);

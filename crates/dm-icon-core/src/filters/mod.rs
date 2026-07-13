@@ -11,8 +11,6 @@ use crate::config::{FilterStyle, Subject};
 use crate::js_math::clamp_byte;
 use crate::raster::Raster;
 
-pub use glass::glass;
-
 /// Apply a finish over the composed tile (filters.ts `applyFilter`).
 pub fn apply_filter(tile: &mut Raster, size: usize, filter: FilterStyle, subject: Subject, tint: u32) {
     // 玻璃 alone is colour-aware: Mono tiles keep their tinted ramp on the slab.

@@ -16,7 +16,7 @@ mod wallpaper;
 pub use common::{SystemInfoDto, ToastDto};
 pub use icons::{
     ArrowOverlayDto, GridMetricsDto, IconChunkItemDto, IconItemDto, IconKindDto, IconOpResultDto,
-    IconPersistedDto, IconScanDto, LookVersionDto, OverrideModeDto,
+    IconPersistedDto, IconScanDto, LookVersionDto,
 };
 pub use settings::{Language, SettingsDto, SettingsPatch, Theme};
 pub use style::{IconStyle, IconStyleError};

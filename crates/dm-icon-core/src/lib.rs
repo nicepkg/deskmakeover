@@ -11,9 +11,10 @@
 //!   (`src/icon-compositor/*`) — the external pixel
 //!   contract is byte parity against that oracle.
 //!
-//! Spike 4 (M1 gate) ships the slice modules only: raster primitives, Circle
-//! shape, sRGB/OKLab colour (shadow tone), content bounds, sampling, and the
-//! slice composition. The full compose/analysis/segment port lands at M5.
+//! Ships the FULL compositor at HEAD (M5+ certified over the real corpus): raster primitives, the
+//! shape catalog, sRGB/OKLab colour, analysis/segmentation, compose/marks/filters, `RenderSession`
+//! caching, rayon batch render, and the content-addressed output cache. (Historically the M1 Spike-4
+//! gate shipped only the slice modules; that milestone is long past.)
 
 #![forbid(unsafe_code)]
 

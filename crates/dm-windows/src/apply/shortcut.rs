@@ -13,11 +13,17 @@ use crate::shell::{attrs, shell_link};
 ///
 /// [WINDOWS-VERIFY] runtime.
 pub fn apply(shortcut_path: &str, icon_path: &str) -> PortResult<()> {
-    if !Path::new(icon_path).exists() {
-        return Err(PortError::AssetMissing(icon_path.to_string()));
+    // try_exists() distinguishes genuine absence from an access failure (audit F3): an unreadable but
+    // PRESENT asset/shortcut must surface its real IO error, not masquerade as missing.
+    match Path::new(icon_path).try_exists() {
+        Ok(true) => {}
+        Ok(false) => return Err(PortError::AssetMissing(icon_path.to_string())),
+        Err(e) => return Err(PortError::Io(format!("cannot access {icon_path}: {e}"))),
     }
-    if !Path::new(shortcut_path).exists() {
-        return Err(PortError::NotFound(shortcut_path.to_string()));
+    match Path::new(shortcut_path).try_exists() {
+        Ok(true) => {}
+        Ok(false) => return Err(PortError::NotFound(shortcut_path.to_string())),
+        Err(e) => return Err(PortError::Io(format!("cannot access {shortcut_path}: {e}"))),
     }
     // A .lnk swapped for a symlink since scan would have IPersistFile::Save follow it elsewhere. (APPLY-2)
     if attrs::is_reparse_point(shortcut_path)? {

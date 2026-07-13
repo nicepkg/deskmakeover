@@ -41,8 +41,14 @@ pub fn restore(
     folder_attributes: u32,
     desktop_ini: Option<&DesktopIniAnchor>,
 ) -> PortResult<()> {
-    if !Path::new(folder_path).is_dir() {
-        return Ok(()); // folder deleted by the user — nothing to revert
+    // Fallible metadata, not is_dir() (audit F3): a permission/sharing/IO error must NOT read as
+    // "folder gone → nothing to revert" (fail-open success that strands styled state); only a genuine
+    // NotFound or a replaced-by-non-directory is a benign no-op.
+    match std::fs::metadata(folder_path) {
+        Ok(m) if m.is_dir() => {}
+        Ok(_) => return Ok(()), // replaced by a non-directory — our folder styling is moot
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(PortError::Io(format!("cannot stat {folder_path}: {e}"))),
     }
     let ini = ini_path(folder_path);
     attrs::clear_readonly(folder_path)?;

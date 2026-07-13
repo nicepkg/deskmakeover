@@ -124,7 +124,12 @@ fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
         REPLACE_FILE_FLAGS,
     };
 
-    if target.exists() {
+    // try_exists(), not exists() (audit F3): a metadata error must NOT read as "fresh target" and
+    // select the MoveFileEx path that DROPS the existing file's DACL/ADS/compression — fail closed.
+    let target_exists = target
+        .try_exists()
+        .map_err(|e| PortError::Io(format!("cannot stat {}: {e}", target.display())))?;
+    if target_exists {
         // ReplaceFileW carries the target's DACL, alternate data streams, and compression/encryption
         // attributes onto the replacement (MoveFileEx would drop them, and the restore anchors
         // capture only main-stream bytes). We do NOT pass REPLACEFILE_WRITE_THROUGH — MS documents it

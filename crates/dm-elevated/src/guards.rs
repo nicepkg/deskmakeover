@@ -44,9 +44,12 @@ pub fn validate_ico(bytes: &[u8]) -> Result<(), String> {
 /// Rejects a `--file` path SHAPE a privileged helper must never open (audit F6): a UNC path
 /// (`\\server\share\…`, which authenticates as SYSTEM to an attacker's server), the device/extended
 /// namespaces (`\\.\`, `\\?\`), and any non-drive-absolute path (a bare relative path resolves
-/// against the helper's cwd). This is a portable string check so it unit-tests on the host; the
-/// remaining reparse-point FOLLOW is closed at OPEN time on Windows (FILE_FLAG_OPEN_REPARSE_POINT
-/// on the handle `read_capped_ico` opens) — [WINDOWS-VERIFY].
+/// against the helper's cwd). This is a portable SHAPE check only (unit-tested on the host); it does
+/// NOT resolve the filesystem. ⚠️ [WINDOWS-VERIFY, NOT YET CLOSED] drive-absolute syntax still does
+/// not prove a LOCAL file: an intermediate junction/symlink (`C:\Users\x\link\icon.ico`) or a mapped
+/// drive letter (`Z:` → `\\server\share`) can redirect the open, possibly to UNC. Closing that needs
+/// `read_capped_ico` to open with `CreateFileW` + `FILE_FLAG_OPEN_REPARSE_POINT` and verify the final
+/// resolved path stays local + under the sanctioned ProgramData staging root — done on the box.
 pub fn validate_overlay_path(path: &str) -> Result<(), String> {
     let norm = path.trim().replace('/', "\\");
     if norm.is_empty() {

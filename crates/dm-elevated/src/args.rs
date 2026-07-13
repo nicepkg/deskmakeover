@@ -68,7 +68,7 @@ fn parse_apply_overlay(rest: &[String]) -> Command {
     while i < rest.len() {
         match rest[i].to_ascii_lowercase().as_str() {
             "--style" => {
-                let Some(val) = rest.get(i + 1) else {
+                let Some(val) = rest.get(i + 1).filter(|v| !is_flag(v)) else {
                     return Command::Unknown("apply-overlay: --style needs a value".into());
                 };
                 if style.is_some() {
@@ -81,7 +81,9 @@ fn parse_apply_overlay(rest: &[String]) -> Command {
                 i += 2;
             }
             "--file" => {
-                let Some(val) = rest.get(i + 1) else {
+                // A flag-looking or empty next token is NOT a value (codex B4-🟡): `--file --style`
+                // must reject as a missing value (exit 2), not silently take "--style" as the path.
+                let Some(val) = rest.get(i + 1).filter(|v| !is_flag(v) && !v.trim().is_empty()) else {
                     return Command::Unknown("apply-overlay: --file needs a value".into());
                 };
                 if file.is_some() {
@@ -94,6 +96,11 @@ fn parse_apply_overlay(rest: &[String]) -> Command {
         }
     }
     Command::ApplyOverlay { style: style.unwrap_or(Style::Refined), file }
+}
+
+/// Whether `token` looks like an option flag, so it can never be consumed as an option's value.
+fn is_flag(token: &str) -> bool {
+    token.starts_with("--")
 }
 
 #[cfg(test)]
@@ -161,6 +168,14 @@ mod tests {
         assert!(matches!(parse(&argv(&["apply-overlay", "surplus"])), Command::Unknown(_)));
         assert!(matches!(parse(&argv(&["version", "extra"])), Command::Unknown(_)));
         assert!(matches!(parse(&argv(&["restore-overlay", "x"])), Command::Unknown(_)));
+    }
+
+    #[test]
+    fn a_flag_looking_or_empty_value_is_not_consumed() {
+        // `--file --style` must reject (missing value), not take "--style" as the path (codex B4-🟡).
+        assert!(matches!(parse(&argv(&["apply-overlay", "--file", "--style", "custom"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["apply-overlay", "--style", "--file", "x.ico"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["apply-overlay", "--file", ""])), Command::Unknown(_)));
     }
 
     #[test]

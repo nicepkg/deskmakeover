@@ -35,6 +35,25 @@ Exit gate W0: `bun test` + `tsc -b` green · rail shows 4 tiles · module fully 
 `bun run dev` · codex adversarial review over the diff · designer-seat acceptance queued for
 the visual pass (scaffold ≠ accepted look).
 
+**W0 status (2026-07-13):** built (`cede075`+`2476d4b`), browser-verified end to end
+(evidence `docs/plans/evidence/2026-07-calm/`), codex R1 Request-Changes (2 Block +
+15 Major + 1 Minor) → **ALL FIXED in `47f99ac`** (external state for drifted restores ·
+ledger-owned probe channel `probeTransition` · one op lock · stranded-pending recovery ·
+`skipped` outcome · consent sheet lists names · held group collapsed with per-row reasons ·
+honest hero phases · full-outcome toast · widgets family row · strengthened copy gate;
+the Minor resolved by rewording the two hyphenated en strings). Gates re-run green
+(tsc · bun 566). **Owed:** component-render/a11y test infra does not exist in this repo —
+adding happy-dom/testing-library is an OWNER dependency decision; until then the honest
+grammar is pinned at state/store level + browser E2E + designer acceptance.
+
+**W0.5 polish DONE (2026-07-13, owner complaint → 3-seat panel → redesign → codex R2 closes →
+designer acceptance PASS):** `docs/reviews/2026-07-13-calm-page-polish-panel.md`. Surface
+glyph pins + place tags (the WHERE axis), hero constellation band, cardtitle group headers +
+subtitles, located result-sentence descs, three-line consent, inclusion checkboxes,
+lost-reply=unknown+reprobe, skip reasons, strengthened copy gate. Gates green (tsc · bun 568).
+Open owner calls O1-O3 in the review record; motion pass + hero OS-mirror deferred with
+re-acceptance booked.
+
 ## Wave 1 — Rust decision core + bridge (Mac)
 
 Copy the reference boundaries into production per spec 08 §12: `crates/dm-domain/src/

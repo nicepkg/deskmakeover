@@ -268,12 +268,17 @@ Documented follow-ups: the ①→②→③ finalize crash-window (not yet journa
 `notify`+`notify-debouncer-full`, spec 07 §3/§16). **Roadmap: B10 → M7.**
 
 **In flight / next (web):**
--2. **清爽 module Wave 0 STARTED (2026-07-13, ADR-0023 / spec 08 / plan
-   2026-07-13-calm-windows-module.md):** web skeleton in the mock loop — catalog+state
-   machine, CalmBackend port + mock, store, Direction-B page, rail 4th tile + Ctrl+4,
-   i18n + copy gate. Rust core = Wave 1 (bridge schema 7→8 deliberate), Windows platform =
-   Wave 2 (blind, [WV]), cert lab = Wave 3 (the D2 gate). Codex review + designer
-   acceptance owed at each wave exit.
+-2. **清爽 module Wave 0 + polish DONE (2026-07-13, ADR-0023 / spec 08 / plan
+   2026-07-13-calm-windows-module.md):** web skeleton (catalog+state machine, CalmBackend
+   port+mock, store, Direction-B page, rail 4th tile, i18n+copy gate) → codex R1 (2🔴+15🟠,
+   ALL fixed) → owner complaint 「不知道关的是哪里」 → 3-seat polish panel → WHERE-axis
+   redesign (surface glyph pins + place tags + hero constellation band + located result
+   descs + inclusion checkboxes) + codex R2 closes (lost-reply=unknown+reprobe, never
+   unproven 已还原) → **designer acceptance PASS**
+   (`docs/reviews/2026-07-13-calm-page-polish-panel.md`; owner calls O1-O3 open; motion
+   pass deferred w/ re-acceptance booked). Gates: tsc · bun 568 · browser E2E evidence
+   `docs/plans/evidence/2026-07-calm/`. NEXT: Wave 1 Rust decision core (bridge schema
+   7→8), Wave 2 dm-windows blind, Wave 3 cert lab = the D2 gate.
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all
    designer PASS): seven coordinate-bookmark presets (spectrum default ·
    stationery · glass · pebble · ink · white · ascast), six mark styles

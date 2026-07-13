@@ -2,15 +2,16 @@
 
 DeskMakeover follows the owner standards from `ai-command-center` with project-local
 emphasis. Two stacks live here: the **web UI** (React 19 + TypeScript + Tailwind 4 +
-Motion, Bun-only) and the **C# engine/host** (WPF shell + Win32 adapters).
+Motion, Bun-only) and the **Rust engine/host** (Tauri 2 shell + `dm-*` crates + Win32/COM
+adapters). The `legacy/` .NET/C# tree is a frozen parity oracle only — no feature work.
 
 ## Both stacks
 
 - Keep product code modular and cohesive. A file heading toward **500 lines** must be
   split before it becomes hard to review.
-- User-facing strings come from the localization pipeline — the **resx is the source,
-  the TS dictionaries are GENERATED** (`docs/development.md` §6.5); zh-Hans + English
-  required. Mac-authored strings carry `// PENDING-RESX` until the Windows sweep.
+- User-facing strings come from the TS localization dictionaries — **`src/lib/i18n/{en,zh-hans}.ts`
+  is the SOURCE** (the resx pipeline was retired 2026-07-11, `docs/development.md` §6); zh-Hans +
+  English required, kept in lockstep.
 - User-facing copy avoids system-cleaner language, fear tactics, and unexplained
   technical jargon; **no dashes** in any user-facing string (ADR-0013 copy law).
   Banned words in UI strings: 应用计划, dry-run, 注册表, 缓存, HKLM, journal, and any
@@ -20,25 +21,28 @@ Motion, Bun-only) and the **C# engine/host** (WPF shell + Win32 adapters).
 - Core logic, rendering decisions, transaction journals, and restore behavior require
   tests; **a bug fix ships a regression test** reproducing the failure.
 - Dangerous operations must be explicit, reversible, and represented in the operation
-  plan before execution; bake/apply are user-clicked only, never auto-triggered.
+  plan before execution; bake/apply/calm-writes are user-clicked only, never auto-triggered.
 - Prefer clear names over comments. Comment only where behavior is non-obvious
-  (Windows Shell quirks, motion/projection traps, algorithm rationale) — and when a
+  (Windows Shell/COM quirks, motion/projection traps, algorithm rationale) — and when a
   hard-won lesson is reverted-prone, leave a ⛔ comment PLUS a regression test.
 
 ## Web (TypeScript / React)
 
 - **Bun only** — install/test/build/scripts; never npm/node. Typecheck with
   `./node_modules/.bin/tsc -b` (a bare `bun x tsc` can false-green).
-- The bridge contract lives ONCE per side: `src/bridge/types.ts` (schema constant
-  asserted at startup) mirrored by `Host/Bridge/Contracts.cs`. Never widen a DTO
-  without bumping the schema and checking strict decoders on both sides.
+- The bridge contract is GENERATED from the Rust host: `dm-contracts` → tauri-specta →
+  `src/bridge/generated.ts`; `src/bridge/types.ts` holds the hand-written DTOs + the
+  `BRIDGE_SCHEMA_VERSION` constant asserted at startup. Never widen a DTO without bumping
+  the schema and checking strict decoders on both sides; run `bun run check:bindings` (the
+  drift guard) after any contract change.
 - Design tokens only — colours come from `@theme` tokens; raw blue/violet hexes,
   Tailwind blue-family and stock cool-gray utilities are TEST-BANNED
   (`tests/banned-colors.test.ts`; reviewed exemptions live inside the test).
-- Rendering truth: `icon-compositor/` + `compositor/` are the WYSIWYG engines —
-  preview and bake share the same functions; the chip swatch clips with the same
-  authoring (`lib/shape-paths.ts` ← `icon-compositor/shapes.ts`). Never fork a
-  "close enough" copy of engine math into a component.
+- Rendering truth: **icon pixels are produced by the Rust `dm-icon-core`** (compiled to WASM for
+  the web preview/bake, native for apply/background) — the frozen TS `icon-compositor/` is the
+  parity ORACLE, not a live path (never fork "close enough" engine math into a component). The
+  Pixi wallpaper `compositor/` is the live web wallpaper engine; preview and bake share the same
+  functions, and the chip swatch clips with the same authoring (`lib/shape-paths.ts`).
 - Motion: prefer the shared tokens in `lib/motion.ts`; every animation degrades
   under `useReducedMotion`. Sliding-highlight patterns use a single
   container-level element translated in list/track space — **never a per-row
@@ -47,14 +51,19 @@ Motion, Bun-only) and the **C# engine/host** (WPF shell + Win32 adapters).
 - Zustand stores: selectors return stable refs; modules stay mounted
   (visibility-hidden) across switches; continuous inputs coalesce history steps.
 
-## C# (engine / host)
+## Rust (engine / host)
 
-- Domain types live away from Win32 and Shell interop; Shell code belongs behind
-  explicit adapters.
-- Domain enums never bind directly to UI; presentation mappers translate them.
-- The frozen renderers (`TileRenderer` oracle et al.) carry banner comments — no
-  new styles land in C# (ADR-0015 freeze); new styles are TS-first.
-- The ElevatedHelper stays a standalone self-contained exe (privilege boundary —
+- The workspace crates split by responsibility: `dm-domain` (pure ports/models),
+  `dm-operations` (transaction engine + journals), `dm-windows` (Win32/COM/registry adapters),
+  `dm-elevated` (privilege boundary), `dm-icon-core`/`dm-icon-codec` (pixel truth + ICO writer),
+  `dm-contracts` (bridge DTOs). Domain types live away from Win32/Shell interop; platform code
+  belongs behind explicit adapters/ports.
+- Domain enums never bind directly to UI; the generated bridge DTOs are the presentation contract.
+- Blind-written Windows platform bodies are kept compiling via
+  `cargo check --target x86_64-pc-windows-msvc` and unit-tested through Mac fakes; every real
+  COM/WIC/registry/shell call is `[WINDOWS-VERIFY]` until it runs on a real box.
+- The ElevatedHelper (`dm-elevated`) stays a standalone self-contained exe (privilege boundary —
   never share the runtime to save space).
-- (WPF-era rules — squircle controls for visible corners, XAML binding bans —
-  apply only to the remaining native chrome; the visible UI is the web app.)
+- Frozen oracles carry banner comments — the TS `icon-compositor/` and the whole `legacy/` C# tree
+  are byte-parity references; no new styles or features land in them (they exist to certify the
+  Rust port, ADR-0015/0019).

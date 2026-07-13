@@ -1,10 +1,11 @@
 # DeskMakeover Web App (`src/`, repo root)
 
-The visible UI of DeskMakeover — a React 19 + TypeScript + Tailwind 4 + Motion SPA. It runs in a
-plain browser (with a mock bridge) on any OS today, and will be hosted by the Tauri shell after
-the ADR-0019 replatform (it previously ran inside a WebView2 window; that C# host is now frozen).
+The visible UI of DeskMakeover — a React 19 + TypeScript + Tailwind 4 + Motion SPA. It is hosted by
+the **Tauri 2 shell** (ADR-0019; WebView2 on Windows) and also runs in a plain browser with a mock
+bridge on any OS for development. (It previously ran inside a standalone WebView2 window driven by a
+C# host; that host is now frozen under `legacy/`.)
 
-> The web app now lives at the repo root (ADR-0019 Amendment 1: `src/`, `public/`, `index.html`,
+> The web app lives at the repo root (ADR-0019 Amendment 1: `src/`, `public/`, `index.html`,
 > one root `package.json`). The authoritative docs are **`docs/STATE.md`** (what is true / in
 > flight) and **`docs/development.md`** (the full dev + build runbook). Read those first; this
 > file is only the web-app quick reference.
@@ -15,38 +16,42 @@ the ADR-0019 replatform (it previously ran inside a WebView2 window; that C# hos
 bun install        # first time
 bun run dev        # Vite dev server (default :5173, auto-increments) + mock bridge
 bun run build      # tsc -b + production bundle -> dist/
-bun test           # unit tests (359 at HEAD) — includes the banned-colour + copy-law gates
+bun test           # web unit tests — includes the banned-colour + copy-law gates
 bun run lint       # oxlint
+bun run tauri:dev  # launch the REAL Tauri app (mock desktop) on macOS
 ```
 
 `bun run dev` uses the **mock bridge** (`src/bridge/mock.ts` + `src/bridge/mock-desktop.ts`):
 a full ~120-icon fake desktop, both mirrors, every panel, settings, and the welcome gate — no
-C# host required. This is the ONLY working dev loop today (see below).
+host required. `bun run tauri:dev` launches the real Tauri app over the Rust host on Mac (with a
+devhost/mock desktop). Both are working dev loops today.
 
 ## Where the pixels come from
 
-The web renders the real preview AND the bake master itself: **icons** via a CPU TypeScript
-compositor + Worker (`src/icon-compositor/`), **wallpaper** via Pixi (`src/compositor/`). C#
-only decodes source images, packages ICO ladders, writes to the shell, and backs up/restores.
-There is no live SharedBuffer pixel stream. WYSIWYG still holds: what the preview paints is what
-the bake writes, because the bake is the same web code at native resolution.
+Icon pixels are produced by the Rust **`dm-icon-core`** — compiled to **WASM** for the web
+preview/bake and to **native** for apply/background; the frozen TS `src/icon-compositor/` is the
+byte-parity ORACLE only (tree-shaken out of the bundle). **Wallpaper** compositing is Pixi in the
+web (`src/compositor/`). The Rust host also decodes source images, packages ICO ladders, writes to
+the shell, and backs up/restores. WYSIWYG holds because the WASM preview and the native bake are
+the *same Rust core*.
 
 ## Bridge
 
-`src/bridge/types.ts` is the contract truth — `BRIDGE_SCHEMA_VERSION = 3`. ⚠️ The C# host is
-still schema 1, so the **native host (Modes B/C) is NOT wired yet** — wiring it is F8 (Windows).
-Until then only the browser + mock loop runs. Details: `docs/STATE.md` §Bridge state.
+`src/bridge/types.ts` is the contract truth — `BRIDGE_SCHEMA_VERSION = 8`, with the typed surface
+GENERATED into `src/bridge/generated.ts` from `dm-contracts` via tauri-specta. Wallpaper (schema 6),
+icons (schema 7) and calm (schema 8) route through real Rust on Mac-Tauri; the Windows runtime for
+every native path is `[WINDOWS-VERIFY]`. Details: `docs/STATE.md` §Bridge state.
 
 ## Layout of `src/`
 
 | Dir | What |
 |-----|------|
-| `components/` | `shell/` (module rail + layout), `panels/` (icons / wallpaper / settings inspectors), `canvas/` (desktop mirror + zone editor), `common/` (primitives) |
-| `stores/` | Zustand stores (`icons.ts`, `wallpaper.ts`) |
-| `icon-compositor/` | CPU icon renderer: shapes, colour math, filters, marks, segment (极致单色) |
+| `components/` | `shell/` (module rail + layout), `panels/` (icons / wallpaper / calm / settings inspectors), `canvas/` (desktop mirror + zone editor), `common/` (primitives) |
+| `stores/` | Zustand stores (`icons.ts`, `wallpaper.ts`, calm store) |
+| `icon-compositor/` | frozen TS icon renderer — the byte-parity oracle (production pixels are `dm-icon-core` WASM) |
 | `compositor/` | Pixi wallpaper compositor + material |
-| `bridge/` | RPC client, DTO types (schema 3), mock host + mock desktop |
-| `lib/` | i18n (resx-generated), canvas-view, geometry, motion, zone math, utils |
+| `bridge/` | typed client, generated + hand DTOs (schema 8), mock host + mock desktop |
+| `lib/` | i18n (`i18n/{en,zh-hans}.ts` — the source), icons-assemble, canvas-view, geometry, motion, zone math, utils |
 
 ## Conventions
 

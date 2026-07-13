@@ -4,35 +4,34 @@ How to develop, test, and package DeskMakeover from a cold start — plus the
 non-obvious gotchas that will bite you. Read `STATE.md` first for *what* is in flight;
 this doc is *how* to work the code.
 
-Architecture context: **ADR-0011** (UI is a WebView2 + React web app; the engine stays
-C#), **ADR-0013** (v3 "Premium Flat" visual language, light-first, bundled fonts —
-supersedes ADR-0012's chrome decisions), **spec 05** (web-shell / bridge),
-**spec 02 v3** (visual language). The old `references/prototype/*.html` is a
+Architecture context: **ADR-0019** (the product is now **Tauri 2 + Rust**; the .NET/C# engine
+is retired to `legacy/` as a frozen oracle), **ADR-0013** (v3 "Premium Flat" visual language,
+light-first, bundled fonts — supersedes ADR-0012's chrome decisions), **spec 05** (Tauri/Rust
+bridge), **spec 02 v3** (visual language). The old `references/prototype/*.html` is a
 historical reference only — the specs are the source of truth.
 
-> ⚠️ **Architecture note (2026-07-10 — read before trusting the passages below).** The
-> pixel-production model has INVERTED since these were written: icons are now rendered by a
-> **CPU TypeScript compositor + Worker** and wallpaper by **Pixi**, both IN THE WEB. C# keeps
-> only window / source-image decode / ICO packaging / shell write / backup-restore. There is
-> no live SharedBuffer frame stream. **Native Mode B/C (host-driven) is NOT wired yet** — the
-> host is bridge **schema 1** while the web is **schema 3**, so only Mode A (browser + mock)
-> runs today. Any line below describing C#-produced pixels, a shared-buffer channel, or
-> host-rendered previews is STALE pending the Spec 05 rewrite — authoritative picture is
-> `STATE.md` §Bridge state + §Known doc drift.
+> **Pixel-production model (current, ADR-0019).** Icon pixels come from the Rust `dm-icon-core`
+> (WASM for the web preview/bake, native for apply/background); the frozen TS `icon-compositor/`
+> is the byte-parity oracle. Wallpaper compositing is Pixi in the web. The Rust host decodes
+> source images, packages ICO ladders, writes to the shell, and backs up/restores. The bridge
+> contract is `dm-contracts` → tauri-specta → `src/bridge/generated.ts`, `BRIDGE_SCHEMA_VERSION = 8`
+> (wallpaper schema 6, icons 7, calm 8 all wired on Mac-Tauri; Windows runtime is `[WINDOWS-VERIFY]`).
+> The retired C# WebView2 host (Modes B/C below) is `legacy/`-only and will never be re-wired.
 
 ---
 
 ## 0. Quick commands
 
-The web half runs on **any OS** (macOS included); the C# half needs **Windows**.
-See §3 for the three dev modes and when to use which.
+The web loop and the Tauri/Rust host both build on **any OS** (macOS included); only the
+`[WINDOWS-VERIFY]` runtime pass and the frozen `legacy/` .NET oracle need **Windows**.
+See §3 for the dev modes and when to use which.
 
 ```bash
 # --- web (React SPA) — Bun only, never npm/node — ANY OS, from the repo root ---
 bun install                 # first time
 bun run dev                 # Vite dev server (default :5173, auto-increments) + mock bridge
 bun run build               # production web bundle -> dist/
-bun test                    # web unit tests (currently 297, incl. banned-colour scan)
+bun test                    # web unit tests (incl. banned-colour + copy-law gates)
 bun run lint                # oxlint
 ```
 
@@ -131,22 +130,18 @@ Mode A (§3.1) and the Tauri loop (§3.5).
 
 ---
 
-## 3. Develop — three modes, pick per machine and task
+## 3. Develop — the two live modes (+ the retired legacy host)
 
 | Mode | OS | What runs | Use for |
 |------|----|-----------|---------|
 | **A. Browser + mock** | any (macOS/Windows/Linux) | `bun run dev` → plain browser, mock bridge | ALL UI/design iteration. The default loop. |
-| **B. Native host + HMR** | Windows | Vite dev server + `DeskMakeover.App` (Debug) pointed at it | Real engine + hot-reload UI: bridge work, engine-rendered pixels, IME/DPI feel. |
-| **C. Native host + built assets** | Windows | `bun run build` → host serves `<out>/web` | Release-like smoke before packaging. |
+| **D. Tauri host** | macOS-buildable (Windows at integration) | `bun run tauri:dev` → real Rust host, mock desktop | The real app loop: bridge verbs on real Rust, window/tray, settings persistence. §3.5. |
+| ~~B/C. C# native host~~ | ~~Windows~~ | RETIRED (`legacy/`, ADR-0019) — F8 is VOID | historical only; §3.2/§3.3 kept as an oracle-launch appendix. |
 
-Any AI/tooling session can therefore develop the UI from a Mac (mode A) and the same
-branch continues on Windows (mode B/C) with zero code changes — the mode is chosen by
-how you LAUNCH, not by build flags.
-
-> ⚠️ **Modes B/C are NOT usable today.** The host is bridge schema 1; the web is schema 3,
-> and the web already calls RPCs (`wallpaper.applyBaked`, chunked `icons.applyBaked*`) the
-> host does not expose. Wiring the host to schema 3 is **F8** (see STATE.md §Bridge state).
-> Until then, **Mode A (browser + mock) is the only working loop.**
+Develop the UI from a Mac in Mode A, then bring up the real host in Mode D (also
+macOS-buildable) — the mode is chosen by how you LAUNCH, not by build flags. The old
+C# WebView2 host (Modes B/C) will **never** be wired to the current schema; it lives frozen in
+`legacy/` purely as the parity oracle. Ignore any "F8 host wiring" phrasing below — F8 is void.
 
 ### 3.1 Mode A — browser + mock (any OS)
 
@@ -169,7 +164,12 @@ is exercisable.
   Accent is coral `#FF6F5E` **only**; blue/violet AND stock cool-gray utilities are
   banned and test-gated (§4). Light theme is the design first-citizen (ADR-0013).
 
-### 3.2 Mode B — native host + HMR (Windows)
+### 3.2 Mode B — legacy C# native host + HMR (Windows) — RETIRED oracle-launch only
+
+> ⚠️ **§3.2/§3.3 describe the RETIRED C# WebView2 host** (`legacy/`, ADR-0019). They are kept
+> only to launch the frozen oracle; the current real-app loop is Mode D (§3.5). "Shared-buffer
+> frames" and "F8 wiring" below are historical — that host is never re-wired.
+
 
 ```powershell
 bun run dev                                         # terminal 1: Vite (note the port), from root
@@ -202,9 +202,10 @@ yourself typing `npm`/`node`, stop.
 
 The Tauri 2 shell (`src-tauri`) hosts the SAME React app as Mode A. It is
 the successor to the WebView2/WPF host (Modes B/C) and, unlike them, builds and runs on
-**macOS** today. As of M2 only settings persistence + the frameless titlebar's window
-controls are wired to Rust; every other bridge verb still hits the mock, so the desktop
-window shows the full mock desktop exactly like the browser loop.
+**macOS** today. Wallpaper (schema 6), icons (schema 7) and calm (schema 8) verbs now route
+through real Rust on Mac-Tauri over a devhost/mock desktop; the remaining native paths (real
+Windows shell/COM/registry) are `[WINDOWS-VERIFY]`. Settings persistence + the frameless
+titlebar's window controls have been Rust-backed since M2.
 
 ```bash
 # from the repo root (package.json + src-tauri live here)
@@ -231,12 +232,11 @@ bun run tauri:dev           # compiles the Rust host, starts Vite (:5173), opens
 
 #### Contracts → TypeScript bindings (DRY law, ADR-0019)
 
-The bridge DTOs for this slice are Rust types in `crates/dm-contracts` (`SettingsDto`,
-`SettingsPatch`, `DiagnosticsPing`). `tauri-specta` turns the `#[specta::specta]` command
-surface into `src/bridge/generated.ts` — one command list feeds BOTH the runtime
-`invoke` handler and the TS export, so arg/return/error shapes cannot drift (the reason
-ts-rs was not chosen: it would need a hand-kept parallel command wrapper — the schema-1/4
-split ADR-0019 bans).
+The bridge DTOs are Rust types in `crates/dm-contracts` (settings, diagnostics, wallpaper,
+icons, tweaks/calm). `tauri-specta` turns the `#[specta::specta]` command surface into
+`src/bridge/generated.ts` — one command list feeds BOTH the runtime `invoke` handler and the
+TS export, so arg/return/error shapes cannot drift (the reason ts-rs was not chosen: it would
+need a hand-kept parallel command wrapper — the kind of two-source split ADR-0019 bans).
 
 ```bash
 # from the repo root
@@ -244,18 +244,23 @@ bun run gen:bindings        # writes generated.ts (do NOT hand-edit that file)
 bun run check:bindings      # cargo test that fails if generated.ts is out of date
 ```
 
-The rest of bridge schema 4 still lives in `src/bridge/types.ts`; later phases
-migrate it into `dm-contracts`.
+Hand-written DTOs + the `BRIDGE_SCHEMA_VERSION` constant (currently **8**) live in
+`src/bridge/types.ts`; the wallpaper/icons/calm slices are already generated from `dm-contracts`.
 
 ---
 
 ## 4. Test & gates
 
-| Suite | Command | Count |
+| Suite | Command | Notes |
 |-------|---------|-------|
-| Web unit | `bun test` (from the repo root) | 359 |
-| .NET oracle (legacy) | `cd legacy ; .\.dotnet\dotnet.exe test` (Windows) | 277 (frozen; pre-v3) |
+| Web unit | `bun test` (from the repo root) | incl. banned-colour + copy-law gates |
+| Rust workspace | `cargo test --workspace` + `cargo check --target x86_64-pc-windows-msvc` | the engine; msvc-check keeps blind Windows code compiling |
+| Bindings drift | `bun run check:bindings` | fails if `generated.ts` is stale |
+| .NET oracle (legacy) | `cd legacy ; .\.dotnet\dotnet.exe test` (Windows) | frozen, pre-v3 — oracle only |
 | Web lint | `bun run lint` (oxlint) | — |
+
+(Run the commands for the current pass/fail count; test totals drift every few commits and are
+not restated here.)
 
 - **Banned-colour gate**: `tests/banned-colors.test.ts` walks every shipped web source
   file and fails on blue/violet hexes, Tailwind blue-family AND stock cool-gray
@@ -274,14 +279,17 @@ migrate it into `dm-contracts`.
 
 ## 5. Build / Package  ← the biggest gotcha lives here
 
-> ⚠️ **Packaging is UNVERIFIED — there is no proven shippable artifact yet.** `publish.ps1`
-> publishes the **App only** (no `ElevatedHelper.exe` — the one-click bake path would fail for
-> end users), and it does **not** build the web first even though the App carries an adjacent
-> `web/`. A bare exe is missing web + helper; the whole folder is not a single file. Nothing has
-> shipped (version `0.0.0`). Treat the "single shippable exe" story as an OPEN item until proven
-> on a real host (F8). The two scripts below still differ in output, but neither is release-ready.
+> **The shipping artifact is the Tauri build (ADR-0019, M8 — NOT STARTED).** The real installer
+> will come from `bun run tauri build` (NSIS on Windows) bundling the Rust host + web + the
+> `dm-elevated` helper; signing/updater are open M8 work; version is `0.0.0` until the owner names
+> the first release. **None of it exists yet — nothing has shipped.**
+>
+> ⚠️ **The `legacy/` .NET publish scripts below are ORACLE-ONLY and never ship** (ADR-0019, F8
+> void). They are documented so the frozen C# oracle can still be built on Windows; they are NOT
+> the product's packaging path. Everything in §5 about WPF size floors, App-only publish, and the
+> two `legacy/scripts` is about that retired stack.
 
-**There are TWO publish scripts. Do not confuse them.**
+**The legacy oracle has TWO publish scripts. Do not confuse them (neither ships).**
 
 | Script | Output | Size | Purpose |
 |--------|--------|------|---------|

@@ -608,18 +608,6 @@ impl<'a> IconOps<'a> {
         let mut restored = Vec::new();
         let mut skipped = Vec::new();
         for entry in ledger.all()? {
-            // §14 red-line (audit F2b, owner#6 = SKIP + surface): a privileged-scope row — a Public
-            // Desktop / ProgramData target that only the legitimate ELEVATED path may have styled
-            // (or, defensively, a pre-B1 fail-open row) — must NOT be touched by the NON-elevated
-            // `self.platform.applier`. Leave the row AND the desktop untouched and surface a
-            // repair-required note so the UI can tell the user it needs elevation, rather than
-            // attempting a restore that would only fail (or, worse, silently corrupt if the applier
-            // ever gained rights it should not use here). `Unresolved` scope classifies EVERY row
-            // privileged, so an unwired Windows host resets nothing rather than guessing (fail closed).
-            if scope.classify(&entry.target.path).is_some() {
-                repair.push(format!("reset skipped privileged {} (needs elevation)", entry.item.as_str()));
-                continue;
-            }
             match self.platform.reader.read_fingerprint(&entry.target) {
                 // The user deleted the icon: clear its row (its ICO becomes collectable below).
                 Err(PortError::NotFound(_)) => {
@@ -641,6 +629,20 @@ impl<'a> IconOps<'a> {
                 Ok(cur) if cur != entry.last_applied_fingerprint => skipped.push(entry.item),
                 // Still exactly our applied state: revert to the true original and drop the row.
                 Ok(_) => {
+                    // §14 red-line (audit F2b, owner#6 = SKIP + surface): a privileged-scope target
+                    // still in OUR applied state — a Public Desktop / ProgramData row that only the
+                    // legitimate ELEVATED path may have styled — cannot be reverted by the NON-elevated
+                    // applier. Leave the row AND the desktop untouched and count it as skipped (so the
+                    // host's "跳过 N 项" surfaces it honestly, never a false "restored"), rather than
+                    // attempting a restore that only fails. This gate is DEEP — inside this arm only —
+                    // so the SAFE ledger-healing arms above (a deleted icon's stale-row drop, an
+                    // already-original heal-remove) still run for a privileged row: they touch only the
+                    // local ledger, never the privileged desktop (codex F2b-review). `Unresolved` scope
+                    // classifies every still-applied row privileged → an unwired host reverts nothing.
+                    if scope.classify(&entry.target.path).is_some() {
+                        skipped.push(entry.item);
+                        continue;
+                    }
                     if let Err(e) = self.platform.applier.restore(&entry.target, &entry.original_anchor) {
                         repair.push(format!("reset {}: {e}", entry.item.as_str()));
                         continue;

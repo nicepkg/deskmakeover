@@ -63,6 +63,11 @@ impl World {
         self.files.get(path).cloned()
     }
 
+    /// Removes a file (models the user deleting the icon) so `read_fingerprint` returns `NotFound`.
+    pub fn remove(&mut self, path: &str) {
+        self.files.remove(path);
+    }
+
     pub fn fail_apply(&mut self, path: &str) {
         self.apply_fails.insert(path.to_string());
     }

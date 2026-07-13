@@ -283,6 +283,15 @@ fn abort_incomplete(
         // crash — only the txn-level terminal was lost. Restoring it AGAIN would clobber a user edit
         // made between that rollback and restart. It is already terminal + un-styled (an incomplete
         // txn never committed a ledger row, so there is nothing to remove); skip it entirely.
+        //
+        // Residual (codex F2b-review 🟠, [WINDOWS-VERIFY]): `ItemRolledBack` proves the restore's Rust
+        // call returned Ok, not that a MULTI-write side effect (the Recycle Bin's 3 registry values)
+        // was flushed to disk before a power loss. In that narrow compound case the skip does not
+        // self-heal a durably-partial restore. This is the SAME live-state re-verify gap as the
+        // deferred `recovery:265` fork: the complete fix reads the live state and re-restores only a
+        // recognised-partial one — leaving a genuine user edit intact. Chosen tradeoff: preserving a
+        // user edit (the more-severe, common bug) over self-healing a rare power-loss-partial registry
+        // write (cosmetic, one system icon, recoverable by re-running reset).
         if group.rolled_back_items.contains(id.as_str()) {
             continue;
         }

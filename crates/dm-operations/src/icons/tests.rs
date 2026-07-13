@@ -510,12 +510,58 @@ fn reset_leaves_privileged_scope_rows_untouched_and_surfaces_them() {
         ops.reset_to_original(&privileged, &mut journal, &mut ledger, &history).unwrap()
     };
 
-    // Untouched: the desktop keeps its styled bytes, the ledger keeps the row, and it is surfaced.
+    // Untouched: the desktop keeps its styled bytes, the ledger keeps the row, and it is surfaced as
+    // a SKIP (honest "跳过 N 项", never a false "restored" / misleading degraded — codex F2b-review).
     assert_eq!(world.borrow().get(&app.path).unwrap(), styled, "privileged desktop must NOT be restored");
     assert!(ledger.get(&app.id).unwrap().is_some(), "privileged row must NOT be dropped");
     assert!(out.restored.is_empty(), "nothing restored under a privileged scope");
-    let degraded = out.degraded.expect("a privileged skip is surfaced");
-    assert!(degraded.contains("needs elevation"), "surfaced note names elevation: {degraded}");
+    assert_eq!(out.skipped, vec![app.id.clone()], "the privileged row is surfaced as a skip");
+    assert!(out.degraded.is_none(), "a privileged skip is NOT a runtime-fault degrade");
+}
+
+#[test]
+fn reset_still_heals_a_deleted_privileged_row_without_a_desktop_write() {
+    // codex F2b-review 🟡: the §14 gate must be DEEP (only the actual restore arm), so SAFE ledger
+    // healing is not suppressed. A privileged row whose icon the user DELETED needs no privileged
+    // desktop write to drop its stale ledger row — the reset must still clear it, or the row + its
+    // ICO leak forever and `applied` stays true.
+    let dir = tempfile::tempdir().unwrap();
+    let world = World::shared();
+    let app = item("app", ItemKind::Shortcut); // path C:/Desktop/app
+    world.borrow_mut().put(&app.path, b"orig-app");
+    let assets = FsAssetStore::new(dir.path().join("assets"));
+    let settings = SettingsStore::open(&dir.path().join("s.sqlite3")).unwrap();
+    let mut history = LookHistoryStore::new(dir.path().join("h.json"));
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    let mut txn = TxnIdAllocator::starting_at(1);
+    {
+        let fake = FakePlatform::new(world.clone());
+        let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
+        let mut s = IconApplySession::begin(0, 1);
+        s.push("app", 0, master_b64([7, 7, 7, 255]));
+        let scan = vec![ScannedItem {
+            item: app.clone(),
+            fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()),
+            source_ok: true,
+        }];
+        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &mut txn, &mut journal, &mut ledger, &mut history)
+            .unwrap();
+    }
+    // The user deletes the icon after styling → read_fingerprint returns NotFound.
+    world.borrow_mut().remove(&app.path);
+    assert!(ledger.get(&app.id).unwrap().is_some(), "row exists before reset");
+
+    let privileged = scope::ScopeRoots::resolved(vec!["C:/Desktop".into()], vec!["C:/ProgramData".into()]).unwrap();
+    let out = {
+        let fake = FakePlatform::new(world.clone());
+        let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
+        ops.reset_to_original(&privileged, &mut journal, &mut ledger, &history).unwrap()
+    };
+
+    // The stale row was dropped (a local ledger op, no privileged desktop write) — no leak.
+    assert!(ledger.get(&app.id).unwrap().is_none(), "a deleted privileged icon's stale row is healed");
+    assert!(out.skipped.is_empty(), "a deleted icon is not a needs-elevation skip");
 }
 
 #[test]

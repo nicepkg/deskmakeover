@@ -11,6 +11,7 @@ mod common;
 mod icons;
 mod settings;
 mod style;
+mod tweaks;
 mod wallpaper;
 
 pub use common::{SystemInfoDto, ToastDto};
@@ -19,6 +20,10 @@ pub use icons::{
     IconPersistedDto, IconScanDto, LookVersionDto,
 };
 pub use settings::{Language, SettingsDto, SettingsPatch, Theme};
+pub use tweaks::{
+    CalmApplyOutcomeDto, CalmApplyRowDto, CalmGuidedProbeDto, CalmProbeRowDto, CalmProbeStateDto,
+    CalmRestoreOutcomeDto, CalmRestoreRowDto, CalmSkipReasonDto,
+};
 pub use style::{IconStyle, IconStyleError};
 pub use wallpaper::{
     MonitorBounds, ScreenInfoDto, ScreenOrientation, WallpaperPosition, WallpaperResultDto,

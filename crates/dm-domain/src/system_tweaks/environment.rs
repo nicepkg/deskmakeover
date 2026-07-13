@@ -54,21 +54,21 @@ impl WindowsEdition {
     }
 }
 
+/// The canonical `EditionID` spelling, its `GetProductInfo` SKU, and its normalized family for
+/// each known edition — matched case-insensitively.
 fn known_edition_id(edition_id: &str) -> Option<(&'static str, u32, WindowsEdition)> {
-    const KNOWN: &[(&str, u32, fn() -> WindowsEdition)] = &[
-        ("Core", 101, || WindowsEdition::Home),
-        ("CoreN", 98, || WindowsEdition::Home),
-        ("Professional", 48, || WindowsEdition::Pro),
-        ("ProfessionalN", 49, || WindowsEdition::Pro),
-        ("Enterprise", 4, || WindowsEdition::Enterprise),
-        ("EnterpriseN", 27, || WindowsEdition::Enterprise),
-        ("Education", 121, || WindowsEdition::Education),
-        ("EducationN", 122, || WindowsEdition::Education),
-    ];
-    KNOWN
-        .iter()
-        .find(|(id, _, _)| edition_id.eq_ignore_ascii_case(id))
-        .map(|(id, product, edition)| (*id, *product, edition()))
+    let (canonical, product, edition) = match () {
+        _ if edition_id.eq_ignore_ascii_case("Core") => ("Core", 101, WindowsEdition::Home),
+        _ if edition_id.eq_ignore_ascii_case("CoreN") => ("CoreN", 98, WindowsEdition::Home),
+        _ if edition_id.eq_ignore_ascii_case("Professional") => ("Professional", 48, WindowsEdition::Pro),
+        _ if edition_id.eq_ignore_ascii_case("ProfessionalN") => ("ProfessionalN", 49, WindowsEdition::Pro),
+        _ if edition_id.eq_ignore_ascii_case("Enterprise") => ("Enterprise", 4, WindowsEdition::Enterprise),
+        _ if edition_id.eq_ignore_ascii_case("EnterpriseN") => ("EnterpriseN", 27, WindowsEdition::Enterprise),
+        _ if edition_id.eq_ignore_ascii_case("Education") => ("Education", 121, WindowsEdition::Education),
+        _ if edition_id.eq_ignore_ascii_case("EducationN") => ("EducationN", 122, WindowsEdition::Education),
+        _ => return None,
+    };
+    Some((canonical, product, edition))
 }
 
 fn known_product_type(product_type: u32) -> Option<WindowsEdition> {

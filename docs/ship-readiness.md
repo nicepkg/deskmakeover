@@ -4,7 +4,8 @@
 > and it works" list. A standing companion to `STATE.md` (which is the ~150-line pointer); this doc
 > holds the detail. Update it in place as items close — it is a living tracker, not a dated snapshot.
 >
-> **Last reconciled:** 2026-07-12 (full repo audit — specs, plans, STATE, journal, code stubs).
+> **Last reconciled:** 2026-07-13 (icon-bridge convergence + extractor + ledger-aware source +
+> exportCompare + live positions + M7 resident decision core + version switch — all Mac-green).
 
 ## The one fact that frames everything
 
@@ -30,7 +31,7 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 | **M6-WIRE Wave B icon bridge (B1-B5)** | ✅ **CONVERGED — codex R12 = Approve (2026-07-13)** | 8 adversarial rounds R5→R12, ~50 findings fixed (4🔴→1🔴→0🔴×5→Approve); owner-informed residuals in §Icon-bridge. Windows runtime still [WV]. |
 | **M6-WIRE Wave B B10 (desktop watcher)** | ✅ DONE 2026-07-12 (`37f4b13`) | Real `notify`+`notify-debouncer-full`, Mac-live-verified (FSEvents), msvc-clean. 3 runtime semantics `[WV]` (self-write suppression / restart catch-up / overflow→rescan). |
 | **M6-WIRE Wave C (Windows handoff doc)** | **NOT STARTED** | Spec'd at `docs/references/windows-wiring-handoff/README.md` (m6-wire-host §8); directory does not exist. No systematic Windows verification recipe yet. |
-| **M7 resident auto-format** | **NOT STARTED** (design finalized: ADR-0022 + spec 07 + `m7-resident.md`) | `crates/dm-resident/src/lib.rs` is an empty crate (doc comment only), NOT wired into `src-tauri`. Tasks T1-T12 unbuilt. Precondition gate (B6-B10) is now green. |
+| **M7 resident auto-format** | **DECISION CORE DONE (Mac, 2026-07-13)** — platform bodies + tray [WV] | `dm-resident` built + 20 tests: reconciler (T6), tray SM (T7), pending queue (T5), consent ladder, stability probe, privileged red-line (T12). Plus style_resolve + native_bake (T1 port), version_switch (T10, wired `icons.switchVersion`), reset toggle-coupling, resident precondition. **Remaining = [WV] platform bodies:** T2 WindowsActivityMonitor (unwritten), T8 tray+windowless residency wiring (unwritten), T11 tray bitmaps (uncreated), the watcher→reconciler→driver LOOP wiring. |
 | **M8 release engineering + .NET deletion** | **NOT STARTED** | No installer / signing / updater; version `0.0.0`; `legacy/` .NET tree still present. See §Packaging. |
 | **M1 go/no-go spikes (Windows)** | PARTIAL | Only Spike 4 (tri-target pixel, Mac) done. Spikes 1/2/3/5 (STA+IFolderView, SysListView32 layout, elevated-helper roundtrip, kill-injected `.lnk`) are Windows-bound and **never run** — the ADR-0019 "gate for everything after" was never actually gated on a real box. |
 
@@ -47,18 +48,21 @@ Ordered by dependency. Tagged **[MAC]** (closable + verifiable here) or **[WIN]*
    fallback). Pure helpers (premul math / icon-location parse / %ENV% expand) Mac-unit-tested;
    msvc-clean, zero warnings. **[WV]: real pixels on the box** — shell image fidelity, Appx logo
    quality via the shell path, empty-bin pairing, alpha edge cases.
-   **codex extractor review (2026-07-13): 2🔴+3🟠+2🟡.** Fixed same-day: UINT_MAX failure sentinel
-   accepted as success (🟡6); the bin now ALWAYS advertises two sources (full stands in for a
-   missing empty — a 1-length shape baked applies the driver must reject, 🟠4). **OPEN — the next
-   Mac work items:** 🔴1 re-scan reads the STYLED output as the raw source (`Style(Style(orig))`
-   compounding; needs ledger-aware extraction — owned items whose fingerprint == last_applied must
-   extract from the ledger's `original_anchor`, not the live icon location); 🔴2 (adjacent,
-   pre-existing) `WindowsScanner` never yields the Recycle Bin — it is a shell-namespace virtual
-   item the oracle injects explicitly (`DesktopPreviewService.cs:96`), so the whole bin path is
-   dead on Windows until the scanner injects it; 🟠3 one bad item's extract Err fails the WHOLE
-   scan (needs per-item degradation via `styleable:false`/statusReason); 🟠5 monochrome HICONs
-   (hbmColor=NULL, double-height mask) unreachable branch → always fail; 🟠7 ≥260-unit resource
-   paths silently skip the 256px extractor (windows-rs projection limit).
+   **codex extractor review (2026-07-13): 2🔴+3🟠+2🟡 — ALL CLOSED.** Then a SECOND codex review of
+   the ledger-aware + scanner-injection work (2026-07-13, "icons2"): Request-Changes with 4🔴+5🟠+3🟡,
+   ALL CLOSED same-day (commit `893914d` + `69ed939`): 🔴1 committed-but-unledgered txn → the scan
+   overlays the JOURNAL on the ledger (Prepared anchor + Applied fingerprint), incomplete txn →
+   provenance-unknown degrade; 🔴2 epoch fence (a mutation during the slow extraction rejects the
+   publish); 🔴3 terminal anchor (an anchor-present item resolves a trusted original or Errs → per-item
+   degrade, never reads the styled live surface; folder desktop.ini gains IconFile/IconIndex + UTF-16
+   + relative-path; bin full/default tried independently); 🔴4 compare-sheet CORS (both frames are
+   compositor data: URLs); 🟠5 one apply-authority bit `ScannedItem.source_ok` (DTO styleable +
+   commit acceptance + restore planner share one definition; empty sentinel no longer carries
+   authority); 🟠6 wrapper provenance via a durable `SetDescription` marker (not structural guessing)
+   + reparse guard; 🟠7 before/after fidelity; 🟠8 export size caps + PNG-only; 🟠9 atomic export;
+   🟠12 unpredictable atomic scratch files; 🟡10 degraded tile clears; 🟡11 mock DOM-gate. All the
+   original OPEN items (ledger-aware extraction, Recycle Bin injection, per-item degradation, mono
+   HICON, long-path fallback) are DONE.
 2. **[WIN] WebView2 bridge-transport** — the `a339196` fix (route via `isTauri()`, not
    `window.chrome.webview`) is itself `[WV]`. If wrong, the app never boots on Windows. #1 thing to
    confirm on the box.
@@ -70,21 +74,26 @@ Ordered by dependency. Tagged **[MAC]** (closable + verifiable here) or **[WIN]*
 5. **[WIN] The four §8a durability/atomicity defects** (all P1, data-loss / CAS-poisoning, none
    Mac-fixable): symlink-following `.lnk` temp; non-write-through "durable publish"; overlay snapshot
    not durable before the HKLM write; overlay snapshot-once cross-process race.
-6. **[MAC] `shell/layout.rs` positions** (returns empty Vec), **`ItemKind::System`** read/anchor/apply
-   (3 sites return `Unsupported` — This-PC/Network/Control-Panel CLSID icons unstyleable), and
-   **`icons.exportCompare`** (`ok:false` both sides — the before/after sheet compositor doesn't exist).
-   The compare sheet is fully Mac-buildable; System CLSID + positions are blind-writable + `[WIN]`.
+6. ~~[MAC] `shell/layout.rs` positions~~ → ✅ **BLIND-WRITTEN (2026-07-13)**: technique A
+   (`IFolderView2::GetItemPosition` walk) behind a `DesktopGeometryReader` port; host matches live
+   slots by name, degrades to the synthetic grid; msvc-clean, runtime `[WV]`.
+   ~~`icons.exportCompare`~~ → ✅ **DONE (2026-07-13)**: webview composes the branded before/after
+   sheet (both frames compositor-rendered → same-origin data: URLs, no CORS taint), Rust validates +
+   atomically saves to Pictures. **`ItemKind::System`** read/anchor/apply (3 sites still return
+   `Unsupported` — This-PC/Network/Control-Panel CLSID icons unstyleable) remains blind-writable + `[WIN]`.
 7. **[WIN] M1 spikes 1/2/3/5** — the ADR-0019 go/no-go gates, never run.
 
 ## Genuinely unimplemented (stubs / `Err` / `ok:false`) — no `todo!()` in the tree, the discipline is honest failure returns
 
 | Site | What it should do | Where |
 |---|---|---|
-| `source.rs:39` | Windows icon-source extraction (ship-blocker §1) | dm-windows |
-| `shell/layout.rs:32` | desktop icon positions (returns `Vec::new()`) | dm-windows |
-| `state_reader.rs:120,138` + `apply/mod.rs:63` | `ItemKind::System` read/anchor/apply (return `Unsupported`) | dm-windows |
-| `icon_host.rs:454` + `mock-desktop.ts:382` | `icons.exportCompare` compare sheet | src-tauri + web |
-| `crates/dm-resident/src/lib.rs` | the ENTIRE M7 crate (reconciler, queue, tray SM, consent, reset, switch, activity monitor) — 0% | dm-resident |
+| ~~`source.rs`~~ | ✅ DONE — full extractor + ledger-aware + journal overlay, runtime `[WV]` | dm-windows |
+| ~~`shell/layout.rs`~~ | ✅ DONE — technique A positions + geometry behind `DesktopGeometryReader`, runtime `[WV]` | dm-windows |
+| `state_reader.rs:120,138` + `apply/mod.rs:63` | `ItemKind::System` read/anchor/apply (return `Unsupported`) — STILL a stub | dm-windows |
+| ~~`icon_host.rs` exportCompare~~ | ✅ DONE — webview composes, Rust validates + saves | src-tauri + web |
+| ~~`crates/dm-resident`~~ | ✅ DECISION CORE DONE (20 tests) — reconciler/queue/tray-SM/consent/stability/version-switch. Remaining = `WindowsActivityMonitor` body + T8 tray/residency wiring + the reconcile-loop driver, all `[WV]` | dm-resident |
+| `WindowsActivityMonitor` (T2) | `SetWinEventHook` desktop-scoped activity detection — NOT WRITTEN | dm-windows |
+| `src-tauri` tray (T8/T11) | tray-icon feature, §12 menu, windowless close handler, autostart, tray bitmaps — NOT WIRED | src-tauri |
 
 ## `[WINDOWS-VERIFY]` surface (blind-written, msvc-clean, never run)
 

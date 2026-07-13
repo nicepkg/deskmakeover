@@ -163,19 +163,50 @@ x86_64-pc-windows-msvc` green. The full-workspace msvc check stays blocked only 
    `WindowsOverlayControl` `runas` roundtrip; UAC-cancel → `Declined`; requireAdministrator manifest
    embedded at packaging.
 8. Wallpaper: `IDesktopWallpaper` capture/set/restore across monitors.
-9. **Stubs to implement on Windows**: `shell/layout.rs` (IFolderView2 `GetItemPosition` /
-   SysListView32 positions) still returns an empty `Vec` — real positions unwired.
-   `source.rs` `WindowsIconSourceExtractor` — **BODY BLIND-WRITTEN (2026-07-13), no longer an
-   `Err` stub** (oracle `legacy/.../ShellIconCanvasSource.cs`): shortcut icon-resources via
-   `PrivateExtractIconsW`→`ExtractIconExW`, everything else `IShellItemImageFactory::GetImage`
+9. **`shell/layout.rs` — DESKTOP GEOMETRY + POSITIONS NOW BLIND-WRITTEN (2026-07-13), no longer an
+   empty stub.** Technique A (oracle `FolderViewInterop.cs`) via windows-rs projections:
+   `IShellWindows::FindWindowSW(SWC_DESKTOP)` → `IServiceProvider::QueryService(SID_STopLevelBrowser)`
+   → `QueryActiveShellView` → `IFolderView2 { ItemCount, Item, GetItemPosition }` +
+   `IShellFolder::GetDisplayNameOf`; geometry from `SM_C*SCREEN` + `SPI_GETWORKAREA`. Behind a new
+   `DesktopGeometryReader` port; the host matches live slots to scan items BY NAME (oracle rule) and
+   degrades per-item to the synthetic grid. Technique B (SysListView32 + ReadProcessMemory) stays
+   the documented fallback if A proves unreliable. msvc-clean. **Please [WV]**: (a) `icons.scan`
+   positions match the real desktop layout; (b) a headless/denied-QI session degrades to the grid
+   without error; (c) side-docked taskbar → taskbar_height reads 0 and the grid tolerates it.
+   `source.rs` `WindowsIconSourceExtractor` — **BODY BLIND-WRITTEN (2026-07-13), + codex-review
+   hardened + ledger-aware (2026-07-13)** (oracle `legacy/.../ShellIconCanvasSource.cs`): shortcut
+   icon-resources via `PrivateExtractIconsW`→`SHDefExtractIconW` (≥MAX_PATH long paths)→
+   `ExtractIconExW`, everything else `IShellItemImageFactory::GetImage`
    (ICONONLY|BIGGERSIZEOK, premultiplied→straight), Recycle Bin full+empty pair from the per-user
-   CLSID `DefaultIcon` values, HICON via `GetIconInfo` (straight alpha + AND-mask legacy fallback).
-   msvc-clean; pure pixel/parse helpers Mac-tested. **Please [WV] on the box**: (a) `icons.scan`
+   CLSID `DefaultIcon` values, HICON via `GetIconInfo` (straight alpha + AND-mask legacy fallback +
+   monochrome hbmColor=NULL double-height AND/XOR split). **Ledger-aware re-scan (codex icons2-🔴1/🔴3):**
+   the host passes the captured original anchor for an item whose LIVE surface == its last-applied
+   fingerprint (our own styled output), so extraction derives the TRUE original from anchor material
+   (original `.lnk`/`.url` bytes materialized to a temp sibling → IShellLink icon-location; original
+   `desktop.ini` IconResource/IconFile+IconIndex, relative-resolved; captured bin registry values)
+   instead of compounding `Style(Style(orig))`. The anchor path is TERMINAL — an unresolvable anchor
+   ERRORS → per-item degrade, never reads the styled live surface. A committed-but-unledgered txn's
+   journal overlays the ledger; an incomplete txn → provenance-unknown → degraded. msvc-clean; pure
+   pixel/parse/ini helpers Mac-tested. **Please [WV] on the box**: (a) `icons.scan`
    returns real 256px pixels for every item kind (shortcut/folder/file/Appx/RecycleBin) and the
    webview renders them over `dmicon://`; (b) the bin advertises TWO sources (full+empty) when the
    per-user DefaultIcon values exist, and degrades to one otherwise; (c) alpha looks right (no
    dark premultiplied halos, no opaque squares from legacy icons); (d) a shortcut whose icon
-   resource is unreadable (Electron/Store) still gets the shell image.
+   resource is unreadable (Electron/Store) still gets the shell image; (e) **APPLY → RE-SCAN → APPLY
+   AGAIN does NOT darken/compound** (the ledger-aware original extraction is the whole point — a
+   styled icon re-scanned must serve its ORIGINAL, verify the bytes don't double-style); (f) a temp
+   `.lnk`/`.url` materialized under a non-ASCII `%TEMP%` username loads via IShellLink; (g) a
+   monochrome (16-colour) legacy HICON renders with correct transparency.
+   `scan.rs` **NOW INJECTS THE VIRTUAL RECYCLE BIN (2026-07-13, codex icons2-🔴2)** — a
+   shell-namespace item the filesystem walk can't see (oracle `DesktopPreviewService.AddRecycleBin`):
+   CLSID parsing name `::{645FF040-…}` + localized display name via `IShellItem::GetDisplayName`;
+   plus **wrapper reunification** — a `.lnk` this app created (proven by a durable `SetDescription`
+   ownership marker `DeskMakeover:file-wrapper:v1`, NOT structural guessing) re-presents its
+   Hidden+System original as the RegularFile item, so a wrapped file keeps one identity across
+   re-scans. **Please [WV]**: (a) the Recycle Bin appears as a styleable tile with full/empty art;
+   (b) a wrapped loose file shows ONCE (as the original, not a duplicate .lnk) and its custom-icon
+   shortcut siblings are untouched; (c) a user's own Hidden+System file beside a same-named .lnk is
+   NOT mistaken for our wrapper.
    `watcher.rs` — **DONE (B10, 2026-07-12): now a real `notify` + `notify-debouncer-full`
    watcher, NOT a `ReadDirectoryChangesW` stub.** The primitive is cross-platform so the
    debounce + event-mapping core is unit-tested + live-verified on the Mac host (a real FSEvents
@@ -236,6 +267,41 @@ by the finding they close:
     slideshow, apply then restore; confirm the original returns, not a leftover DeskMakeover image.
 20. **Recovery wiring:** confirm `dm_operations::recover()` runs at Tauri startup before any apply
     surface is exposed (today `src-tauri/src/lib.rs` only opens the settings store).
+
+## M7 resident auto-format — decision core DONE on Mac (2026-07-13), platform bodies + tray [WV]
+
+The `dm-resident` decision engine (spec 07) is fully built + Mac-tested (563→570 workspace tests):
+`style_resolve` (the frontend resolve ladder ported to Rust), `native_bake` (webview-less
+RenderSession bake), the reconciler (classify → queue privileged → gate unstable → flag conflicts →
+propose/silently-apply, per-icon activity re-check), `consent` (3-batch silent tier + 60d/partial-
+reversion freshness downgrade), `pending_privileged` (§14 queue), `tray_state` (5-state machine +
+exhaustive gate), `stability` (two-cycle settle probe), plus `version_switch` (spec §9 projection,
+wired as `icons.switchVersion`), the reset toggle-coupling, and the resident precondition guard.
+The §14 red line is STRUCTURAL — `dm-resident` has no `dm-elevated`/`OverlayControl` dependency, so
+background elevation cannot compile. Incremental applies write ONLY store ① via the shared
+`TxnDriver::apply`. **Please [WV] on the box — these are platform bodies the decision core drives
+but that cannot run on Mac:**
+
+- **T2 `WindowsActivityMonitor` (NOT YET WRITTEN):** `SetWinEventHook` on DRAGDROP/CAPTURE scoped to
+  the desktop `SysListView32` handle + `GetForegroundWindow`/`GetLastInputInfo` fallback. The
+  reconciler consumes an `ActivityMonitor` port; the Windows impl is a remaining blind-write. Verify
+  a real desktop drag suppresses a pending batch ≥1.5s past release.
+- **T8 tray + windowless residency (NOT YET WIRED):** `tauri` `features=["tray-icon"]`, the §12 tray
+  menu, `on_window_event(CloseRequested)` → destroy WebView + stay resident, autostart registration
+  gated on the toggle. Verify: closing the window keeps the process alive; the tray renders the
+  5-state glyph; toggling automation off leaves zero autostart residue.
+- **T11 tray bitmaps + theme switch (NOT YET CREATED):** light/dark 16/20/24/32px pairs switched on
+  `AppsUseLightTheme`/`WM_SETTINGCHANGE` (Windows has no `icon_as_template`). Verify the glyph swaps
+  on a light/dark toggle without a restart.
+- **The reconcile LOOP driver (NOT YET WIRED):** a background thread consuming `watch_desktops`
+  events + a periodic full reconcile (the notify-8.2 overflow backstop, item 9c). The reconciler
+  BODY is done + tested over fakes; the real watcher→reconciler→driver loop only runs on Windows.
+  Verify the burst test (temp-write→rename storm → exactly one format per final item) and that a
+  mid-batch desktop drag stops the batch and the remainder applies once idle.
+- **`icons.switchVersion` on the box:** switch between two saved appearances; new icons since the
+  saved version get picked up, vanished ones don't orphan, a hand-edited icon is CAS-skipped.
+- **Reset coupling on the box:** a full reset turns the auto-format toggle OFF and lifts the arrow
+  overlay (one UAC) as well as clearing ②.
 
 **Cross-crate need for the icon-core agent** `[icon-core-need]`: content-addressed ICO assembly
 (`dm-icon-codec::write_ico(frames) -> bytes` + content hash) for the ledger `AssetRef`; the

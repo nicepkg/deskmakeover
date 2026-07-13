@@ -10,6 +10,30 @@
 > recorded, not fixed; their categorization is cross-checked against `ship-readiness.md` (§8a
 > durability defects, §[WV] surface) which already tracks most Windows-runtime items.
 
+## Progress log
+
+- **2026-07-13 — B1 §14 fail-closed (audit F2) — DONE + codex-reviewed.** `ScopeRoots` enum
+  (`Unprivileged` | `Resolved(ResolvedRoots)` | `Unresolved`) replaces the fail-open two-slice API;
+  the Windows host passes `Unresolved` (fail closed until known-folder resolution [WV]). Commits
+  `f21a4d1` + the review-fix follow-up. **codex B1 re-review: 🔴 + 🟠 found and FIXED** — the public
+  `Resolved{..}` variant was still constructible fail-open (now a private `ResolvedRoots` inner struct
+  + `resolved()` rejects roots that normalize to nothing); the reconciler flooded the pending queue on
+  `Unresolved` (now defers the whole cycle via `is_resolved()`). codex also **confirmed a BROADER gap
+  the fix did not close → tracked as F2b below.**
+
+### F2b — the scope gate does NOT dominate EVERY mutation (reset + recovery) — codex B1-🔴
+`reset_to_original` (`icons/mod.rs:524`→`applier.restore` ~600) and crash `recovery`
+(`txn/recovery.rs:277`, called at startup `lib.rs:258` + `version_switch:78` + `reconciler:143`)
+restore/remove ledger+journal targets with NO privileged-scope check. So even with B1, a privileged
+item that entered the ledger (old fail-open era, or the legitimate elevated path) can be touched by
+reset/recovery. **Disposition: OWNER + follow-up batch.** Nuance: reset is user-initiated (supervised,
+not silent automation) and recovery only completes txns already begun through the (now-gated) path, and
+a non-elevated restore of a real privileged target simply FAILS rather than corrupting — so this is
+lower-reachability than the raw 🔴 implies. But it IS a real "gate doesn't dominate" gap. Ace
+recommends: gate reset+recovery to SKIP (leave untouched + surface) privileged/`Unresolved`-scope
+targets rather than blind-restore. Needs the "what should reset do with a privileged ledger row"
+decision — see Owner decisions.
+
 ## Disposition codes
 
 | Code | Meaning |
@@ -191,6 +215,12 @@ PERF backlog (F9) + god-module splits: after correctness batches, opportunistic.
    now (blind + [WV]) or leave stubbed for v1? Ace recommends blind-writing it (Boss wants max done here).
 5. **Non-square source policy (F7).** Guarantee-square-at-ingress vs make-analysis-shape-aware. Ace
    recommends an explicit square-normalize-or-reject at the session boundary + keep goldens square.
+6. **reset/recovery privileged-scope gating (F2b, codex B1-🔴).** Should `reset_to_original` and crash
+   `recovery` SKIP privileged / `Unresolved`-scope ledger+journal targets (leave them untouched +
+   surface), or blind-restore them (today's behavior)? Ace recommends SKIP+surface (a privileged row
+   is either old-fail-open debris or belongs to the elevated path, neither of which a non-elevated
+   background restore should silently touch). This is the follow-up batch that finishes "the gate
+   dominates every mutation."
 
 ## Not Mac-fixable — reconcile into ship-readiness §8a / §[WV]
 

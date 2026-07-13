@@ -140,6 +140,12 @@ export class WasmIconRenderer {
    *  COPY detached from linear memory (safe to keep or transfer), or null when
    *  the source is not registered / no config is set (caller retries). */
   render(id: string, config: ConfigDto, isShortcut: boolean, showOriginal: boolean, size: number, opts?: RenderOpts): Uint8ClampedArray<ArrayBuffer> | null {
+    // The reused `out` buffer is exactly MASTER_SIZE²·4 bytes; a larger size would make the wasm copy
+    // past it and corrupt linear memory. The wasm refuses this (code 6), but reject it here too for a
+    // clear early error (codex R2 C-1) — the preview path is contracted to size ≤ MASTER_SIZE.
+    if (!Number.isInteger(size) || size < 1 || size > MASTER_SIZE) {
+      throw new Error(`dm_session_render size ${size} out of range (1..=${MASTER_SIZE})`)
+    }
     this.ensureConfig(config)
     const idLen = this.writeId(id)
     const fieldSeed = opts?.fieldSeed ?? null

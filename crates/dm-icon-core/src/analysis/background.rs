@@ -152,22 +152,31 @@ impl RingAccumulator {
 }
 
 fn try_uniform_rect_ring(c: &Raster, inset: usize, tolerance: i32) -> Option<Rgba> {
-    // A ring inset past the canvas has no pixels (and `c.width - 1 - inset` would
-    // underflow on a tiny fully-opaque source, e.g. a 3×3 board).
-    if inset + 1 >= c.width {
+    // A ring inset past EITHER axis has no pixels (and `dim - 1 - inset` would underflow on a tiny
+    // fully-opaque source, e.g. a 3×3 board). The frozen TS used `width` for BOTH axes, so a
+    // non-square raster read past the row and PANICS in `pixel_at` (which does no bounds check) — audit
+    // F7 / codex R2 C-3: `RenderSession` guards this by dropping non-square, but `SourceFacts::compute`,
+    // the free renderer, and `batch::IconJob` all analyze directly. This is the dimension-safe form,
+    // BYTE-IDENTICAL for the square 256² masters the pipeline normalises to (same pixel multiset — only
+    // the accumulation order changes, and `RingAccumulator::resolve` is order-independent).
+    if inset + 1 >= c.width || inset + 1 >= c.height {
         return None;
     }
     let min = inset;
-    let max = c.width - 1 - inset;
-    if max <= min {
+    let max_x = c.width - 1 - inset;
+    let max_y = c.height - 1 - inset;
+    if max_x <= min || max_y <= min {
         return None;
     }
     let mut acc = RingAccumulator::new();
-    for i in min..=max {
-        acc.add(pixel_at(c, i, min));
-        acc.add(pixel_at(c, i, max));
-        acc.add(pixel_at(c, min, i));
-        acc.add(pixel_at(c, max, i));
+    // Top + bottom edges walk x; left + right edges walk y (corners double-counted, exactly as before).
+    for x in min..=max_x {
+        acc.add(pixel_at(c, x, min));
+        acc.add(pixel_at(c, x, max_y));
+    }
+    for y in min..=max_y {
+        acc.add(pixel_at(c, min, y));
+        acc.add(pixel_at(c, max_x, y));
     }
     acc.resolve(tolerance, 0.9, 0.95)
 }
@@ -238,5 +247,39 @@ fn opaque_column_span(c: &Raster, x: usize, min_y: usize, max_y: usize) -> Optio
         Some((top as usize, bottom as usize))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A solid-colour raster of arbitrary dimensions (fully opaque).
+    fn solid(width: usize, height: usize, r: u8, g: u8, b: u8) -> Raster {
+        let mut data = vec![0u8; width * height * 4];
+        for px in data.chunks_exact_mut(4) {
+            px.copy_from_slice(&[r, g, b, 255]);
+        }
+        Raster { width, height, data }
+    }
+
+    #[test]
+    fn non_square_rasters_do_not_panic_in_the_rect_ring() {
+        // codex R2 C-3: the rect ring used `width` for BOTH axes, so `pixel_at` (no bounds check)
+        // indexed past the buffer on a non-square raster and PANICKED. RenderSession drops non-square,
+        // but SourceFacts::compute / the free renderer / batch analyze directly. A wide AND a tall
+        // raster must both analyze without panicking.
+        for (w, h) in [(256usize, 128usize), (128, 256), (200, 50), (50, 200), (3, 3)] {
+            let _ = try_detect_background(&solid(w, h, 40, 120, 200));
+        }
+    }
+
+    #[test]
+    fn a_uniform_square_still_detects_its_background() {
+        // Square parity untouched: a solid 256² board is a background.
+        assert_eq!(
+            try_detect_background(&solid(256, 256, 40, 120, 200)),
+            Some(Rgba { r: 40, g: 120, b: 200, a: 255 })
+        );
     }
 }

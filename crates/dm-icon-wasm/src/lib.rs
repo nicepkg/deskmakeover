@@ -196,15 +196,22 @@ pub unsafe extern "C" fn dm_session_set_config(
     }
 }
 
+/// The largest render `size` the session ABI accepts. Sources register at 256² masters and the M6
+/// preview clamps display size to this; the JS loader's reused `out` buffer is exactly this²·4 bytes.
+/// A request above it is refused (code 6) so a render can never overrun the caller's buffer.
+pub const MAX_RENDER_SIZE: usize = 256;
+
 /// Render a registered source under the current look into `out`
 /// (`size × size × 4` bytes). `field_seed` is the hue-spread-adjusted seed as a
 /// packed `0xRRGGBB` int, applied only when `has_field_seed != 0`.
 /// Returns 0 ok; 1 null handle/ptr; 2 non-UTF-8 id; 3 zero/overflowing size;
-/// 4 unknown id or no look set; 5 output length mismatch (never expected).
+/// 4 unknown id or no look set; 5 output length mismatch (never expected);
+/// 6 size exceeds `MAX_RENDER_SIZE` (would overrun the caller's fixed buffer).
 ///
 /// # Safety
 /// `id_ptr[..id_len]` readable and `out[..size*size*4]` writable inside linear
-/// memory.
+/// memory. The caller MUST size `out` for at least `MAX_RENDER_SIZE²·4` bytes;
+/// a `size` above that ceiling is refused (code 6) rather than written past `out`.
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn dm_session_render(
@@ -230,6 +237,14 @@ pub unsafe extern "C" fn dm_session_render(
     let sz = size as usize;
     if sz == 0 {
         return 3;
+    }
+    // The caller's `out` is the fixed MAX_RENDER_SIZE²·4 master-size scratch buffer (wasm-loader.ts):
+    // the M6 preview path clamps display size to the master and never renders larger. Enforce that
+    // ceiling HERE too (codex R2 C-1) — a caller passing size > MAX would otherwise render a huge tile
+    // (OOM risk) and then copy size²·4 bytes PAST the buffer, corrupting adjacent linear memory. The
+    // `tile.data.len() != out_len` check below proves the RENDERED length, never that `out` OWNS it.
+    if sz > MAX_RENDER_SIZE {
+        return 6;
     }
     let Some(out_len) = sz.checked_mul(sz).and_then(|n| n.checked_mul(4)) else {
         return 3;
@@ -430,6 +445,26 @@ mod tests {
             // Unknown id after a look is set → 4.
             assert_eq!(dm_session_set_config(s, cfg.as_ptr(), cfg.len()), 0);
             assert_eq!(dm_session_render(s, b"z".as_ptr(), 1, 0, 0, 256, 0, 0, out.as_mut_ptr()), 4);
+            dm_session_free(s);
+        }
+    }
+
+    #[test]
+    fn oversize_render_is_refused_before_any_buffer_overrun() {
+        // codex R2 C-1: a size above MAX_RENDER_SIZE must return code 6 BEFORE rendering — never render
+        // a huge tile or copy past the caller's fixed 256²·4 buffer. The check precedes the id lookup,
+        // so it fires even for a registered source, and `out` is sized only for the master.
+        let src = solid(256, 256, [30, 120, 200, 255]);
+        let cfg = spectrum_bytes();
+        let s = dm_session_new();
+        let mut out = vec![0u8; MAX_RENDER_SIZE * MAX_RENDER_SIZE * 4];
+        unsafe {
+            assert_eq!(dm_session_register(s, b"a".as_ptr(), 1, 0xABCD, src.as_ptr(), 256, 256), 0);
+            assert_eq!(dm_session_set_config(s, cfg.as_ptr(), cfg.len()), 0);
+            // Exactly the master renders; one past it is refused.
+            assert_eq!(dm_session_render(s, b"a".as_ptr(), 1, 0, 0, MAX_RENDER_SIZE as u32, 0, 0, out.as_mut_ptr()), 0);
+            assert_eq!(dm_session_render(s, b"a".as_ptr(), 1, 0, 0, (MAX_RENDER_SIZE + 1) as u32, 0, 0, out.as_mut_ptr()), 6);
+            assert_eq!(dm_session_render(s, b"a".as_ptr(), 1, 0, 0, 4096, 0, 0, out.as_mut_ptr()), 6);
             dm_session_free(s);
         }
     }

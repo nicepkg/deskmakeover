@@ -47,6 +47,14 @@ export const settle: Variants = {
 export const bloomStaggerMs = 42
 export const settleStaggerMs = 24
 
+/** 清爽 schematic — a noise element leaving the screen = 「变安静」 made literal.
+ *  SVG scaleY needs transformBox:'fill-box' set at the usage site; reduced-motion
+ *  callers animate opacity only. */
+export const noiseExit: Variants = {
+  present: { opacity: 1, scaleY: 1 },
+  quiet: { opacity: 0, scaleY: 0, transition: { duration: 0.3, ease: [0.33, 1, 0.68, 1] } },
+}
+
 /**
  * Snap pulse (spec 04 §3 / §3.5) — a zone pops scale 1.02→1.0 in 80ms when its
  * snapped cell changes during create / move / resize. Driven imperatively via

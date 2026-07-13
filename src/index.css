@@ -385,3 +385,28 @@
   app-region: no-drag;
   -webkit-app-region: no-drag;
 }
+
+/* 清爽 schematic hover linkage (viz panel 2026-07-13): hovering a row wakes its
+   mini-screen — the wash deepens and the armed pulse dot breathes. Pure CSS so
+   13 SVGs never re-render on hover; the animation half respects reduced motion. */
+@keyframes ping-soft {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+.group\/calmrow:hover .calm-wash {
+  fill-opacity: 0.2;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .group\/calmrow:hover .calm-pulse {
+    animation: ping-soft 1.2s ease-in-out infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+}

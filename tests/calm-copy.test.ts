@@ -73,7 +73,7 @@ describe('calm copy gate', () => {
   })
 
   test('precision: Start copy is scoped and never promises removal of every promo/account surface', () => {
-    expect(zhHans.Calm_StartRecs_Desc).toContain('开始菜单')
+    // WHERE now lives in the row schematic; the desc keeps the honest scope note.
     expect(zhHans.Calm_StartRecs_Desc).toContain('保留') // the honest keeps-your-files note
     expect(en.Calm_StartRecs_Desc).toContain('stay')
     for (const k of calmKeys) {

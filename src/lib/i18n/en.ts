@@ -85,7 +85,7 @@ export const en = {
   "Calm_Held_Managed": "Managed by your organization",
   "Calm_Held_NotYet": "Not yet on this build",
   "Calm_Held_Reason_Uncertified": "To avoid breaking anything, these are not yet verified on your Windows build, so we leave them alone.",
-  "Calm_HeroPromise": "Quiet the recommendations Windows keeps pushing at you. Bring them back anytime.",
+  "Calm_HeroPromise": "Quiet the recommendations Windows keeps pushing at you.",
   "Calm_ListJoin": ", ",
   "Calm_LockStatus": "Lock screen extras",
   "Calm_LockStatus_Desc": "No more weather and news cards",

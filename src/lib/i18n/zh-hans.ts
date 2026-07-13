@@ -87,7 +87,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Calm_Held_Managed": "由你的组织管理，无法更改",
   "Calm_Held_NotYet": "此版本暂不提供",
   "Calm_Held_Reason_Uncertified": "为了不动坏东西，这几项还没在你的 Windows 版本上验证过，暂时不碰。",
-  "Calm_HeroPromise": "把 Windows 悄悄塞给你的推荐和推送收起来，随时可以恢复。",
+  "Calm_HeroPromise": "把 Windows 悄悄塞给你的推荐和推送收起来。",
   "Calm_ListJoin": "、",
   "Calm_LockStatus": "锁屏推送",
   "Calm_LockStatus_Desc": "不再显示天气、资讯卡片",

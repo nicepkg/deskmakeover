@@ -3,12 +3,13 @@ import type { ReactNode } from 'react'
 import { Check, ChevronDown, ExternalLink, Info, RotateCcw } from 'lucide-react'
 import { InspectorCard } from '@/components/common/inspector'
 import { ConfirmSheet } from '@/components/common/ceremony'
+import { Confetti, useCelebration } from '@/components/common/confetti'
 import { FullPage } from '@/components/shell/full-page'
 import { CtaButton, type HeroPhase } from '@/components/common/cta-button'
 import { SurfaceSchematic, applyStaggerDelay } from '@/components/calm/surface-schematic'
 import { controlById, type CalmControl, type CalmControlId } from '@/lib/calm/catalog'
 import type { CalmRowState } from '@/lib/calm/states'
-import { applyCandidates, countOwnedWrites, countQuieted, groupedRows, reopenedRows, useCalm } from '@/stores/calm'
+import { applyCandidates, countQuieted, countRestorable, groupedRows, reopenedRows, useCalm } from '@/stores/calm'
 import { format, useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -25,6 +26,9 @@ export function CalmPage() {
   const rows = useCalm((s) => s.rows)
   const excluded = useCalm((s) => s.excluded)
   const [confirmOpen, setConfirmOpen] = React.useState(false)
+  // Same celebration as the icons/wallpaper applies (DRY, owner 2026-07-13):
+  // corner-ribbon confetti on the FIRST successful 一键清爽 of this launch.
+  const { celebrateKey, celebrate } = useCelebration('calm-apply')
 
   // Guided return-probe: when the window regains focus after a walk, re-check the
   // walked row (readable rows confirm themselves; unreadable ones ask the user).
@@ -36,9 +40,15 @@ export function CalmPage() {
 
   const groups = groupedRows(rows)
   const quieted = countQuieted(rows)
-  const owned = countOwnedWrites(rows)
+  // Restore gates on LEDGER rows (intact writes + drifted reopened) — when every
+  // write drifts, the restore/disown entrance must survive (codex R5 #1).
+  const restorable = countRestorable(rows)
   const candidates = applyCandidates(rows, excluded)
-  const reopened = reopenedRows(rows)
+  // ONE actionable set feeds the notice, its button AND the hero phase — an
+  // excluded reopened row is user-silenced, but its existence still blocks any
+  // 「已清爽」 claim (codex R5 #2: two truths must never contradict on screen).
+  const reopenedAll = reopenedRows(rows)
+  const reopenedActionable = reopenedAll.filter((id) => !excluded.has(id))
   const awaiting = groups.oneClick.filter((id) => rows[id] === 'setAwaiting').length
 
   // Honest hero phases: ready only with real candidates; synced only when our
@@ -53,8 +63,8 @@ export function CalmPage() {
           ? 'ready'
           : awaiting > 0
             ? 'scanning'
-            : quieted > 0
-              ? 'synced'
+            : quieted > 0 && reopenedAll.length === 0
+              ? 'synced' // never 「已清爽」 while ANY row sits reopened
               : 'scanning'
   const ctaLabel =
     op === 'restore'
@@ -82,12 +92,13 @@ export function CalmPage() {
             </p>
             <p className="mt-1.5 text-[12px] leading-relaxed text-t3">{t('Calm_HeroPromise')}</p>
             {/* HealthCheck re-propose (spec 08 §6): additive notice, never an
-                auto-replay — 重新关闭 runs the same verify pipeline, scoped. */}
-            {reopened.length > 0 && (
+                auto-replay — 重新关闭 runs the same verify pipeline, scoped to
+                the ACTIONABLE set (excluded rows are user-silenced). */}
+            {reopenedActionable.length > 0 && (
               <p className="mt-2.5 flex items-center gap-2 text-[12.5px] font-medium text-t1">
                 <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-amber" />
-                {format(t('Calm_Notice_Reopened'), reopened.length)}
-                <ChipButton onClick={() => void useCalm.getState().applyAll(reopened)}>
+                {format(t('Calm_Notice_Reopened'), reopenedActionable.length)}
+                <ChipButton onClick={() => void useCalm.getState().applyAll(reopenedActionable)}>
                   {t('Calm_Notice_ReClose')}
                 </ChipButton>
               </p>
@@ -103,8 +114,8 @@ export function CalmPage() {
             >
               {ctaLabel}
             </CtaButton>
-            {/* Restore gates on OWNED writes, not the verified count. */}
-            {owned > 0 && (
+            {/* Restore gates on live LEDGER rows, not the verified count. */}
+            {restorable > 0 && (
               <button
                 type="button"
                 onClick={() => void useCalm.getState().restoreAll()}
@@ -152,10 +163,16 @@ export function CalmPage() {
         cancelLabel={t('Calm_Confirm_Cancel')}
         onConfirm={() => {
           setConfirmOpen(false)
-          void useCalm.getState().applyAll()
+          void useCalm.getState().applyAll().then(() => {
+            // Celebrate only a VERIFIED win — never a lost reply or all-skipped run.
+            const sum = useCalm.getState().lastApply
+            if (sum && sum.verified > 0) celebrate()
+          })
         }}
         onCancel={() => setConfirmOpen(false)}
       />
+      {/* First-apply confetti cannons — the shared icons/wallpaper celebration. */}
+      <Confetti fireKey={celebrateKey} />
     </FullPage>
   )
 }
@@ -165,10 +182,10 @@ export function CalmPage() {
 function Group({ label, subtitle, footer, children }: { label: string; subtitle: string; footer?: string; children: ReactNode }) {
   return (
     <section>
-      <p className="mb-0.5 px-1 text-[15px] font-medium text-t1">{label}</p>
-      <p className="mb-2 px-1 text-[11.5px] text-t3/80">{subtitle}</p>
+      <p className="mb-0.5 px-1 text-[16px] font-medium text-t1">{label}</p>
+      <p className="mb-2 px-1 text-[11.5px] text-t3">{subtitle}</p>
       <InspectorCard>{children}</InspectorCard>
-      {footer && <p className="mt-2 px-1 text-[11px] leading-relaxed text-t3/70">{footer}</p>}
+      {footer && <p className="mt-2 px-1 text-[11px] leading-relaxed text-t3">{footer}</p>}
     </section>
   )
 }
@@ -184,13 +201,13 @@ function HeldGroup({ ids, rows }: { ids: CalmControlId[]; rows: Record<CalmContr
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="mb-0.5 flex items-center gap-1.5 px-1 text-[15px] font-medium text-t1 transition-colors hover:text-coral-ink"
+        className="mb-0.5 flex items-center gap-1.5 px-1 text-[16px] font-medium text-t1 transition-colors hover:text-coral-ink"
       >
         <ChevronDown size={14} className={cn('text-t3 transition-transform', !open && '-rotate-90')} />
         {t('Calm_Group_Held')}
         <span className="rounded-full bg-chip px-1.5 py-0.5 text-[11px] font-normal text-t3">{ids.length}</span>
       </button>
-      <p className="mb-2 px-1 pl-6 text-[11.5px] text-t3/80">{t('Calm_Group_Held_Sub')}</p>
+      <p className="mb-2 px-1 pl-6 text-[11.5px] text-t3">{t('Calm_Group_Held_Sub')}</p>
       {open && (
         <>
           <InspectorCard>
@@ -199,7 +216,7 @@ function HeldGroup({ ids, rows }: { ids: CalmControlId[]; rows: Record<CalmContr
             ))}
           </InspectorCard>
           {hasUncertified && (
-            <p className="mt-2 px-1 text-[11.5px] leading-relaxed text-t3/70">{t('Calm_Held_Reason_Uncertified')}</p>
+            <p className="mt-2 px-1 text-[11.5px] leading-relaxed text-t3">{t('Calm_Held_Reason_Uncertified')}</p>
           )}
         </>
       )}
@@ -238,7 +255,7 @@ function RowShell({
         <p className="text-[14px] font-medium text-t1">{t(control.labelKey)}</p>
         <p className="mt-0.5 text-[12px] text-t3">{t(control.descKey)}</p>
         {control.collateralKey && (
-          <p className="mt-1 flex items-center gap-1 text-[11px] text-t3/75">
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-t3">
             <Info size={11} className="shrink-0" />
             {t(control.collateralKey)}
           </p>

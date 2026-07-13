@@ -30,8 +30,13 @@ export type CalmRowState =
 /** States that count into the hero summary 「已让 N 处安静」 (verified writes only). */
 export const COUNTED_AS_OURS: ReadonlySet<CalmRowState> = new Set(['verified'])
 
-/** States meaning DeskMakeover currently owns a live write (gates the Restore action). */
+/** States meaning DeskMakeover currently owns a live, intact write. */
 export const OWNED_WRITES: ReadonlySet<CalmRowState> = new Set(['verified', 'setAwaiting'])
+
+/** States with a LIVE LEDGER RECORD the global Restore must be able to act on:
+ *  intact writes, plus drifted rows awaiting their restore-skip-and-disown
+ *  (codex R5 #1 — if every write drifts, Restore must NOT vanish). */
+export const RESTORABLE_LEDGER: ReadonlySet<CalmRowState> = new Set(['verified', 'setAwaiting', 'reopened'])
 
 /** States rendered in group 3 「这个 Windows 版本暂时不碰的」. */
 export const HELD_STATES: ReadonlySet<CalmRowState> = new Set(['unsupported', 'managed'])

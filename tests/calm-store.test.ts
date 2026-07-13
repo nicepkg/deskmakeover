@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { CALM_CATALOG, type CalmControlId } from '../src/lib/calm/catalog'
 import type { CalmRowState } from '../src/lib/calm/states'
 import { MockCalmBackend } from '../src/bridge/mock-calm'
-import { countOwnedWrites, countQuieted, groupedRows, reopenedRows, setCalmBackend, useCalm } from '../src/stores/calm'
+import { countOwnedWrites, countQuieted, countRestorable, groupedRows, reopenedRows, setCalmBackend, useCalm } from '../src/stores/calm'
 
 // Store behaviour tests over the CalmBackend mock (plan W0.3 + codex R1 fixes).
 // The mock's fake environment: starter slice certified, other automatic rows
@@ -164,6 +164,36 @@ describe('calm store', () => {
     s = useCalm.getState()
     expect(s.rows['taskbar.search']).toBe('verified')
     expect(reopenedRows(s.rows)).toEqual([])
+  })
+
+  test('when EVERY write drifts, the restore entrance survives and disowns them all (codex R5 #1)', async () => {
+    const all: CalmControlId[] = ['start.recommendations', 'taskbar.search', 'taskbar.taskview']
+    resetStore(new MockCalmBackend({ latencyMs: 0, drifted: all }))
+    await useCalm.getState().probe()
+    await useCalm.getState().applyAll()
+    await useCalm.getState().probe() // every write drifted
+    let s = useCalm.getState()
+    for (const id of all) expect(s.rows[id]).toBe('reopened')
+    expect(countOwnedWrites(s.rows)).toBe(0) // no intact writes…
+    expect(countRestorable(s.rows)).toBe(3) // …but the ledger still has rows to act on
+    await useCalm.getState().restoreAll() // must reach the backend and disown
+    s = useCalm.getState()
+    for (const id of all) expect(s.rows[id]).toBe('external')
+    expect(countRestorable(s.rows)).toBe(0)
+  })
+
+  test('an excluded reopened row is user-silenced: the scoped re-close never touches it (codex R5 #2)', async () => {
+    resetStore(new MockCalmBackend({ latencyMs: 0, drifted: ['taskbar.search'] }))
+    await useCalm.getState().probe()
+    await useCalm.getState().applyAll()
+    await useCalm.getState().probe() // taskbar.search → reopened
+    useCalm.getState().toggleExcluded('taskbar.search')
+    await useCalm.getState().applyAll(['taskbar.search']) // the notice button's scope
+    const s = useCalm.getState()
+    expect(s.rows['taskbar.search']).toBe('reopened') // untouched — exclusion wins
+    expect(s.rows['taskbar.taskview']).toBe('verified') // and nothing else re-ran
+    expect(s.op).toBe('idle') // the empty scope was a stated no-op
+    useCalm.getState().toggleExcluded('taskbar.search') // restore for later tests' localStorage
   })
 
   test('restore over a reopened row disowns it as external — never an illegal-transition crash (codex R4 #1)', async () => {

@@ -3,6 +3,7 @@ import { CALM_CATALOG, controlById, groupOf, type CalmControlId, type CalmGroup 
 import {
   COUNTED_AS_OURS,
   OWNED_WRITES,
+  RESTORABLE_LEDGER,
   assertTransition,
   probeTransition,
   type CalmRowState,
@@ -223,9 +224,10 @@ export const useCalm = create<CalmState>((set, get) => {
 
     restoreAll: async () => {
       if (get().op !== 'idle') return
-      // Snapshot the rows a restore would touch — a lost reply drops THEM to
-      // unknown (the restore MAY have committed; a claimed state would lie).
-      const touched = CALM_CATALOG.filter((c) => OWNED_WRITES.has(get().rows[c.id])).map((c) => c.id)
+      // Snapshot the rows a restore would touch — every live LEDGER row, incl.
+      // reopened (drift skip-and-disown). A lost reply drops THEM to unknown
+      // (the restore MAY have committed; a claimed state would lie).
+      const touched = CALM_CATALOG.filter((c) => RESTORABLE_LEDGER.has(get().rows[c.id])).map((c) => c.id)
       set({ op: 'restore' })
       let lostReply = false
       try {
@@ -329,9 +331,16 @@ export function countQuieted(rows: Record<CalmControlId, CalmRowState>): number 
   return CALM_CATALOG.filter((c) => COUNTED_AS_OURS.has(rows[c.id])).length
 }
 
-/** Live DeskMakeover-owned writes (verified + setAwaiting) — gates Restore (codex R1 Block #2). */
+/** Live DeskMakeover-owned intact writes (verified + setAwaiting). */
 export function countOwnedWrites(rows: Record<CalmControlId, CalmRowState>): number {
   return CALM_CATALOG.filter((c) => OWNED_WRITES.has(rows[c.id])).length
+}
+
+/** Live ledger rows the global Restore can act on — intact writes PLUS drifted
+ *  reopened rows awaiting skip-and-disown (codex R5 #1: when every write drifts,
+ *  the Restore entrance must survive). */
+export function countRestorable(rows: Record<CalmControlId, CalmRowState>): number {
+  return CALM_CATALOG.filter((c) => RESTORABLE_LEDGER.has(rows[c.id])).length
 }
 
 /** Rows per page group, catalog order (widgets.feed leads guided by catalog order). */

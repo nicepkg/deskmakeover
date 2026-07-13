@@ -4,6 +4,7 @@ import {
   COUNTED_AS_OURS,
   HELD_STATES,
   OWNED_WRITES,
+  RESTORABLE_LEDGER,
   assertTransition,
   canTransition,
   probeTransition,
@@ -14,7 +15,7 @@ import {
 // These tests pin the grammar so no later refactor can quietly let a row lie.
 
 const ALL_STATES: CalmRowState[] = [
-  'unknown', 'quiet', 'pushing', 'pending', 'verified', 'setAwaiting', 'reverted',
+  'unknown', 'quiet', 'pushing', 'pending', 'verified', 'setAwaiting', 'reopened', 'reverted',
   'needsReconfirm', 'external', 'unsupported', 'managed', 'confirmedOff', 'userAttested',
 ]
 
@@ -54,13 +55,24 @@ describe('calm state machine (write pipeline)', () => {
 
   test('only verified counts as ours — guided/external/awaiting outcomes never do', () => {
     expect([...COUNTED_AS_OURS]).toEqual(['verified'])
-    for (const s of ['userAttested', 'confirmedOff', 'setAwaiting', 'external'] as CalmRowState[]) {
+    for (const s of ['userAttested', 'confirmedOff', 'setAwaiting', 'external', 'reopened'] as CalmRowState[]) {
       expect(COUNTED_AS_OURS.has(s)).toBe(false)
     }
     // Restore gating: setAwaiting IS an owned write even though not yet counted.
     expect(OWNED_WRITES.has('setAwaiting')).toBe(true)
     expect(OWNED_WRITES.has('verified')).toBe(true)
     expect(OWNED_WRITES.has('external')).toBe(false)
+  })
+
+  test('reopened: a candidate with provenance — a ledger row, never a claim, never an intact write', () => {
+    // Re-enters the write pipeline; restore-skip disowns it to external.
+    expect(canTransition('writable', 'reopened', 'pending')).toBe(true)
+    expect(canTransition('writable', 'reopened', 'external')).toBe(true)
+    expect(canTransition('writable', 'reopened', 'verified')).toBe(false) // only via pending
+    // Not counted, not an intact write — but the global Restore CAN act on it.
+    expect(COUNTED_AS_OURS.has('reopened')).toBe(false)
+    expect(OWNED_WRITES.has('reopened')).toBe(false)
+    expect(RESTORABLE_LEDGER.has('reopened')).toBe(true)
   })
 })
 
@@ -77,6 +89,14 @@ describe('calm probe channel (ledger truth)', () => {
 
   test('ownership with a moved value is drift, not a claim', () => {
     expect(probeTransition('writable', 'verified', { state: 'pushing', ownedByUs: true })).toBe('pushing')
+  })
+
+  test('HealthCheck drift probes to reopened — provenance rides in the state machine', () => {
+    expect(probeTransition('writable', 'verified', { state: 'pushing', driftedFromUs: true })).toBe('reopened')
+    expect(probeTransition('writable', 'unknown', { state: 'pushing', driftedFromUs: true })).toBe('reopened')
+    expect(probeTransition('writable', 'reopened', { state: 'pushing', driftedFromUs: true })).toBe('reopened') // idempotent
+    // The boundary still outranks drift provenance.
+    expect(probeTransition('writable', 'reopened', { state: 'needsReconfirm', driftedFromUs: true })).toBe('needsReconfirm')
   })
 
   test('the feature-update boundary is reachable via probe', () => {

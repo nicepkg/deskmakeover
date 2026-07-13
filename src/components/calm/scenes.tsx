@@ -150,15 +150,15 @@ function TaskbarStrip({ control, state, delay }: SceneProps) {
   const recentre = searchGone || taskviewGone
   const search = (
     <g>
-      <rect x="34" y="47.5" width="26" height="9" rx="4.5" fill="var(--raised)" stroke="var(--hair)" />
-      <Magnifier x={39} y={52} />
-      <Placeholder x={43.5} y={51} w={9} h={2} o={0.35} rx={1} />
+      <rect x="29.5" y="47.5" width="26" height="9" rx="4.5" fill="var(--raised)" stroke="var(--hair)" />
+      <Magnifier x={34.5} y={52} />
+      <Placeholder x={39} y={51} w={9} h={2} o={0.35} rx={1} />
       {/* the colourful daily search-highlight icon at the capsule's right end */}
-      <circle cx="56" cy="52" r="1.9" fill="var(--amber)" opacity="0.9" />
-      <circle cx="56.7" cy="51.4" r="0.7" fill={WIN_BLUE_LIGHT} />
+      <circle cx="51.5" cy="52" r="1.9" fill="var(--amber)" opacity="0.9" />
+      <circle cx="52.2" cy="51.4" r="0.7" fill={WIN_BLUE_LIGHT} />
     </g>
   )
-  const taskview = <TaskViewGlyph x={63.5} y={48.5} />
+  const taskview = <TaskViewGlyph x={59} y={48.5} />
   return (
     <>
       <rect x="4" y="44" width="96" height="16" rx="4" fill="var(--chip)" />
@@ -170,9 +170,11 @@ function TaskbarStrip({ control, state, delay }: SceneProps) {
       ) : (
         <WeatherEntry x={6} y={47.5} />
       )}
-      {/* centered cluster: blue start → search capsule → task view → pinned apps */}
+      {/* centered cluster (span 21.5..87.5 → centre 54.5, the weather↔tray
+          midpoint — designer r2: the cluster axis must BE the visual middle,
+          both in the resting layout and after every re-centre) */}
       <ReflowGroup gone={recentre} dx={half}>
-        <StartSquares x={26} y={48.5} />
+        <StartSquares x={21.5} y={48.5} />
       </ReflowGroup>
       <ReflowGroup gone={taskviewGone} dx={half}>
         {control === 'taskbar.search' ? <NoiseGroup state={state} delay={delay}>{search}</NoiseGroup> : search}
@@ -181,7 +183,7 @@ function TaskbarStrip({ control, state, delay }: SceneProps) {
         {control === 'taskbar.taskview' ? <NoiseGroup state={state} delay={delay}>{taskview}</NoiseGroup> : taskview}
       </ReflowGroup>
       <ReflowGroup gone={recentre} dx={-half}>
-        <PinnedApps x={73} y={49.5} count={control === 'tray.entries' ? 1 : 3} />
+        <PinnedApps x={68.5} y={49.5} count={control === 'tray.entries' ? 1 : 3} />
       </ReflowGroup>
       {/* right: tray app icons (tray row only — they are what gets tucked away;
           the caret STAYS as the entrance to them) · caret · pills · clock */}

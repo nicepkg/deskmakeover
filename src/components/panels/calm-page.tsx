@@ -2,7 +2,7 @@ import * as React from 'react'
 import type { ReactNode } from 'react'
 import {
   Bell, Check, ChevronDown, ChevronUp, ExternalLink, Flame, FolderSync, Info, LayoutGrid,
-  LayoutPanelLeft, ListChecks, Lock, RotateCcw, Search, Settings, Sparkles, SquareStack,
+  LayoutPanelLeft, ListChecks, Lock, PanelTop, RotateCcw, Search, Settings, Sparkles, SquareStack,
 } from 'lucide-react'
 import { InspectorCard } from '@/components/common/inspector'
 import { ConfirmSheet } from '@/components/common/ceremony'
@@ -31,7 +31,7 @@ const CONTROL_GLYPHS: Partial<Record<CalmControlId, typeof LayoutGrid>> = {
   'settings.suggestions': Settings,
   'explorer.syncNotifications': FolderSync,
   'widgets.feed': LayoutPanelLeft,
-  'taskbar.widgetsButton': LayoutPanelLeft,
+  'taskbar.widgetsButton': PanelTop,
   'lockscreen.status': Lock,
   'tray.entries': ChevronUp,
 }
@@ -113,12 +113,10 @@ export function CalmPage() {
             : t('Calm_Cta')
   const includedNames = candidates.map((id) => t(controlById(id).labelKey)).join(t('Calm_ListJoin'))
 
-  // The hero constellation: every surface the one-click package touches, as glyph
-  // pins — a first visual answer to 关的是哪里 before a single row is read.
-  const constellation = [...new Set(groups.oneClick.map((id) => controlById(id).surface))]
-  const litSurfaces = new Set(
-    groups.oneClick.filter((id) => rows[id] === 'verified').map((id) => controlById(id).surface),
-  )
+  // The hero constellation: one pin PER CONTROL the one-click package touches, so
+  // the pin count always equals the 「N 处」 copy (designer acceptance P2) — a
+  // first visual answer to 关的是哪里 before a single row is read.
+  const constellationIds = groups.oneClick
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -131,16 +129,17 @@ export function CalmPage() {
         <div className="mb-6 flex items-center justify-between gap-6 rounded-2xl border border-hair bg-raised px-6 py-5">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              {constellation.map((surface) => {
-                const Glyph = SURFACE_GLYPHS[surface]
-                const lit = litSurfaces.has(surface)
+              {constellationIds.map((id) => {
+                const control = controlById(id)
+                const Glyph = glyphFor(control)
+                const lit = rows[id] === 'verified'
                 return (
                   <span
-                    key={surface}
-                    title={t(SURFACE_LABELS[surface])}
+                    key={id}
+                    title={`${t(control.labelKey)} · ${t(SURFACE_LABELS[control.surface])}`}
                     className={cn(
                       'flex size-8 items-center justify-center rounded-[10px] transition-colors duration-300',
-                      lit ? 'bg-wash-chip text-coral-ink' : 'bg-chip text-t2',
+                      lit ? 'bg-wash-chip text-coral-ink ring-1 ring-inset ring-coral/15' : 'bg-chip text-t2',
                     )}
                   >
                     <Glyph size={16} strokeWidth={1.6} />
@@ -281,10 +280,12 @@ function RowShell({
   const lit = state === 'verified'
   return (
     <div className="flex min-h-[54px] items-center gap-4 px-5 py-3">
+      {/* Lit reads from the tile boundary (ring), not just glyph ink — thin glyphs
+          like Search would otherwise look unlit next to denser ones (acceptance note). */}
       <span
         className={cn(
           'flex size-7 shrink-0 items-center justify-center rounded-[9px] transition-colors duration-300',
-          lit ? 'bg-wash-chip text-coral-ink' : 'bg-chip text-t2',
+          lit ? 'bg-wash-chip text-coral-ink ring-1 ring-inset ring-coral/15' : 'bg-chip text-t2',
         )}
       >
         <Glyph size={16} strokeWidth={1.6} />

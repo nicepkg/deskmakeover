@@ -1,6 +1,8 @@
 # Multi-Screen Wallpaper · Session Resume · System Default — Design Spec
 
-**Date:** 2026-07-11 · **Mode:** dev-cycle iterate · **Status:** DESIGN — awaiting owner approval before code.
+**Date:** 2026-07-11 · **Mode:** dev-cycle iterate · **Status:** ✅ EXECUTED — historical design record
+(owner decisions locked 2026-07-11; the multi-monitor data layer + switcher UI landed — see
+`docs/journal/2026-07.md`). Windows runtime remains `[WINDOWS-VERIFY]`.
 **Panel:** Chief PM + Chief UI/UX (isolated subagents) + Codex (implementation feasibility, cross-vendor).
 
 ## Owner decisions (locked 2026-07-11)

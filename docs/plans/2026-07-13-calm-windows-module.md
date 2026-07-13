@@ -15,7 +15,7 @@ Mac-closable first; Windows = integration + [WV] pass only.
 - Every task: `bun test` + `tsc -b` (web) / `cargo test --workspace` + msvc cross-check
   (Rust) green before commit; bug fixes ship regression tests.
 
-## Wave 0 — web module skeleton (Mac mock loop; STARTED 2026-07-13)
+## Wave 0 — web module skeleton (Mac mock loop) — ✅ DONE (2026-07-13, codex R8 Approve)
 
 Vertical slice: the module exists end-to-end in the browser loop against a fake backend,
 with the honest-state grammar fully unit-tested. No bridge schema change yet (Wave 1 does

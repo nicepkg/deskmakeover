@@ -1,12 +1,12 @@
 # Owner-supervised live runs — verification runbook
 
-> ⚠️ **DO NOT EXECUTE AS-IS — pending F8 rewrite (2026-07-10).** This checklist predates the
-> web-renders-pixels inversion and the schema-1→3 host work: the native host cannot yet drive
-> Web v3, there is no published `v1.1.0` build, the byte-identical wallpaper claim no longer
-> matches the dual-resolution path, and the icon-size edge pass was removed with the size control.
-> Two supervised live runs are also NOT a release gate (they miss all F8 + packaging work). The
-> live-run gate itself (a human click bakes the real desktop) stands; the STEPS here must be
-> rebuilt after F8. Authoritative state: `docs/STATE.md`.
+> ⚠️ **DO NOT EXECUTE AS-IS — the STEPS below are for the RETIRED C# WebView2 host** (`legacy/`,
+> ADR-0019) and reference `DeskMakeover.App.exe` + a `v1.1.0` build that never shipped. The product
+> is now Tauri 2 + Rust; the live-run steps must be rebuilt for the Tauri stack (owner-supervised
+> icon-bake + wallpaper-apply on Mac-Tauri) and extended with the **calm W3** cert-lab matrix
+> (inspect→apply→verify→reboot→restore on a real Windows box, ADR-0023). The **live-run GATE itself
+> stands** (a human click bakes the real desktop — never automated); only the concrete steps are
+> stale. Authoritative state: `docs/STATE.md`; ship tracker: `docs/ship-readiness.md`.
 
 The one gate no automation may cross (ADR-0011 §7, spec 04 §5, spec 01 Safety
 Rules): the REAL desktop icon bake and the REAL wallpaper apply. This runbook is the

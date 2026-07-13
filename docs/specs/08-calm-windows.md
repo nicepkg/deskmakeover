@@ -64,6 +64,13 @@ set archived in the session scratchpad, pixel truths inlined as comments in
 - **No establishing hero image** — it would hard-code a starter count the user can falsify.
 - Motion respects `prefers-reduced-motion` (fade-only / duration-0 fallbacks); OS-authentic
   mirror hexes `#0067C0`/`#4CC2FF` are the reviewed banned-colors exception set.
+- **Type ladder** (owner 2026-07-13, designer-verified): hero count line 18px medium >
+  group headers 16px medium > row names 14px medium > descriptions 12px `t3` > meta 11px
+  `t3`. Explanatory sentences live in the faded scan layer at FULL `t3` (no opacity
+  stacking — it falls below WCAG AA); names and numbers carry the page.
+- **Taskbar schematic axis**: the centred cluster sits on the weather↔tray visual midpoint
+  (x≈54.5 in the 104 frame) at rest AND after every reflow — survivors shift half the freed
+  width from each side, mirroring the real centre-aligned taskbar.
 
 ## 3. Per-control state machine
 

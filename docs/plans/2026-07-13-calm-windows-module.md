@@ -63,7 +63,23 @@ per owner pixel description; per-row 「恢复」; shared `FullPage` shell unifi
 title geometry; group-1 subtitle discloses untick-to-skip. Spec 08 §2/§2.1 amended.
 Acceptance verdict PASS (start-menu P1 reflow hole fixed in `9e17d26`, copy↔picture
 contradiction resolved by keeping the your-files row). Gates green (tsc · bun 575).
-Owed at W0 close-out: codex adversarial review over the full W0.6-viz diff.
+
+**W0.6-viz-r2 DONE (2026-07-13/14, owner double complaint → typography ladder +
+taskbar re-centre + codex R3-R6 adversarial loop):** owner: wall-of-equal-text +
+"survivors must re-centre like the real centre-aligned taskbar". Type ladder
+18(hero)>16(group)>14(row name, medium)>12(desc, t3)>11(meta); cluster axis moved to
+x54.5 (weather↔tray midpoint), survivors shift ±half the freed width — designer
+pixel re-acceptance PASS (1.01:1 / 1.00:1 symmetric margins). codex R3 (1🔴+5🟠:
+§6 HealthCheck drift notice unimplemented, quiet ghost frame, sweep ignored
+reduced-motion, walk-token race, teal synced vs §10 coral, tray copy↔picture) →
+R4 (reopened parallel-array crash → 'reopened' becomes a REAL CalmRowState; mock
+drift = one-shot flip; same-row probe race; tray region hugged) → R5
+(RESTORABLE_LEDGER keeps Restore alive when every write drifts; ONE actionable
+reopened set feeds notice/button/hero — synced unreachable while any row sits
+reopened) → R6 (celebration: spec §4 launch-first gate via claimCelebration;
+applyAll returns THIS call's summary, null on lock/no-op — stale-lastApply
+confetti race dead; owner-ordered confetti rides the shared icons/wallpaper
+module). Gates: tsc · bun 597. codex R7 verification in flight.
 
 ## Wave 1 — Rust decision core + bridge (Mac)
 

@@ -33,6 +33,9 @@ pub mod shell;
 // pixel/parse helpers (premul→straight, icon-location parse, %ENV% expand) are exercised on the
 // Mac host; only the shell/GDI runtime is `[WINDOWS-VERIFY]` — same split as `watcher`.
 mod source;
+// Cross-platform MODULE (struct/COM cfg(windows) inside): the desktop-class predicate is
+// exercised on the Mac host; live GetForegroundWindow/GetLastInputInfo are [WINDOWS-VERIFY].
+mod activity;
 #[cfg(windows)]
 mod state_reader;
 #[cfg(windows)]
@@ -53,6 +56,8 @@ pub use overlay::WindowsOverlayControl;
 pub use refresh::WindowsExplorerRefresher;
 #[cfg(windows)]
 pub use shell::WindowsScanner;
+#[cfg(windows)]
+pub use activity::WindowsActivityMonitor;
 #[cfg(windows)]
 pub use shell::WindowsDesktopGeometry;
 #[cfg(windows)]

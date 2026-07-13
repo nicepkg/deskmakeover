@@ -31,7 +31,7 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 | **M6-WIRE Wave B icon bridge (B1-B5)** | ✅ **CONVERGED — codex R12 = Approve (2026-07-13)** | 8 adversarial rounds R5→R12, ~50 findings fixed (4🔴→1🔴→0🔴×5→Approve); owner-informed residuals in §Icon-bridge. Windows runtime still [WV]. |
 | **M6-WIRE Wave B B10 (desktop watcher)** | ✅ DONE 2026-07-12 (`37f4b13`) | Real `notify`+`notify-debouncer-full`, Mac-live-verified (FSEvents), msvc-clean. 3 runtime semantics `[WV]` (self-write suppression / restart catch-up / overflow→rescan). |
 | **M6-WIRE Wave C (Windows handoff doc)** | **NOT STARTED** | Spec'd at `docs/references/windows-wiring-handoff/README.md` (m6-wire-host §8); directory does not exist. No systematic Windows verification recipe yet. |
-| **M7 resident auto-format** | **DECISION CORE DONE (Mac, 2026-07-13)** — platform bodies + tray [WV] | `dm-resident` built + 20 tests: reconciler (T6), tray SM (T7), pending queue (T5), consent ladder, stability probe, privileged red-line (T12). Plus style_resolve + native_bake (T1 port), version_switch (T10, wired `icons.switchVersion`), reset toggle-coupling, resident precondition. **Remaining = [WV] platform bodies:** T2 WindowsActivityMonitor (unwritten), T8 tray+windowless residency wiring (unwritten), T11 tray bitmaps (uncreated), the watcher→reconciler→driver LOOP wiring. |
+| **M7 resident auto-format** | **DECISION CORE DONE + HARDENED (Mac, 2026-07-13)** — platform bodies + tray [WV] | `dm-resident` built + 24 tests: reconciler (T6), tray SM (T7), pending queue (T5), consent ladder, stability probe, privileged red-line (T12). Plus style_resolve + native_bake (T1 port), version_switch (T10, wired `icons.switchVersion`), reset toggle-coupling, resident precondition, T2 WindowsActivityMonitor (judge-2, msvc-clean). **Two codex adversarial rounds** (apply-path + policy) → 2🔴+9🟠+5🟡 ALL closed: propose→apply snapshot-CAS contract, §14 scope re-check at every write entry + shared path-ancestry, unconditional recovery, busy-abort, v1-always-proposes, atomic reset, nanosecond stability. **Remaining = [WV] platform bodies:** T8 tray+windowless residency wiring (unwritten), T11 tray bitmaps (uncreated), the watcher→reconciler→driver LOOP wiring, T2's judge-1 WinEventHook precision layer. |
 | **M8 release engineering + .NET deletion** | **NOT STARTED** | No installer / signing / updater; version `0.0.0`; `legacy/` .NET tree still present. See §Packaging. |
 | **M1 go/no-go spikes (Windows)** | PARTIAL | Only Spike 4 (tri-target pixel, Mac) done. Spikes 1/2/3/5 (STA+IFolderView, SysListView32 layout, elevated-helper roundtrip, kill-injected `.lnk`) are Windows-bound and **never run** — the ADR-0019 "gate for everything after" was never actually gated on a real box. |
 
@@ -91,8 +91,8 @@ Ordered by dependency. Tagged **[MAC]** (closable + verifiable here) or **[WIN]*
 | ~~`shell/layout.rs`~~ | ✅ DONE — technique A positions + geometry behind `DesktopGeometryReader`, runtime `[WV]` | dm-windows |
 | `state_reader.rs:120,138` + `apply/mod.rs:63` | `ItemKind::System` read/anchor/apply (return `Unsupported`) — STILL a stub | dm-windows |
 | ~~`icon_host.rs` exportCompare~~ | ✅ DONE — webview composes, Rust validates + saves | src-tauri + web |
-| ~~`crates/dm-resident`~~ | ✅ DECISION CORE DONE (20 tests) — reconciler/queue/tray-SM/consent/stability/version-switch. Remaining = `WindowsActivityMonitor` body + T8 tray/residency wiring + the reconcile-loop driver, all `[WV]` | dm-resident |
-| `WindowsActivityMonitor` (T2) | `SetWinEventHook` desktop-scoped activity detection — NOT WRITTEN | dm-windows |
+| ~~`crates/dm-resident`~~ | ✅ DECISION CORE DONE + codex-hardened (24 tests) — reconciler/queue/tray-SM/consent/stability/version-switch. Remaining = T8 tray/residency wiring + the reconcile-loop driver, `[WV]` | dm-resident |
+| ~~`WindowsActivityMonitor` (T2)~~ | ✅ judge-2 synchronous poll written + msvc-clean; judge-1 WinEventHook precision layer `[WV]` | dm-windows |
 | `src-tauri` tray (T8/T11) | tray-icon feature, §12 menu, windowless close handler, autostart, tray bitmaps — NOT WIRED | src-tauri |
 
 ## `[WINDOWS-VERIFY]` surface (blind-written, msvc-clean, never run)
@@ -168,6 +168,11 @@ _R1–R4 (33 findings) all fixed earlier; R4's Major 1+1b deleted the generation
 - **Audit #7 + 3 marginal P3s** — owner-approved GO, not started (`diagnostics.getInfo`, ELEV-3, APPLY-3, CORE-1).
 - **Preset collection v2**, **two-axis colour reshape**, **shortcut-mark default** (badge ON vs decreed None), **ADR-0016 badge lightness** — all owner-pending.
 - **Release identity** — first version number, repo public, signing cert, `public/real-icons/` ship sign-off.
+- **Tray toggle-off from any state** (M7 codex m7b-🟠2) — spec §12's state table declares `ToggleOff`
+  ONLY `Watching→Off`; the machine now matches it literally, so the tray "关闭自动整理" is a no-op
+  from Paused/Working/Error. If the product wants the toggle to disable from ANY state (arguably
+  better UX), spec §12 must first define Working-batch-cancellation + Error-state-retention
+  semantics. **Ace's recommendation: yes, the toggle should work from any state — flag for owner.**
 
 ## Honest summary
 

@@ -17,6 +17,7 @@ mod fs_atomic;
 pub mod icons;
 pub mod ledger;
 mod settings_store;
+pub mod system_tweaks;
 pub mod txn;
 pub mod wallpaper;
 

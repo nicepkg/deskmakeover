@@ -106,10 +106,21 @@ pub fn privileged_scope(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EmptyScopeRoots;
 
+/// Validated Windows known-folder roots. The fields are PRIVATE so this can ONLY be obtained through
+/// [`ScopeRoots::resolved`], which rejects empty / meaningless roots — a fail-OPEN resolved value
+/// (empty lists, or roots like `"."` that normalize to nothing and therefore match no path) cannot be
+/// constructed. Without this wrapper the public enum variant's fields would let any caller build
+/// `ScopeRoots::Resolved { public: vec![], .. }` and bypass the guard (codex B1-🔴).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedRoots {
+    public: Vec<String>,
+    programdata: Vec<String>,
+}
+
 /// The privileged-scope roots for THIS platform, modelled so the fail-OPEN state — "a platform that
-/// HAS a privileged desktop scope, but with empty roots" — is UNREPRESENTABLE. Automated write paths
-/// (version switch, reset, resident auto-format) take a `&ScopeRoots` and call [`classify`], so the
-/// §14 red-line cannot be silently bypassed by a host that forgot to resolve its known folders.
+/// HAS a privileged desktop scope, but with empty/meaningless roots" — is UNREPRESENTABLE. Automated
+/// write paths (version switch, resident auto-format) take a `&ScopeRoots` and call [`classify`], so
+/// the §14 red-line cannot be silently bypassed by a host that forgot to resolve its known folders.
 ///
 /// [`classify`]: ScopeRoots::classify
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,9 +128,8 @@ pub enum ScopeRoots {
     /// This platform has no shared/privileged desktop scope (the dev host; any non-Windows target).
     /// Every item is the user's own — `classify` returns `None`. This is CORRECT, not a fallback.
     Unprivileged,
-    /// Resolved Windows known-folder roots. Both `Public Desktop` and `ProgramData` always exist on
-    /// Windows, so both lists are guaranteed non-empty (see [`ScopeRoots::resolved`]).
-    Resolved { public: Vec<String>, programdata: Vec<String> },
+    /// Resolved Windows known-folder roots — only via [`ScopeRoots::resolved`] (fields are private).
+    Resolved(ResolvedRoots),
     /// The platform HAS a privileged scope but the roots are not yet resolved — e.g. the Windows host
     /// before `SHGetKnownFolderPath` runs, or after it FAILED. `classify` returns
     /// [`PrivilegedScope::Undetermined`] for every path, so automation FAILS CLOSED (styles nothing)
@@ -128,18 +138,22 @@ pub enum ScopeRoots {
 }
 
 impl ScopeRoots {
-    /// Builds resolved Windows roots, FAILING CLOSED (`Err`) if either known-folder list is
-    /// effectively empty. An empty list on Windows means resolution failed; the caller must fall back
-    /// to [`ScopeRoots::Unresolved`], never run with it.
+    /// Builds resolved Windows roots, FAILING CLOSED (`Err`) unless BOTH known-folder lists carry at
+    /// least one root that normalizes to a real ancestry key. An empty list — or one holding only
+    /// blank / dot / traversal-only strings that match no path — means resolution failed; the caller
+    /// must fall back to [`ScopeRoots::Unresolved`], never run with it.
     pub fn resolved(
         public: Vec<String>,
         programdata: Vec<String>,
     ) -> Result<Self, EmptyScopeRoots> {
-        let nonempty = |v: &[String]| v.iter().any(|r| !r.trim().is_empty());
-        if !nonempty(&public) || !nonempty(&programdata) {
+        // A root is meaningful only if it survives normalization to a non-empty ancestry key — this
+        // rejects "", "   ", ".", "..", which would otherwise pass a bare non-empty check yet match
+        // nothing, silently re-opening the gate (codex B1-🔴).
+        let meaningful = |v: &[String]| v.iter().any(|r| !r.trim().is_empty() && !normalize(r).is_empty());
+        if !meaningful(&public) || !meaningful(&programdata) {
             return Err(EmptyScopeRoots);
         }
-        Ok(Self::Resolved { public, programdata })
+        Ok(Self::Resolved(ResolvedRoots { public, programdata }))
     }
 
     /// Classifies `path`'s write scope. `Unprivileged` platforms always return `None`; `Unresolved`
@@ -147,11 +161,17 @@ impl ScopeRoots {
     pub fn classify(&self, path: &str) -> Option<PrivilegedScope> {
         match self {
             ScopeRoots::Unprivileged => None,
-            ScopeRoots::Resolved { public, programdata } => {
-                privileged_scope(path, public, programdata)
-            }
+            ScopeRoots::Resolved(r) => privileged_scope(path, &r.public, &r.programdata),
             ScopeRoots::Unresolved => Some(PrivilegedScope::Undetermined),
         }
+    }
+
+    /// Whether per-item classification is meaningful. `false` (only for [`ScopeRoots::Unresolved`])
+    /// means the platform has a privileged scope it could NOT resolve, so a caller that would fan out
+    /// per item (the resident reconciler) must DEFER the whole cycle rather than treat every item as
+    /// privileged and flood the pending-privileged queue with the entire desktop (codex B1-🟠).
+    pub fn is_resolved(&self) -> bool {
+        !matches!(self, ScopeRoots::Unresolved)
     }
 }
 
@@ -220,10 +240,13 @@ mod tests {
 
     #[test]
     fn scope_roots_resolved_rejects_empty_but_classifies_real_roots() {
-        // A degenerate (all-empty) resolved value cannot be built — the caller must fall to Unresolved.
+        // A degenerate resolved value cannot be built — the caller must fall to Unresolved. Empty,
+        // blank, and normalize-to-nothing roots (".", "..") are all rejected (codex B1-🔴).
         assert_eq!(ScopeRoots::resolved(vec![], vec![]), Err(EmptyScopeRoots));
         assert_eq!(ScopeRoots::resolved(vec!["C:/Users/Public/Desktop".into()], vec![]), Err(EmptyScopeRoots));
         assert_eq!(ScopeRoots::resolved(vec!["  ".into()], vec!["C:/ProgramData".into()]), Err(EmptyScopeRoots));
+        assert_eq!(ScopeRoots::resolved(vec![".".into()], vec!["C:/ProgramData".into()]), Err(EmptyScopeRoots));
+        assert_eq!(ScopeRoots::resolved(vec!["..".into()], vec!["C:/ProgramData".into()]), Err(EmptyScopeRoots));
         let roots = ScopeRoots::resolved(
             vec!["C:/Users/Public/Desktop".into()],
             vec!["C:/ProgramData".into()],

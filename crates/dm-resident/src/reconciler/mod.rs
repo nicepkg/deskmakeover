@@ -152,6 +152,15 @@ impl Reconciler {
             out.pending_privileged = self.pending_privileged.len();
             return Ok(out);
         };
+        // Scope unresolved (a Windows host before known-folder resolution) → DEFER the whole cycle.
+        // We cannot tell a privileged item from a per-user one, so styling nothing AND queueing
+        // nothing is the only safe move: treating every item as privileged would flood the pending
+        // queue with the entire desktop and hand a later UAC batch ordinary user items (codex B1-🟠).
+        if !ctx.scope.is_resolved() {
+            out.errors.push("privileged-scope roots unresolved — deferring, styles nothing".into());
+            out.pending_privileged = self.pending_privileged.len();
+            return Ok(out);
+        }
         // Busy desktop → the whole wave defers; events are hints, the next cycle reconciles
         // (spec 07 §3/§11). An activity-read fault reads as busy — err on the quiet side.
         if ports.activity.is_desktop_busy().unwrap_or(true) {

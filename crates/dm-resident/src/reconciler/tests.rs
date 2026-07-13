@@ -290,6 +290,40 @@ fn cycle(
     rec.reconcile(&ports, &ctx, &mut w.txn, &mut w.journal, &mut w.ledger).unwrap()
 }
 
+#[test]
+fn unresolved_scope_defers_without_flooding_the_pending_queue() {
+    // codex B1-🟠: a Windows host whose known folders are unresolved must DEFER the cycle — it must
+    // NOT treat every item as privileged and queue the whole desktop (a later UAC batch could then
+    // elevate ordinary user items). Nothing styled, nothing queued.
+    let items = vec![user_item("a"), user_item("b")];
+    let mut w = World::new(&items);
+    let mut rec = Reconciler::new();
+    let desk = w.desk.clone();
+    let reader = DeskReader(&desk);
+    let applier = DeskApplier(&desk);
+    let ports = ReconcilerPorts {
+        scanner: &FakeScanner(items.clone()),
+        extractor: &FakeExtractor,
+        reader: &reader,
+        applier: &applier,
+        assets: &w.assets,
+        activity: &ScriptedActivity::idle(),
+        stability: &ScriptedStability::default(),
+    };
+    let style = style();
+    let trust = silent_trust();
+    let scope_roots = ScopeRoots::Unresolved;
+    let ctx = ReconcileContext {
+        saved_style: Some(&style),
+        trust: &trust,
+        freshness: fresh(NOW),
+        scope: &scope_roots,
+    };
+    let out = rec.reconcile(&ports, &ctx, &mut w.txn, &mut w.journal, &mut w.ledger).unwrap();
+    assert!(out.proposed.is_empty() && out.applied.is_empty(), "unresolved scope styles nothing");
+    assert_eq!(out.pending_privileged, 0, "unresolved scope must NOT queue the desktop as privileged");
+}
+
 /// Applies a vetted candidate batch (the host's confirm/timeout entry) with the given activity.
 fn apply(
     w: &mut World,

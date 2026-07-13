@@ -21,6 +21,25 @@
   `Unresolved` (now defers the whole cycle via `is_resolved()`). codex also **confirmed a BROADER gap
   the fix did not close → tracked as F2b below.**
 
+- **2026-07-13 — B2 webview allocation caps (audit F4) — DONE + codex-reviewed.** Commits `14c277d`
+  + follow-up. Icon apply: bounded prealloc + count cap (scan-derived) + per-master/count/cumulative-
+  byte chunk caps + commit-input caps (styleJson/restore_ids/label, parsed AFTER the token check).
+  Wallpaper: base64+decoded caps aligned to `PNG × 4/3` + `validate_png_header` (magic + well-formed
+  IHDR + dimension budget). **codex B2 re-review: Not approved → 3 FIXED, 2 recorded (F4b):** 🔴 commit
+  unbounded (fixed), 🟠 caps too tight for a real 8K bake + inconsistent (fixed: raised to 192 MiB PNG
+  / 256 MiB b64), 🟡 IHDR length/structure unchecked + test fixture not a real PNG (fixed: IHDR len==13
+  + complete-header fixture). Residuals → F4b.
+
+### F4b — allocation caps run AFTER the IPC payload is materialized (codex B2-🔴 residual)
+The command-body caps prevent the DECODE/second allocation, but Tauri/Serde deserializes the FULL
+invoke payload (a multi-GB base64 string, huge `items` array) BEFORE the command sees its length; and
+the `dmicon://`/`dmwallpaper://` protocol handlers clone the whole cached PNG per request with no
+in-flight budget. **Disposition: RECORD (residual).** Threat-model note: DeskMakeover's webview loads
+the BUNDLED local frontend with no remote navigation, so "webview sends multi-GB" requires a
+compromised frontend (XSS) — this is defense-in-depth, not an external-attacker path. The real fix is a
+Tauri IPC request-size limit (framework config, [WV]) + a protocol response budget; both belong to a
+later hardening pass, not a command-body change. Tracked here so it is not mistaken for closed.
+
 ### F2b — the scope gate does NOT dominate EVERY mutation (reset + recovery) — codex B1-🔴
 `reset_to_original` (`icons/mod.rs:524`→`applier.restore` ~600) and crash `recovery`
 (`txn/recovery.rs:277`, called at startup `lib.rs:258` + `version_switch:78` + `reconciler:143`)

@@ -22,8 +22,14 @@
 import type { ConfigDto } from '../../../src/bridge/types'
 import { buildWasm, type CorpusCell, loadArrow, loadCells, WasmDriver } from './harness'
 
-// small · odd (non-power-of-two, exercises fractional offsets) · preview · large.
-export const SWEEP_SIZES = [32, 47, 96, 129, 512]
+// small · odd (non-power-of-two, exercises fractional offsets) · preview · mid ·
+// near-master. The top probe is the largest IN-CONTRACT size: sources register at 256²
+// and the session ABI refuses `size > MAX_RENDER_SIZE` (256, code 6 — the caller's `out`
+// buffer is a fixed 256²·4 scratch), and the JS loader throws the same. 255 is the max
+// off-golden downscale (256 itself is the certified golden) and its odd near-cap value is
+// the likeliest to expose an off-by-one in any size-keyed cache. An upscale >256 is
+// unreachable in production, so the sweep no longer probes it (was 512, refused post-C-1).
+export const SWEEP_SIZES = [32, 47, 96, 129, 255]
 
 // Distinct (shape, markStyle, distinction, isShortcut, showOriginal, shortcutShape)
 // keys in the certified corpus — pinned so a thinned corpus fails standalone (P2).

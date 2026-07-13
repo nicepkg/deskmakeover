@@ -386,6 +386,29 @@ fn a_migrated_recipe_can_still_be_restored() {
 }
 
 #[test]
+fn recovery_uses_the_persisted_guard_not_the_current_catalog() {
+    let mut registry = pushing_registry();
+    registry.interrupt_after_writes(1); // crash right after the single write
+    let mut driver = driver_with(registry, MemoryVerifier::new());
+    assert!(driver.apply(&search()).is_err()); // the prepared transaction persists the search guard
+    // The catalog is upgraded to drop the search guard...
+    let mut descriptors = first_batch();
+    for descriptor in &mut descriptors {
+        if descriptor.id.as_str() == "taskbar.search" {
+            descriptor.policy_guards.clear();
+        }
+    }
+    driver.replace_catalog_for_test(TweakCatalog::try_new(descriptors).unwrap());
+    // ...and the old guard appears. Recovery must still refuse via the transaction's PERSISTED
+    // JournalEntry.policy_guards, not the drifted catalog (the recovery half of drift-immunity).
+    driver.set_live_for_test(search_guard(), RawRegistryValue::dword(1));
+    let report = driver.recover().unwrap();
+    assert!(report.recovered.is_empty());
+    assert_eq!(report.conflicts.len(), 1);
+    assert_eq!(driver.read_live_for_test(search_leaf()).as_dword(), Some(0));
+}
+
+#[test]
 fn a_read_error_after_a_committed_write_routes_through_rollback() {
     let mut registry = pushing_registry();
     // The single write succeeds, then the confirming post-write read-back errors.

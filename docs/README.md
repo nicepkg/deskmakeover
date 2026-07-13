@@ -31,3 +31,7 @@ truth, but several have drifted: see **[STATE.md](STATE.md) §Known doc drift** 
 - [conventions/](conventions/) — project-local engineering conventions.
 - [references/prototype/](references/prototype/) — the owner's original design prototype;
   **historical reference only** (superseded by the specs per ADR-0012).
+- [references/windows-settings-rust/](references/windows-settings-rust/) — researched Windows 11
+  calm-settings capability matrix, reversible transaction reference, and compile-checked
+  `winreg`/`windows-rs` platform adapters. This is a handoff artifact, not a declaration that the
+  direct setters have passed the required Windows VM matrix.

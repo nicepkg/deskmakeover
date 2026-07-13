@@ -1,0 +1,12 @@
+[package]
+name = "deskmakeover-windows-settings-reference"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+# Isolate this handoff crate from DeskMakeover's production workspace.
+[workspace]
+

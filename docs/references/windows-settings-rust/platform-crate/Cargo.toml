@@ -1,0 +1,25 @@
+[workspace]
+
+[package]
+name = "dm-windows-settings-platform"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+deskmakeover-windows-settings-reference = { path = "../reference-crate" }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.61.3", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Security",
+    "Win32_Storage_Packaging_Appx",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Wdk_System_SystemServices",
+] }
+winreg = "=0.55.0"

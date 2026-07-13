@@ -287,11 +287,15 @@ where
     V: VerificationBackend<B>,
     P: SystemProfileProbe,
 {
-    /// Recover a crash-left-prepared RESTORE. Unlike the foreground [`advance_restore`], a prepared
-    /// restore has ALREADY entered settle (it only stays prepared after a failed terminal proof),
-    /// so a leaf sitting at `desired` (original) is OUR progress, not an external takeover — only a
-    /// value that is NEITHER `before` NOR `desired` is a genuine external edit (codex W1 R6). The
-    /// caller MUST terminal-verify a `Clean` result before commit; a `Disown` writes nothing.
+    /// Recover a crash-left-prepared RESTORE. A prepared restore is a persisted, generation-guarded
+    /// INTENT to drive every leaf to its original (`desired`) — the entry may have been left before
+    /// any write (crash after prepare), mid-write, or after a failed terminal proof. So, unlike the
+    /// foreground [`advance_restore`] (which runs before any write, where a moved value means the
+    /// user took it back), a leaf sitting at `desired` here is consistent with that authorized
+    /// intent, NOT an external takeover: only a value that is NEITHER `before` NOR `desired` is a
+    /// genuine external edit (codex W1 R6/R7). Crucially, a `Clean` result is never proof on its
+    /// own — the caller MUST terminal-verify it with the persisted receipt before commit; a
+    /// `Disown` writes nothing.
     pub(super) fn recover_restore(
         &mut self,
         values: &[TransactionValue],

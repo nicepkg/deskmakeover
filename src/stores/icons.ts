@@ -850,10 +850,13 @@ export const useIcons = create<IconsState>((set, get) => {
       const jobs = bakeSet.flatMap((item) =>
         item.sourceUrls.map((url, sourceIndex) => ({ item, url, sourceIndex })),
       )
-      // 「保留原样」 / kindPolicy-excluded styleable items send NO master — but a currently-styled one
-      // must be REVERTED to its original, not left (spec 06 §2). Rust reverts the tracked subset.
+      // 「保留原样」 / kindPolicy-excluded items send NO master — but a currently-styled one must be
+      // REVERTED to its original, not left (spec 06 §2). ALL showOriginal ids ride here, NOT only
+      // styleable ones (codex icons2-🟠5): a once-styled item that DEGRADED this scan (source
+      // unreadable → styleable:false) must still be revertable — Rust CAS-gates each revert and
+      // safely no-ops on an id with no ledger row, so a never-styled degraded item is harmless.
       const restoreIds = s.items
-        .filter((i) => i.styleable && effectiveTileConfig(i, config, policy, typeOverrides).showOriginal)
+        .filter((i) => effectiveTileConfig(i, config, policy, typeOverrides).showOriginal)
         .map((i) => i.id)
       set({ state: { ...s.state, working: true }, applyProgress: { done: 0, total: jobs.length } })
       try {

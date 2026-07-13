@@ -29,14 +29,16 @@ ADR-0019 (native Rust renderer, no WebView). Supersedes spec 06 §7. Panel recor
   style"); resident automation cannot be enabled before the user has completed one
   successful global Apply (§8, §14 precondition) — this makes "a saved style exists"
   an invariant, not an edge case to special-case around.
-- **Dependencies**: `dm-resident` (reconciler/jobs/queue — currently an empty crate,
-  `crates/dm-resident/src/lib.rs`, only a module doc comment), `dm-windows` (watcher,
-  scan, writers, STA actor, activity-detection WinEventHook), `dm-icon-core` native
-  (headless render, `--features fast` — see §15), `dm-operations` (durable ledger +
-  the new saved-style column + `LookHistoryStore`, §8), tray/single-instance/autostart
-  plugins (ADR-0019), `notify` + `notify-debouncer-full` (§3, §16), `tauri` built with
-  the `tray-icon` feature (§16 — `src-tauri/Cargo.toml` currently builds `tauri` with
-  `features = []`).
+- **Dependencies**: `dm-resident` (reconciler/jobs/queue/consent ladder/stability probe —
+  the decision core is BUILT + hardened on Mac, `crates/dm-resident`; the [WV] platform
+  bodies — tray+windowless residency wiring, tray bitmaps, the watcher→reconciler→driver
+  loop, the WinEventHook precision layer — are still unwritten, status in
+  `docs/ship-readiness.md`), `dm-windows` (watcher, scan, writers, STA actor,
+  activity-detection WinEventHook), `dm-icon-core` native (headless render, `--features
+  fast` — see §15), `dm-operations` (durable ledger + the saved-style column +
+  `LookHistoryStore`, §8), tray/single-instance/autostart plugins (ADR-0019), `notify` +
+  `notify-debouncer-full` (§3, §16), `tauri` built with the `tray-icon` feature (§16 — the
+  tray body lands with the platform wiring).
 
 ## 1. Process model
 

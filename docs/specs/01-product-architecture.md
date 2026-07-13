@@ -42,7 +42,11 @@ Two beautify modules + settings, in one window (module rail, spec 03):
 2. **壁纸 (wallpaper, spec 04)** — zone panels painted INTO the wallpaper
    (five materials, four title styles), clarity dim, import/export; original
    wallpaper backed up, one-click return.
-3. **设置 (spec 03)** — appearance (theme/language), local data, about + changelog.
+3. **清爽 (calm-Windows, spec 08 · ADR-0023)** — turn off Windows ad/recommendation/
+   suggestion noise with an honest three-state grammar (guided ≠ toggle), every write
+   reversible. Capability-gated: the write slice rides v1 iff the Windows cert lab (W3)
+   turns green; otherwise v1 ships the guided-only 「教你关」 face (zero registry writes).
+4. **设置 (spec 03)** — appearance (theme/language), local data, about + changelog.
 
 **Participation model (owner decision 2026-07-10):** ordinary files ARE included
 by default — the product is fully reversible and every apply is user-clicked, so
@@ -60,7 +64,7 @@ auto-update framework (v1 ships without an updater — ADR-0019 defaults); Win7.
 ## The Window (IA)
 
 Canvas-first: **desktop-mirror canvas LEFT, inspector RIGHT** (280px; 248px
-compact), left module rail (图标/壁纸/设置, Ctrl+1/2/3), 46px web titlebar.
+compact), left module rail (图标/壁纸/清爽/设置, Ctrl+1/2/3/4), 46px web titlebar.
 Modules stay mounted across switches (spec 05 §4). Min window 1024×700.
 Full navigation spec: spec 03. (The old left-300px control panel + settings
 drawer + compact slide-in overlay are superseded.)
@@ -114,7 +118,7 @@ port (BakeService invariants harvested into named Rust tests) and deleted at M8
 (`last-dotnet` tag). The frozen TS compositor is the primary pixel oracle until
 the M6 certification gate.
 
-**Config truth**: `bridge/types.ts` (BRIDGE_SCHEMA_VERSION = 4, two-axis
+**Config truth**: `bridge/types.ts` (BRIDGE_SCHEMA_VERSION = 8, two-axis
 subject×plate per ADR-0018) — ConfigDto axes: shape (11-shape catalog) × subject
 {Original, BlackWhite, Mono(+tint, monoStyle Tonal|Flat)} × plate {plateColor,
 plateBand Vivid|Quiet, plateFallback derived|white} × distinction/markStyle ×
@@ -126,9 +130,10 @@ size, incl. history replay (guard lands with the Rust host, M3).
 **Snapshot/restore**: auto snapshot → journaled apply → one-click zero-residue
 restore; version history (cap 10) persists across restore.
 
-**WYSIWYG law**: preview pixels == bake pixels because they are the SAME web
-code at different resolutions (ADR-0015 D5 allows tolerance bands only for the
-C#-oracle parity fixtures, not between preview and bake).
+**WYSIWYG law**: preview pixels == bake pixels because they are the SAME Rust
+`dm-icon-core` — WASM for the preview/bake, native for apply/background — not two
+renderers to keep in parity (ADR-0019). Tolerance bands exist only for TS↔Rust and
+C#-oracle parity fixtures, never between the preview and the bake.
 
 ## Safety Rules
 
@@ -145,8 +150,8 @@ links" undercounted; this list is the truth.)
 
 ## Verification Strategy
 
-- Web: `bun test` (356 at HEAD — compositor fixtures, stores, zone math, i18n
-  parity, banned-colour + copy gates) + `tsc -b` + browser visual evidence
+- Web: `bun test` (compositor fixtures, stores, zone math, i18n parity,
+  banned-colour + copy gates) + `tsc -b` + browser visual evidence
   (`docs/plans/evidence/`).
 - Rust: `cargo test` + the ADR-0019 parity gates — TS↔Rust corpus (classification
   exact, SSIM≥0.995/bounded ΔE, stage-level differential dumps) and

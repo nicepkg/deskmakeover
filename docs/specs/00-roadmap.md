@@ -18,7 +18,7 @@ result or lives in settings — the primary flow (one CTA) never gains steps.
 kindPolicy, history/restore) + **壁纸** (zone editor: five materials, four title
 styles, clarity dim, import/export, backup/one-click return) + **设置** (theme /
 language / local data / about + changelog). zh-Hans + English, light-first
-following the system. Specs 01-06 describe it; `docs/STATE.md` tracks it.
+following the system. Specs 01-08 describe it; `docs/STATE.md` tracks it.
 
 **Two v1 additions (owner, 2026-07-10):** 后台常驻自动美化 (background resident
 auto-format, spec 07 + ADR-0020) and the global transparent shortcut-arrow
@@ -32,8 +32,8 @@ during the Windows integration phase, the write slice rides the first release;
 otherwise v1 ships the guided-only 「教你关」 face (zero registry writes) and
 writes follow certification in the first update.
 
-**Where it stands:** the web side is COMPLETE and green in the browser/mock loop
-(356 tests). **The old "F8 Windows host pass" is VOID** — the product replatforms
+**Where it stands:** the web side is COMPLETE and green in the browser/mock loop.
+**The old "F8 Windows host pass" is VOID** — the product replatforms
 to Tauri 2 + Rust (ADR-0019: the C# host never left schema 1 and its bridge was
 WebView2-specific; the panel priced finish-F8-then-migrate as the worst path).
 The remaining distance to release is the migration plan

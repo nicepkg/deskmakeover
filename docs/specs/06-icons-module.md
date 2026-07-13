@@ -1,39 +1,39 @@
-# Spec 06 — Icons Module v2.0 (web renderer)
+# Spec 06 — Icons Module v2.0 (Rust icon core)
 
-Status: ACTIVE (2026-07-09). Supersedes the icon-editing details of spec 01 §Canvas
-Behaviour / §Control Panel where they disagree; spec 01 remains the product-identity
-and safety source. Decisions: ADR-0015 (renderer ownership). Panel record:
-`docs/reviews/2026-07-09-icon-frontend-panel.md`. Owner approved Q1-Q12 on 2026-07-09.
+Status: ACTIVE. Supersedes the icon-editing details of spec 01 §Canvas Behaviour / §Control Panel
+where they disagree; spec 01 remains the product-identity and safety source. Decisions: **ADR-0019**
+(renderer ownership — one Rust `dm-icon-core`, WASM preview + native apply/background; amends the
+ADR-0015 web-render table). The pixel-production digest is §1; the pre-inversion CPU-TS framing that
+survives in §Scope/§Dependencies below is HISTORICAL rationale (the TS compositor is now the frozen
+parity oracle, not the production renderer). Panel record: `docs/reviews/2026-07-09-icon-frontend-panel.md`.
 
 ## Scope / Non-scope / Assumptions / Dependencies
 
-**Scope**: icon styling rendered by ONE **CPU TypeScript renderer** (Worker-run —
-NOT pixi; see Dependencies, which this line once contradicted) at two resolutions
-(display-size interactive preview + 256px bake master); bridge contract **schema 3**
-(sources in, masters out); editing UX contract (live scrubbing, hover try-on, undo,
-exception visibility, owned-verb context menu); desktop-mirror fidelity (taskbar,
-labels, selection states); dev mock icon pack; C# renderer freeze discipline;
-background auto-format CONTRACT (direction only — build later).
+**Scope**: icon styling rendered by ONE **Rust `dm-icon-core`** (WASM for the in-window preview +
+manual bake, native for apply + the resident background path) at two resolutions (display-size
+interactive preview + 256px bake master); the thin bridge contract (**schema 8**; scan sources in,
+thin data out, frontend assembles state — see §2); editing UX contract (live scrubbing, hover
+try-on, undo, exception visibility, owned-verb context menu); desktop-mirror fidelity (taskbar,
+labels, selection states); dev mock icon pack; frozen-oracle discipline (the TS compositor + legacy
+C# `TileRenderer`); background auto-format (spec 07).
 
-**Non-scope**: ICO assembly (stays C# `IcoWriter`), sub-256 resampling (stays C#
-`IconResampler`), all shell writes (stay C#), UWP PACKAGE-asset editing (the
-package logo itself is immutable; the desktop .lnk IS styleable — see §6),
-taskbar interactivity, desktop Sort verbs, hidden-WebView2 background rendering
-(rejected, ADR-0015 D4), five-material icon styles (approved direction,
-sequenced AFTER this migration).
+**Non-scope**: ICO assembly + sub-256 resampling (owned by Rust `dm-icon-codec`, a byte-for-byte
+port of the frozen C# `IcoWriter`/`IconResampler`), UWP PACKAGE-asset editing (the package logo is
+immutable; the desktop .lnk IS styleable — see §6), taskbar interactivity, desktop Sort verbs,
+hidden-WebView2 background rendering (rejected, ADR-0015 D4), five-material icon styles (approved
+direction, sequenced separately).
 
 **Assumptions**: pre-release, no legacy compat required; dev loop = Mac browser +
 Vite + mock bridge; all Windows-gated verification batches into one session with
 wallpaper F8 (ADR-0015 D6).
 
-**Dependencies**: none added. The icon compositor is a CPU TypeScript port of the
-frozen C# pipeline (same functions at two resolutions: display-size interactive +
-256 master), with staged caching (compose / color / filter layers) and a Web Worker
-pool for bake and full recomputes. Rationale over a pixi/GPU pipeline: mechanical
-translation maximizes oracle parity, the full pipeline runs headless in bun tests,
-output is deterministic (no GPU float variance), and zero dependencies are added.
-GPU is a reserved optimization if visual acceptance shows scrub lag at large icon
-counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
+**Dependencies**: production pixels come from Rust `dm-icon-core` (WASM in the web, native in the
+host); output is deterministic (libm-routed transcendentals, no FMA/SIMD in core v1 → WASM↔native
+byte-equality). The frozen TS compositor (`src/icon-compositor/`, a mechanical port of the C#
+pipeline) is the PRIMARY parity oracle, not a live path; the legacy C# `TileRenderer` is a secondary
+oracle for the style subset it still covers. pixi v8 stays wallpaper-only. (Historical rationale for
+the mechanical CPU-TS port: it maximized oracle parity and runs headless in bun tests — that port is
+now the certifying oracle for the Rust core, ADR-0019.)
 
 ## 1. Renderer ownership (ADR-0019 digest; supersedes the ADR-0015 table)
 
@@ -59,11 +59,13 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
 ## 2. Bridge contract (icons.*)
 
 > **Replatform note (ADR-0019)**: the code truth is `bridge/types.ts`
-> (`BRIDGE_SCHEMA_VERSION = 4`, two-axis subject×plate per ADR-0018). Under Tauri
-> the SAME verbs and semantics ride Tauri commands + the scoped asset protocol;
-> the DTOs below are generated from `dm-contracts` (tauri-specta) — hand-mirrored
-> schemas are banned. Transport-era details (WebAssets host, JSON postMessage
-> limits) are historical rationale, not requirements.
+> (`BRIDGE_SCHEMA_VERSION = 8`, two-axis subject×plate per ADR-0018). Under Tauri the icon verbs
+> ride Tauri commands + the scoped `dmicon://` asset protocol; the thin DTOs (IconScanDto /
+> IconPersistedDto / IconOpResultDto) are generated from `dm-contracts` (tauri-specta) and the
+> frontend assembles `IconsStateDto` via `lib/icons-assemble` — hand-mirrored schemas are banned.
+> Transport-era details (WebAssets host, JSON postMessage limits) are historical rationale, not
+> requirements. (`icons.getState` split into `scan` + `getPersisted`; `icons.setLook` left the
+> bridge as frontend draft — see spec 05 §3.)
 
 - `icons.getState → { config, overrides, applied, dirty, history, settings }` —
   unchanged shape minus render fields.
@@ -145,8 +147,8 @@ counts. pixi v8 stays wallpaper-only. C# `TileRenderer` frozen as oracle.
     concentric-pair swatch grammar and the full catalog (shapes/colours/marks/
     filters) live in **spec 02 §Shape System / §Colour Treatments / §Shortcut
     Marks**. `ConfigDto` grew `monoStyle: Tonal|Flat` + `plateColor: string|null`
-    (web bridge is schema 3 today; the C# `Contracts.cs` + `BridgeSchema.Version`
-    sync is F8). Marks are silhouette-aware on free-form icons; Card→Shadow
+    (rides the generated `dm-contracts` DTOs at bridge schema 8; F8/C# sync is void
+    per ADR-0019). Marks are silhouette-aware on free-form icons; Card→Shadow
     (neutral drop shadow), Echo→Halo (silhouette outline).
 12. **Default look = 满彩 colour field (ADR-0016 + amendment, owner
     2026-07-10).** The colour axis gains a fourth foreground mode **满彩

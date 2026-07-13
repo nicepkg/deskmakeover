@@ -37,7 +37,13 @@ pub trait LedgerStore {
 
     /// The next monotonic version to allocate: one past the current maximum.
     fn next_version(&self) -> Result<u64> {
-        Ok(self.all()?.iter().map(|e| e.version).max().unwrap_or(0) + 1)
+        self.all()?
+            .iter()
+            .map(|e| e.version)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or_else(|| OperationError::Corrupt("ledger version space exhausted".into()))
     }
 }
 

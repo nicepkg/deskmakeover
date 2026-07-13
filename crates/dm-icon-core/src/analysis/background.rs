@@ -29,7 +29,10 @@ fn try_shape_background(c: &Raster) -> Option<Rgba> {
         return None;
     }
     let min_dim = bounds_w(bounds).min(bounds_h(bounds));
-    if min_dim < c.width / 3 {
+    // FLOAT division to match the frozen oracle (audit F7 / ADR-0019): integer `c.width / 3` moves
+    // the boundary (e.g. 256/3 = 85 in Rust vs 85.333 in JS), so an 85px board on a 256px canvas
+    // would diverge — Rust proceeding while the oracle returns none.
+    if (min_dim as f64) < c.width as f64 / 3.0 {
         return None;
     }
     // Owner law ②: only corner-symmetric silhouettes own a board.

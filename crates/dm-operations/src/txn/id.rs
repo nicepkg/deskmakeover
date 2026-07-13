@@ -22,7 +22,10 @@ impl TxnIdAllocator {
     /// reissue an id whose records recovery still holds — even after a crash.
     pub fn from_journal(journal: &dyn JournalSink) -> Result<Self> {
         let max = journal.read_all()?.iter().map(|r| r.txn()).max().unwrap_or(0);
-        Ok(Self { next: max + 1 })
+        let next = max
+            .checked_add(1)
+            .ok_or_else(|| crate::error::OperationError::Journal("transaction id space exhausted".into()))?;
+        Ok(Self { next })
     }
 
     /// Starts allocating from an explicit id; `first` is the next id handed out. Mainly for tests
@@ -34,7 +37,9 @@ impl TxnIdAllocator {
     /// The next monotonic id. Never returns a value it has already returned.
     pub fn next_id(&mut self) -> u64 {
         let id = self.next;
-        self.next += 1;
+        // Overflow is unreachable in practice (u64 id space), but a silent wrap would REUSE an id and
+        // corrupt recovery's per-id grouping — panic loudly instead (audit F11).
+        self.next = self.next.checked_add(1).expect("transaction id space exhausted");
         id
     }
 

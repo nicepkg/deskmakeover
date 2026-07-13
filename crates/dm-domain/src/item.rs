@@ -150,9 +150,13 @@ impl DesktopItem {
         ItemTarget::new(self.id.clone(), self.kind, self.path.clone())
     }
 
-    /// Whether this item may be styled right now (kind is reversible AND state is ready).
+    /// Whether this item may be styled right now: kind is reversible, state is ready, AND it does not
+    /// still need explicit consent (audit F11) — a `Ready` item flagged `requires_explicit_consent`
+    /// must go through the consent path first, never be reported auto-styleable.
     pub fn can_style(&self) -> bool {
-        self.state == ItemState::Ready && self.kind.is_styleable()
+        self.state == ItemState::Ready
+            && self.kind.is_styleable()
+            && !self.requires_explicit_consent
     }
 }
 

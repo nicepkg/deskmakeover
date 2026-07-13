@@ -38,14 +38,19 @@ impl Fingerprint {
         self.0.iter().map(|b| format!("{b:02x}")).collect()
     }
 
-    /// Parses a lowercase-hex fingerprint; `None` if malformed.
+    /// Parses a lowercase-hex fingerprint; `None` if malformed. Operates on BYTES (audit F11): a
+    /// 64-BYTE string can still contain a multi-byte UTF-8 char, and `&hex[i*2..i*2+2]` would panic
+    /// slicing mid-codepoint. Non-hex bytes decode to `None`, never a crash.
     pub fn from_hex(hex: &str) -> Option<Self> {
-        if hex.len() != 64 {
+        let bytes = hex.as_bytes();
+        if bytes.len() != 64 {
             return None;
         }
         let mut out = [0u8; 32];
         for (i, byte) in out.iter_mut().enumerate() {
-            *byte = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
+            let hi = (bytes[i * 2] as char).to_digit(16)?;
+            let lo = (bytes[i * 2 + 1] as char).to_digit(16)?;
+            *byte = (hi << 4 | lo) as u8;
         }
         Some(Self(out))
     }

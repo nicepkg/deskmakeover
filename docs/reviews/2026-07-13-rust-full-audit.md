@@ -61,6 +61,33 @@
   originally-absent key restores by removing ONLY the three owned values (not `delete_subkey_all`, which
   recursively destroyed unrelated values/subkeys); the removal + `write_or_delete` None branch propagate
   a non-NotFound delete failure. Runtime [WINDOWS-VERIFY].
+- **2026-07-13 — B8 recovery replay + F2b reset scope — DONE + codex re-review closed.** `044e8cc` +
+  `cc8f286` + `af8567e`. B8 (codex E recovery:250): track per-item `ItemRolledBack`; on recovery of a
+  txn whose terminal write was lost, SKIP a durably-rolled-back item instead of restoring it again over
+  a user edit. F2b (codex B1-🔴, owner#6): `reset_to_original` takes `ScopeRoots`; the §14 gate lives
+  INSIDE the still-applied restore arm (codex re-review 🟡: shallow gate suppressed safe ledger healing)
+  so a deleted/already-original privileged row is still healed; a still-applied privileged row is left +
+  counted `skipped`. **Residuals:** recovery:265 (unconditional-restore-over-live-state) is an
+  OWNER/[WV] semantics fork — its fix needs the intended-fp-before-mutate journal schema AND flips the
+  kill-point battery's torn-write-auto-restore contract; recovery:286 (multi-write registry restore not
+  flushed before power loss) is the same [WV] live-verify gap; F2b privileged-skip reason-text ("你自己改过"
+  vs "needs elevation") is M8 elevated-feature UX, UNREACHABLE until an elevated apply path exists.
+- **2026-07-13 — WrapperAnchor enum (A1-🔴) — DONE + codex Approve (clean).** `183b9d0`. `WrapperAnchor`
+  → `{ file_attributes, prior_wrapper: PriorWrapper { Absent | Present { content } } }`, so the
+  unrestorable `wrapper_existed:true`+`content:None` state is unrepresentable; file_wrapper restore +
+  state_reader capture rewired; dead `opt_bytes_base64` dropped. **二次核实 MOOT:** the sibling A1-🟠
+  (RecycleBinAnchor `key_existed:false`+values "impossible") is a FALSE POSITIVE — that shape is the
+  legitimate machine-default fallback (restore branches on key_existed first, never ambiguous); kept the
+  struct, clarified the doc. RegistryValue raw-bytes/type widening + PortError categories deferred (owner#2).
+- **2026-07-13 — System CLSID discovery + styling (owner#4, H1 scan:93 / H2 apply/mod:62 / A1 restore:83)
+  — BUILT, msvc-clean.** New `SystemIcon(SystemIconAnchor{clsid,key_existed,value})` anchor + `apply/system.rs`
+  (per-CLSID `DefaultIcon` read/apply/restore, a single-value mirror of recyclebin via a shared
+  `apply/reg_icon.rs` helper — recyclebin refactored onto it, DRY). Wired apply/restore/fingerprint/capture
+  (System reuses the `IconRef` surface — one icon location), scan discovery (4 well-known desktop CLSIDs +
+  `HideDesktopIcons` enabled-check + shell display name), and original-anchor source extraction. **[WV]
+  runtime:** the exact per-user override key path (mirrors recyclebin's `Explorer\CLSID\..\DefaultIcon`),
+  the enabled-check DWORD semantics, and every CLSID GUID need box confirmation. Blind — msvc typecheck +
+  dm-domain anchor round-trip test only; no runtime verification.
 
 ### F4b — allocation caps run AFTER the IPC payload is materialized (codex B2-🔴 residual)
 The command-body caps prevent the DECODE/second allocation, but Tauri/Serde deserializes the FULL
@@ -245,10 +272,12 @@ refactor backlog (`/refactor-split`).
 6. **B6 — quick correctness (F11 small + F7 parity).** from_hex, ItemId validation, overflow checks,
    can_style consent, integer-div oracle-parity, non-square guard.
 7. **B7 — dead-code + stale-doc cleanup (F10 genuine half).**
-8. **B8 — recovery replay state machine (F1 Mac-half).** journal-intended-fp + skip rolled-back;
-   live re-read tagged [WV].
+8. **B8 — recovery replay state machine (F1 Mac-half).** ✅ DONE `044e8cc` — skip-rolled-back shipped;
+   the intended-fp + live re-read half is the OWNER/[WV] recovery:265 fork (see Progress log).
 
-PERF backlog (F9) + god-module splits: after correctness batches, opportunistic.
+**All correctness fix batches (B1–B8) DONE. Remaining audit work = OWNER decisions below +
+PERF/[WV] backlog.** PERF backlog (F9) + god-module splits (source.rs 757 / icons/mod.rs 675 /
+txn/driver.rs 520): opportunistic, deferred.
 
 ## Owner decisions (accumulated — the "过一下" list)
 
@@ -256,22 +285,21 @@ PERF backlog (F9) + god-module splits: after correctness batches, opportunistic.
    user edit to a shortcut's target/args (or a folder's `desktop.ini` non-icon settings) is invisible
    to CAS and gets clobbered on restore. **Ace recommends: restore only the OWNED icon fields** (we
    don't own the rest), or at minimum fingerprint the full file to fail closed. Design call.
-2. **dm-domain model hardening scope (F11 OWNER half).** Do the enum-anchor rewrites now (close real
-   restore holes, wide blast radius) or defer? Ace leans DO the anchor enums, defer PortError/path-WTF16.
+2. **dm-domain model hardening scope (F11 OWNER half).** ✅ RESOLVED — WrapperAnchor enum DONE
+   (`183b9d0`); RecycleBinAnchor enum 二次核实'd MOOT (legit machine-fallback, kept struct);
+   RegistryValue raw-bytes/type widening + PortError category expansion DEFERRED (path-WTF16, per Ace's rec).
 3. **Elevated auth model (F6 OWNER half).** Confused-deputy: bind each helper invocation to a
    nonce-bearing request from the trusted host + Authenticode-verify + Program-Files install. This is
    M8 packaging + an auth-protocol design. Ace recommends scheduling it into M8, not v1-blind.
-4. **System CLSID scope (H1 `scan:93`, H2 `apply/mod:62`, A1 `restore:83`).** This-PC/Network/Control-
-   Panel icons are `Unsupported` (known stub). Implement per-user CLSID `DefaultIcon` discovery/apply
-   now (blind + [WV]) or leave stubbed for v1? Ace recommends blind-writing it (Boss wants max done here).
+4. **System CLSID scope (H1 `scan:93`, H2 `apply/mod:62`, A1 `restore:83`).** ✅ RESOLVED — BUILT blind
+   (Boss: "盲写也要写"). SystemIcon anchor + `apply/system.rs` (recyclebin mirror) + discovery + wiring;
+   msvc-clean. Every GUID / per-user key path / enabled-check DWORD is [WV] — needs box confirmation.
 5. **Non-square source policy (F7).** Guarantee-square-at-ingress vs make-analysis-shape-aware. Ace
    recommends an explicit square-normalize-or-reject at the session boundary + keep goldens square.
-6. **reset/recovery privileged-scope gating (F2b, codex B1-🔴).** Should `reset_to_original` and crash
-   `recovery` SKIP privileged / `Unresolved`-scope ledger+journal targets (leave them untouched +
-   surface), or blind-restore them (today's behavior)? Ace recommends SKIP+surface (a privileged row
-   is either old-fail-open debris or belongs to the elevated path, neither of which a non-elevated
-   background restore should silently touch). This is the follow-up batch that finishes "the gate
-   dominates every mutation."
+6. **reset/recovery privileged-scope gating (F2b, codex B1-🔴).** ✅ RESOLVED (SKIP+surface) —
+   `reset_to_original` §14-gated (`044e8cc`+`cc8f286`); recovery is already B1-gated at journal-WRITE
+   time (gating recovery replay would instead strand a legitimately-elevated crashed txn — see F2b note).
+   The distinct "needs elevation" toast is M8 (unreachable until an elevated apply path exists).
 
 ## Not Mac-fixable — reconcile into ship-readiness §8a / §[WV]
 

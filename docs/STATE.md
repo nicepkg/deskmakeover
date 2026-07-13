@@ -40,6 +40,13 @@ pointer: what is TRUE now, what is in flight, what comes next.
 - `docs/plans/2026-07-12-m6-wire-host.md` — M6-WIRE host wiring (Wave A wallpaper DONE, Wave B
   icons NOT started = the M7 blocker); `docs/reviews/2026-07-12-audit-fix-run.md` — tonight's
   full-repo audit + fix run record.
+- **ADR-0023** + `docs/specs/08-calm-windows.md` + plan
+  `docs/plans/2026-07-13-calm-windows-module.md` — the **清爽 module** (calm-Windows,
+  4th rail tile; owner dispositions 2026-07-13, panel
+  `docs/reviews/2026-07-13-calm-windows-panel.md`): honest three-state grammar, guided≠toggle,
+  composed admission rule (ad ID + Device Usage out of default), HealthCheck=re-propose,
+  capability-gated release (write slice rides v1 iff the Windows cert lab turns green;
+  else v1 ships the guided-only face). ADR-0004 §6 timing superseded (amendment in place).
 - **ADR-0013** + amendments — v3 "Premium Flat": light-first OKLCH, follows system;
   bundled Inter + HarmonyOS Sans SC; version narrative RESTORED (About version line +
   in-app changelog, auto-opens once per UPDATE, never on first install).
@@ -260,6 +267,12 @@ Documented follow-ups: the ①→②→③ finalize crash-window (not yet journa
 `notify`+`notify-debouncer-full`, spec 07 §3/§16). **Roadmap: B10 → M7.**
 
 **In flight / next (web):**
+-2. **清爽 module Wave 0 STARTED (2026-07-13, ADR-0023 / spec 08 / plan
+   2026-07-13-calm-windows-module.md):** web skeleton in the mock loop — catalog+state
+   machine, CalmBackend port + mock, store, Direction-B page, rail 4th tile + Ctrl+4,
+   i18n + copy gate. Rust core = Wave 1 (bridge schema 7→8 deliberate), Windows platform =
+   Wave 2 (blind, [WV]), cert lab = Wave 3 (the D2 gate). Codex review + designer
+   acceptance owed at each wave exit.
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all
    designer PASS): seven coordinate-bookmark presets (spectrum default ·
    stationery · glass · pebble · ink · white · ascast), six mark styles

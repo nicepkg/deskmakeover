@@ -68,3 +68,25 @@ exists in opposition to. The owner resolved the three open conflicts.
   checklist appear when module #2 ships.
 - EV signing upgrade becomes more important as modules multiply; whitelist
   submissions (MSRC/360/火绒) become ongoing ops.
+
+## Amendment (2026-07-13 — ADR-0023, calm-Windows panel)
+
+- **§6's "ships in v1.0" timing is SUPERSEDED.** The 2026-07-11 research
+  (`docs/references/windows-settings-rust/`) re-tiered §6's item list (lock-screen tips are
+  ADVANCED with an empty allowlist; widgets surfaces are GUIDED-only; every direct write
+  needs per-environment certification, manifest initially empty), falsifying the "clean HKCU
+  one-shot" premise. Release timing is now **capability-gated** (ADR-0023 decision 6): the
+  certified 2-4-item write slice rides the first release iff the Windows-VM lab turns green
+  during the Windows integration phase; otherwise v1 ships the guided-only face and writes
+  follow certification. The capability boundary of record is the research README + ADR-0023.
+- **§5 admission test — guided exception (written):** "adds no step to the primary flow"
+  binds the hero one-click, which covers automatic-certified switches ONLY; guided surfaces
+  are optional user-chosen walkthroughs, never auto-included in the one-click, never counted
+  in 「已帮你做的事」.
+- **§3 HealthCheck semantics for the calm-settings module = re-detect + re-PROPOSE** (never
+  silent auto-replay across a feature-update boundary; in-boundary drift may re-close with an
+  honest notice). §3's generic "re-apply is a platform capability" wording stands for pixel
+  modules (icons/wallpaper) only.
+- The module is named **清爽 / 清爽系统** (ADR-0023 decision 7); 净化/清理/优化 are banned
+  copy for it. §2's "已帮你做的事" checklist grammar is refined by ADR-0023 decision 3
+  (three-state honest results; verified writes only).

@@ -24,6 +24,14 @@ following the system. Specs 01-06 describe it; `docs/STATE.md` tracks it.
 auto-format, spec 07 + ADR-0020) and the global transparent shortcut-arrow
 default (ADR-0021) ship in the first release.
 
+**One conditional v1 rider (owner, 2026-07-13 — ADR-0023):** the **清爽 module**
+(calm-Windows, 4th rail tile, spec 08) is **capability-gated, not calendar-gated**:
+if the Windows-VM certification lab turns green for the starter write slice
+(`SearchboxTaskbarMode` / `ShowTaskViewButton` / `Start_IrisRecommendations`)
+during the Windows integration phase, the write slice rides the first release;
+otherwise v1 ships the guided-only 「教你关」 face (zero registry writes) and
+writes follow certification in the first update.
+
 **Where it stands:** the web side is COMPLETE and green in the browser/mock loop
 (356 tests). **The old "F8 Windows host pass" is VOID** — the product replatforms
 to Tauri 2 + Rust (ADR-0019: the C# host never left schema 1 and its bridge was
@@ -52,11 +60,16 @@ names the version number · repo made public (it exists, currently PRIVATE).
   Rust renderer, reconcile-led watcher, incremental-ledger restore). Post-v1
   candidates here are the EXTENSIONS: silent file-wrapping promotion, Shell-level
   virtual-item coverage, machine-level public-desktop mode.
-- **系统净化 module** (HKCU one-shot, warm tier, no elevation): start-menu
-  recommendations, lock-screen Spotlight tips, Explorer promotions, settings
-  suggestions, advertising ID, search highlights. Toggle list + 并入一键美化 +
-  honest footer 「不是清理软件…」. Requires the `Modules.Contracts` host
-  refactor first (the rail today is a lightweight switch).
+- **清爽 module extensions** (the module itself is a conditional v1 rider —
+  ADR-0023, spec 08; the old 「系统净化」 entry is superseded): widen the
+  certified write slice as lab rows land (search highlights, notification/
+  settings suggestions, sync-provider notifications, welcome/finish-setup);
+  the Direction-A "noise map" canvas replacing the v1 honest list; the
+  per-item-consent back room for non-evaluable controls (door labelled
+  不可评估, not 隐私 — ad ID / Device Usage live there if ever);
+  machine-level CloudContent policies (HKLM, ignored on Home) as a later
+  advanced option. `Start_TrackDocs` stays globally forbidden; UCPD is never
+  written or bypassed.
 - 「整理到分区」 icon auto-placement experiment (explicit, previewable,
   journaled) — candidate per ADR-0009 §6.
 - Trust hardening: AV whitelist submissions (Microsoft/360/火绒), installer +

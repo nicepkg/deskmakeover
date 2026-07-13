@@ -20,7 +20,7 @@ update). The prototype is a historical reference only; spec 02 **v3** governs th
   settings About card instead (ADR-0013 amendment: visible version line + in-app
   changelog, auto-opens once per update, never on first install). The bar keeps
   logo · 产品名 · dev-menu flask (DEV builds) · `?` keymap affordance · caption
-  buttons. The `?` legend: Space 对比 · Ctrl+1/2/3 模块 · 画布拖拽建区 · Del 删除.
+  buttons. The `?` legend: Space 对比 · Ctrl+1/2/3/4 模块 · 画布拖拽建区 · Del 删除.
 - `OverflowMenuView` and the right-side settings drawer are retired. Normal
   navigation always goes through the rail.
 
@@ -37,6 +37,7 @@ update). The prototype is a historical reference only; spec 02 **v3** governs th
 |----|-------|-------|-----------|------|
 | icons | custom app/icon glyph | 图标 | 美化图标 | existing ControlPanelView + mirror |
 | paper | wallpaper/panel glyph | 壁纸 | 美化桌面壁纸 | spec 04 panel + mirror w/ zone overlay |
+| calm | breeze craft glyph (never a shield) | 清爽 | 清爽系统 | spec 08 calm page (full page) |
 | settings | gear/sliders glyph | 设置 | 设置 | settings page |
 
 - The dashed future "+" slot is removed.
@@ -50,7 +51,9 @@ update). The prototype is a historical reference only; spec 02 **v3** governs th
   (visibility-hidden — spec 05 §4); unsaved zone edits always survive.
 - Compact mode (<1100px): rail stays; the inspector narrows to 248px (pure CSS).
 - Keyboard/UIA: rail buttons are real Buttons with AutomationProperties.Name =
-  full module name; Ctrl+1/Ctrl+2/Ctrl+3 switch modules.
+  full module name; Ctrl+1/2/3/4 switch modules POSITIONALLY (1 图标 · 2 壁纸 ·
+  3 清爽 · 4 设置 — the numbers match the visual order, so adding 清爽 moved
+  设置 from Ctrl+3 to Ctrl+4; spec 08 / ADR-0023).
 
 ## 3. Settings page (v3 "Premium Flat" — ADR-0013; body synced to HEAD 2026-07-10)
 
@@ -101,9 +104,10 @@ summarize).*
 ## 4. Strings
 
 - New/updated: `Rail_Icons=图标/Icons`, `Rail_Paper=壁纸/Wallpaper`,
-  `Rail_Settings=设置/Settings`, `Panel_IconsTitle=美化图标/Beautify icons`,
+  `Rail_Calm=清爽/Calm`, `Rail_Settings=设置/Settings`,
+  `Panel_IconsTitle=美化图标/Beautify icons`,
   `Panel_PaperTitle=美化桌面壁纸/Beautify wallpaper`,
-  `Panel_SettingsTitle=设置/Settings`.
+  `Panel_CalmTitle=清爽系统/Calm Windows`, `Panel_SettingsTitle=设置/Settings`.
 - `Rail_FutureSlot` is removed from product UI.
 - About/update/feedback strings live in both zh-Hans and neutral English resx.
 
@@ -113,7 +117,7 @@ summarize).*
   rail item and shows the settings page.
 - The left rail has no inert "+", no text inside the glyph tile, and labels below
   each item.
-- Ctrl+1/2/3 switch modules; Esc order has no settings drawer branch.
+- Ctrl+1/2/3/4 switch modules positionally; Esc order has no settings drawer branch.
 - Theme and language default to system on a clean settings file.
 - Zone edits survive module round-trip 壁纸 → 图标 → 壁纸.
 - The web test suite stays green (297 at HEAD 2026-07-10; count moves with the tree).

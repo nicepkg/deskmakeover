@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use dm_domain::{Fingerprint, ItemId, ItemKind, ItemTarget, OwnedFields};
+use dm_domain::{AssetRef, Fingerprint, ItemId, ItemKind, ItemTarget, OwnedFields, RestoreAnchor};
 
 use super::driver::{ApplyRequest, TxnDriver};
 use super::id::TxnIdAllocator;
@@ -423,6 +423,140 @@ fn crash_after_write_before_journal_preserves_our_own_uncommitted_style() {
     assert!(out.aborted.is_empty(), "nothing was reverted");
     assert_eq!(world.borrow().get(&a.path).unwrap(), styled, "left exactly as found — never clobbered");
     assert!(fresh.get(&a.id).unwrap().is_none(), "no ledger row — the app no longer tracks it");
+}
+
+/// A committed ledger row standing for a style a PRIOR transaction applied (its `last_applied` is the
+/// styled fingerprint; its original is the true original). Used to exercise recovery's interaction
+/// with a lingering row from an earlier, already-terminal transaction.
+fn committed_row(t: &ItemTarget, original: &[u8], applied: &[u8], version: u64) -> LedgerEntry {
+    LedgerEntry {
+        item: t.id.clone(),
+        target: t.clone(),
+        original_fingerprint: Fingerprint::of_bytes(original),
+        original_anchor: RestoreAnchor::FileBytes { bytes: original.to_vec() },
+        last_applied_fingerprint: Fingerprint::of_bytes(applied),
+        owned: OwnedFields::icon_only(),
+        asset: AssetRef::new("styleX", "assets/styleX.ico"),
+        empty_asset: None,
+        state: TxnState::Committed,
+        pinned_seed: None,
+        version,
+    }
+}
+
+/// Truncate a full apply's journal to just before AssetWritten: an incomplete transaction that
+/// crashed after PREPARING each item but before any desktop write (`new_fingerprint` absent, the
+/// journaled anchor is the only thing recorded about the item).
+fn incomplete_prepared_records(journal: &VecJournal) -> Vec<JournalRecord> {
+    journal
+        .records()
+        .iter()
+        .take_while(|r| !matches!(r, JournalRecord::AssetWritten { .. }))
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn a_deleted_item_is_preserved_not_left_as_a_permanent_recovery_fence() {
+    // codex R2 A-1: an incomplete txn prepared A, then the user DELETED A before restart, so
+    // recovery's live read returns NotFound. Treating that as a retryable `degraded` fault would
+    // withhold the journal checkpoint (`recover_from_journal` only checkpoints when `degraded` is
+    // empty) forever — every future apply/reset would defer on a crash that can NEVER resolve (the
+    // file stays gone). A deletion is a FINAL never-clobber outcome: surface it as preserved, drop any
+    // stale row, leave `degraded` empty so the fence lifts.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+    let records = incomplete_prepared_records(&journal);
+
+    // The user deletes A before restart → read_fingerprint returns NotFound.
+    world.borrow_mut().remove(&a.path);
+
+    let mut fresh = MemLedgerStore::new();
+    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+
+    assert_eq!(out.preserved, vec![ItemId::from_raw("A")], "the deletion is a final preserved outcome");
+    assert!(out.aborted.is_empty(), "a deleted item was not restored");
+    assert!(
+        out.degraded.is_empty(),
+        "a deletion is NOT a retryable fault — a non-empty `degraded` would fence recovery forever"
+    );
+    // Idempotent: a second pass over the same (still-deleted) state is a clean no-op.
+    let out2 = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    assert!(out2.degraded.is_empty() && out2.aborted.is_empty());
+}
+
+#[test]
+fn an_incomplete_reapply_over_a_user_edit_drops_the_stale_committed_row() {
+    // codex R2 A-2: item A already carries a committed row for a PRIOR style X. A re-apply crashes
+    // incomplete, then the user edits A themselves before restart. never-clobber PRESERVES the edit —
+    // but the stale row still claims X, which `read_state` would report as "applied" and reset would
+    // treat as hand-edited forever (a poison row). Recovery must drop the row it can no longer honour.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut gen_journal = VecJournal::new();
+    let mut gen_ledger = MemLedgerStore::new();
+    driver.apply(1, vec![request(&a, &world, "hashA")], &mut gen_journal, &mut gen_ledger).unwrap();
+    let records = incomplete_prepared_records(&gen_journal);
+
+    // The recovery ledger holds the lingering committed row for prior style X.
+    let style_x = b"style-X-bytes";
+    let mut ledger = MemLedgerStore::new();
+    ledger.upsert(committed_row(&a, b"orig-A", style_x, 1)).unwrap();
+
+    // The user replaces A's icon with their own between crash and restart (neither original nor X).
+    world.borrow_mut().put(&a.path, b"user-edit");
+
+    let out = recover(&records, &plat, &plat, &mut ledger).unwrap();
+
+    assert_eq!(out.preserved, vec![ItemId::from_raw("A")], "the user edit is preserved");
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"user-edit", "the edit is never clobbered");
+    assert!(
+        ledger.get(&a.id).unwrap().is_none(),
+        "the stale poison row contradicting the live desktop was dropped"
+    );
+    assert!(out.degraded.is_empty(), "a deliberate relinquish is not a runtime fault");
+}
+
+#[test]
+fn an_incomplete_reapply_that_never_touched_disk_keeps_the_prior_committed_row() {
+    // codex R2 A-2 (the consistent case): item A carries a committed row for prior style X; a re-apply
+    // crashes BEFORE its own apply, so the desktop is still exactly X. The row correctly reflects the
+    // live desktop — recovery must KEEP it (not blind-drop it, which would forget a correctly-tracked
+    // item) and not restore over X.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut gen_journal = VecJournal::new();
+    let mut gen_ledger = MemLedgerStore::new();
+    driver.apply(1, vec![request(&a, &world, "hashA")], &mut gen_journal, &mut gen_ledger).unwrap();
+    let records = incomplete_prepared_records(&gen_journal);
+
+    let style_x = b"style-X-bytes";
+    let mut ledger = MemLedgerStore::new();
+    ledger.upsert(committed_row(&a, b"orig-A", style_x, 1)).unwrap();
+
+    // The desktop is still at the prior committed style X (the re-apply never wrote).
+    world.borrow_mut().put(&a.path, style_x);
+
+    let out = recover(&records, &plat, &plat, &mut ledger).unwrap();
+
+    assert!(out.preserved.is_empty(), "a correctly-tracked prior style is not a preserve event");
+    assert!(out.aborted.is_empty(), "the prior committed style is not reverted");
+    assert!(out.degraded.is_empty());
+    let row = ledger.get(&a.id).unwrap().expect("the consistent committed row is kept");
+    assert_eq!(row.last_applied_fingerprint, Fingerprint::of_bytes(style_x));
+    assert_eq!(world.borrow().get(&a.path).unwrap(), style_x, "the desktop is left at X");
 }
 
 /// The kill-point battery: run a two-item apply, then for every truncation of the journal

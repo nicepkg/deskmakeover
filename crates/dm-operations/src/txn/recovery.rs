@@ -14,7 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use dm_domain::{IconApplier, ItemStateReader, ItemTarget, RestoreAnchor};
+use dm_domain::{IconApplier, ItemStateReader, ItemTarget, PortError, RestoreAnchor};
 
 use crate::error::{OperationError, Result};
 use crate::ledger::entry::{LedgerEntry, TxnState};
@@ -318,8 +318,10 @@ fn abort_incomplete(
         // true original (we never wrote, or a prior pass already restored — undo is a no-op) OR exactly
         // the style this txn applied (`new_fingerprint`, present once `ItemApplied` was journaled). ANY
         // other live state — the user's own ICON edit made between crash and restart, or a torn/foreign
-        // write — is PRESERVED, never blind-restored. A read fault cannot confirm the state, so it is a
-        // runtime fault (degraded → retried), NOT a licence to clobber.
+        // write — is PRESERVED, never blind-restored. A `NotFound` read (the target is gone — the user
+        // deleted it) is a FINAL never-clobber outcome, handled in the reconcile branch below; any OTHER
+        // read fault cannot confirm the state, so it is a runtime fault (degraded → retried), NOT a
+        // licence to clobber.
         //
         // SCOPE, honestly (codex nc-review): the identity here is the CAS `Fingerprint`, which for the
         // registry-icon kinds (Recycle Bin / System) IS the full restore surface, but for a `.lnk`/
@@ -332,16 +334,56 @@ fn abort_incomplete(
         // not atomic vs a concurrent external edit — the F1 platform-CAS item). Both are real-platform
         // work (the in-memory fake's fingerprint is already full-surface, so it cannot exercise gap 1).
         let live = match reader.read_fingerprint(&rec.target) {
-            Ok(fp) => fp,
+            Ok(fp) => Some(fp),
+            // The item's target is GONE — the user deleted it (or it never materialised). A missing
+            // file is a FINAL never-clobber outcome, not a retryable fault (codex R2 A-1): reporting a
+            // deletion as `degraded` would withhold the journal checkpoint forever, so every future
+            // apply/reset would defer on a phantom crash that can NEVER resolve (the file stays gone).
+            // Fall through with `None` → the reconcile-and-relinquish branch below drops any stale row.
+            Err(PortError::NotFound(_)) => None,
             Err(e) => {
                 outcome.degraded.push(format!("recover abort read {}: {e}", id.as_str()));
                 continue;
             }
         };
-        let is_ours = live == rec.original_fingerprint || rec.new_fingerprint == Some(live);
+        let is_ours = matches!(
+            live,
+            Some(fp) if fp == rec.original_fingerprint || rec.new_fingerprint == Some(fp)
+        );
         if !is_ours {
-            // Leave the desktop as found + surface. An incomplete txn holds no committed ledger row,
-            // so there is nothing to drop. FINAL decision (checkpointed away, never retried).
+            // The live state is NOT this txn's original or applied style. Before preserving, RECONCILE
+            // the ledger so recovery never leaves a committed row that lies about the live desktop
+            // (codex R2 A-2):
+            //  * a committed row whose `last_applied` STILL matches the live fingerprint means the item
+            //    sits at a style a PRIOR transaction legitimately committed and this incomplete txn
+            //    never changed it (it crashed before its own apply) — the item is correctly tracked, so
+            //    KEEP the row and leave everything clean (nothing moved, no fence);
+            //  * every other case — a row that CONTRADICTS the live desktop (the user edited our styled
+            //    icon), the target now DELETED (`live == None`), or no row at all — means we can no
+            //    longer honestly claim ownership. Drop any row (an idempotent no-op when absent) and
+            //    surface the item as `preserved`. A remove fault is a real ledger I/O problem →
+            //    `degraded` + retain the journal for an idempotent retry, never a checkpoint over a
+            //    still-stale row.
+            let existing = match ledger.get(id) {
+                Ok(row) => row,
+                Err(e) => {
+                    outcome.degraded.push(format!("recover abort preserve read {}: {e}", id.as_str()));
+                    continue;
+                }
+            };
+            let row_matches_live = matches!(
+                (&existing, live),
+                (Some(e), Some(fp)) if e.state.is_committed() && e.last_applied_fingerprint == fp
+            );
+            if row_matches_live {
+                continue; // ledger already reflects the live desktop — a correctly-tracked prior style
+            }
+            if let Err(e) = ledger.remove(id) {
+                outcome
+                    .degraded
+                    .push(format!("recover abort preserve ledger remove {}: {e}", id.as_str()));
+                continue;
+            }
             outcome.preserved.push(id.clone());
             continue;
         }

@@ -176,4 +176,13 @@ async function startWindowStateSync(): Promise<void> {
 
 if (isTauri()) {
   void startWindowStateSync()
+  // Wave 1 (bridge schema 8): the calm module's CalmBackend port now routes to the real Rust
+  // decision core. In the browser / mock loop the store keeps its MockCalmBackend default.
+  void (async () => {
+    const [{ TauriCalmBackend }, { setCalmBackend }] = await Promise.all([
+      import('./tauri-calm'),
+      import('@/stores/calm'),
+    ])
+    setCalmBackend(new TauriCalmBackend())
+  })()
 }

@@ -19,6 +19,12 @@ export const commands = {
 	iconsRestoreOverlay: () => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_restore_overlay")),
 	iconsSwitchVersion: (versionId: string) => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_switch_version", { versionId })),
 	iconsExportCompare: (pngBase64: string) => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_export_compare", { pngBase64 })),
+	tweaksProbe: () => typedError<CalmProbeRowDto[], string>(__TAURI_INVOKE("tweaks_probe")),
+	tweaksApply: (ids: string[]) => typedError<CalmApplyRowDto[], string>(__TAURI_INVOKE("tweaks_apply", { ids })),
+	tweaksRestore: () => typedError<CalmRestoreRowDto[], string>(__TAURI_INVOKE("tweaks_restore")),
+	tweaksRestoreOne: (id: string) => typedError<CalmRestoreRowDto, string>(__TAURI_INVOKE("tweaks_restore_one", { id })),
+	tweaksOpenRoute: (id: string) => typedError<null, string>(__TAURI_INVOKE("tweaks_open_route", { id })),
+	tweaksReProbeGuided: (id: string) => typedError<CalmGuidedProbeDto, string>(__TAURI_INVOKE("tweaks_re_probe_guided", { id })),
 };
 
 /* Types */
@@ -29,6 +35,59 @@ export const commands = {
  *  `'native' | 'hidden'` union.
  */
 export type ArrowOverlayDto = "native" | "hidden";
+
+/**  The outcome of applying one row, mirroring the TS `CalmApplyRow.outcome` union. */
+export type CalmApplyOutcomeDto = "verified" | "setAwaiting" | "reverted" | "skipped";
+
+/**  One row's apply result. `reason` is present only when `outcome` is `skipped`. */
+export type CalmApplyRowDto = {
+	id: string,
+	outcome: CalmApplyOutcomeDto,
+	reason: CalmSkipReasonDto | null,
+};
+
+/**
+ *  A guided row's return-probe answer, mirroring the TS `reProbeGuided` return
+ *  (`boolean | null`): `Some(true)` off, `Some(false)` still on, `None` unreadable.
+ */
+export type CalmGuidedProbeDto = "off" | "stillOn" | "unreadable";
+
+/**
+ *  One row's probe result. `ownedByUs` = the ledger owns it and its value is intact (→ verified);
+ *  `driftedFromUs` = the ledger owns it but the value moved (→ reopened). Both false for a plain
+ *  unowned row.
+ */
+export type CalmProbeRowDto = {
+	id: string,
+	state: CalmProbeStateDto,
+	ownedByUs: boolean,
+	driftedFromUs: boolean,
+};
+
+/**
+ *  The probe state of one calm row, mirroring the TS `CalmProbeState` union. The `ownedByUs` /
+ *  `driftedFromUs` flags on [`CalmProbeRowDto`] refine `quiet`/`pushing` into the ledger-aware
+ *  frontend states (`verified` / `reopened`).
+ */
+export type CalmProbeStateDto = "quiet" | "pushing" | "unsupported" | "managed" | "needsReconfirm";
+
+/**
+ *  The outcome of restoring one row, mirroring the TS `CalmRestoreRow.outcome` union.
+ *  `SkippedDrift` = the row was hand-edited since our write, so it is disowned, never clobbered.
+ */
+export type CalmRestoreOutcomeDto = "restored" | "skippedDrift";
+
+/**  One row's restore result. */
+export type CalmRestoreRowDto = {
+	id: string,
+	outcome: CalmRestoreOutcomeDto,
+};
+
+/**
+ *  Why an apply skipped a row without writing it (only `Changed` today), mirroring the TS
+ *  `CalmApplyRow.reason`.
+ */
+export type CalmSkipReasonDto = "changed";
 
 /**
  *  The OBSERVED desktop metrics a scan reports, so the frontend assembles the grid from PLATFORM

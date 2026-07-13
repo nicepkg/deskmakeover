@@ -17,10 +17,12 @@ mod devhost;
 #[cfg(not(windows))]
 mod devhost_icons;
 mod icon_host;
+mod tweaks_host;
 mod wallpaper_host;
 
 use dm_operations::icons::scope::ScopeRoots;
 use icon_host::{IconHost, IconHostPorts};
+use tweaks_host::TweaksHost;
 use wallpaper_host::WallpaperHost;
 
 /// App-wide state managed by Tauri and read by commands.
@@ -29,6 +31,7 @@ pub struct AppState {
     pub settings: Arc<SettingsStore>,
     pub wallpaper: WallpaperHost,
     pub icons: IconHost,
+    pub tweaks: TweaksHost,
 }
 
 /// The single command surface — used both to wire `invoke` at runtime and to
@@ -50,6 +53,12 @@ fn specta_builder() -> Builder<tauri::Wry> {
         commands::icons_restore_overlay,
         commands::icons_switch_version,
         commands::icons_export_compare,
+        commands::tweaks_probe,
+        commands::tweaks_apply,
+        commands::tweaks_restore,
+        commands::tweaks_restore_one,
+        commands::tweaks_open_route,
+        commands::tweaks_re_probe_guided,
     ])
 }
 
@@ -231,7 +240,10 @@ pub fn run() {
             let settings = Arc::new(SettingsStore::open(&db_path)?);
             let wallpaper = build_wallpaper_host(&data_dir)?;
             let icons = build_icon_host(&data_dir, settings.clone())?;
-            app.manage(AppState { settings, wallpaper, icons });
+            // W1: the calm host uses the in-memory devhost on every platform (the real winreg
+            // backend is Wave 2). No data_dir yet — its journal is in-memory this slice.
+            let tweaks = TweaksHost::new_devhost();
+            app.manage(AppState { settings, wallpaper, icons, tweaks });
             log::info!("settings store ready at {}", db_path.display());
             Ok(())
         })

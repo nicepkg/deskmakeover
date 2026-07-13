@@ -4,8 +4,9 @@
 //! command is `#[specta::specta]` so its signature flows into the generated TS bindings.
 
 use dm_contracts::{
-    IconChunkItemDto, IconOpResultDto, IconPersistedDto, IconScanDto, SettingsDto, SettingsPatch,
-    SystemInfoDto, WallpaperResultDto, WallpaperScreensDto,
+    CalmApplyRowDto, CalmGuidedProbeDto, CalmProbeRowDto, CalmRestoreRowDto, IconChunkItemDto,
+    IconOpResultDto, IconPersistedDto, IconScanDto, SettingsDto, SettingsPatch, SystemInfoDto,
+    WallpaperResultDto, WallpaperScreensDto,
 };
 use tauri::State;
 
@@ -149,4 +150,52 @@ pub fn icons_export_compare(
     use tauri::Manager;
     let pictures = app.path().picture_dir().ok();
     state.icons.export_compare(&png_base64, pictures)
+}
+
+// ---- 清爽 (calm-Windows) settings — the THIN calm verbs (bridge schema 8). The frontend owns
+// grouping / hero phase / schematic; Rust reports each row's honest probe + apply/restore outcome.
+
+#[tauri::command]
+#[specta::specta]
+pub fn tweaks_probe(state: State<'_, AppState>) -> Result<Vec<CalmProbeRowDto>, String> {
+    state.tweaks.probe()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn tweaks_apply(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<Vec<CalmApplyRowDto>, String> {
+    state.tweaks.apply(ids)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn tweaks_restore(state: State<'_, AppState>) -> Result<Vec<CalmRestoreRowDto>, String> {
+    state.tweaks.restore()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn tweaks_restore_one(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<CalmRestoreRowDto, String> {
+    state.tweaks.restore_one(id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn tweaks_open_route(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.tweaks.open_route(id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn tweaks_re_probe_guided(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<CalmGuidedProbeDto, String> {
+    state.tweaks.re_probe_guided(id)
 }

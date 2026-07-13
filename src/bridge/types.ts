@@ -16,7 +16,11 @@
 // assembles IconsStateDto (presets/palette/swatches/grid/activePresetId) via lib/icons-assemble,
 // and `icons.setLook` LEAVES the bridge (the draft is frontend session state, resumed from ② on
 // relaunch). IconsStateDto / ScanResultDto / IconsOpResultDto are now FRONTEND store shapes.
-export const BRIDGE_SCHEMA_VERSION = 7
+// Schema 8 (Wave 1): the 清爽 (calm-Windows) settings decision core lands as real Rust commands
+// behind dm-contracts (tweaks* verbs → CalmProbeRowDto / CalmApplyRowDto / CalmRestoreRowDto /
+// CalmGuidedProbeDto). The frontend CalmBackend port maps 1:1 onto these; the store never learns
+// mock vs real Rust.
+export const BRIDGE_SCHEMA_VERSION = 8
 
 export interface SettingsDto {
   theme: 'System' | 'Dark' | 'Light'

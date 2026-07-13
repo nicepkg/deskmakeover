@@ -275,11 +275,21 @@ fn run_startup_recovery(data_dir: &Path) -> Result<(), String> {
         let outcome =
             recover_from_journal(&mut journal, &reader, &applier, &mut ledger).map_err(|e| e.to_string())?;
         log::info!(
-            "startup recovery: {} aborted, {} reconciled, {} clean txns",
+            "startup recovery: {} aborted, {} reconciled, {} preserved (left as found), {} clean txns",
             outcome.aborted.len(),
             outcome.reconciled.len(),
+            outcome.preserved.len(),
             outcome.clean_txns
         );
+        if !outcome.preserved.is_empty() {
+            // Never-clobber (recovery:265): a prior crash left items whose live state we could not
+            // confirm was ours — a user edit or a torn write. We deliberately did NOT overwrite them.
+            log::warn!(
+                "startup recovery PRESERVED {} item(s) exactly as found (edited or uncertain since a \
+                 prior crash) rather than restore over them — surfaced for the user to review",
+                outcome.preserved.len()
+            );
+        }
         // A DEGRADED recovery (codex R5-#6): a restore/ledger op faulted while replaying a prior crash's
         // journal, so the desktop is only PARTIALLY recovered. `recover_from_journal` deliberately did
         // NOT checkpoint — the unreconciled records stay so the next (idempotent) recovery finishes the

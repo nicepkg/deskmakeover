@@ -280,12 +280,20 @@ impl<'a> IconOps<'a> {
         // user retries; the journal was left intact for the next pass (a clean abort already
         // checkpointed it, so the retry finds an empty journal and proceeds normally). Reconcile-only
         // recovery (ledger gap close, no desktop change) is safe to build on and does not early-return.
-        if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
+        if !recovery.degraded.is_empty() || recovery.moved_or_uncertain() {
             let mut repair = recovery.degraded;
             if !recovery.aborted.is_empty() {
                 repair.push(format!(
                     "recovered {} interrupted item(s) from a prior crash — re-syncing before re-applying",
                     recovery.aborted.len()
+                ));
+            }
+            if !recovery.preserved.is_empty() {
+                // Never-clobber (recovery:265): items left exactly as found because we could not
+                // confirm they were ours — surface for review, never silently overwritten.
+                repair.push(format!(
+                    "left {} item(s) as found (edited or uncertain since a prior crash) — review before re-applying",
+                    recovery.preserved.len()
                 ));
             }
             let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);
@@ -295,7 +303,7 @@ impl<'a> IconOps<'a> {
                 conflicts: Vec::new(),
                 desktop_mutated: !recovery.aborted.is_empty(),
                 intent_persisted: false,
-                // Recovery moved the desktop (or is mid-repair) → the cached scan is stale; fence it.
+                // Recovery moved the desktop or left uncertain state → the cached scan is stale; fence it.
                 requires_rescan: true,
                 error: None,
                 degraded: Some(repair.join("; ")),
@@ -574,12 +582,18 @@ impl<'a> IconOps<'a> {
         // a mutated desktop. Return repair-required + the authoritative state; the journal stays for the
         // next pass (a clean abort already checkpointed it, so the retry proceeds normally). A
         // reconcile-only recovery (no desktop change) is safe to reset on and does not early-return.
-        if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
+        if !recovery.degraded.is_empty() || recovery.moved_or_uncertain() {
             let mut repair = recovery.degraded;
             if !recovery.aborted.is_empty() {
                 repair.push(format!(
                     "recovered {} interrupted item(s) from a prior crash — re-syncing before resetting",
                     recovery.aborted.len()
+                ));
+            }
+            if !recovery.preserved.is_empty() {
+                repair.push(format!(
+                    "left {} item(s) as found (edited or uncertain since a prior crash) — review before resetting",
+                    recovery.preserved.len()
                 ));
             }
             let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);

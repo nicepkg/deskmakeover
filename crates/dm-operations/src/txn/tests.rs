@@ -344,10 +344,54 @@ fn durably_rolled_back_item_is_not_restored_again_over_a_user_edit() {
     assert!(out.degraded.is_empty(), "a clean skip is not a degraded outcome");
 }
 
+#[test]
+fn a_user_edit_between_crash_and_restart_is_preserved_never_clobbered() {
+    // recovery:265 (owner-approved 2026-07-14, 極致 UX): the ONE outcome we never accept is silently
+    // destroying the user's own customization. An incomplete txn crashed after PREPARING A but before
+    // applying it; the user then replaces A's icon themselves before restart. Recovery must LEAVE the
+    // user's edit exactly as found and surface it — never blind-restore the journaled anchor over it.
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+
+    // Keep only up to ItemPrepared: an incomplete txn that crashed after preparing A, before any
+    // desktop write — so `new_fingerprint` is absent and the anchor's original is the only thing we
+    // journaled about A.
+    let records: Vec<JournalRecord> = journal
+        .records()
+        .iter()
+        .take_while(|r| !matches!(r, JournalRecord::AssetWritten { .. }))
+        .cloned()
+        .collect();
+    assert!(records.iter().any(|r| matches!(r, JournalRecord::ItemPrepared { .. })));
+    assert!(!records.iter().any(|r| matches!(r, JournalRecord::ItemApplied { .. })));
+
+    // The user chooses their own icon for A before restart.
+    world.borrow_mut().put(&a.path, b"user-chosen-icon");
+
+    let mut fresh = MemLedgerStore::new();
+    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+
+    assert_eq!(
+        world.borrow().get(&a.path).unwrap(),
+        b"user-chosen-icon",
+        "a user edit must be preserved, never clobbered by recovery"
+    );
+    assert_eq!(out.preserved, vec![ItemId::from_raw("A")], "the item is surfaced as preserved");
+    assert!(out.aborted.is_empty(), "nothing was restored over the user's edit");
+    assert!(out.degraded.is_empty(), "a deliberate preserve is not a runtime fault");
+}
+
 /// The kill-point battery: run a two-item apply, then for every truncation of the journal
-/// replay recovery against the world as it was at that fsync — plus a "torn write" variant —
-/// and assert each item lands EXACTLY on its original (incomplete txn) or its target
-/// (committed txn), with a consistent ledger and full idempotency.
+/// replay recovery against the world as it was at that fsync — plus a "torn/foreign write" variant —
+/// and assert: a CLEAN crash restores each incomplete item EXACTLY to its original (or leaves a
+/// committed item on its target); a torn/foreign write we cannot identify as ours is LEFT exactly as
+/// found (never-clobber, recovery:265) and surfaced. Full idempotency throughout.
 #[test]
 fn killpoint_recovery_leaves_each_item_original_or_target() {
     let world = World::shared();
@@ -377,25 +421,61 @@ fn killpoint_recovery_leaves_each_item_original_or_target() {
         let world_at_crash = if k == 0 { originals.clone() } else { snaps[k - 1].clone() };
         let committed = records.iter().any(|r| matches!(r, JournalRecord::TxnCommitted { .. }));
 
-        // Variant 1: clean crash (desktop exactly at the snapshot).
+        // Variant 1: clean crash (desktop exactly at the snapshot). At an aligned snapshot the live
+        // state is always either the true original or exactly the style we applied, so never-clobber
+        // restores every incomplete item to its original.
         assert_recovers_consistently(records, &world_at_crash, &originals, &expected_target, committed, k);
 
-        // Variant 2: torn write — every prepared item's file is garbage. The anchor must still
-        // pull it back to the exact original (or leave a committed item styled, since a committed
-        // txn is never undone and its file is authoritative).
-        let mut torn = world_at_crash.clone();
-        for id in prepared_ids(records) {
-            let path = format!("C:/Desktop/{id}.lnk");
-            if committed {
-                // Post-commit files are authoritative; don't corrupt them in this variant.
-                continue;
-            }
-            torn.insert(path, b"TORN-GARBAGE".to_vec());
-        }
+        // Variant 2: torn/foreign write — every prepared item's file is garbage we cannot identify as
+        // ours. NEVER-CLOBBER (recovery:265): recovery must LEAVE it exactly as found (it could be the
+        // user's own edit made between crash and restart) and surface it, never blind-restore over it.
+        // A committed item's file is authoritative and is not corrupted in this variant.
         if !committed {
-            assert_recovers_consistently(records, &torn, &originals, &expected_target, committed, k);
+            let mut torn = world_at_crash.clone();
+            for id in prepared_ids(records) {
+                torn.insert(format!("C:/Desktop/{id}.lnk"), b"TORN-GARBAGE".to_vec());
+            }
+            assert_preserves_unrecognized(records, &torn, k);
         }
     }
+}
+
+/// Never-clobber (recovery:265): every incomplete item whose live state we cannot confirm is ours is
+/// LEFT exactly as found, reported in `preserved`, and never given a ledger row. Idempotent.
+fn assert_preserves_unrecognized(records: &[JournalRecord], world_at_crash: &HashMap<String, Vec<u8>>, k: usize) {
+    let world = Rc::new(RefCell::new(World::default()));
+    world.borrow_mut().restore_snapshot(world_at_crash.clone());
+    let plat = FakePlatform::new(world.clone());
+    let mut ledger = MemLedgerStore::new();
+
+    let out1 = recover(records, &plat, &plat, &mut ledger).unwrap();
+    let out2 = recover(records, &plat, &plat, &mut ledger).unwrap(); // idempotency
+
+    let prepared = prepared_ids(records);
+    for name in ["A", "B"] {
+        if !prepared.contains(&name.to_string()) {
+            continue; // not yet prepared at this truncation → not corrupted, not asserted
+        }
+        let path = format!("C:/Desktop/{name}.lnk");
+        assert_eq!(
+            world.borrow().get(&path).unwrap(),
+            b"TORN-GARBAGE",
+            "k={k}: unrecognized incomplete item {name} must be left EXACTLY as found (never-clobber)"
+        );
+        assert!(
+            out1.preserved.iter().any(|i| i.as_str() == name),
+            "k={k}: {name} must be surfaced as preserved, not silently overwritten"
+        );
+        assert!(
+            out1.aborted.iter().all(|i| i.as_str() != name),
+            "k={k}: {name} must NOT be restored"
+        );
+        assert!(
+            ledger.get(&ItemId::from_raw(name)).unwrap().is_none(),
+            "k={k}: a preserved item has no ledger row"
+        );
+    }
+    assert_eq!(out1.preserved.len(), out2.preserved.len(), "k={k}: preserve is idempotent");
 }
 
 fn prepared_ids(records: &[JournalRecord]) -> Vec<String> {

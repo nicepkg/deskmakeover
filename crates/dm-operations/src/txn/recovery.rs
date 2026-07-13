@@ -30,12 +30,28 @@ pub struct RecoveryOutcome {
     pub reconciled: Vec<dm_domain::ItemId>,
     /// Count of transactions that were already terminal (nothing to do).
     pub clean_txns: usize,
+    /// Items an incomplete-transaction abort LEFT UNTOUCHED because their live desktop state could not
+    /// be positively identified as ours — a user's manual edit made between crash and restart, or a
+    /// torn/foreign write (never-clobber, codex `recovery:265`). This is a FINAL decision, not a
+    /// fault: the desktop was NOT mutated and the journal IS checkpointed (never retried), unlike
+    /// `degraded`. The caller surfaces these for review ("N items left as found") and re-syncs.
+    pub preserved: Vec<dm_domain::ItemId>,
     /// Per-item runtime faults that prevented a full reconcile (a restore/ledger I/O error while
     /// replaying a prior crash's journal). Non-empty means recovery is INCOMPLETE: the caller must
     /// NOT stack a new transaction on top and must NOT checkpoint the journal (the unreconciled
     /// records stay for a retry) — it returns a repair-required status instead of a bare Err over a
     /// desktop the recovery already partially mutated (codex R4-Block 5).
     pub degraded: Vec<String>,
+}
+
+impl RecoveryOutcome {
+    /// Whether recovery TOUCHED or left uncertain state the caller must re-sync from before stacking
+    /// a new mutation: a restored (`aborted`) item moved the desktop, and a `preserved` item's state
+    /// is unverified. Either fences the cached scan. (`degraded` is handled separately — it withholds
+    /// the checkpoint for a retry.)
+    pub fn moved_or_uncertain(&self) -> bool {
+        !self.aborted.is_empty() || !self.preserved.is_empty()
+    }
 }
 
 /// Per-item state accumulated from a transaction's journal records.
@@ -207,7 +223,7 @@ pub fn recover(
         } else if group.committed {
             reconcile_committed(&group, reader, ledger, &mut outcome)?;
         } else {
-            abort_incomplete(&group, txn, &committed_owner, applier, ledger, &mut outcome)?;
+            abort_incomplete(&group, txn, &committed_owner, reader, applier, ledger, &mut outcome)?;
         }
     }
     Ok(outcome)
@@ -260,12 +276,13 @@ fn apply_record(group: &mut TxnRecovery, record: &JournalRecord) {
     }
 }
 
-/// Incomplete transaction: restore every prepared item to its original and drop its ledger
-/// entry (the item is now un-styled, so the ledger must not claim otherwise).
+/// Incomplete transaction: restore every prepared item WE can positively identify to its original
+/// and drop its ledger entry; LEAVE anything else untouched (never-clobber).
 fn abort_incomplete(
     group: &TxnRecovery,
     txn: u64,
     committed_owner: &HashMap<String, u64>,
+    reader: &dyn ItemStateReader,
     applier: &dyn IconApplier,
     ledger: &mut dyn LedgerStore,
     outcome: &mut RecoveryOutcome,
@@ -296,6 +313,28 @@ fn abort_incomplete(
             continue;
         }
         let rec = &group.items[id.as_str()];
+        // NEVER-CLOBBER (codex `recovery:265`, owner-approved 2026-07-14 for極致 UX): only undo a
+        // state we can POSITIVELY identify as ours. Read the live surface and restore ONLY when it is
+        // the item's true original (we never wrote, or a prior pass already restored — undo is a
+        // no-op) OR exactly the style this txn applied (`new_fingerprint`, present once `ItemApplied`
+        // was journaled). ANY other live state — the user's own edit made between crash and restart,
+        // or a torn/foreign write — is PRESERVED, never blind-restored: silently destroying the user's
+        // customization is the one outcome we never accept. A read fault cannot confirm the state, so
+        // it is a runtime fault (degraded → retried), NOT a licence to clobber.
+        let live = match reader.read_fingerprint(&rec.target) {
+            Ok(fp) => fp,
+            Err(e) => {
+                outcome.degraded.push(format!("recover abort read {}: {e}", id.as_str()));
+                continue;
+            }
+        };
+        let is_ours = live == rec.original_fingerprint || rec.new_fingerprint == Some(live);
+        if !is_ours {
+            // Leave the desktop as found + surface. An incomplete txn holds no committed ledger row,
+            // so there is nothing to drop. FINAL decision (checkpointed away, never retried).
+            outcome.preserved.push(id.clone());
+            continue;
+        }
         // Best-effort (codex R4-Block 5): a restore/remove fault on one item must not bail with a bare
         // Err over the items this recovery already restored. Record it as degraded and press on;
         // restore is idempotent, so a later retry finishes the unreconciled items. The row is only

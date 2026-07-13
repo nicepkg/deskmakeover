@@ -311,6 +311,15 @@ fn reset_reverts_originals_clears_saved_style_and_gcs_assets() {
     f.seed(&app, b"orig-app");
     f.apply(&[("app", 0, [1, 2, 3, 255])], style(1), "A", "v1", &[app.clone()]);
     assert_eq!(f.ico_files().len(), 1);
+    // A completed Apply set ②, so the user could enable auto-format — do so, to prove reset
+    // turns it back off (the coupling below).
+    f.settings
+        .set(&dm_contracts::SettingsPatch {
+            keep_new_icons_styled: Some(true),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(f.settings.get().unwrap().keep_new_icons_styled);
 
     let out = f.reset(false);
 
@@ -321,6 +330,9 @@ fn reset_reverts_originals_clears_saved_style_and_gcs_assets() {
     // ① emptied, ② cleared, so nothing is applied and the resident stays dormant.
     assert!(f.ledger.all().unwrap().is_empty());
     assert!(f.settings.get_saved_style().unwrap().is_none());
+    // Reset coupling (spec 07 §10 ★): the auto-format toggle is turned OFF in the same operation,
+    // so a reset desktop never silently re-styles the next new icon.
+    assert!(!f.settings.get().unwrap().keep_new_icons_styled, "reset disables auto-format");
     assert!(!out.stores.applied);
     // Every generated ICO is now unreferenced and collected.
     assert!(f.ico_files().is_empty(), "reset GCs the whole asset store");

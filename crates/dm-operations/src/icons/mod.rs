@@ -16,6 +16,7 @@
 mod package;
 pub mod native_bake;
 pub mod style_resolve;
+pub mod version_switch;
 
 pub use package::{package_masters, BufferedMaster, PackagedItem};
 
@@ -621,9 +622,21 @@ impl<'a> IconOps<'a> {
             }
             Err(e) => repair.push(format!("reset gc live-set: {e}")),
         }
-        // ② cleared: after a reset there is no current global style, so the resident is dormant.
+        // Reset coupling (spec 07 §10 ★): a reset is not just a ledger walk — to read as "as if
+        // never modified" it MUST, in the SAME operation, clear ② saved-style AND turn OFF the
+        // auto-format toggle. Skipping the toggle leaves a state that looks reset but silently
+        // re-styles the next new icon. (The arrow-overlay restore is the host's — it owns the
+        // elevated OverlayControl.)
         if let Err(e) = self.settings.set_saved_style(None) {
             repair.push(format!("reset clear ②: {e}"));
+        }
+        // Turn the toggle off directly; the precondition guard in `SettingsStore::set` would now
+        // reject re-enabling it anyway (② is empty), but leaving it `true` is a stale UI lie.
+        if let Err(e) = self.settings.set(&dm_contracts::SettingsPatch {
+            keep_new_icons_styled: Some(false),
+            ..Default::default()
+        }) {
+            repair.push(format!("reset disable auto-format: {e}"));
         }
 
         let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);

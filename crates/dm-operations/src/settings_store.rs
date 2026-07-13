@@ -51,9 +51,29 @@ impl SettingsStore {
 
     /// Apply a sparse patch transactionally and return the new full row.
     /// Absent patch fields are left untouched.
+    ///
+    /// **Resident precondition (spec 07 §2 item 2):** a patch that would set
+    /// `keep_new_icons_styled = true` while store ② (saved-style) is empty is REJECTED here, not
+    /// only in the UI — the toggle cannot be enabled before the user has completed one successful
+    /// global Apply, so "a saved style exists" stays an invariant the reconciler can rely on
+    /// rather than an edge case. Reading ② inside the same transaction keeps the check atomic
+    /// against a concurrent apply.
     pub fn set(&self, patch: &SettingsPatch) -> Result<SettingsDto> {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
+        if patch.keep_new_icons_styled == Some(true) {
+            let raw: rusqlite::types::Value = tx.query_row(
+                "SELECT icon_style_json FROM app_settings WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )?;
+            if matches!(raw, rusqlite::types::Value::Null) {
+                return Err(OperationError::InvalidPayload(
+                    "cannot enable auto-format before a style has been applied (spec 07 §2 precondition)"
+                        .into(),
+                ));
+            }
+        }
         let mut current = read_row(&tx)?;
         current.apply(patch);
         write_row(&tx, &current)?;
@@ -408,5 +428,37 @@ mod tests {
             .execute("UPDATE app_settings SET icon_style_json = x'deadbeef' WHERE id = 1", [])
             .unwrap();
         assert!(matches!(store.get_saved_style(), Err(OperationError::Corrupt(_))));
+    }
+
+    #[test]
+    fn the_resident_precondition_rejects_enabling_auto_format_before_a_style_exists() {
+        use dm_contracts::SettingsPatch;
+        let store = SettingsStore::open_in_memory().unwrap();
+        // ② empty → enabling the toggle is rejected at the patch layer, not silently accepted.
+        let err = store
+            .set(&SettingsPatch { keep_new_icons_styled: Some(true), ..Default::default() })
+            .unwrap_err();
+        assert!(matches!(err, OperationError::InvalidPayload(_)));
+        assert!(!store.get().unwrap().keep_new_icons_styled, "the toggle stayed off");
+
+        // A patch that does NOT touch the toggle is unaffected by the guard.
+        store
+            .set(&SettingsPatch { wallpaper_coach_shown: Some(true), ..Default::default() })
+            .unwrap();
+
+        // Once a style is saved (a completed global Apply), enabling the toggle succeeds.
+        let style = IconStyle::from_value(serde_json::json!({
+            "config": { "shape": "Circle", "subject": "Original", "tint": "#FF6F5E",
+                "monoStyle": "Tonal", "plateBand": "Vivid", "shortcutShape": null,
+                "distinction": "None", "markStyle": "Glass", "markColor": null, "size": "Mid",
+                "filter": "None", "plateColor": null, "plateFallback": "derived" },
+            "kindPolicy": {}, "typeOverrides": {}
+        }))
+        .unwrap();
+        store.set_saved_style(Some(&style)).unwrap();
+        let after = store
+            .set(&SettingsPatch { keep_new_icons_styled: Some(true), ..Default::default() })
+            .unwrap();
+        assert!(after.keep_new_icons_styled, "enabling succeeds once ② is non-empty");
     }
 }

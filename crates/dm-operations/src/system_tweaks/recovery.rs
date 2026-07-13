@@ -48,52 +48,70 @@ where
             .map_err(|error| DriverError::Journal(error.to_string()))?;
 
         for entry in incomplete {
-            // An interrupted apply undoes back to `before`; an interrupted restore advances
-            // forward to the original. Both refuse to overwrite an external edit.
-            let (phase, settle) = match entry.intent {
-                TransactionIntent::Apply => {
-                    (VerificationPhase::ApplyRollback, self.undo_apply(&entry.values))
-                }
-                TransactionIntent::Restore => (
-                    VerificationPhase::RestoreOriginal,
-                    self.advance_restore(&entry.values),
-                ),
+            let conflict = |cause: String| RecoveryConflict {
+                transaction: entry.id,
+                feature: entry.feature.clone(),
+                cause,
             };
-            if let Err(cause) = settle {
-                report.conflicts.push(RecoveryConflict {
-                    transaction: entry.id,
-                    feature: entry.feature,
-                    cause,
-                });
-                continue;
-            }
-            // Re-prove the terminal state with the persisted receipt, unattended.
-            if let Err(cause) = self.verify_terminal_mode(
-                phase,
-                entry.verification,
-                &entry.receipt,
-                &entry.values,
-                super::verify::ExecutionMode::UnattendedRecovery,
-            ) {
-                report.conflicts.push(RecoveryConflict {
-                    transaction: entry.id,
-                    feature: entry.feature,
-                    cause,
-                });
-                continue;
-            }
-            let result = match entry.intent {
+            // An interrupted apply undoes back to `before`; an interrupted restore advances forward
+            // to the original. Both refuse to overwrite an external edit or a policy takeover.
+            match entry.intent {
                 TransactionIntent::Apply => {
+                    if let Err(cause) = self.undo_apply(&entry.values) {
+                        report.conflicts.push(conflict(cause));
+                        continue;
+                    }
+                    if let Err(cause) = self.verify_recovery(&entry, VerificationPhase::ApplyRollback)
+                    {
+                        report.conflicts.push(conflict(cause));
+                        continue;
+                    }
                     self.journal
                         .mark_apply_rolled_back(&lease, entry.id, &entry.feature)
+                        .map_err(|error| DriverError::Journal(error.to_string()))?;
                 }
-                TransactionIntent::Restore => {
-                    self.journal.commit_restore(&lease, entry.id, &entry.feature)
-                }
-            };
-            result.map_err(|error| DriverError::Journal(error.to_string()))?;
+                TransactionIntent::Restore => match self.advance_restore(&entry.values) {
+                    // A crash-left restore whose value the user has since taken back is disowned,
+                    // exactly like a foreground restore — never a permanent recovery block.
+                    Ok(super::engine::RestoreSettle::Disown) => {
+                        self.journal
+                            .commit_restore(&lease, entry.id, &entry.feature)
+                            .map_err(|error| DriverError::Journal(error.to_string()))?;
+                    }
+                    Ok(super::engine::RestoreSettle::Clean) => {
+                        if let Err(cause) =
+                            self.verify_recovery(&entry, VerificationPhase::RestoreOriginal)
+                        {
+                            report.conflicts.push(conflict(cause));
+                            continue;
+                        }
+                        self.journal
+                            .commit_restore(&lease, entry.id, &entry.feature)
+                            .map_err(|error| DriverError::Journal(error.to_string()))?;
+                    }
+                    Err(cause) => {
+                        report.conflicts.push(conflict(cause));
+                        continue;
+                    }
+                },
+            }
             report.recovered.push(entry.id);
         }
         Ok(report)
+    }
+
+    /// Re-prove a recovered transaction's terminal state with its PERSISTED receipt, unattended.
+    fn verify_recovery(
+        &mut self,
+        entry: &super::journal::JournalEntry,
+        phase: VerificationPhase,
+    ) -> Result<(), String> {
+        self.verify_terminal_mode(
+            phase,
+            entry.verification,
+            &entry.receipt,
+            &entry.values,
+            super::verify::ExecutionMode::UnattendedRecovery,
+        )
     }
 }

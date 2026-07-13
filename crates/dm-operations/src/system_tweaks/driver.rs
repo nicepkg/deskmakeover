@@ -25,6 +25,7 @@ use super::journal::{
     JournalStore, ManagedSetting, ManagedValue, PrepareRequest, TransactionIntent,
     TransactionValue,
 };
+use super::engine::RestoreSettle;
 use super::error::DriverError;
 use super::verify::{VerificationBackend, VerificationPhase, VerificationPlan};
 
@@ -72,8 +73,16 @@ where
         if descriptor.tier == TweakTier::Guided {
             return Ok(ProbeOutcome::Pushing);
         }
+        // A policy guard OR any mutation leaf that a policy has taken over means the feature is
+        // managed — this OUTRANKS ownership, so a leaf a policy grabbed after our write is never
+        // reported as DeskMakeover-owned (codex W1 R5 #2).
         if self.guard_present(descriptor)?.is_some() {
             return Ok(ProbeOutcome::Managed);
+        }
+        for mutation in &descriptor.mutations {
+            if self.is_backend_managed(&mutation.address)? {
+                return Ok(ProbeOutcome::Managed);
+            }
         }
 
         // An owned anchor: a crossed certification boundary outranks ownership; else intact →
@@ -297,7 +306,6 @@ where
             .journal_managed(&lease, feature)?
             .ok_or_else(|| DriverError::NotManaged(feature.clone()))?;
 
-        let external_conflict = !self.all_leaves_match(&managed)?;
         let values: Vec<TransactionValue> = managed
             .values
             .iter()
@@ -332,19 +340,19 @@ where
             )
             .map_err(|error| DriverError::Journal(error.to_string()))?;
 
-        if external_conflict {
-            // Disown without writing — the user's values stand.
-            self.journal
-                .commit_restore(&lease, transaction, feature)
-                .map_err(|error| DriverError::Journal(error.to_string()))?;
-            return Ok(RestoreOutcome::SkippedExternalConflict);
-        }
-
-        // Clean restore: drive each leaf forward from last_applied to original through the shared
-        // never-clobber path — it refuses to overwrite an external edit OR a leaf a policy has
-        // since taken over (codex W1 R4 #1), leaving the transaction Prepared on any conflict.
-        if let Err(cause) = self.advance_restore(&values) {
-            return Err(DriverError::Pending { transaction, cause });
+        // Classify + drive the restore forward through the shared never-clobber path. It separates
+        // a clean restore, an external edit (disown — the user took the value back, even in a race
+        // AFTER prepare, so it is never a permanent Pending — codex W1 R5 #1), and a policy/I-O
+        // block (stay Prepared for recovery).
+        match self.advance_restore(&values) {
+            Ok(RestoreSettle::Disown) => {
+                self.journal
+                    .commit_restore(&lease, transaction, feature)
+                    .map_err(|error| DriverError::Journal(error.to_string()))?;
+                return Ok(RestoreOutcome::SkippedExternalConflict);
+            }
+            Ok(RestoreSettle::Clean) => {}
+            Err(cause) => return Err(DriverError::Pending { transaction, cause }),
         }
         if let Err(cause) = self.verify_terminal(
             VerificationPhase::RestoreOriginal,

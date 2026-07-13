@@ -109,51 +109,55 @@ where
         }
     }
 
-    /// Drive a RESTORE forward to each leaf's original (`desired` for restore values), writing ONLY
-    /// a leaf still at the `before` value we last applied. A leaf already at the original is a
-    /// no-op; a leaf at any other value is an external edit and is never overwritten (never-clobber).
-    pub(super) fn advance_restore(&mut self, values: &[TransactionValue]) -> Result<(), String> {
-        let mut conflicts: Vec<String> = Vec::new();
+    /// Drive a RESTORE forward to each leaf's original (`desired` for restore values). CLASSIFY all
+    /// leaves read-only first, then write — so an external edit never leaves a partial write, and
+    /// the three outcomes are separated (codex W1 R5 #1): a pure external edit is a `Disown` the
+    /// caller commits as `SkippedExternalConflict` (never a permanent Pending); a policy takeover or
+    /// I/O failure is a hard `Err` that keeps the transaction prepared for recovery.
+    pub(super) fn advance_restore(
+        &mut self,
+        values: &[TransactionValue],
+    ) -> Result<RestoreSettle, String> {
+        // Phase 1 — classify (read-only). We OWN a leaf only while its live value still equals the
+        // `before` (last_applied) we recorded; a live value that has moved AT ALL means the user
+        // took it back (even to the original) → disown, never overwrite. A policy takeover or an
+        // I/O failure is a hard block.
+        let mut external = false;
         for value in values {
-            let live = match self.backend.read(&value.address) {
-                Ok(live) => live,
-                Err(error) => {
-                    conflicts.push(format!("read {}: {error}", value.address));
-                    continue;
-                }
-            };
-            if live == value.desired {
-                continue; // already at the original
+            if self
+                .backend
+                .is_policy_managed(&value.address)
+                .map_err(|error| format!("managed check {}: {error}", value.address))?
+            {
+                return Err(format!("policy-managed, not restored: {}", value.address));
             }
+            let live = self
+                .backend
+                .read(&value.address)
+                .map_err(|error| format!("read {}: {error}", value.address))?;
             if live != value.before {
-                conflicts.push(format!("external edit at {}", value.address));
-                continue;
-            }
-            match self.backend.is_policy_managed(&value.address) {
-                Ok(true) => {
-                    conflicts.push(format!("policy-managed, not restored: {}", value.address));
-                    continue;
-                }
-                Ok(false) => {}
-                Err(error) => {
-                    conflicts.push(format!("managed check {}: {error}", value.address));
-                    continue;
-                }
-            }
-            if let Err(error) = self.backend.compare_exchange(
-                RegistryWriteIntent::Undo,
-                &value.address,
-                &live,
-                &value.desired,
-            ) {
-                conflicts.push(format!("restore {}: {error}", value.address));
+                external = true;
             }
         }
-        if conflicts.is_empty() {
-            Ok(())
-        } else {
-            Err(conflicts.join("; "))
+        if external {
+            return Ok(RestoreSettle::Disown);
         }
+        // Phase 2 — write each leaf back to the original with the CAS expecting `before`, so a race
+        // that landed after classification is a CAS conflict (→ block) and never a clobber.
+        for value in values {
+            if value.desired == value.before {
+                continue; // nothing to change
+            }
+            self.backend
+                .compare_exchange(
+                    RegistryWriteIntent::Undo,
+                    &value.address,
+                    &value.before,
+                    &value.desired,
+                )
+                .map_err(|error| format!("restore {}: {error}", value.address))?;
+        }
+        Ok(RestoreSettle::Clean)
     }
 
     /// Handle a failed apply: undo ONLY the leaves this transaction actually wrote (`written`),
@@ -266,6 +270,14 @@ where
             .verify_effect(&self.backend, &context)
             .map_err(|error| error.to_string())
     }
+}
+
+/// The outcome of an `advance_restore` classification: a clean restore that wrote the originals,
+/// or an external edit that means the feature is no longer ours (disown, never overwrite).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RestoreSettle {
+    Clean,
+    Disown,
 }
 
 /// The expected terminal value for one leaf under a given phase:

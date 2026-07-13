@@ -306,6 +306,43 @@ fn a_policy_taking_over_a_leaf_before_restore_never_overwrites_it() {
 }
 
 #[test]
+fn inspect_reports_managed_when_a_policy_takes_over_an_owned_leaf() {
+    // codex R5 #2: a policy that took over a mutation leaf outranks ownership — never OwnedQuiet.
+    let mut driver = driver();
+    driver.apply(&search()).unwrap();
+    driver
+        .backend
+        .mark_policy_managed(addr(SEARCH, "SearchboxTaskbarMode"));
+    // Value unchanged (still 0) but policy-managed → Managed, not OwnedQuiet.
+    assert_eq!(driver.inspect(&search()).unwrap(), ProbeOutcome::Managed);
+    // And with the value also changed → still Managed, not OwnedDrifted.
+    driver.set_live_for_test(addr(SEARCH, "SearchboxTaskbarMode"), RawRegistryValue::dword(1));
+    assert_eq!(driver.inspect(&search()).unwrap(), ProbeOutcome::Managed);
+}
+
+#[test]
+fn a_restore_race_after_classification_is_resolved_by_recovery_disown() {
+    // codex R5 #1: an external edit that races in AFTER the restore's read-only classification is a
+    // transient Pending, NOT a permanent block — recovery re-classifies and disowns it.
+    let mut driver = driver();
+    driver.apply(&search()).unwrap(); // CAS #1 (value → 0), owned
+    // The user changes the value to a foreign 5 right before the restore's phase-2 CAS (#2).
+    driver.backend.replace_before_compare_exchange_at(
+        2,
+        addr(SEARCH, "SearchboxTaskbarMode"),
+        RegistrySnapshot::Present(RawRegistryValue::dword(5)),
+    );
+    assert!(matches!(driver.restore(&search()), Err(DriverError::Pending { .. })));
+    // Recovery re-classifies: live 5 ≠ our last_applied → external → disown → resolved (not stuck).
+    let report = driver.recover().unwrap();
+    assert_eq!(report.recovered.len(), 1);
+    assert!(report.conflicts.is_empty());
+    assert!(driver.managed_for_test(&search()).is_none()); // disowned
+    // The next write is no longer blocked.
+    assert_eq!(driver.apply(&search()).unwrap(), ApplyOutcome::Verified);
+}
+
+#[test]
 fn a_policy_landing_during_settle_blocks_committing_ownership() {
     // codex R4 #2: a policy that takes over a leaf during settle (after the CAS, before commit)
     // must not let the driver claim Verified ownership on a now-managed leaf.

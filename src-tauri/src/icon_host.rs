@@ -22,6 +22,9 @@ use dm_domain::{
     DecodedImage, DesktopGeometryReader, DesktopScanner, ExplorerRefresher, IconApplier,
     IconSourceExtractor, ItemKind, ItemStateReader, OverlayControl, OverlayOutcome,
 };
+use dm_operations::icons::{
+    MAX_APPLY_MASTERS, MAX_MASTER_B64_BYTES, MAX_SESSION_B64_BYTES,
+};
 use dm_operations::{
     FsAssetStore, IconApplySession, IconOps, IconPlatform, IconStoreState, JsonLedgerStore,
     LedgerStore, LookHistoryStore, LookVersion, ScannedItem, SettingsStore, TxnIdAllocator,
@@ -420,6 +423,15 @@ impl IconHost {
         if !st.scan_valid {
             return Err("no valid scan to apply against: rescan first".into());
         }
+        // Cap the untrusted `count` (audit F4): a session can never buffer more masters than the live
+        // scan can produce (≤2 per item — primary + paired empty) nor more than the absolute ceiling,
+        // so a hostile count can't force a huge up-front allocation before any master arrives.
+        let max_masters = st.scan.len().saturating_mul(2).min(MAX_APPLY_MASTERS);
+        if count as usize > max_masters {
+            return Err(format!(
+                "apply count {count} exceeds the {max_masters} masters the current scan can produce"
+            ));
+        }
         // A fresh Begin ABANDONS any prior in-flight session (a bake that errored mid-stream and never
         // committed must not strand the session and deadlock every future apply). Mixing is prevented
         // by the SESSION TOKEN: the new session gets a new monotonic id, so any still-in-flight Chunk/
@@ -446,6 +458,25 @@ impl IconHost {
             .as_mut()
             .ok_or("no apply session; call applyBakedBegin first")?;
         for it in items {
+            // Cap the untrusted chunk stream (audit F4): reject an oversized master, and refuse to
+            // grow the session past its master-count / cumulative-byte ceilings — a hostile chunk
+            // loop can't OOM the process before the commit validates.
+            if it.master_png.len() > MAX_MASTER_B64_BYTES {
+                return Err(format!(
+                    "baked master {:?} is {} bytes, over the {}-byte per-master limit",
+                    it.id,
+                    it.master_png.len(),
+                    MAX_MASTER_B64_BYTES
+                ));
+            }
+            if session.len() >= MAX_APPLY_MASTERS {
+                return Err(format!("apply session exceeded the {MAX_APPLY_MASTERS}-master limit"));
+            }
+            if session.bytes().saturating_add(it.master_png.len()) > MAX_SESSION_B64_BYTES {
+                return Err(format!(
+                    "apply session exceeded its {MAX_SESSION_B64_BYTES}-byte cumulative budget"
+                ));
+            }
             session.push(it.id, it.source_index, it.master_png);
         }
         Ok(())

@@ -24,6 +24,32 @@ pub use snapshot_store::SnapshotStore;
 
 const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
+/// Untrusted wallpaper-payload ceilings (audit F4): the webview supplies the baked PNG base64, so
+/// bound it before decode/materialization. An 8K-display PNG is a few MiB — these are generous.
+const MAX_WALLPAPER_B64_BYTES: usize = 96 * 1024 * 1024;
+const MAX_WALLPAPER_PNG_BYTES: usize = 64 * 1024 * 1024;
+/// Pixel budget read from the IHDR — rejects a small "decompression bomb" PNG that declares huge
+/// dimensions (8192² covers an 8K display with headroom).
+const MAX_WALLPAPER_PIXELS: u64 = 8192 * 8192;
+
+/// Verifies real PNG structure (magic + IHDR) and that the declared dimensions are non-zero and
+/// within the pixel budget — the 8-byte magic alone lets a signature-prefixed blob or a
+/// decompression-bomb IHDR through (audit F4).
+fn validate_png_header(png: &[u8]) -> Result<()> {
+    // 8-byte magic, then the first chunk MUST be IHDR: len(4) + "IHDR"(4) + width(4) + height(4) ...
+    if png.len() < 24 || png[..PNG_MAGIC.len()] != PNG_MAGIC || &png[12..16] != b"IHDR" {
+        return Err(OperationError::InvalidPayload("not a valid PNG (bad magic or IHDR)".into()));
+    }
+    let w = u32::from_be_bytes([png[16], png[17], png[18], png[19]]) as u64;
+    let h = u32::from_be_bytes([png[20], png[21], png[22], png[23]]) as u64;
+    if w == 0 || h == 0 || w.saturating_mul(h) > MAX_WALLPAPER_PIXELS {
+        return Err(OperationError::InvalidPayload(format!(
+            "wallpaper dimensions {w}x{h} are zero or exceed the pixel budget"
+        )));
+    }
+    Ok(())
+}
+
 /// Outcome of a mutating wallpaper op; the command layer maps this onto the thin
 /// `WallpaperResultDto` (ok / toast / hasBackup).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,13 +84,25 @@ impl<'a> WallpaperOps<'a> {
     /// afterwards (the new file name is content-hashed, so re-applies always change
     /// the path and `SetWallpaper` never sees a stale-path no-op).
     pub fn apply_baked(&self, monitor_id: &str, png_base64: &str) -> Result<WallpaperOutcome> {
-        // ① decode + validate before anything else touches disk or desktop.
+        // ① cap → decode → validate, before anything touches disk or desktop. Cap the untrusted
+        // base64 BEFORE allocating the decode buffer, cap the decoded blob, then verify real PNG
+        // structure + a sane pixel budget (audit F4).
+        if png_base64.len() > MAX_WALLPAPER_B64_BYTES {
+            return Err(OperationError::InvalidPayload(format!(
+                "wallpaper base64 is {} bytes, over the {MAX_WALLPAPER_B64_BYTES}-byte limit",
+                png_base64.len()
+            )));
+        }
         let png = base64::engine::general_purpose::STANDARD
             .decode(png_base64)
             .map_err(|e| OperationError::InvalidPayload(format!("base64: {e}")))?;
-        if png.len() < PNG_MAGIC.len() || png[..PNG_MAGIC.len()] != PNG_MAGIC {
-            return Err(OperationError::InvalidPayload("not a PNG payload".into()));
+        if png.len() > MAX_WALLPAPER_PNG_BYTES {
+            return Err(OperationError::InvalidPayload(format!(
+                "decoded wallpaper is {} bytes, over the {MAX_WALLPAPER_PNG_BYTES}-byte limit",
+                png.len()
+            )));
         }
+        validate_png_header(&png)?;
 
         // ② snapshot-once: the ONLY point in the system allowed to create the
         // pre-first-apply snapshot. A corrupt existing file fails closed here
@@ -208,10 +246,20 @@ mod tests {
         }
     }
 
+    /// Builds a minimal but STRUCTURALLY VALID PNG (magic + IHDR + 1x1 dims), with `body` appended so
+    /// distinct content hashes to a distinct baked path. `validate_png_header` only reads the header.
+    fn fake_png(body: &[u8]) -> Vec<u8> {
+        let mut b = PNG_MAGIC.to_vec();
+        b.extend_from_slice(&13u32.to_be_bytes()); // IHDR chunk length
+        b.extend_from_slice(b"IHDR");
+        b.extend_from_slice(&1u32.to_be_bytes()); // width
+        b.extend_from_slice(&1u32.to_be_bytes()); // height
+        b.extend_from_slice(body);
+        b
+    }
+
     fn png_b64() -> String {
-        let mut bytes = PNG_MAGIC.to_vec();
-        bytes.extend_from_slice(b"fake body");
-        base64::engine::general_purpose::STANDARD.encode(bytes)
+        base64::engine::general_purpose::STANDARD.encode(fake_png(b"fake body"))
     }
 
     struct Rig {
@@ -302,6 +350,26 @@ mod tests {
     }
 
     #[test]
+    fn oversized_and_dimension_bomb_payloads_fail_closed() {
+        let r = rig();
+        let fake = FakeApplier::default();
+        let ops = WallpaperOps::new(&fake, &r.store, &r.baked);
+        // A tiny PNG whose IHDR DECLARES 100000x100000 (a decompression bomb) is rejected on dims —
+        // the 8-byte magic alone would have let it through (audit F4).
+        let mut bomb = PNG_MAGIC.to_vec();
+        bomb.extend_from_slice(&13u32.to_be_bytes());
+        bomb.extend_from_slice(b"IHDR");
+        bomb.extend_from_slice(&100_000u32.to_be_bytes());
+        bomb.extend_from_slice(&100_000u32.to_be_bytes());
+        let bomb64 = base64::engine::general_purpose::STANDARD.encode(bomb);
+        assert!(matches!(ops.apply_baked("m0", &bomb64), Err(OperationError::InvalidPayload(_))));
+        // An over-limit base64 string is rejected BEFORE the decode allocation.
+        let huge = "A".repeat(MAX_WALLPAPER_B64_BYTES + 1);
+        assert!(matches!(ops.apply_baked("m0", &huge), Err(OperationError::InvalidPayload(_))));
+        assert!(fake.calls().is_empty(), "capped payloads must not touch any port");
+    }
+
+    #[test]
     fn baked_file_lands_with_sanitized_content_hashed_name_and_stale_is_pruned() {
         let r = rig();
         let fake = FakeApplier::default();
@@ -314,9 +382,7 @@ mod tests {
         assert!(name.ends_with(".png"));
 
         // Different content → different path; the older file is pruned.
-        let mut other = PNG_MAGIC.to_vec();
-        other.extend_from_slice(b"different body");
-        let other64 = base64::engine::general_purpose::STANDARD.encode(other);
+        let other64 = base64::engine::general_purpose::STANDARD.encode(fake_png(b"different body"));
         ops.apply_baked("\\\\?\\DISPLAY#MOCK#0", &other64).unwrap();
         let after: Vec<_> = fs::read_dir(&r.baked).unwrap().flatten().collect();
         assert_eq!(after.len(), 1, "stale baked file not pruned");

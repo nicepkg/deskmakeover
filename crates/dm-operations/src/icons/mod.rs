@@ -60,28 +60,55 @@ pub struct ScannedItem {
     pub source_ok: bool,
 }
 
+/// Untrusted-input ceilings for an apply session — the webview supplies `count` + the masters, so
+/// these bound memory before the commit validates (audit F4). A real desktop is a few hundred icons,
+/// each master a ~256² PNG (~350 KiB base64); these are generous upper bounds only a hostile/broken
+/// caller reaches. The host enforces them at the `applyBaked*` command boundary.
+pub const MAX_APPLY_MASTERS: usize = 8192;
+/// Never pre-reserve more than this from a caller-supplied `count` hint (the Vec still grows).
+pub const MAX_PREALLOC_MASTERS: usize = 4096;
+/// Per-master base64 ceiling (a 512² RGBA PNG base64 is ~1.4 MiB; 8 MiB is generous headroom).
+pub const MAX_MASTER_B64_BYTES: usize = 8 * 1024 * 1024;
+/// Cumulative base64 ceiling across one session's masters.
+pub const MAX_SESSION_B64_BYTES: usize = 256 * 1024 * 1024;
+
 /// The chunk-buffer for one apply (`begin` → `push`\* → commit). Owns no ports; it just
 /// accumulates the frontend's baked masters until the commit packages + applies them.
 pub struct IconApplySession {
     revision: u32,
     expected: usize,
     masters: Vec<BufferedMaster>,
+    /// Running total of buffered base64 bytes, for the host's cumulative-byte cap (audit F4).
+    bytes: usize,
 }
 
 impl IconApplySession {
     /// Starts a session for scan `revision`, expecting `count` masters (a completeness hint the
     /// host can check; the commit tolerates a short/over buffer and reconciles against the scan).
+    /// The pre-reservation is bounded so a hostile `count` hint cannot force a huge up-front alloc.
     pub fn begin(revision: u32, count: usize) -> Self {
-        Self { revision, expected: count, masters: Vec::with_capacity(count) }
+        Self {
+            revision,
+            expected: count,
+            masters: Vec::with_capacity(count.min(MAX_PREALLOC_MASTERS)),
+            bytes: 0,
+        }
     }
 
     /// Buffers one baked master. `source_index` 0 = primary, 1 = the paired empty (Recycle Bin).
     pub fn push(&mut self, item_id: impl Into<String>, source_index: u32, png_base64: impl Into<String>) {
+        let png_base64 = png_base64.into();
+        self.bytes = self.bytes.saturating_add(png_base64.len());
         self.masters.push(BufferedMaster {
             item_id: item_id.into(),
             source_index,
-            png_base64: png_base64.into(),
+            png_base64,
         });
+    }
+
+    /// Total buffered base64 bytes so far (the host's cumulative-byte cap reads this).
+    pub fn bytes(&self) -> usize {
+        self.bytes
     }
 
     /// The scan revision this apply was built against.

@@ -186,11 +186,15 @@ impl RegistryBackend for MemoryRegistry {
     }
 }
 
-/// A profile probe returning a fixed environment, with a one-shot failure hook.
+/// A profile probe returning a fixed environment, with a one-shot failure hook and a
+/// flip-after-N-probes hook (to emulate a feature update landing mid-apply, between the top probe
+/// and a per-leaf re-authentication).
 #[derive(Debug)]
 pub struct MemoryProfileProbe {
     environment: std::cell::RefCell<WindowsEnvironment>,
     next_failure: std::cell::RefCell<Option<SystemProfileError>>,
+    probe_count: std::cell::Cell<usize>,
+    flip: std::cell::RefCell<Option<(usize, WindowsEnvironment)>>,
 }
 
 impl MemoryProfileProbe {
@@ -198,6 +202,8 @@ impl MemoryProfileProbe {
         Self {
             environment: std::cell::RefCell::new(environment),
             next_failure: std::cell::RefCell::new(None),
+            probe_count: std::cell::Cell::new(0),
+            flip: std::cell::RefCell::new(None),
         }
     }
 
@@ -208,12 +214,24 @@ impl MemoryProfileProbe {
     pub fn fail_next(&self, error: impl Into<SystemProfileError>) {
         *self.next_failure.borrow_mut() = Some(error.into());
     }
+
+    /// After `after` probe calls, start returning `environment` (a feature update mid-operation).
+    pub fn flip_after(&self, after: usize, environment: WindowsEnvironment) {
+        *self.flip.borrow_mut() = Some((after, environment));
+    }
 }
 
 impl SystemProfileProbe for MemoryProfileProbe {
     fn probe(&self) -> Result<WindowsEnvironment, SystemProfileError> {
         if let Some(error) = self.next_failure.borrow_mut().take() {
             return Err(error);
+        }
+        let count = self.probe_count.get() + 1;
+        self.probe_count.set(count);
+        if let Some((after, environment)) = self.flip.borrow().clone() {
+            if count > after {
+                return Ok(environment);
+            }
         }
         Ok(self.environment.borrow().clone())
     }

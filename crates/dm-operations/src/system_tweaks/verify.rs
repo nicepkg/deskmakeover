@@ -276,12 +276,18 @@ impl<B: RegistryBackend> VerificationBackend<B> for MemoryVerifier {
         if let Some(message) = self.next_effect_failure.take() {
             return Err(VerificationError::Effect(message));
         }
-        // Prove the receipt's contract, not just that the callback ran.
-        if let VerificationReceipt::StartKnownRecent { marker } = &context.receipt {
-            if marker != &self.start_recent_marker {
-                return Err(VerificationError::Effect(
-                    "known Recent item changed during a Start promotions write".into(),
-                ));
+        // Phase-aware: the "known Recent preserved" contract is an APPLY concern (our promotions
+        // write must not disturb Recent). On a rollback/restore the surface returns to its original
+        // and a legitimately user-changed marker is not our fault — proving the surface reloaded
+        // the target is the delayed read-back plus this no-injected-failure check (a real backend
+        // would query the reloaded surface for the direction).
+        if context.phase == VerificationPhase::ApplyDesired {
+            if let VerificationReceipt::StartKnownRecent { marker } = &context.receipt {
+                if marker != &self.start_recent_marker {
+                    return Err(VerificationError::Effect(
+                        "known Recent item changed during a Start promotions write".into(),
+                    ));
+                }
             }
         }
         Ok(())

@@ -308,12 +308,13 @@ impl TweakCatalog {
                 if !is_legal_desired(&mutation.desired) {
                     return Err(CatalogError::IllegalDesired(mutation.address.clone()));
                 }
-                // An `Other(raw)` in the accepted-existing set would let an unknown live kind pass
-                // `accepts()` into a write path — a recipe only ever accepts standard kinds.
+                // W1 is DWORD-only: every accepted existing kind must be `REG_DWORD`. Anything
+                // else (String/Binary/Qword/Other) would let a non-DWORD live value pass
+                // `accepts()` into a write path.
                 if mutation
                     .accepted_existing_kinds
                     .iter()
-                    .any(|kind| !kind.is_standard())
+                    .any(|kind| *kind != RegistryValueKind::Dword)
                 {
                     return Err(CatalogError::IllegalDesired(mutation.address.clone()));
                 }
@@ -339,14 +340,13 @@ impl TweakCatalog {
     }
 }
 
-/// A recipe may only ever establish a concrete, well-formed standard-kind value. W1 recipes are
-/// all `REG_DWORD`, so a desired DWORD must be exactly 4 bytes; a deletion (`ValueMissing` /
-/// `KeyMissing`), an `Other(raw)` extension type, or a malformed DWORD width is never legitimate.
+/// W1 recipes establish EXACTLY a well-formed 4-byte `REG_DWORD`. Any other kind (String, Binary,
+/// Qword, Other), a malformed DWORD width, or a deletion is never a legitimate desired write —
+/// this is the honest W1 DWORD-only boundary, enforced not just documented (codex W1 R3 #6).
 fn is_legal_desired(desired: &RegistrySnapshot) -> bool {
     match desired {
         RegistrySnapshot::Present(value) => {
-            value.kind.is_standard()
-                && (value.kind != RegistryValueKind::Dword || value.bytes.len() == 4)
+            value.kind == RegistryValueKind::Dword && value.bytes.len() == 4
         }
         RegistrySnapshot::ValueMissing | RegistrySnapshot::KeyMissing => false,
     }

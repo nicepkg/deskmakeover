@@ -9,6 +9,7 @@ pub mod capability;
 pub mod catalog;
 pub mod driver;
 pub mod engine;
+pub mod error;
 pub mod fakes;
 pub mod journal;
 pub mod recovery;
@@ -24,7 +25,8 @@ pub use catalog::{
     first_batch, CatalogError, EffectVerifier, ForbiddenMutation, ManualRoute, PolicyGuard,
     TweakCatalog, TweakDescriptor, TweakTier,
 };
-pub use driver::{DriverError, TweakDriver};
+pub use driver::TweakDriver;
+pub use error::DriverError;
 pub use fakes::{MemoryProfileProbe, MemoryRegistry};
 pub use journal::{
     JournalEntry, JournalError, JournalStore, ManagedSetting, ManagedValue, MemoryJournal,

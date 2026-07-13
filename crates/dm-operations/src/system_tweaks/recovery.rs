@@ -7,7 +7,8 @@
 
 use dm_domain::system_tweaks::{RegistryBackend, SettingId, SystemProfileProbe};
 
-use super::driver::{DriverError, TweakDriver};
+use super::driver::TweakDriver;
+use super::error::DriverError;
 use super::journal::{JournalStore, TransactionIntent};
 use super::verify::{VerificationBackend, VerificationPhase};
 

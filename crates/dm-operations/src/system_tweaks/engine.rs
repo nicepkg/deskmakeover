@@ -2,11 +2,13 @@
 //! the never-clobber rollback and the receipt-gated terminal verification.
 
 use dm_domain::system_tweaks::{
-    ApplyOutcome, RegistryBackend, RegistrySnapshot, RegistryWriteIntent, SettingId,
-    SystemProfileProbe,
+    ApplyOutcome, RegistryAddress, RegistryBackend, RegistrySnapshot, RegistryWriteIntent,
+    SettingId, SystemProfileProbe, WindowsEnvironment,
 };
 
-use super::driver::{DriverError, TweakDriver};
+use super::catalog::TweakDescriptor;
+use super::driver::TweakDriver;
+use super::error::DriverError;
 use super::journal::{JournalStore, TransactionValue};
 use super::verify::{
     ExecutionMode, VerificationBackend, VerificationContext, VerificationPhase, VerificationPlan,
@@ -20,6 +22,40 @@ where
     V: VerificationBackend<B>,
     P: SystemProfileProbe,
 {
+    /// Re-confirm the environment fingerprint is unchanged and no policy guard has appeared. A
+    /// mismatch means we must not write on the (now uncertified) environment (codex W1 R3 NEW).
+    pub(super) fn reauth(
+        &self,
+        descriptor: &TweakDescriptor,
+        environment: &WindowsEnvironment,
+    ) -> Result<(), String> {
+        let current = self.probe_environment().map_err(|error| error.to_string())?;
+        if &current != environment {
+            return Err("environment fingerprint changed".to_string());
+        }
+        if let Some(guard) = self.guard_present(descriptor).map_err(|error| error.to_string())? {
+            return Err(format!("policy guard appeared at {guard}"));
+        }
+        Ok(())
+    }
+
+    /// [`reauth`](Self::reauth) plus a per-leaf backend-managed check immediately before the write.
+    pub(super) fn reauth_before_write(
+        &self,
+        descriptor: &TweakDescriptor,
+        environment: &WindowsEnvironment,
+        address: &RegistryAddress,
+    ) -> Result<(), String> {
+        self.reauth(descriptor, environment)?;
+        if self
+            .is_backend_managed(address)
+            .map_err(|error| error.to_string())?
+        {
+            return Err(format!("target became policy-managed: {address}"));
+        }
+        Ok(())
+    }
+
     /// Undo a failed/interrupted APPLY back to each leaf's `before` (the value we OBSERVED when the
     /// transaction started — NOT the true original), reverse order, writing ONLY a leaf still at
     /// the `desired` value we wrote. A leaf already at `before` was never written (no-op); a leaf
@@ -197,17 +233,14 @@ where
                 return Err(format!("delayed read-back mismatch at {address}"));
             }
         }
-        // The feature effect verifier is APPLY-direction only — it proves the feature took effect
-        // (e.g. Start promotions absent). A rollback/restore returns the surface toward its
-        // original ON state, where "promotions absent" is false by design, so it is proven by the
-        // delayed read-back alone (codex W1 R2: running the apply verifier on a rollback wedged the
-        // transaction). The receipt is still persisted for the apply's audit + recovery.
-        if phase == VerificationPhase::ApplyDesired {
-            self.verifier
-                .verify_effect(&self.backend, &context)
-                .map_err(|error| error.to_string())?;
-        }
-        Ok(())
+        // The feature effect proof runs in EVERY direction (contract 8/§376-380: a matching raw
+        // value is never proof the surface reloaded). The verifier is PHASE-AWARE — it proves the
+        // apply effect (promotions absent, Recent preserved) on ApplyDesired and proves the surface
+        // reloaded the original/before on a rollback/restore. Running the wrong-direction predicate
+        // was the earlier bug; the fix is a direction-aware predicate, not a skipped proof.
+        self.verifier
+            .verify_effect(&self.backend, &context)
+            .map_err(|error| error.to_string())
     }
 }
 

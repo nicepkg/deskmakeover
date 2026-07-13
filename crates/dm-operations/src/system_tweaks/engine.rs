@@ -272,12 +272,67 @@ where
     }
 }
 
-/// The outcome of an `advance_restore` classification: a clean restore that wrote the originals,
-/// or an external edit that means the feature is no longer ours (disown, never overwrite).
+/// The outcome of a restore classification: a clean restore that reached the originals (still to
+/// be terminal-verified), or an external edit that means the feature is no longer ours (disown).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RestoreSettle {
     Clean,
     Disown,
+}
+
+impl<B, J, V, P> TweakDriver<B, J, V, P>
+where
+    B: RegistryBackend,
+    J: JournalStore,
+    V: VerificationBackend<B>,
+    P: SystemProfileProbe,
+{
+    /// Recover a crash-left-prepared RESTORE. Unlike the foreground [`advance_restore`], a prepared
+    /// restore has ALREADY entered settle (it only stays prepared after a failed terminal proof),
+    /// so a leaf sitting at `desired` (original) is OUR progress, not an external takeover — only a
+    /// value that is NEITHER `before` NOR `desired` is a genuine external edit (codex W1 R6). The
+    /// caller MUST terminal-verify a `Clean` result before commit; a `Disown` writes nothing.
+    pub(super) fn recover_restore(
+        &mut self,
+        values: &[TransactionValue],
+    ) -> Result<RestoreSettle, String> {
+        // Phase 1 — classify. Policy/IO block; a third value disowns; before/desired are ours.
+        for value in values {
+            if self
+                .backend
+                .is_policy_managed(&value.address)
+                .map_err(|error| format!("managed check {}: {error}", value.address))?
+            {
+                return Err(format!("policy-managed, not restored: {}", value.address));
+            }
+            let live = self
+                .backend
+                .read(&value.address)
+                .map_err(|error| format!("read {}: {error}", value.address))?;
+            if live != value.before && live != value.desired {
+                return Ok(RestoreSettle::Disown);
+            }
+        }
+        // Phase 2 — finish driving any not-yet-written leaf from `before` to `desired`.
+        for value in values {
+            let live = self
+                .backend
+                .read(&value.address)
+                .map_err(|error| format!("read {}: {error}", value.address))?;
+            if live == value.desired {
+                continue; // our progress — already at the original
+            }
+            self.backend
+                .compare_exchange(
+                    RegistryWriteIntent::Undo,
+                    &value.address,
+                    &value.before,
+                    &value.desired,
+                )
+                .map_err(|error| format!("restore {}: {error}", value.address))?;
+        }
+        Ok(RestoreSettle::Clean)
+    }
 }
 
 /// The expected terminal value for one leaf under a given phase:

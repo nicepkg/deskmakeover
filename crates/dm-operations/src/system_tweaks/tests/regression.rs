@@ -306,6 +306,33 @@ fn a_policy_taking_over_a_leaf_before_restore_never_overwrites_it() {
 }
 
 #[test]
+fn a_restore_whose_effect_keeps_failing_is_never_laundered_into_a_no_proof_disown() {
+    // codex R6: a prepared restore that wrote the original but failed its effect proof must be
+    // RE-PROVEN by recovery (the value at the original is OUR progress, not an external takeover);
+    // a still-failing effect keeps it a conflict with the anchor intact — never a no-proof disown.
+    let mut driver = driver();
+    driver.apply(&search()).unwrap();
+    driver.verifier.fail_next_effect("restore surface did not reload");
+    assert!(matches!(driver.restore(&search()), Err(DriverError::Pending { .. })));
+    // The restore wrote the value back to the original, but did not commit — still owned.
+    assert!(driver.managed_for_test(&search()).is_some());
+    assert_eq!(
+        driver.read_live_for_test(addr(SEARCH, "SearchboxTaskbarMode")).as_dword(),
+        Some(1)
+    );
+    // Recovery must re-run the effect proof; a second failure keeps it a conflict, anchor intact.
+    driver.verifier.fail_next_effect("recovery effect still failing");
+    let report = driver.recover().unwrap();
+    assert!(report.recovered.is_empty(), "a failed effect must not be recovered: {report:?}");
+    assert_eq!(report.conflicts.len(), 1);
+    assert!(driver.managed_for_test(&search()).is_some(), "the anchor must NOT be disowned");
+    // Once the effect passes, recovery completes the restore honestly.
+    let report = driver.recover().unwrap();
+    assert_eq!(report.recovered.len(), 1);
+    assert!(driver.managed_for_test(&search()).is_none());
+}
+
+#[test]
 fn inspect_reports_managed_when_a_policy_takes_over_an_owned_leaf() {
     // codex R5 #2: a policy that took over a mutation leaf outranks ownership — never OwnedQuiet.
     let mut driver = driver();

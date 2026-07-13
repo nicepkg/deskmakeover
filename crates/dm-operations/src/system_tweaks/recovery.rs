@@ -70,9 +70,12 @@ where
                         .mark_apply_rolled_back(&lease, entry.id, &entry.feature)
                         .map_err(|error| DriverError::Journal(error.to_string()))?;
                 }
-                TransactionIntent::Restore => match self.advance_restore(&entry.values) {
-                    // A crash-left restore whose value the user has since taken back is disowned,
-                    // exactly like a foreground restore — never a permanent recovery block.
+                // A prepared restore has already ENTERED settle, so recover_restore treats a leaf at
+                // the original as OUR progress (not an external takeover), disowns only a genuine
+                // third value, and — critically — a Clean recovery MUST re-prove the terminal state
+                // with the persisted receipt before commit (codex W1 R6: a failed effect proof must
+                // never be laundered into a no-proof disown).
+                TransactionIntent::Restore => match self.recover_restore(&entry.values) {
                     Ok(super::engine::RestoreSettle::Disown) => {
                         self.journal
                             .commit_restore(&lease, entry.id, &entry.feature)

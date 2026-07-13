@@ -30,7 +30,7 @@ export function CalmPage() {
   // Same celebration as the icons/wallpaper applies (DRY, owner 2026-07-13),
   // gated per spec 08 §4: confetti ONLY when this is the launch's first module
   // success anywhere in the app — otherwise the 「去看看」 toast stands in.
-  const { celebrateKey, celebrate } = useCelebration('calm-apply', true)
+  const { celebrateKey, celebrate } = useCelebration()
 
   // Guided return-probe: when the window regains focus after a walk, re-check the
   // walked row (readable rows confirm themselves; unreadable ones ask the user).

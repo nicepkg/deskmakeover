@@ -11,39 +11,38 @@ import confetti from 'canvas-confetti'
 
 const COLORS = ['#FF6F5E', '#FFC24B', '#4C8DFF', '#3ECF8E', '#FF5CA8', '#A78BFA', '#26CCFF', '#FF3B30', '#FFD93B']
 
-// Which celebration keys have fired THIS app launch. In-memory (not persisted), so
-// it resets on every restart: the first successful apply of each launch celebrates,
-// repeats within the session stay quiet (owner 2026-07-10).
-const firedThisLaunch = new Set<string>()
+// ONE celebration per app launch, across ALL modules (spec 02 §Ceremony "the
+// ONE-per-launch celebration confetti"; spec 08 §4 "the launch's first module
+// success"). In-memory — resets on restart, so every launch gets exactly one
+// confetti moment: whichever module lands the first successful apply.
+let launchCelebrated = false
 
-/** The pure once-per-launch gate (unit-testable). `requireLaunchFirst` = fire only
- *  when NO module has celebrated yet this launch (spec 08 §4: "the launch's first
- *  module success") — icons/wallpaper keep their owner-shipped per-module gate. */
-export function claimCelebration(key: string, requireLaunchFirst = false): boolean {
-  if (firedThisLaunch.has(key)) return false
-  if (requireLaunchFirst && firedThisLaunch.size > 0) return false
-  firedThisLaunch.add(key)
+/** The pure once-per-launch gate (unit-testable): the FIRST claim of a launch
+ *  wins; every later claim, from ANY module, returns false. */
+export function claimCelebration(): boolean {
+  if (launchCelebrated) return false
+  launchCelebrated = true
   return true
 }
 
 /** Test-only: clear the launch ledger between test cases. */
 export function resetCelebrationLedger() {
-  firedThisLaunch.clear()
+  launchCelebrated = false
 }
 
 /**
  * DRY celebration trigger, shared by the icons, wallpaper AND calm applies.
  * Returns a `celebrateKey` to feed <Confetti/>, and `celebrate()` to call on a
- * successful apply — gated by `claimCelebration` (repeats no-op); the boolean
- * says whether it actually fired this call (so the caller can pair a toast, etc.).
+ * successful apply — gated by `claimCelebration`; the boolean says whether it
+ * actually fired this call (so the caller can pair a ripple / stand-in toast).
  */
-export function useCelebration(key: string, requireLaunchFirst = false): { celebrateKey: number; celebrate: () => boolean } {
+export function useCelebration(): { celebrateKey: number; celebrate: () => boolean } {
   const [celebrateKey, setCelebrateKey] = React.useState(0)
   const celebrate = React.useCallback(() => {
-    if (!claimCelebration(key, requireLaunchFirst)) return false
+    if (!claimCelebration()) return false
     setCelebrateKey(Date.now())
     return true
-  }, [key, requireLaunchFirst])
+  }, [])
   return { celebrateKey, celebrate }
 }
 

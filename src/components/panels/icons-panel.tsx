@@ -88,7 +88,7 @@ export function IconsPanel() {
   // from the two bottom corners (shared useCelebration — same as wallpaper apply,
   // first success of each launch) PLUS a coral ripple from the CTA.
   const ctaWrapRef = React.useRef<HTMLDivElement>(null)
-  const { celebrateKey, celebrate } = useCelebration('icons')
+  const { celebrateKey, celebrate } = useCelebration()
   const [ripple, setRipple] = React.useState<{ key: number; cx: number; cy: number } | null>(null)
   const { footerRef, clearance } = useFooterClearance()
 

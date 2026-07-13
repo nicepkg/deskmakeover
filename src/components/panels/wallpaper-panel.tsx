@@ -36,7 +36,7 @@ export function WallpaperPanel() {
   const [dynamicConfirmOpen, setDynamicConfirmOpen] = React.useState(false)
   const [confirmedScreens, setConfirmedScreens] = React.useState<Set<string>>(new Set())
   const { footerRef, clearance } = useFooterClearance()
-  const { celebrateKey, celebrate } = useCelebration('wallpaper')
+  const { celebrateKey, celebrate } = useCelebration()
 
   // Active-screen facts for the CTA rename + dynamic-apply gate (§B5/A4). The
   // per-screen header + dynamic banners render from the same facts in

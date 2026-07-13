@@ -85,6 +85,22 @@ claimCelebration() (`b68f62f`). **codex R8 = APPROVE (2026-07-13): R3→R7 all
 closed, no new defects.** Designer re-acceptance PASS (1.01:1/1.00:1 centring).
 Gates: tsc · bun 597. W0 is COMPLETE end to end — next: Wave 1.
 
+**W1 STATUS (2026-07-14): decision core + bridge schema 8 BUILT + wired end to end on Mac.**
+Commits `224e3e0`(dm-domain/system_tweaks kernel) → `798fc5e`(catalog + fail-closed manifest) →
+`08675c7`(TweakDriver apply/restore/recover) → `2e0fb66`(dm-contracts schema-8 DTOs) → codex
+adversarial loop R1-R5 (`2cafe0d`/`4906ba9`/`e4733b6`/`ec1c0df`, ~15 real transaction/policy bugs
+fixed: false-verified fast path, clobbering rollback, bypassable generation guard, missing
+VerificationReceipt, missing-key not fail-closed, effect-proof skipped on restore, no pre-write
+re-auth, policy-managed written via Undo, restore-race permanent-block, inspect misreporting
+policy as owned) → `56d40ae`(Tauri host + 6 specta commands + TauriCalmBackend + BRIDGE_SCHEMA
+7→8 + regenerated bindings). Architecture: system_tweaks rides its OWN JournalStore contract (the
+icon txn spine is ItemId/fingerprint-keyed — incompatible with registry snapshots), with an
+unforgeable WriterLease + generation guards so a durable SQLite/WAL adapter drops in later. W1
+scope (honest): value-level over pre-existing keys (no key creation), DWORD-only, in-memory
+journal, devhost fakes on every platform. Gates: cargo 243 (system_tweaks 45) · dm-domain
+msvc-clean · clippy clean · tsc · bun 598 · check:bindings green · files ≤500. **codex R6
+verification in flight.** OWED at W1 close: codex Approve. NEXT: Wave 2 (real winreg backend).
+
 ## Wave 1 — Rust decision core + bridge (Mac)
 
 Copy the reference boundaries into production per spec 08 §12: `crates/dm-domain/src/

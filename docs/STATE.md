@@ -289,8 +289,20 @@ Documented follow-ups: the ①→②→③ finalize crash-window (not yet journa
    one-line revert if per-module was intended), applyAll returns THIS call's summary.
    Spec 08 §2.1 carries the schematic contract + type ladder + taskbar axis. Gates: tsc ·
    bun 597 · browser E2E + `.tmp-calm5` acceptance set. Owner calls open: O1-O3.
-   NEXT: Wave 1 Rust decision core (bridge schema 7→8), Wave 2 dm-windows blind,
-   Wave 3 cert lab = the D2 gate.
+   **W1 DONE (2026-07-14): Rust decision core + bridge schema 8, wired end to end on Mac.**
+   New file family `crates/dm-{domain,operations}/src/system_tweaks/` + `dm-contracts/tweaks.rs`
+   + `src-tauri/tweaks_host.rs` + `src/bridge/tauri-calm.ts`. TweakDriver (inspect/apply/restore/
+   recover) rides its OWN WAL JournalStore (unforgeable WriterLease + generation guards; the icon
+   txn spine is ItemId/fingerprint-keyed, incompatible). Fail-closed capability manifest (0 writes
+   until a Windows VM cert run); catalog ids match calm catalog.ts verbatim (bridge zero-translation).
+   **codex R1→R5 adversarial loop, ~15 real bugs fixed** (false-verified, clobbering rollback,
+   generation-guard bypass, missing receipt, missing-key, effect-proof skip, no pre-write re-auth,
+   policy-managed-via-Undo, restore-race block, inspect ownership misreport) — commits
+   224e3e0/798fc5e/08675c7/2e0fb66/2cafe0d/4906ba9/e4733b6/ec1c0df/56d40ae. W1 scope (honest):
+   value-level over pre-existing keys, DWORD-only, in-memory journal, devhost fakes on all
+   platforms. Gates: cargo 243 · dm-domain msvc-clean · clippy · tsc · bun 598 · check:bindings ·
+   files ≤500. codex R6 verification pending. NEXT: Wave 2 dm-windows real winreg backend +
+   WindowsSystemProfileProbe (blind [WV]), Wave 3 cert lab = the D2 gate.
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all
    designer PASS): seven coordinate-bookmark presets (spectrum default ·
    stationery · glass · pebble · ink · white · ascast), six mark styles

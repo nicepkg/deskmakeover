@@ -291,20 +291,26 @@ contract facts here:
   the mark).
 - **Config model**: `ConfigDto.kindShapes` is DELETED. `IconsStateDto` (not
   ConfigDto) carries `typeOverrides: Partial<Record<Bucket, {source:
-  'global' | 'custom'; patch?: TypePatch}>>` where `TypePatch ⊂ {shape,
-  colorMode ∈ {Field, Mono, BlackWhite}, tint, fieldBand, plateColor}`.
-  `resolveTypeConfig(bucket)` = pure merge; it feeds preview, styleKey
-  (hash of the RESOLVED config) and bake identically. Filter and Original
-  stay global-only; the beautify switch (kindPolicy) is unchanged and lives
-  in the same UI rows.
+  'global' | 'custom'; patch?: TypePatch}>>`. Since ADR-0018 (two-axis colour)
+  the recipe is 主体 × 底板, so `TypePatch ⊂ {shape, subject, tint, plateBand,
+  monoStyle, plateColor, plateFallback}` (the live `TYPE_PATCH_KEYS` in
+  `type-config.ts`) — the old single `colorMode ∈ {Field, Mono, BlackWhite}` plus
+  `fieldBand` collapsed into `subject` (原彩/黑白/单色) and the plate axis.
+  `resolveTypeConfig(bucket)` = pure merge; it feeds preview, styleKey (hash of
+  the RESOLVED config) and bake identically. Filter and Original stay
+  global-only; the beautify switch (kindPolicy) is unchanged and lives in the
+  same UI rows.
 - **Bounded plate colour**: per-type `plateColor` picks from ≤6 curated
   low-saturation swatches; a fixed-plate type EXITS the hue-spread pool.
-  The pool filters to icons whose resolved colorMode is Field and whose
-  type has no fixed plate.
-- **Factory default (the saliency ladder)**: App=Apple squircle+Field ·
-  Folder=Bookmark+Field · File=Tile+Field · System=Circle+**BlackWhite** ·
-  shortcut mark ON. Shape carries the type split; System demotes to quiet
-  grayscale; Field keeps per-icon identity.
+  The pool filters to icons whose resolved lane is the derived colour-field
+  (原彩 subject with a derived plate, ADR-0018) and whose type has no fixed plate.
+- **Factory default (the saliency ladder)**: App=Apple squircle+derived field ·
+  Folder=Folder/Bookmark+derived · File=Tile+warm board · System=Circle+**BlackWhite** ·
+  shortcut mark default **None** (owner decree 2026-07-07 + the durable rule
+  「presets never carry a shortcut mark」 — the distinction badge marks shortcuts,
+  never a default arrow; the 「快捷方式统一形状」 toggle also defaults OFF). Shape
+  carries the type split; System demotes to quiet grayscale; the derived
+  colour-field keeps per-icon identity.
 - **Panel**: the Shape section's One-shape/By-type segmented is REMOVED;
   the type area is an accordion (one row per bucket: summary chip 名称·形
   状·显著性 + custom badge; expand-to-edit reusing the global controls;

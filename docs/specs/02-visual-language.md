@@ -279,8 +279,10 @@ Cross-icon hue spread (deterministic min-gap relaxation, 12° inside a ±18°
 brand cap, identical artwork identical plates) still adjusts step-5 seeds
 through preview AND bake. 背景色 hand-pick overrides every derived plate
 (effective in Field; owner reversal). Quiet band = the same law with the
-lighter slots. Preset lineup unchanged (默认满彩 / 极简白 / 安静 / 原彩保真);
-kindShapes toggle default UNIFORM.
+lighter slots. Preset lineup superseded by Preset Collection v2 (the seven-preset
+set, spectrum default — see the ADR-0018 amendment under Colour Treatments);
+`kindShapes` is deleted (ADR-0017), replaced by the per-type `shortcutShape`
+(uniform shortcut shape, default OFF).
 
 Designer-recorded, owner-informed aesthetic notes (law consequences, not
 defects): dark-board population ≈35-40% of a text-heavy desktop; white-subject
@@ -293,8 +295,16 @@ Since 2026-07-09 the Colour row is the **foreground/subject axis**; a separate
 **background/plate colour** rides the same row's colour entry. Two axes, never a
 single tint pick (chief-UI/UX + owner). Exact channel math lives in
 `icon-compositor/color.ts` (OKLab ramp) — this is the structural contract.
-*ADR-0016 adds 满彩 (Field) as a fourth foreground mode and the desktop default;
-the modes below are unchanged as user choices.*
+
+> **ADR-0018 amendment (two-axis colour, 2026-07-10).** The word 「mode」 is retired
+> from the UI: there is no 「fourth foreground mode」. 满彩 (Field) is the DEFAULT
+> COORDINATE — 原彩 subject × a derived plate — not a mode peer of the three subject
+> choices. The recipe is 主体 (subject: 原彩/黑白/单色) × 底板 (plate: 随图标-first /
+> 白 / bounded swatches / 本色). The old `前景 / 背景 dual-tab popover` was replaced by
+> a two-row panel (主体行 + 底板行). The factory preset lineup is the **Preset
+> Collection v2 seven** (spectrum default · glass · ink · white · stationery · pebble ·
+> ascast — `docs/product/preset-collection-v2.md`), NOT the legacy four named below. The
+> three subject choices below stay accurate; read 「mode」 there as 「subject axis」.
 
 - **原彩 (Original)**: keep the icon's own colour. White plates take the Auto or a
   chosen background colour.

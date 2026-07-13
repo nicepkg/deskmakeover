@@ -289,6 +289,25 @@ describe('renderTile Field mode (recipe v2)', () => {
     expect(minL).toBeLessThan(perceivedLightness(pr, pg, pb) - 0.03)
   })
 
+  test('FIXED-plate bare artwork still gets the silhouette shadow (regression, STATE §-1a ①)', () => {
+    // A user-set / preset fixed plate must NOT drop the silhouette shadow the derived lane gets
+    // — the shadow relapsed once on the fixed-plate lane (T2). Bare artwork on a bright fixed
+    // plate (#EAD6A8, the stationery/pebble folder board) → a deep shadow band under the glyph,
+    // exactly as the derived-plate case above.
+    const tile = renderTile(plusGlyph(30, 185, 90), { ...FIELD_CONFIG, plateColor: '#EAD6A8' }, false, false, S)
+    const glyphBottom = Math.round(S / 2 + (S * 0.72) / 2)
+    let minL = 1
+    for (let y = glyphBottom - 1; y <= Math.min(S - 6, glyphBottom + 3); y++) {
+      for (let x = S / 2 - 8; x <= S / 2 + 8; x++) {
+        const [r2, g2, b2, a2] = px(tile, x, y)
+        if (a2 === 0) continue
+        minL = Math.min(minL, perceivedLightness(r2, g2, b2))
+      }
+    }
+    const [pr, pg, pb] = px(tile, S / 2, 8) // the fixed plate, far above the glyph
+    expect(minL).toBeLessThan(perceivedLightness(pr, pg, pb) - 0.03)
+  })
+
   test('detailed bare artwork keeps its own pixels (no re-inking)', () => {
     const tile = renderTile(wavyDisc(), FIELD_CONFIG, false, false, S)
     let darkGreen = 0

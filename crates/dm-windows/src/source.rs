@@ -464,6 +464,20 @@ mod win {
     /// a single source — the apply then simply has no paired-empty asset to package.
     fn extract_recycle_bin(item: &DesktopItem) -> PortResult<Vec<DecodedImage>> {
         let anchor = recyclebin::read_current()?;
+        // A present-but-EMPTY per-user key (our own restore leaves one) yields all-None raw values,
+        // yet the TRUE original is the MACHINE default — NOT the live shell image, which may be our own
+        // styled icon (→ Style(Style(original))). Recover it from HKCR, the same live-machine fallback
+        // original_system uses for System icons (codex R2 D-2). Only for the empty-key case; the normal
+        // no-override path already carries machine values via read_current.
+        let anchor = if anchor.key_existed
+            && anchor.full.is_none()
+            && anchor.empty.is_none()
+            && anchor.default.is_none()
+        {
+            recyclebin::machine_state().unwrap_or(anchor)
+        } else {
+            anchor
+        };
         let full = anchor
             .full
             .as_ref()

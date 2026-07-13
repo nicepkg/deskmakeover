@@ -28,10 +28,19 @@ pub fn read_current() -> PortResult<RecycleBinAnchor> {
         // key_existed:true even for an empty key (our restore leaves one), so restore removes it
         // exactly and never writes machine defaults INTO the per-user key (codex re-review 🟠 — the
         // effective/raw conflation broke exact restore). Machine fallback ONLY when NO per-user key.
-        Ok(key) => return state_from(&key, true),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {} // fall through to the machine key
-        Err(e) => return Err(PortError::Io(format!("open HKCU recycle-bin DefaultIcon: {e}"))),
+        Ok(key) => state_from(&key, true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => machine_state(),
+        Err(e) => Err(PortError::Io(format!("open HKCU recycle-bin DefaultIcon: {e}"))),
     }
+}
+
+/// The machine (HKCR) `DefaultIcon` state — the effective original when NO per-user override exists
+/// OR the per-user key is present-but-EMPTY (our own restore leaves an empty per-user key). `pub(crate)`
+/// so source extraction can recover the true original from HKCR instead of re-reading the LIVE styled
+/// shell image (codex R2 D-2), the same live-machine fallback `system::machine_value` gives System
+/// icons. Styling never writes HKCR, so the machine default remains the true original; all-None when
+/// the machine key is absent. [WINDOWS-VERIFY] runtime (the exact HKCR value names).
+pub(crate) fn machine_state() -> PortResult<RecycleBinAnchor> {
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
     match hkcr.open_subkey(MACHINE_KEY) {
         Ok(key) => state_from(&key, false),

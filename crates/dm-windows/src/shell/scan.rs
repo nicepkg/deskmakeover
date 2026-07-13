@@ -151,11 +151,15 @@ const SYSTEM_DESKTOP_CLSIDS: &[(&str, &str)] = &[
 ];
 
 /// Whether a desktop-namespace CLSID icon is currently SHOWN on the desktop. The per-CLSID DWORD
-/// under `HideDesktopIcons\NewStartPanel` is 1 when HIDDEN; an ABSENT value or key (NotFound) means
-/// shown — the default. Any OTHER read error (access denied, wrong type) does NOT prove the icon is
-/// shown, so it FAILS CLOSED (treated as hidden → the item is not emitted) rather than conflating an
-/// unreadable value with absence and styling an icon the user actually hid (codex System-review 🟡).
-/// [WINDOWS-VERIFY] runtime.
+/// under `HideDesktopIcons\NewStartPanel` is 1 when HIDDEN, 0 when SHOWN. These four namespace icons
+/// (This PC / User Files / Network / Control Panel) are OPT-IN: a clean Windows 10/11 profile shows
+/// only the Recycle Bin (handled separately), and the Desktop Icon Settings dialog WRITES an explicit
+/// `0` when the user enables one. So an ABSENT value or key is the default-HIDDEN state, NOT shown —
+/// treating absence as shown injected phantom desktop tiles + style targets on a normal profile
+/// (codex R2 D-3). We therefore require an explicit `0` to emit the item; absence and any read error
+/// (access denied, wrong type) alike FAIL CLOSED (hidden → not emitted). [WINDOWS-VERIFY] runtime: the
+/// per-CLSID default and the `NewStartPanel` vs `ClassicStartMenu` distinction need box confirmation;
+/// the fully-correct form enumerates the live desktop shell namespace (a larger [WV] follow-up).
 fn system_icon_enabled(clsid: &str) -> bool {
     use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
@@ -164,11 +168,11 @@ fn system_icon_enabled(clsid: &str) -> bool {
         .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel")
     {
         Ok(key) => match key.get_value::<u32, _>(clsid) {
-            Ok(hidden) => hidden == 0,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => true, // no override → shown
+            Ok(shown_flag) => shown_flag == 0, // explicit 0 = shown; explicit 1 = hidden
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false, // opt-in, no explicit 0 → hidden
             Err(_) => false, // unreadable → fail closed (do not emit an unverifiable item)
         },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true, // no policy key → all shown
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false, // no policy key → opt-in icons hidden
         Err(_) => false, // policy key unreadable → fail closed
     }
 }

@@ -84,7 +84,25 @@ impl IconApplier for WindowsIconApplier {
             }
             RestoreAnchor::RegularFile(wrapper) => file_wrapper::restore(&target.path, wrapper),
             RestoreAnchor::RecycleBin(state) => recyclebin::restore(state),
-            RestoreAnchor::SystemIcon(state) => system::restore(state),
+            RestoreAnchor::SystemIcon(state) => {
+                // Defence-in-depth against a corrupt/stale ledger (codex R2 D-4): `system::restore`
+                // interpolates the anchor's `clsid` straight into an HKCU key path, so it must be a
+                // canonical GUID AND the CLSID of the item we were actually asked to restore. Re-derive
+                // the target's CLSID (this also rejects a non-System target and any injection-bearing
+                // string) and require an EXACT match — otherwise a mismatched pairing (a This-PC target
+                // carrying a Network anchor) or a poisoned anchor string would silently mutate the WRONG
+                // key and report success while the real target stays styled. Both sides are the
+                // `parse_clsid`-normalised form (state_reader captures via `parse_clsid`), so equality is
+                // exact.
+                let target_clsid = system::parse_clsid(&target.path)?;
+                if target_clsid != state.clsid {
+                    return Err(PortError::Unsupported(format!(
+                        "System restore CLSID mismatch: target {target_clsid} vs anchor {}",
+                        state.clsid
+                    )));
+                }
+                system::restore(state)
+            }
             RestoreAnchor::CaptureFailed { reason } => {
                 Err(PortError::Unsupported(format!("no restore material: {reason}")))
             }

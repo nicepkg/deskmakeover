@@ -54,7 +54,24 @@ pub fn apply(empty_ico: &str, full_ico: &str) -> PortResult<()> {
 pub fn restore(anchor: &RecycleBinAnchor) -> PortResult<()> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     if !anchor.key_existed {
-        let _ = hkcu.delete_subkey_all(USER_KEY); // idempotent if already gone
+        // We created this key; undo by removing ONLY the three values we wrote — NOT delete_subkey_all,
+        // which recursively destroys unrelated values/subkeys another program may have added to the
+        // same DefaultIcon key (codex B5-🔴). A non-NotFound failure PROPAGATES (a swallowed one is a
+        // false success that then discards the anchor). The now-empty key is left in place: removing it
+        // safely needs an emptiness check a concurrent writer could race, not worth the added surface.
+        match hkcu.open_subkey_with_flags(USER_KEY, winreg::enums::KEY_SET_VALUE) {
+            Ok(key) => {
+                for name in ["", "empty", "full"] {
+                    match key.delete_value(name) {
+                        Ok(()) => {}
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(e) => return Err(io(e)),
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {} // key already gone — idempotent
+            Err(e) => return Err(io(e)),
+        }
         return Ok(());
     }
     let (key, _) = hkcu.create_subkey(USER_KEY).map_err(io)?;
@@ -104,10 +121,12 @@ fn read_value(key: &RegKey, name: &str) -> PortResult<Option<RegistryValue>> {
 
 fn write_or_delete(key: &RegKey, name: &str, value: Option<&RegistryValue>) -> PortResult<()> {
     match value {
-        None => {
-            let _ = key.delete_value(name);
-            Ok(())
-        }
+        None => match key.delete_value(name) {
+            // A non-NotFound failure must PROPAGATE, not report a false-successful restore (codex B5).
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(io(e)),
+        },
         Some(v) if v.kind == REG_EXPAND_SZ_KIND => {
             // Preserve REG_EXPAND_SZ with its unexpanded text.
             let raw = RegValue { bytes: encode_wide(&v.raw), vtype: RegType::REG_EXPAND_SZ };

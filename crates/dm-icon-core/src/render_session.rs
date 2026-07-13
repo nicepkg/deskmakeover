@@ -85,6 +85,14 @@ impl RenderSession {
     /// The source-fact `backs` self-heal stays as a belt-and-suspenders second line
     /// (and on wasm, where the key is still the caller hash, it remains load-bearing).
     pub fn register(&mut self, id: impl Into<String>, source_hash: u64, raster: Raster) {
+        // The pipeline assumes a SQUARE source (the icon canvas); the ring/background analysis uses
+        // width for both axes, so a non-square (or zero) raster would panic or misread (audit F7).
+        // Real sources — the shell extractor, the PNG decoder, the dev host — are always square, so a
+        // non-square one is malformed input: DROP it (the id never resolves → the caller degrades to
+        // the original icon) rather than crash. A deeper width/height-aware analysis is deferred.
+        if raster.width != raster.height || raster.width == 0 {
+            return;
+        }
         let key = source_key(source_hash, &raster);
         self.sources.insert(id.into(), Registered { raster, key });
     }
@@ -192,6 +200,23 @@ mod tests {
             plate_color: None,
             plate_fallback: PlateFallback::Derived,
         }
+    }
+
+    #[test]
+    fn non_square_or_zero_sources_are_dropped_not_registered() {
+        // audit F7: the analysis assumes a square canvas — a non-square/zero source must be dropped
+        // at registration (the id never resolves) rather than reach the width-for-both-axes ring
+        // analysis and panic.
+        let mut s = RenderSession::new();
+        s.register("wide", 0x1, Raster::new(256, 128));
+        s.register("tall", 0x2, Raster::new(128, 256));
+        s.register("zero", 0x3, Raster::new(0, 0));
+        assert!(s.analyze("wide").is_none(), "a non-square source must not register");
+        assert!(s.analyze("tall").is_none());
+        assert!(s.analyze("zero").is_none());
+        // A square source still registers + analyzes.
+        s.register("ok", 0x4, solid_source(10, 20, 30));
+        assert!(s.analyze("ok").is_some());
     }
 
     #[test]

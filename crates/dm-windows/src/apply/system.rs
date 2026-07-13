@@ -6,22 +6,40 @@
 //! the exact per-user key that overrides each CLSID's desktop icon needs box confirmation — this
 //! mirrors the Recycle Bin's proven `Explorer\CLSID\{clsid}\DefaultIcon` location.
 
-use dm_domain::{PortError, PortResult, SystemIconAnchor};
+use dm_domain::{PortError, PortResult, RegistryValue, SystemIconAnchor};
 use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER};
 use winreg::RegKey;
 
 use crate::apply::reg_icon::{io, read_value, write_or_delete};
 
 /// Extracts the `{GUID}` from a desktop namespace parsing path (`::{GUID}`) or accepts a bare
-/// `{GUID}`. A path with no recognisable CLSID is rejected rather than styling the wrong key.
+/// `{GUID}`. STRICTLY validates the registry-GUID shape `{8-4-4-4-12 hex}` — this string is
+/// interpolated into HKCU key paths, so a malformed value (a `\`-bearing or arbitrary
+/// brace-delimited string from a corrupt/deserialized `ItemTarget`) must be REFUSED, never used to
+/// write an unrelated nested key (codex System-review 🟠).
 pub fn parse_clsid(path: &str) -> PortResult<String> {
     let trimmed = path.trim();
     let candidate = trimmed.strip_prefix("::").unwrap_or(trimmed);
-    if candidate.starts_with('{') && candidate.ends_with('}') && candidate.len() >= 3 {
+    if is_registry_guid(candidate) {
         Ok(candidate.to_string())
     } else {
         Err(PortError::Unsupported(format!("not a System CLSID path: {path:?}")))
     }
+}
+
+/// True only for a canonical registry GUID: `{` + 8-4-4-4-12 ASCII-hex groups split by `-` + `}`.
+fn is_registry_guid(s: &str) -> bool {
+    let inner = match s.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+        Some(i) => i,
+        None => return false,
+    };
+    let groups: Vec<&str> = inner.split('-').collect();
+    let widths = [8usize, 4, 4, 4, 12];
+    groups.len() == widths.len()
+        && groups
+            .iter()
+            .zip(widths)
+            .all(|(g, w)| g.len() == w && g.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
 /// The per-user override key that styles a desktop CLSID's icon (mirrors the Recycle Bin's).
@@ -40,21 +58,31 @@ fn machine_key(clsid: &str) -> String {
 /// (P2-#3). [WINDOWS-VERIFY] runtime.
 pub fn read_current(clsid: &str) -> PortResult<SystemIconAnchor> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    match hkcu.open_subkey(user_key(clsid)) {
-        Ok(key) => {
-            return Ok(SystemIconAnchor { clsid: clsid.to_string(), key_existed: true, value: read_value(&key, "")? })
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {} // fall through to the machine key
+    let (key_existed, per_user_value) = match hkcu.open_subkey(user_key(clsid)) {
+        Ok(key) => (true, read_value(&key, "")?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (false, None),
         Err(e) => return Err(PortError::Io(format!("open HKCU System DefaultIcon {clsid}: {e}"))),
-    }
+    };
+    // `key_existed` (per-user key present) drives RESTORE — rewrite vs remove — and is captured as
+    // read. The EFFECTIVE `value` (for source extraction + the CAS fingerprint) is decoupled from it:
+    // the per-user override when it carries one, ELSE the machine class default. This matters because
+    // our own restore leaves an EMPTY per-user key behind (removing only the value we wrote): a naive
+    // "key exists → use its value" would then read `value:None` and forget the machine default,
+    // stranding a value-less "original" that can no longer be restyled (codex System-review 🟠).
+    let value = match per_user_value {
+        Some(v) => Some(v),
+        None => machine_value(clsid)?,
+    };
+    Ok(SystemIconAnchor { clsid: clsid.to_string(), key_existed, value })
+}
+
+/// The machine (HKCR) class-default `DefaultIcon` value for `clsid`, or `None` when absent. A
+/// non-NotFound error propagates (P2-#3).
+fn machine_value(clsid: &str) -> PortResult<Option<RegistryValue>> {
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
     match hkcr.open_subkey(machine_key(clsid)) {
-        // No per-user override, but capture the machine value for source extraction (the machine
-        // fallback — legitimate `key_existed:false` + `Some(value)`, mirroring the Recycle Bin).
-        Ok(key) => Ok(SystemIconAnchor { clsid: clsid.to_string(), key_existed: false, value: read_value(&key, "")? }),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            Ok(SystemIconAnchor { clsid: clsid.to_string(), key_existed: false, value: None })
-        }
+        Ok(key) => read_value(&key, ""),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(PortError::Io(format!("open machine System DefaultIcon {clsid}: {e}"))),
     }
 }
@@ -95,12 +123,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_clsid_accepts_parsing_path_and_bare_guid() {
+    fn parse_clsid_accepts_a_valid_guid_and_rejects_everything_else() {
+        // A canonical desktop CLSID, with and without the `::` shell-parsing prefix.
         assert_eq!(
             parse_clsid("::{20D04FE0-3AEA-1069-A2D8-08002B30309D}").unwrap(),
             "{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
         );
-        assert_eq!(parse_clsid("{ABC}").unwrap(), "{ABC}");
+        assert_eq!(
+            parse_clsid("{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}").unwrap(),
+            "{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}"
+        );
+        // Malformed / arbitrary brace strings must be REFUSED — they interpolate into a key path.
+        assert!(parse_clsid("{ABC}").is_err(), "not a GUID shape");
+        assert!(parse_clsid(r"::{foo\bar}").is_err(), "a path-injection attempt");
+        assert!(parse_clsid("{20D04FE0-3AEA-1069-A2D8-08002B30309}").is_err(), "last group too short");
+        assert!(parse_clsid("{20D04FE0-3AEA-1069-A2D8-08002B30309DZ}").is_err(), "non-hex");
         assert!(parse_clsid("C:/Desktop/thing.lnk").is_err());
         assert!(parse_clsid("::not-a-clsid").is_err());
         assert!(parse_clsid("").is_err());

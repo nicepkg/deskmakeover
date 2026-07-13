@@ -152,7 +152,14 @@ fn bake_and_apply(
                 continue;
             }
         };
-        let sources = match ports.extractor.extract(item, None) {
+        // Extract from the TRUE ORIGINAL, not the live surface: a version switch operates on
+        // already-STYLED items, so the live icon is our current look — baking the new style over it
+        // would compound `Style(Style(original))` (codex System-review 🟠). Pass the ledger's pinned
+        // original anchor so extraction resolves the user's real source; an un-ledgered (fresh) item
+        // has no anchor → `None` → the live surface IS its original (unlike the resident's batch,
+        // which is already guarded to fresh items, this path routinely re-styles owned ones).
+        let original = ledger.get(&item.id)?.map(|e| e.original_anchor);
+        let sources = match ports.extractor.extract(item, original.as_ref()) {
             Ok(s) if !s.is_empty() => s,
             Ok(_) => {
                 errors.push(format!("extract {}: no sources", item.id.as_str()));

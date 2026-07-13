@@ -4,11 +4,14 @@
 //! byte-identical restore; a `DefaultIcon` of any OTHER (non-string) registry type is refused at
 //! read time rather than silently collapsed to `REG_SZ` (APPLY-3). [WINDOWS-VERIFY] runtime.
 
-use dm_domain::{PortError, PortResult, RecycleBinAnchor};
+use dm_domain::{PortError, PortResult, RecycleBinAnchor, RegistryValue};
 use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER};
 use winreg::RegKey;
 
 use crate::apply::reg_icon::{io, read_value, write_or_delete};
+
+/// The three `DefaultIcon` values (Default / empty / full) captured together.
+type Triple = (Option<RegistryValue>, Option<RegistryValue>, Option<RegistryValue>);
 
 const USER_KEY: &str =
     r"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\DefaultIcon";
@@ -23,17 +26,34 @@ const MACHINE_KEY: &str = r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\Default
 /// the restore anchor forget the user's real state. [WINDOWS-VERIFY] runtime.
 pub fn read_current() -> PortResult<RecycleBinAnchor> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    match hkcu.open_subkey(USER_KEY) {
-        Ok(key) => return state_from(&key, true),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {} // fall through to the machine key
+    let (key_existed, per_user) = match hkcu.open_subkey(USER_KEY) {
+        Ok(key) => (true, read_triple(&key)?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (false, (None, None, None)),
         Err(e) => return Err(PortError::Io(format!("open HKCU recycle-bin DefaultIcon: {e}"))),
-    }
+    };
+    // `key_existed` (per-user key present) drives RESTORE; the EFFECTIVE values (source extraction)
+    // fall through to the machine class default when the per-user key carried NONE — including the
+    // empty per-user key our own `restore` leaves behind (removing only the values we wrote). Without
+    // this, a second style cycle would capture a value-less "original" and lose the real icon
+    // (codex System-review 🟠, the same latent bug the System writer shares).
+    let (default, empty, full) = if per_user.0.is_some() || per_user.1.is_some() || per_user.2.is_some() {
+        per_user
+    } else {
+        machine_triple()?
+    };
+    Ok(RecycleBinAnchor { key_existed, default, empty, full })
+}
+
+fn read_triple(key: &RegKey) -> PortResult<Triple> {
+    Ok((read_value(key, "")?, read_value(key, "empty")?, read_value(key, "full")?))
+}
+
+/// The machine (HKCR) class-default triple, or all-`None` when absent (P2-#3 on other errors).
+fn machine_triple() -> PortResult<Triple> {
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
     match hkcr.open_subkey(MACHINE_KEY) {
-        Ok(key) => state_from(&key, false),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            Ok(RecycleBinAnchor { key_existed: false, default: None, empty: None, full: None })
-        }
+        Ok(key) => read_triple(&key),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok((None, None, None)),
         Err(e) => Err(PortError::Io(format!("open machine recycle-bin DefaultIcon: {e}"))),
     }
 }
@@ -78,13 +98,4 @@ pub fn restore(anchor: &RecycleBinAnchor) -> PortResult<()> {
     write_or_delete(&key, "empty", anchor.empty.as_ref())?;
     write_or_delete(&key, "full", anchor.full.as_ref())?;
     Ok(())
-}
-
-fn state_from(key: &RegKey, key_existed: bool) -> PortResult<RecycleBinAnchor> {
-    Ok(RecycleBinAnchor {
-        key_existed,
-        default: read_value(key, "")?,
-        empty: read_value(key, "empty")?,
-        full: read_value(key, "full")?,
-    })
 }

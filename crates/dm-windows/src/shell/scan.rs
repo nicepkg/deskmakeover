@@ -151,8 +151,11 @@ const SYSTEM_DESKTOP_CLSIDS: &[(&str, &str)] = &[
 ];
 
 /// Whether a desktop-namespace CLSID icon is currently SHOWN on the desktop. The per-CLSID DWORD
-/// under `HideDesktopIcons\NewStartPanel` is 1 when HIDDEN; an absent value or 0 means shown (the
-/// default), so a missing policy key shows everything. [WINDOWS-VERIFY] runtime.
+/// under `HideDesktopIcons\NewStartPanel` is 1 when HIDDEN; an ABSENT value or key (NotFound) means
+/// shown — the default. Any OTHER read error (access denied, wrong type) does NOT prove the icon is
+/// shown, so it FAILS CLOSED (treated as hidden → the item is not emitted) rather than conflating an
+/// unreadable value with absence and styling an icon the user actually hid (codex System-review 🟡).
+/// [WINDOWS-VERIFY] runtime.
 fn system_icon_enabled(clsid: &str) -> bool {
     use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
@@ -160,8 +163,13 @@ fn system_icon_enabled(clsid: &str) -> bool {
     match hkcu
         .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel")
     {
-        Ok(key) => key.get_value::<u32, _>(clsid).map(|hidden| hidden == 0).unwrap_or(true),
-        Err(_) => true,
+        Ok(key) => match key.get_value::<u32, _>(clsid) {
+            Ok(hidden) => hidden == 0,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => true, // no override → shown
+            Err(_) => false, // unreadable → fail closed (do not emit an unverifiable item)
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true, // no policy key → all shown
+        Err(_) => false, // policy key unreadable → fail closed
     }
 }
 

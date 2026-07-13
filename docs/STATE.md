@@ -301,8 +301,26 @@ Documented follow-ups: the ①→②→③ finalize crash-window (not yet journa
    224e3e0…a99b916/30a32d0 — **codex R1→R7 loop, R7 = APPROVE (16 real bugs fixed, converged).**
    W1 scope (honest): value-level over pre-existing keys, DWORD-only, in-memory journal, devhost
    fakes on all platforms. Gates: cargo 244 · dm-domain msvc-clean · clippy · tsc · bun 598 ·
-   check:bindings · files ≤500. **W1 CLOSED.** NEXT: Wave 2 dm-windows real winreg backend +
-   WindowsSystemProfileProbe (blind [WV]), Wave 3 cert lab = the D2 gate.
+   check:bindings · files ≤500. **W1 CLOSED.**
+   **W2 DONE (2026-07-14, `005ff6e`): the two Windows platform ports BUILT (Mac blind-write, msvc-clean).**
+   `crates/dm-windows/src/system_tweaks/` — `WinregBackend` (`RegistryBackend`) +
+   `WindowsSystemProfileProbe` (`SystemProfileProbe`). Pure host-tested core (`translate`/`profile_facts`,
+   22 Mac tests) + thin `cfg(windows)` FFI shell (`backend`/`profile`, [WV]), so every DECISION is
+   Mac-verified. Raw `windows-rs` registry FFI (not `winreg` — it errors on types > `REG_QWORD`, losing
+   `Other(raw)`); `is_policy_managed` = `KEY_SET_VALUE` open-probe + catalog `policy_guards`; profile from
+   registry `CurrentVersion` + `GetProductInfo` (no `Wdk`/new features). Scope: only the two ports — real
+   verifier + durable journal are Wave 3, so `TweaksHost` stays devhost.
+   **codex adversarial loop R1→R5, R5 = APPROVE (2026-07-14) — W2 CLOSED.** 8 real defects fixed across
+   5 rounds: ports (false `packaged` fact, over-claimed `is_policy_managed` contract, derived/hardcoded
+   env signals, malformed-UBR/lossy-UTF16 certification holes) + the W1 ENGINE (my honesty doc exposed
+   that rollback/restore/recovery bypassed the authoritative catalog `policy_guards` — now the guard
+   addresses are PERSISTED with each transaction/anchor so the reverse paths are drift-immune; and the
+   apply read-back no longer hides a committed write behind a bare error). 7 regression tests lock the
+   contracts (guard-before-restore/rollback/recovery, foreground+recovery catalog-drift immunity,
+   migrated-recipe restore no-deadlock, committed-write-then-read-error → Reverted). Final gates:
+   dm-operations **253** · dm-windows host **90** · msvc cross-check clean · msvc+host clippy clean · ≤500
+   (all in a clean git worktree — main tree's dm-icon-core is mid-refactor by a concurrent session; my
+   commits stayed literal-pathspec isolated). NEXT: Wave 3 cert lab = the ADR-0023 D2 gate (real box).
 -1b. **PRESET COLLECTION v2 SHIPPED + ACCEPTED** (`b7dd226`+`f8eb20d`, all
    designer PASS): seven coordinate-bookmark presets (spectrum default ·
    stationery · glass · pebble · ink · white · ascast), six mark styles

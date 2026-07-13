@@ -23,7 +23,8 @@ use dm_domain::{
     IconSourceExtractor, ItemKind, ItemStateReader, OverlayControl, OverlayOutcome,
 };
 use dm_operations::icons::{
-    MAX_APPLY_MASTERS, MAX_MASTER_B64_BYTES, MAX_SESSION_B64_BYTES,
+    MAX_APPLY_MASTERS, MAX_LABEL_BYTES, MAX_MASTER_B64_BYTES, MAX_SESSION_B64_BYTES,
+    MAX_STYLE_JSON_BYTES,
 };
 use dm_operations::{
     FsAssetStore, IconApplySession, IconOps, IconPlatform, IconStoreState, JsonLedgerStore,
@@ -491,7 +492,24 @@ impl IconHost {
         restore_ids: Vec<String>,
         label: Option<String>,
     ) -> Result<IconOpResultDto, String> {
-        let style = parse_style(&style_json)?;
+        // Cap untrusted commit inputs before any work (audit F4 / codex B2-🔴): reject a huge
+        // styleJson / restore-id list / label, and (below) validate the session token, BEFORE
+        // parsing the style into a second JSON value.
+        if style_json.len() > MAX_STYLE_JSON_BYTES {
+            return Err(format!(
+                "styleJson is {} bytes, over the {MAX_STYLE_JSON_BYTES}-byte limit",
+                style_json.len()
+            ));
+        }
+        if restore_ids.len() > MAX_APPLY_MASTERS {
+            return Err(format!(
+                "restore-id list of {} exceeds the {MAX_APPLY_MASTERS}-item limit",
+                restore_ids.len()
+            ));
+        }
+        if label.as_deref().map_or(0, str::len) > MAX_LABEL_BYTES {
+            return Err(format!("label exceeds the {MAX_LABEL_BYTES}-byte limit"));
+        }
         // Hold the mutation gate for the WHOLE verb — the ledger commit AND the overlay install +
         // set_arrow below (which run after `mut_state` is dropped) — so no concurrent restore /
         // arrow-restore can interleave its overlay helper with this one (codex R3-Block 2).
@@ -509,6 +527,9 @@ impl IconHost {
                 persisted: self.finish_persisted(dto),
             });
         }
+        // Parse the style AFTER the token check — a superseded commit returns above without paying
+        // for (or trusting) a large recipe (codex B2-🔴).
+        let style = parse_style(&style_json)?;
         let session = st.session.take().ok_or("no apply session to commit")?;
         // Reject a malformed buffer (short/over) — a stale scan or a dropped chunk (codex Block 2).
         if session.len() != session.expected() {

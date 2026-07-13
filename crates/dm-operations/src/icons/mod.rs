@@ -71,6 +71,10 @@ pub const MAX_PREALLOC_MASTERS: usize = 4096;
 pub const MAX_MASTER_B64_BYTES: usize = 8 * 1024 * 1024;
 /// Cumulative base64 ceiling across one session's masters.
 pub const MAX_SESSION_B64_BYTES: usize = 256 * 1024 * 1024;
+/// Ceiling on the commit's styleJson recipe string (a resolved recipe is small JSON).
+pub const MAX_STYLE_JSON_BYTES: usize = 1024 * 1024;
+/// Ceiling on a caller-supplied look/version label.
+pub const MAX_LABEL_BYTES: usize = 4096;
 
 /// The chunk-buffer for one apply (`begin` → `push`\* → commit). Owns no ports; it just
 /// accumulates the frontend's baked masters until the commit packages + applies them.

@@ -25,20 +25,28 @@ pub use snapshot_store::SnapshotStore;
 const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
 /// Untrusted wallpaper-payload ceilings (audit F4): the webview supplies the baked PNG base64, so
-/// bound it before decode/materialization. An 8K-display PNG is a few MiB — these are generous.
-const MAX_WALLPAPER_B64_BYTES: usize = 96 * 1024 * 1024;
-const MAX_WALLPAPER_PNG_BYTES: usize = 64 * 1024 * 1024;
+/// bound it before decode/materialization. Sized for a worst-case high-entropy 8K lossless bake
+/// (7680×4320×4 ≈ 126 MiB raw): the PNG-file ceiling has headroom above that, and the base64 ceiling
+/// is exactly `PNG × 4/3` so the ENCODED cap (checked before decode) bounds the decoded allocation —
+/// they no longer disagree (codex B2-🟠). These are DoS ceilings, not tight limits.
+const MAX_WALLPAPER_PNG_BYTES: usize = 192 * 1024 * 1024;
+const MAX_WALLPAPER_B64_BYTES: usize = MAX_WALLPAPER_PNG_BYTES / 3 * 4;
 /// Pixel budget read from the IHDR — rejects a small "decompression bomb" PNG that declares huge
-/// dimensions (8192² covers an 8K display with headroom).
+/// dimensions (8192² = 67 MP covers an 8K display's 33 MP with headroom).
 const MAX_WALLPAPER_PIXELS: u64 = 8192 * 8192;
 
-/// Verifies real PNG structure (magic + IHDR) and that the declared dimensions are non-zero and
-/// within the pixel budget — the 8-byte magic alone lets a signature-prefixed blob or a
-/// decompression-bomb IHDR through (audit F4).
+/// Verifies real PNG structure (magic + a well-formed IHDR chunk) and that the declared dimensions
+/// are non-zero and within the pixel budget — the 8-byte magic alone lets a signature-prefixed blob
+/// or a decompression-bomb IHDR through (audit F4). Full chunk/CRC validation is the decoder's job at
+/// `set` time; this is the cheap structural + dimension gate before we touch disk.
 fn validate_png_header(png: &[u8]) -> Result<()> {
-    // 8-byte magic, then the first chunk MUST be IHDR: len(4) + "IHDR"(4) + width(4) + height(4) ...
-    if png.len() < 24 || png[..PNG_MAGIC.len()] != PNG_MAGIC || &png[12..16] != b"IHDR" {
-        return Err(OperationError::InvalidPayload("not a valid PNG (bad magic or IHDR)".into()));
+    // magic(8) + IHDR: length(4)==13 + "IHDR"(4) + 13 data bytes + CRC(4) = 33 bytes minimum.
+    if png.len() < 33 || png[..PNG_MAGIC.len()] != PNG_MAGIC {
+        return Err(OperationError::InvalidPayload("not a valid PNG (too short or bad magic)".into()));
+    }
+    let ihdr_len = u32::from_be_bytes([png[8], png[9], png[10], png[11]]);
+    if ihdr_len != 13 || &png[12..16] != b"IHDR" {
+        return Err(OperationError::InvalidPayload("not a valid PNG (malformed IHDR chunk)".into()));
     }
     let w = u32::from_be_bytes([png[16], png[17], png[18], png[19]]) as u64;
     let h = u32::from_be_bytes([png[20], png[21], png[22], png[23]]) as u64;
@@ -246,16 +254,24 @@ mod tests {
         }
     }
 
-    /// Builds a minimal but STRUCTURALLY VALID PNG (magic + IHDR + 1x1 dims), with `body` appended so
-    /// distinct content hashes to a distinct baked path. `validate_png_header` only reads the header.
-    fn fake_png(body: &[u8]) -> Vec<u8> {
+    /// Builds a PNG with a WELL-FORMED IHDR chunk (length 13 + w/h + bit-depth/colour-type/etc +
+    /// CRC placeholder) at the given dimensions, with `body` appended so distinct content hashes to a
+    /// distinct baked path. Structurally valid enough for `validate_png_header` (which does not check
+    /// the CRC); the real decoder validates fully at `set` time.
+    fn png_with_dims(w: u32, h: u32, body: &[u8]) -> Vec<u8> {
         let mut b = PNG_MAGIC.to_vec();
         b.extend_from_slice(&13u32.to_be_bytes()); // IHDR chunk length
         b.extend_from_slice(b"IHDR");
-        b.extend_from_slice(&1u32.to_be_bytes()); // width
-        b.extend_from_slice(&1u32.to_be_bytes()); // height
+        b.extend_from_slice(&w.to_be_bytes());
+        b.extend_from_slice(&h.to_be_bytes());
+        b.extend_from_slice(&[8, 6, 0, 0, 0]); // bit depth, colour type (RGBA), compression, filter, interlace
+        b.extend_from_slice(&[0, 0, 0, 0]); // IHDR CRC (not validated here)
         b.extend_from_slice(body);
         b
+    }
+
+    fn fake_png(body: &[u8]) -> Vec<u8> {
+        png_with_dims(1, 1, body)
     }
 
     fn png_b64() -> String {
@@ -354,14 +370,9 @@ mod tests {
         let r = rig();
         let fake = FakeApplier::default();
         let ops = WallpaperOps::new(&fake, &r.store, &r.baked);
-        // A tiny PNG whose IHDR DECLARES 100000x100000 (a decompression bomb) is rejected on dims —
-        // the 8-byte magic alone would have let it through (audit F4).
-        let mut bomb = PNG_MAGIC.to_vec();
-        bomb.extend_from_slice(&13u32.to_be_bytes());
-        bomb.extend_from_slice(b"IHDR");
-        bomb.extend_from_slice(&100_000u32.to_be_bytes());
-        bomb.extend_from_slice(&100_000u32.to_be_bytes());
-        let bomb64 = base64::engine::general_purpose::STANDARD.encode(bomb);
+        // A structurally-valid tiny PNG whose IHDR DECLARES 100000x100000 (a decompression bomb) is
+        // rejected on DIMENSIONS — the 8-byte magic alone would have let it through (audit F4).
+        let bomb64 = base64::engine::general_purpose::STANDARD.encode(png_with_dims(100_000, 100_000, b""));
         assert!(matches!(ops.apply_baked("m0", &bomb64), Err(OperationError::InvalidPayload(_))));
         // An over-limit base64 string is rejected BEFORE the decode allocation.
         let huge = "A".repeat(MAX_WALLPAPER_B64_BYTES + 1);

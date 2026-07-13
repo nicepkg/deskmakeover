@@ -133,6 +133,52 @@ export function ReflowGroup({
   )
 }
 
+/** A container rect that RESIZES to hug its remaining content once the noise is
+ *  gone — a panel never keeps phantom width/height around a removed region
+ *  (acceptance P2 2026-07-13: same-family fix as ReflowGroup, same rhythm). */
+export function ShrinkRect({
+  gone,
+  x,
+  y,
+  w,
+  h,
+  goneX = x,
+  goneY = y,
+  goneW = w,
+  goneH = h,
+  rx,
+  fill,
+  stroke,
+  opacity,
+}: {
+  gone: boolean
+  x: number
+  y: number
+  w: number
+  h: number
+  goneX?: number
+  goneY?: number
+  goneW?: number
+  goneH?: number
+  rx?: number
+  fill?: string
+  stroke?: string
+  opacity?: number
+}) {
+  const reduced = useReducedMotion()
+  return (
+    <motion.rect
+      initial={false}
+      animate={{ x: gone ? goneX : x, y: gone ? goneY : y, width: gone ? goneW : w, height: gone ? goneH : h }}
+      transition={reduced ? { duration: 0 } : { duration: 0.35, ease: [0.33, 1, 0.68, 1], delay: 0.18 }}
+      rx={rx}
+      fill={fill}
+      stroke={stroke}
+      opacity={opacity}
+    />
+  )
+}
+
 /** Shared: has this row's noise honestly left the surface? (view helper) */
 export function noiseGone(state: CalmRowState): boolean {
   return NOISE_GONE.has(state)

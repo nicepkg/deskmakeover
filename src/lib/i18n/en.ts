@@ -78,7 +78,7 @@ export const en = {
   "Calm_Group_Held": "Left alone on this PC for now",
   "Calm_Group_Held_Sub": "Not yet verified on your Windows build; support grows with updates",
   "Calm_Group_OneClick": "What one click can quiet",
-  "Calm_Group_OneClick_Sub": "Make it calm turns these off automatically; restore anytime",
+  "Calm_Group_OneClick_Sub": "Make it calm turns these off automatically; restore anytime. Untick a row to leave it out",
   "Calm_Guided_Again": "Take me there again",
   "Calm_Guided_ConfirmAsk": "Did you turn it off?",
   "Calm_Guided_ConfirmYes": "Done",

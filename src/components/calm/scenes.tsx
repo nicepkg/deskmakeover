@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import type { CalmControlId } from '@/lib/calm/catalog'
 import type { CalmRowState } from '@/lib/calm/states'
 import type { CalmScene } from '@/lib/calm/schematic-map'
-import { NoiseGroup, ReflowGroup, noiseGone } from './schematic-parts'
+import { NoiseGroup, ReflowGroup, ShrinkRect, noiseGone } from './schematic-parts'
 
 // The nine mini-screen scenes, drawn AGAINST DOWNLOADED REAL SCREENSHOTS
 // (win11-screenshot-hunter 2026-07-13, scratchpad/win11-shots/ — taskbar
@@ -186,11 +186,14 @@ function TaskbarScene(props: SceneProps) {
 /** Search flyout (search-before-after.png): Suggested list on the LEFT ~30%,
  *  the main area right — promo hero card, news rows, trending pills = the noise. */
 function SearchPanelScene({ state, delay }: SceneProps) {
+  const gone = noiseGone(state)
   return (
     <>
       <TaskbarAnchor />
-      <rect x="10" y="4" width="84" height="50" rx="6" fill="var(--raised)" stroke="var(--hair)" />
-      <rect x="14" y="8" width="76" height="6" rx="3" fill="var(--chip)" />
+      {/* the flyout NARROWS to hug the Suggested list once the promo side is
+          gone — search becomes the compact launcher it should have been */}
+      <ShrinkRect gone={gone} x={10} y={4} w={84} h={50} goneW={32} rx={6} fill="var(--raised)" stroke="var(--hair)" />
+      <ShrinkRect gone={gone} x={14} y={8} w={76} h={6} goneW={24} rx={3} fill="var(--chip)" />
       <Magnifier x={18} y={11} r={1.5} />
       {/* left: the Suggested app/recents list */}
       {[18, 24, 30, 36, 42, 48].map((y) => (
@@ -220,7 +223,10 @@ function SearchPanelScene({ state, delay }: SceneProps) {
 }
 
 /** Start panel (start-old-classic.png): pinned 6-wide grid, the slim Recommended
- *  item rows below (the noise), avatar left / power right in the footer. */
+ *  item rows below, avatar left / power right in the footer. The copy promises
+ *  「你自己的常用文件保留」 so the header + YOUR-files row stay neutral; only the
+ *  app-promotion row is the noise, and the footer compacts into the freed space
+ *  (acceptance P1a/P1b 2026-07-13 — no hollow socket mid-panel). */
 function StartScene({ state, delay }: SceneProps) {
   return (
     <>
@@ -230,20 +236,29 @@ function StartScene({ state, delay }: SceneProps) {
       {[16, 23].map((y) =>
         [27, 36, 45, 54, 63, 72].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={5.5} h={5} o={0.3} rx={1.2} />),
       )}
+      {/* Recommended header + your recent-files row — kept, per the copy promise */}
+      <Placeholder x={27} y={32} w={14} h={2.2} o={0.4} rx={1} />
+      {[27, 52].map((x) => (
+        <g key={x}>
+          <rect x={x} y={36.5} width="3.5" height="3.5" rx="1" fill={INK} opacity="0.35" />
+          <Placeholder x={x + 5.5} y={37.3} w={17} h={1.8} o={0.28} rx={0.9} />
+        </g>
+      ))}
+      {/* the app-promotion row is the noise */}
       <NoiseGroup state={state} delay={delay}>
-        <Placeholder x={27} y={32} w={14} h={2.2} o={0.4} rx={1} />
-        {[36.5, 41.5].map((y) =>
-          [27, 52].map((x) => (
-            <g key={`${x}-${y}`}>
-              <rect x={x} y={y} width="3.5" height="3.5" rx="1" fill={INK} opacity="0.35" />
-              <Placeholder x={x + 5.5} y={y + 0.8} w={17} h={1.8} o={0.28} rx={0.9} />
-            </g>
-          )),
-        )}
+        {[27, 52].map((x) => (
+          <g key={x}>
+            <rect x={x} y={41.5} width="3.5" height="3.5" rx="1" fill={INK} opacity="0.35" />
+            <Placeholder x={x + 5.5} y={42.3} w={17} h={1.8} o={0.28} rx={0.9} />
+          </g>
+        ))}
       </NoiseGroup>
-      <circle cx="30" cy="50" r="1.8" fill={INK} opacity="0.35" />
-      <Placeholder x={33.5} y={49} w={9} h={2} o={0.3} rx={1} />
-      <Placeholder x={73} y={48.5} w={3.5} h={3.5} o={0.35} rx={1} />
+      {/* footer compacts up into the freed row */}
+      <ReflowGroup gone={noiseGone(state)} dy={-5}>
+        <circle cx="30" cy="50" r="1.8" fill={INK} opacity="0.35" />
+        <Placeholder x={33.5} y={49} w={9} h={2} o={0.3} rx={1} />
+        <Placeholder x={73} y={48.5} w={3.5} h={3.5} o={0.35} rx={1} />
+      </ReflowGroup>
     </>
   )
 }
@@ -291,9 +306,13 @@ function SettingsScene({ state, delay }: SceneProps) {
       <rect x="33" y="9" width="18" height="11" rx="2" fill="var(--chip)" />
       <Placeholder x={54} y={11} w={22} h={2.4} o={0.4} rx={1} />
       <Placeholder x={54} y={15.5} w={16} h={2} o={0.3} rx={1} />
-      {/* card grid; the promo/suggestion cards = the right column (the noise) */}
+      {/* card grid; the promo/suggestion cards = the right column (the noise).
+          Once gone, the remaining cards REFLOW through the grid like the real
+          settings home — the lower-left card slides into the freed top slot. */}
       <rect x="33" y="24" width="29" height="12" rx="2.5" fill="var(--chip)" />
-      <rect x="33" y="39" width="29" height="12" rx="2.5" fill="var(--chip)" />
+      <ReflowGroup gone={noiseGone(state)} dx={32} dy={-15}>
+        <rect x="33" y="39" width="29" height="12" rx="2.5" fill="var(--chip)" />
+      </ReflowGroup>
       <NoiseGroup state={state} delay={delay}>
         <rect x="65" y="24" width="29" height="12" rx="2.5" fill="var(--chip)" />
         <circle cx="70" cy="29" r="2" fill={INK} opacity="0.4" />
@@ -375,10 +394,13 @@ function SystemFullScene({ state, delay }: SceneProps) {
  *  width); personal cards fill the board's left third, the MSN news/ads feed
  *  fills the board's RIGHT two thirds — the feed is the noise. */
 function WidgetsScene({ state, delay }: SceneProps) {
+  const gone = noiseGone(state)
   return (
     <>
       <TaskbarAnchor />
-      <rect x="4" y="4" width="62" height="50" rx="5" fill="var(--raised)" stroke="var(--hair)" />
+      {/* the board itself SLIMS to hug your cards once the feed is gone; the
+          desktop grows into the freed space (acceptance P2 — no phantom width) */}
+      <ShrinkRect gone={gone} x={4} y={4} w={62} h={50} goneW={25} rx={5} fill="var(--raised)" stroke="var(--hair)" />
       {/* left third: personal widget cards (weather + phone/watchlist) */}
       <rect x="8" y="9" width="17" height="16" rx="2.5" fill="var(--chip)" />
       <circle cx="12.5" cy="13.5" r="2.2" fill="var(--amber)" opacity="0.85" />
@@ -401,7 +423,7 @@ function WidgetsScene({ state, delay }: SceneProps) {
         )}
       </NoiseGroup>
       {/* desktop sliver on the right — the board does NOT span the screen */}
-      <rect x="70" y="10" width="28" height="40" rx="3" fill="var(--chip)" opacity="0.35" />
+      <ShrinkRect gone={gone} x={70} y={10} w={28} h={40} goneX={33} goneW={65} rx={3} fill="var(--chip)" opacity={0.35} />
     </>
   )
 }

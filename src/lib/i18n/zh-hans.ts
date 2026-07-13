@@ -80,7 +80,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Calm_Group_Held": "你这台电脑上暂时不碰的",
   "Calm_Group_Held_Sub": "还没在你的 Windows 版本上验证过，会随更新逐步支持",
   "Calm_Group_OneClick": "一键就能帮你关的",
-  "Calm_Group_OneClick_Sub": "点「一键清爽」自动关掉，随时能恢复",
+  "Calm_Group_OneClick_Sub": "点「一键清爽」自动关掉，随时能恢复；不想动的项，取消勾选即可跳过",
   "Calm_Guided_Again": "带我再去一次",
   "Calm_Guided_ConfirmAsk": "关好了吗？",
   "Calm_Guided_ConfirmYes": "关好了",

@@ -647,6 +647,58 @@ impl IconHost {
         Ok(IconOpResultDto { ok, toast, persisted: self.finish_persisted(dto) })
     }
 
+    /// `icons.switchVersion`: switch the desktop to a saved appearance version (spec 07 §9). Reads
+    /// the ③ entry, promotes its recipe to ②, and projects it onto the LIVE scan through the same
+    /// resolve→bake→driver path auto-format uses. CAS-safe (a hand-edited icon is skipped), fenced
+    /// (the scan revision + op-epoch bump so an in-flight apply built on the old desktop rejects).
+    pub fn switch_version(&self, version_id: &str) -> Result<IconOpResultDto, String> {
+        use dm_operations::icons::version_switch::{switch_to_version, VersionSwitchPorts};
+        // Serialize the whole desktop-mutating verb (same discipline as apply-commit / restore).
+        let _op_gate = self.op_gate.lock().unwrap();
+        let mut st = self.mut_state.lock().unwrap();
+        let ports = VersionSwitchPorts {
+            scanner: &*self.scanner,
+            extractor: &*self.extractor,
+            reader: &*self.reader,
+            applier: &*self.applier,
+            assets: &self.assets,
+        };
+        let IconMutState { ledger, journal, history, txn, op_epoch, .. } = &mut *st;
+        let outcome = switch_to_version(
+            version_id, &ports, &self.settings, history, txn, journal, ledger,
+        )
+        .map_err(|e| e.to_string())?;
+        // A switch is a desktop mutation: bump the epoch (an in-flight apply rejects) and FENCE the
+        // scan (the CAS anchors the old snapshot holds are stale) so the next apply must rescan.
+        *op_epoch += 1;
+        st.scan_revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+        st.scan_valid = false;
+        st.scan.clear();
+        let stores = self
+            .ops()
+            .read_state(&st.history, &st.ledger, &st.journal)
+            .map_err(|e| e.to_string())?;
+        let dto = self.to_persisted_dto_locked(&stores);
+        drop(st);
+        let _ = self.refresher.notify_icons_changed();
+
+        let (ok, toast) = if outcome.deferred {
+            // A prior crash's recovery ran; the switch stood down BEFORE ② was promoted, so
+            // nothing changed. The UI re-syncs + retries — honest, never a phantom success.
+            (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
+        } else if outcome.outcome.error.is_some() {
+            (false, Some(ToastDto { key: "Toast_ApplyDegraded".into(), arg: None }))
+        } else if !outcome.outcome.conflicts.is_empty() && outcome.outcome.committed.is_empty() {
+            (true, Some(ToastDto {
+                key: "Toast_ApplySkipped".into(),
+                arg: Some(outcome.outcome.conflicts.len().to_string()),
+            }))
+        } else {
+            (true, None)
+        };
+        Ok(IconOpResultDto { ok, toast, persisted: self.finish_persisted(dto) })
+    }
+
     /// `icons.restoreOverlay`: keep-beautification restore — lift ONLY the arrow overlay (the icon
     /// look stays). Faithful to the elevated Applied|Declined|Failed contract; the OBSERVED
     /// post-op arrow state is authoritative.

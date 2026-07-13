@@ -111,6 +111,15 @@ pub fn icons_restore_overlay(state: State<'_, AppState>) -> Result<IconOpResultD
 
 #[tauri::command]
 #[specta::specta]
+pub fn icons_switch_version(
+    state: State<'_, AppState>,
+    version_id: String,
+) -> Result<IconOpResultDto, String> {
+    state.icons.switch_version(&version_id)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn icons_export_compare(
     state: State<'_, AppState>,
     app: tauri::AppHandle,

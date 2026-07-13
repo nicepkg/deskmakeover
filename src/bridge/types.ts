@@ -560,6 +560,9 @@ export interface BridgeMethods {
    *  colours stay. Distinct from `icons.restore` (which undoes everything). The
    *  real elevated verb is `dm-elevated RestoreOverlay` (exact byte restore). */
   'icons.restoreOverlay': { params: void; result: IconOpResultDto }
+  /** Native/tray version switch (spec 07 §9): promote a saved appearance to ② and project it
+   *  onto the live desktop. The foreground reaches the same end state via stageVersion + apply. */
+  'icons.switchVersion': { params: { versionId: string }; result: IconOpResultDto }
   /** The webview composes the branded before/after sheet (it owns the fonts and both image
    *  states — oracle ComparisonImageExporter); Rust only validates + saves the finished PNG
    *  (raw base64) and toasts the saved path. */

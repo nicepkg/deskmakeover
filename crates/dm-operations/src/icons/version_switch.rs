@@ -40,7 +40,6 @@ pub struct VersionSwitchPorts<'a> {
 pub fn switch_to_version(
     version_id: &str,
     ports: &VersionSwitchPorts<'_>,
-    session: &mut RenderSession,
     settings: &SettingsStore,
     history: &LookHistoryStore,
     txn: &mut TxnIdAllocator,
@@ -55,18 +54,20 @@ pub fn switch_to_version(
     let style = version.icon_style;
     let recipe = StyleRecipe::parse(&style)?;
 
-    // ② becomes the new current global style (spec §8.3: switching sets ③'s recipe as ②).
-    settings.set_saved_style(Some(&style))?;
-
-    // Reconcile any prior crash BEFORE stacking a new apply — a recovery that moved or could not
-    // verify the desktop defers this switch (same discipline as commit_apply / the reconciler).
+    // Reconcile any prior crash BEFORE anything — a recovery that moved or could not verify the
+    // desktop defers this switch, and crucially BEFORE ② is promoted so a deferred switch does not
+    // leave ② pointing at a style the desktop never adopted (codex-guard: ②/desktop consistency).
     let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger)?;
     if !recovery.degraded.is_empty() || !recovery.aborted.is_empty() {
         return Ok(SwitchOutcome { outcome: ApplyOutcome::default(), deferred: true });
     }
 
+    // ② becomes the new current global style (spec §8.3: switching sets ③'s recipe as ②). A
+    // one-shot switch creates its own RenderSession (no cross-call warm cache to preserve).
+    settings.set_saved_style(Some(&style))?;
+    let mut session = RenderSession::new();
     let items = ports.scanner.scan().map_err(|e| OperationError::InvalidPayload(e.to_string()))?;
-    let outcome = bake_and_apply(&items, &recipe, ports, session, txn, journal, ledger)?;
+    let outcome = bake_and_apply(&items, &recipe, ports, &mut session, txn, journal, ledger)?;
     Ok(SwitchOutcome { outcome, deferred: false })
 }
 
@@ -167,7 +168,6 @@ mod tests {
         ApplyAssets, AssetRef, DecodedImage, Fingerprint, ItemId, ItemKind, ItemState, ItemTarget,
         PortError, PortResult, RestoreAnchor,
     };
-    use dm_icon_core::render_session::RenderSession;
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::rc::Rc;
@@ -310,13 +310,12 @@ mod tests {
                 icon_style: style("Circle"),
             })
             .unwrap();
-        let mut session = RenderSession::new();
         let mut txn = TxnIdAllocator::starting_at(1);
         let mut journal = VecJournal::default();
         let mut ledger = MemLedgerStore::default();
 
         let out = switch_to_version(
-            "look-1", &ports, &mut session, &settings, &history, &mut txn, &mut journal, &mut ledger,
+            "look-1", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger,
         )
         .unwrap();
         assert!(!out.deferred);
@@ -340,7 +339,7 @@ mod tests {
             })
             .unwrap();
         let out2 = switch_to_version(
-            "look-2", &ports, &mut session, &settings, &history, &mut txn, &mut journal, &mut ledger,
+            "look-2", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger,
         )
         .unwrap();
         assert!(out2.outcome.conflicts.contains(&ItemId::from_raw("a")), "hand-edited item is skipped");
@@ -364,12 +363,11 @@ mod tests {
         };
         let settings = SettingsStore::open_in_memory().unwrap();
         let history = LookHistoryStore::new(dir.path().join("h.json"));
-        let mut session = RenderSession::new();
         let mut txn = TxnIdAllocator::starting_at(1);
         let mut journal = VecJournal::default();
         let mut ledger = MemLedgerStore::default();
         assert!(switch_to_version(
-            "nope", &ports, &mut session, &settings, &history, &mut txn, &mut journal, &mut ledger
+            "nope", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger
         )
         .is_err());
     }

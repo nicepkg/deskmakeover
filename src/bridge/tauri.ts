@@ -32,6 +32,7 @@ const HANDLED = new Set([
   'icons.applyBakedCommit',
   'icons.restore',
   'icons.restoreOverlay',
+  'icons.switchVersion',
   'icons.exportCompare',
   'shell.openExternal',
   'shell.openDataFolder',
@@ -115,6 +116,10 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
       return unwrap(await commands.iconsRestore())
     case 'icons.restoreOverlay':
       return unwrap(await commands.iconsRestoreOverlay())
+    case 'icons.switchVersion': {
+      const p = params as { versionId: string }
+      return unwrap(await commands.iconsSwitchVersion(p.versionId))
+    }
     case 'icons.exportCompare': {
       const p = params as { png: string }
       return unwrap(await commands.iconsExportCompare(p.png))

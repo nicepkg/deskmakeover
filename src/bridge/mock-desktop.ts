@@ -322,6 +322,7 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
     label?: string | null
     sessionId?: string
     png?: string
+    versionId?: string
   }
   switch (method) {
     case 'icons.getPersisted':
@@ -378,6 +379,19 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
       const res = overlayRestoreResult(restoreOutcome())
       session.arrowOverlay = res.arrowOverlay
       return { ok: res.ok, toast: { key: res.toastKey, arg: null }, persisted: persisted() } satisfies IconOpResultDto
+    }
+    case 'icons.switchVersion': {
+      // The native/tray version-switch path (spec 07 §9): promote the version's recipe to ②,
+      // project it onto the desktop. The mock has no compositor, so it just adopts the recipe +
+      // marks applied (the real host bakes + CAS-applies each icon). An unknown id → honest fail.
+      const entry = session.history.find((v) => v.id === p.versionId)
+      if (!entry) {
+        return { ok: false, toast: { key: 'Toast_ApplyDegraded', arg: null }, persisted: persisted() } satisfies IconOpResultDto
+      }
+      session.savedStyleJson = entry.styleJson
+      session.applied = true
+      session.arrowOverlay = 'hidden'
+      return { ok: true, toast: null, persisted: persisted() } satisfies IconOpResultDto
     }
     case 'icons.exportCompare': {
       // The webview composed the sheet; the mock has no filesystem, so parity = a browser

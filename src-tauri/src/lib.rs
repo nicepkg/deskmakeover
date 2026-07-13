@@ -46,6 +46,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
         commands::icons_apply_baked_commit,
         commands::icons_restore,
         commands::icons_restore_overlay,
+        commands::icons_switch_version,
         commands::icons_export_compare,
     ])
 }

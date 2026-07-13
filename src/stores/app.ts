@@ -8,7 +8,7 @@ import { useToasts } from '@/stores/toasts'
 // App-level session state: module routing, window state, settings, app info.
 // One boot() wires the bridge; settings changes flow bridge → store → i18n/theme.
 
-export type AppModule = 'icons' | 'paper' | 'settings'
+export type AppModule = 'icons' | 'paper' | 'calm' | 'settings'
 
 interface AppState {
   booted: boolean

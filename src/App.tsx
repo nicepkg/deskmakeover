@@ -16,6 +16,8 @@ import { ComponentGallery } from '@/components/debug/component-gallery'
 import { useApp } from '@/stores/app'
 import type { AppModule } from '@/stores/app'
 import { useIcons } from '@/stores/icons'
+import { useCalm } from '@/stores/calm'
+import { CalmPage } from '@/components/panels/calm-page'
 
 export default function App() {
   if (new URLSearchParams(window.location.search).get('debug') === 'components') {
@@ -45,9 +47,9 @@ function Shell() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+1/2/3 = module switch (spec 03).
-      if (e.ctrlKey && !e.altKey && !e.shiftKey && ['1', '2', '3'].includes(e.key)) {
-        const target: AppModule = e.key === '1' ? 'icons' : e.key === '2' ? 'paper' : 'settings'
+      // Ctrl+1/2/3/4 = module switch (spec 03; 清爽 = Ctrl+3, 设置 stays last).
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && ['1', '2', '3', '4'].includes(e.key)) {
+        const target: AppModule = e.key === '1' ? 'icons' : e.key === '2' ? 'paper' : e.key === '3' ? 'calm' : 'settings'
         setModule(target)
         e.preventDefault()
         return
@@ -132,6 +134,7 @@ function Shell() {
                   ['settings', <SettingsPage key="s" />],
                   ['icons', <IconsModule key="i" />],
                   ['paper', <PaperModule key="p" />],
+                  ['calm', <CalmModule key="c" />],
                 ] as const
               ).map(([id, node]) => (
                 <div
@@ -175,4 +178,12 @@ function PaperModule() {
     void load()
   }, [load])
   return <ModuleLayout inspector={<WallpaperPanel />} mirror={<WallpaperMirror />} />
+}
+
+function CalmModule() {
+  const probe = useCalm((s) => s.probe)
+  useEffect(() => {
+    void probe()
+  }, [probe])
+  return <CalmPage />
 }

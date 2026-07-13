@@ -1,4 +1,4 @@
-import { Image, LayoutGrid, Settings } from 'lucide-react'
+import { Image, LayoutGrid, Settings, Wind } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/utils'
 import { useApp } from '@/stores/app'
@@ -12,6 +12,8 @@ import type { StringKey } from '@/lib/i18n'
 const items: { id: AppModule; labelKey: StringKey; Icon: typeof LayoutGrid; pinBottom?: boolean }[] = [
   { id: 'icons', labelKey: 'Rail_Icons', Icon: LayoutGrid },
   { id: 'paper', labelKey: 'Rail_Paper', Icon: Image },
+  // 清爽 (spec 08, ADR-0023): a craft glyph — a breeze, never a shield (UI law).
+  { id: 'calm', labelKey: 'Rail_Calm', Icon: Wind },
   { id: 'settings', labelKey: 'Rail_Settings', Icon: Settings, pinBottom: true },
 ]
 

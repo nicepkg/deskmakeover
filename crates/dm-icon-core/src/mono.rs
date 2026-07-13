@@ -128,8 +128,16 @@ pub fn mono_map_adaptive(tile: &mut Raster, tint: u32) {
     }
 }
 
-/// Per-pixel recolour for 黑白 / per-pixel 单色 (color.ts `transformPixelInPlace`).
+/// Per-pixel recolour (1:1 port of the frozen oracle `color.ts:434 transformPixelInPlace`).
 /// `Original` is identity; `BlackWhite` is Rec.601 gray; `Mono` rides the ramp.
+///
+/// ICON-9 (owner-resolved 2026-07-13 — retain, do not delete): the `Mono` per-pixel tail below
+/// is UNREACHED by the live compose path — a `Mono` subject is mapped whole-tile via
+/// [`mono_map_adaptive`] (the adaptive stretch that superseded per-pixel mono), never here. It is
+/// kept because it mirrors the frozen parity oracle 1:1: the oracle carries the identical tail and
+/// also calls this only with `BlackWhite` (`compose.ts:373`), so the branch is dead in BOTH.
+/// Deleting the Rust half would diverge the port from its certified byte-parity reference for zero
+/// pixel-behaviour gain. Provably harmless — no live caller passes `Subject::Mono`.
 pub fn transform_pixel_in_place(d: &mut [u8], i4: usize, mode: Subject, tint: u32) {
     if mode == Subject::Original || d[i4 + 3] == 0 {
         return;

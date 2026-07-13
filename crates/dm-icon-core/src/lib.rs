@@ -6,7 +6,7 @@
 //! - no `mul_add`/FMA, no SIMD, no order-dependent parallel reductions;
 //! - TS `Float32Array`/`Float64Array` precision is mirrored field-by-field
 //!   (`f32`/`f64`), including JS rounding semantics at byte boundaries
-//!   (`js_math::js_round`, `js_math::clamp_u8_round_half_even`);
+//!   (`js_math::js_round`, `js_math::clamp_byte`);
 //! - every module is a 1:1 port of the FROZEN TS compositor
 //!   (`src/icon-compositor/*`) — the external pixel
 //!   contract is byte parity against that oracle.

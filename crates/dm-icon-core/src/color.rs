@@ -7,6 +7,15 @@
 //! wasm↔native byte gate (ADR-0019). The TS oracle computes these through
 //! JSC's `Math.pow`/`Math.cbrt`; whether JSC and musl-libm agree bit-for-bit
 //! is exactly what the Spike-4 fixture probes measure.
+//!
+//! ICON-11 (owner-resolved 2026-07-13 — retain, do not delete): `hsl_of`, `hsl_to_rgb`,
+//! `field_plate_tone`, `clamp_plate_lightness`, and `shift_lightness` are UNREACHED by the live
+//! compose path (the field-plate lane builds plates via `field_shadow_tone` +
+//! `themed_contrast_tone` + `neutral_contrast_tone`, ADR-0016/0018; hue math went OKLab). They are
+//! kept because each is a 1:1 port of a NAMED frozen-oracle export (`color.ts` `hslOf` /
+//! `hslToRgb` / `fieldPlateTone` / `clampPlateLightness` / `shiftLightness`), so the oracle carries
+//! them too. Deleting the Rust halves would diverge this module from its certified byte-parity
+//! reference for zero pixel gain; they return the moment a future look re-wires them.
 
 use crate::config::Band;
 use crate::js_math::{clamp01, clamp_byte, js_round};

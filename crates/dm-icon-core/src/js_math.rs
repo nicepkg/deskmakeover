@@ -1,11 +1,11 @@
 //! JavaScript numeric semantics, mirrored exactly (ADR-0019 §wasm↔native).
 //!
 //! The frozen TS oracle stores bytes through `Math.round` + `Uint8ClampedArray`
-//! assignment. Rust's `f64::round` rounds half AWAY FROM ZERO while JS
-//! `Math.round` rounds half toward +∞, and a `Uint8ClampedArray` store rounds
-//! half to EVEN — three different rules at one byte boundary. Every byte-facing
-//! call site in this crate goes through these helpers; bare `.round()` is
-//! banned in the core.
+//! assignment, ALWAYS pre-rounding via `Math.round` before the store — so the
+//! store's own ties-to-even clamp is never exercised. Rust's `f64::round` rounds
+//! half AWAY FROM ZERO while JS `Math.round` rounds half toward +∞: two different
+//! rules at one byte boundary. Every byte-facing call site in this crate goes
+//! through these helpers; bare `.round()` is banned in the core.
 
 /// `Math.round` (ES2026 §Math.round): the integral Number closest to `x`,
 /// ties toward +∞. NOT `floor(x + 0.5)` — for `x = 0.49999999999999994`,
@@ -25,23 +25,6 @@ pub fn js_round(x: f64) -> f64 {
 /// `Math.trunc`.
 pub fn js_trunc(x: f64) -> f64 {
     x.trunc()
-}
-
-/// `Uint8ClampedArray` assignment (ES2026 ToUint8Clamp): clamp to [0,255],
-/// round half to EVEN. Only reached by NON-integer stores — the slice always
-/// pre-rounds via `js_round`, but M5 modules (filters, backdropBlur) store raw
-/// products and MUST use this.
-pub fn clamp_u8_round_half_even(v: f64) -> u8 {
-    if v.is_nan() || v <= 0.0 {
-        return 0;
-    }
-    if v >= 255.0 {
-        return 255;
-    }
-    let f = v.floor();
-    let frac = v - f;
-    let round_up = frac > 0.5 || (frac == 0.5 && !(f as u64).is_multiple_of(2));
-    (if round_up { f + 1.0 } else { f }) as u8
 }
 
 /// A `js_round` result stored into a `Uint8ClampedArray` slot: the round value
@@ -91,18 +74,6 @@ mod tests {
     }
 
     #[test]
-    fn uint8_clamped_ties_go_even() {
-        assert_eq!(clamp_u8_round_half_even(0.5), 0);
-        assert_eq!(clamp_u8_round_half_even(1.5), 2);
-        assert_eq!(clamp_u8_round_half_even(2.5), 2);
-        assert_eq!(clamp_u8_round_half_even(254.5), 254);
-        assert_eq!(clamp_u8_round_half_even(254.7), 255);
-        assert_eq!(clamp_u8_round_half_even(-3.0), 0);
-        assert_eq!(clamp_u8_round_half_even(300.0), 255);
-        assert_eq!(clamp_u8_round_half_even(f64::NAN), 0);
-    }
-
-    #[test]
     fn clamp_byte_clamps_before_rounding() {
         assert_eq!(clamp_byte(255.4), 255);
         assert_eq!(clamp_byte(254.5), 255); // Math.round, not half-even
@@ -111,20 +82,6 @@ mod tests {
     }
 
     // ---- exhaustive byte-boundary references (js_math is the parity foundation) ----
-
-    /// ECMAScript ToUint8Clamp: clamp to [0,255], round half to EVEN.
-    fn to_uint8_clamp(x: f64) -> u8 {
-        if x.is_nan() || x <= 0.0 {
-            return 0;
-        }
-        if x >= 255.0 {
-            return 255;
-        }
-        let f = x.floor();
-        let d = x - f;
-        let up = d > 0.5 || (d == 0.5 && (f as i64) % 2 == 1);
-        (if up { f + 1.0 } else { f }) as u8
-    }
 
     /// `Math.round`: floor(x) + 1 iff the fraction is ≥ 0.5 (ties toward +∞).
     fn math_round(x: f64) -> f64 {
@@ -146,24 +103,6 @@ mod tests {
         assert_eq!(clamp_u8_int(255.0), 255);
         assert_eq!(clamp_u8_int(255.9), 255);
         assert_eq!(clamp_u8_int(1e9), 255);
-    }
-
-    #[test]
-    fn clamp_u8_round_half_even_matches_reference_exhaustively() {
-        // Every integer + half-integer across (and past) the range: exercises the
-        // ties-to-even path at all 256 midpoints, plus out-of-range and NaN.
-        let mut k = -8;
-        while k <= 520 {
-            let x = k as f64 / 2.0;
-            assert_eq!(clamp_u8_round_half_even(x), to_uint8_clamp(x), "half-step mismatch at {x}");
-            k += 1;
-        }
-        // Dense thirds to cover non-half fractions too.
-        for k in -30..=(255 * 3 + 30) {
-            let x = k as f64 / 3.0;
-            assert_eq!(clamp_u8_round_half_even(x), to_uint8_clamp(x), "thirds mismatch at {x}");
-        }
-        assert_eq!(clamp_u8_round_half_even(f64::NAN), 0);
     }
 
     #[test]

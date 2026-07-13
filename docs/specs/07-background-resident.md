@@ -441,11 +441,35 @@ Five states, shape + colour double-coded (a 16px tray glyph cannot rely on hue a
 | WORKING | formatting N new icons (≤2s typical) | solid + 2-frame pulse | 正在整理 N 个新图标 |
 | ERROR | a write or the undo safety-net failed to persist | solid + red exclamation | 遇到问题,点击查看 |
 
-- Legal transitions: OFF↔WATCHING (toggle) · WATCHING↔PAUSED (activity start/end,
-  §11) · WATCHING/PAUSED→WORKING (a batch starts) · WORKING→WATCHING (batch commits
-  clean) · any state→ERROR (a durable write/undo-journal failure) · ERROR→WATCHING
-  (the user acknowledges/retries). No other transition is legal — the release gate
-  in §7 asserts this exhaustively.
+- Legal transitions: OFF→WATCHING (enable) · **ANY state→OFF (the user disable, owner
+  decision 2026-07-13 — see §12.1)** · WATCHING↔PAUSED (activity start/end, §11) ·
+  WATCHING/PAUSED→WORKING (a batch starts) · WORKING→WATCHING (batch commits clean) ·
+  any state→ERROR (a durable write/undo-journal failure) · ERROR→WATCHING (the user
+  acknowledges/retries). No other transition is legal — the release gate in §7 asserts
+  this exhaustively.
+
+### 12.1 Disable is honoured from every state (owner decision 2026-07-13)
+
+The tray "☑自动整理新图标" toggle disables from **any** state, not only WATCHING. A user
+who unchecks it while the desktop is paused, a batch is running, or an error is showing
+expects automation to stop — a dead no-op there is a UX trap. The two states that needed
+defined semantics before this could be legal:
+
+- **WORKING → OFF (mid-batch).** The host loop checks the persisted `enabled` flag BEFORE
+  it schedules the next reconcile or apply. A batch already handed to the reconciler's
+  `apply_batch` is a SINGLE atomic `TxnDriver` transaction, so at the moment of disable it
+  has either not reached its commit point (the desktop is untouched — nothing applied) or
+  already fully committed (all N icons applied and still fully undoable via §13's ladder).
+  There is never a torn, half-formatted batch. No batch-cancellation plumbing lives in the
+  decision core; per-transaction atomicity is the guarantee, so the worst-case latency of a
+  disable is one in-flight batch (≤2 s typical, §12's WORKING budget).
+- **ERROR → OFF.** Disabling never discards the fault record. The pending-privileged queue
+  and any unrecovered journal transaction are RETAINED across the toggle. Re-enabling runs
+  the unconditional `recover_from_journal` at the top of the reconcile cycle (§3), so an
+  unresolved fault re-surfaces (the tray returns to ERROR) and a resolved one lets the cycle
+  proceed — retention is structural, not a discardable flag.
+
+OFF→OFF (disabling when already disabled) is the idempotent no-op.
 - Menu (fixed order, the normative version of §1's placeholder): 状态行(不可点) /
   ☑自动整理新图标 / 立即整理桌面 / 查看最近整理记录(N) /
   撤销最近一次整理(窄,仅在存在可撤销项时可点) / 打开 DeskMakeover / 设置 / 退出.

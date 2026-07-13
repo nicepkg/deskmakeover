@@ -127,6 +127,7 @@ export const en = {
   "Calm_ToastPart_Quieted": "Quieted {0} surfaces",
   "Calm_Toast_ExcludeLoadFailed": "Your saved exclusions could not be read; everything is selected this time",
   "Calm_Toast_ExcludeNotSaved": "That exclusion could not be saved; it lasts this session only",
+  "Calm_Toast_GoLook": "Go take a look at your Start menu",
   "Calm_Toast_NothingToDo": "Nothing left to quiet",
   "Calm_Toast_Restored": "Restored {0} Windows suggestions",
   "Calm_Toast_RestoredOne": "Restored {0}",

@@ -10,6 +10,7 @@ import { SurfaceSchematic, applyStaggerDelay } from '@/components/calm/surface-s
 import { controlById, type CalmControl, type CalmControlId } from '@/lib/calm/catalog'
 import type { CalmRowState } from '@/lib/calm/states'
 import { applyCandidates, countQuieted, countRestorable, groupedRows, reopenedRows, useCalm } from '@/stores/calm'
+import { useToasts } from '@/stores/toasts'
 import { format, useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -26,9 +27,10 @@ export function CalmPage() {
   const rows = useCalm((s) => s.rows)
   const excluded = useCalm((s) => s.excluded)
   const [confirmOpen, setConfirmOpen] = React.useState(false)
-  // Same celebration as the icons/wallpaper applies (DRY, owner 2026-07-13):
-  // corner-ribbon confetti on the FIRST successful 一键清爽 of this launch.
-  const { celebrateKey, celebrate } = useCelebration('calm-apply')
+  // Same celebration as the icons/wallpaper applies (DRY, owner 2026-07-13),
+  // gated per spec 08 §4: confetti ONLY when this is the launch's first module
+  // success anywhere in the app — otherwise the 「去看看」 toast stands in.
+  const { celebrateKey, celebrate } = useCelebration('calm-apply', true)
 
   // Guided return-probe: when the window regains focus after a walk, re-check the
   // walked row (readable rows confirm themselves; unreadable ones ask the user).
@@ -87,7 +89,7 @@ export function CalmPage() {
           <div className="min-w-0 flex-1">
             {/* Typographic hierarchy (owner 2026-07-13): the count line IS the
                 page's message — large; everything explanatory shrinks and fades. */}
-            <p className="text-[17px] font-medium tracking-[-0.01em] text-t1">
+            <p className="text-[18px] font-medium tracking-[-0.01em] text-t1">
               {quieted > 0 ? format(t('Calm_Summary'), quieted) : format(t('Calm_CanQuiet'), candidates.length)}
             </p>
             <p className="mt-1.5 text-[12px] leading-relaxed text-t3">{t('Calm_HeroPromise')}</p>
@@ -163,10 +165,14 @@ export function CalmPage() {
         cancelLabel={t('Calm_Confirm_Cancel')}
         onConfirm={() => {
           setConfirmOpen(false)
-          void useCalm.getState().applyAll().then(() => {
-            // Celebrate only a VERIFIED win — never a lost reply or all-skipped run.
-            const sum = useCalm.getState().lastApply
-            if (sum && sum.verified > 0) celebrate()
+          // THIS call's summary (null = nothing ran) — a stale lastApply from an
+          // earlier batch must never trigger a celebration (codex R6).
+          void useCalm.getState().applyAll().then((sum) => {
+            if (!sum || sum.verified === 0) return
+            if (!celebrate()) {
+              // Not the launch's first module success → spec 08 §4's stand-in.
+              useToasts.getState().show(t('Calm_Toast_GoLook'), 'success')
+            }
           })
         }}
         onCancel={() => setConfirmOpen(false)}

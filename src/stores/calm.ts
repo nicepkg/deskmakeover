@@ -62,8 +62,10 @@ interface CalmState {
   lastApply: CalmApplySummary | null
   probe: () => Promise<void>
   toggleExcluded: (id: CalmControlId) => void
-  /** Apply the one-click package; `only` scopes it (the re-propose notice). */
-  applyAll: (only?: CalmControlId[]) => Promise<void>
+  /** Apply the one-click package; `only` scopes it (the re-propose notice).
+   *  Resolves to THIS call's summary — null when nothing ran (lock held / no
+   *  candidates), so a caller can never celebrate a stale `lastApply`. */
+  applyAll: (only?: CalmControlId[]) => Promise<CalmApplySummary | null>
   restoreAll: () => Promise<void>
   /** Per-row undo (owner 2026-07-13): one control back to its original. */
   restoreOne: (id: CalmControlId) => Promise<void>
@@ -167,18 +169,18 @@ export const useCalm = create<CalmState>((set, get) => {
 
     applyAll: async (only) => {
       const { rows, excluded, op } = get()
-      if (op !== 'idle') return
+      if (op !== 'idle') return null
       const all = applyCandidates(rows, excluded)
       const ids = only ? all.filter((id) => only.includes(id)) : all
       if (ids.length === 0) {
         useToasts.getState().show(t('Calm_Toast_NothingToDo'))
-        return
+        return null
       }
       set({ op: 'apply', skipReasons: {} })
       let lostReply = false
+      const summary: CalmApplySummary = { verified: 0, awaiting: 0, reverted: 0, skipped: 0 }
       try {
         for (const id of ids) setRow(id, 'pending')
-        const summary: CalmApplySummary = { verified: 0, awaiting: 0, reverted: 0, skipped: 0 }
         let results: Awaited<ReturnType<CalmBackend['apply']>> = []
         try {
           results = await backend.apply(ids)
@@ -220,6 +222,7 @@ export const useCalm = create<CalmState>((set, get) => {
       }
       // Recover the unknown rows from environment truth, outside the apply op.
       if (lostReply) await get().probe()
+      return summary // THIS call's result — never a stale lastApply read
     },
 
     restoreAll: async () => {

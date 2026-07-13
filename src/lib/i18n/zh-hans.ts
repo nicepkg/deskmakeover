@@ -129,6 +129,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Calm_ToastPart_Quieted": "已让 {0} 处安静",
   "Calm_Toast_ExcludeLoadFailed": "之前保存的排除项没能读出来，这次按默认全选",
   "Calm_Toast_ExcludeNotSaved": "这条排除没能保存，只在本次生效",
+  "Calm_Toast_GoLook": "去看看开始菜单吧",
   "Calm_Toast_NothingToDo": "没有需要关的了",
   "Calm_Toast_Restored": "已恢复 {0} 项系统推送",
   "Calm_Toast_RestoredOne": "已恢复「{0}」",

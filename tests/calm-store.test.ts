@@ -328,6 +328,17 @@ describe('calm store', () => {
     expect(countOwnedWrites(s.rows)).toBe(3) // restore did NOT run mid-apply
   })
 
+  test("applyAll resolves THIS call's summary; a lock-refused call resolves null, never a stale summary (codex R6)", async () => {
+    resetStore(new MockCalmBackend({ latencyMs: 20 }))
+    await useCalm.getState().probe()
+    const first = useCalm.getState().applyAll()
+    const second = useCalm.getState().applyAll() // double-click: lock held
+    expect(await second).toBeNull() // a celebration keyed on this MUST stay quiet
+    expect(await first).toEqual({ verified: 3, awaiting: 0, reverted: 0, skipped: 0 })
+    // And with nothing applicable, the stated no-op also resolves null.
+    expect(await useCalm.getState().applyAll()).toBeNull()
+  })
+
   test('applyAll with nothing applicable is a stated no-op, never a fake re-run', async () => {
     await useCalm.getState().probe()
     await useCalm.getState().applyAll()

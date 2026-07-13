@@ -24,8 +24,8 @@ hidden-WebView2 background rendering (rejected, ADR-0015 D4), five-material icon
 direction, sequenced separately).
 
 **Assumptions**: pre-release, no legacy compat required; dev loop = Mac browser +
-Vite + mock bridge; all Windows-gated verification batches into one session with
-wallpaper F8 (ADR-0015 D6).
+Vite + mock bridge; all Windows-gated verification batches into the Windows integration /
+`[WINDOWS-VERIFY]` phase (the old "F8" is void per ADR-0019).
 
 **Dependencies**: production pixels come from Rust `dm-icon-core` (WASM in the web, native in the
 host); output is deterministic (libm-routed transcendentals, no FMA/SIMD in core v1 → WASM↔native
@@ -287,8 +287,8 @@ contract facts here:
 - **Type space**: the 4 buckets × shortcut as an orthogonal modifier.
   MECHANISM semantics (owner override): every shortcut kind (`Shortcut`,
   `UrlShortcut`, `AppxShortcut`) buckets to App regardless of target; bare
-  `.exe` files join the App bucket (host classifies by extension at F8; the
-  dev mock flags fixtures now). App's user-facing label becomes 程序.
+  `.exe` files join the App bucket (the Rust host classifies by extension at Windows
+  integration; the dev mock flags fixtures now). App's user-facing label becomes 程序.
   `isShortcut` includes `AppxShortcut` (bug fix — UWP shortcuts must wear
   the mark).
 - **Config model**: `ConfigDto.kindShapes` is DELETED. `IconsStateDto` (not
@@ -347,12 +347,12 @@ opt-out surface — all carried over from this section's original trust contract
 - **Findability net (ADR-0016 D4)**: (a) automated — over the committed mock
   corpus under the default look, neighbouring-plate ΔE separability must clear
   the threshold (bun test; also guards the hue de-dup pass); (b) owner-supervised
-  at F8 exit — default look, 20 random targets, locate time/error rate not worse
-  than the stock-desktop threshold. A default losing to stock on findability may
+  at the Windows integration exit — default look, 20 random targets, locate time/error rate
+  not worse than the stock-desktop threshold. A default losing to stock on findability may
   not ship.
-  *Gap note 2026-07-10: the contract-chunking (applyBaked ≤20/chunk, count math)
-  and mock-manifest-integrity tests promised here are NOT yet written — they are
-  owed with the F8 host wiring, when the chunk path first runs against a real host.*
+  *Gap note 2026-07-10: the contract-chunking (apply ≤20/chunk, count math) and
+  mock-manifest-integrity tests promised here are NOT yet written — they are owed with the
+  Windows integration, when the chunk path first runs against a real box.*
 - Parity fixtures (Windows batch): §1 tolerances, goldens committed under
   `tests/fixtures/icon-parity/`.
 - Visual acceptance (every UI slice, browser): scrub latency, hover try-on,

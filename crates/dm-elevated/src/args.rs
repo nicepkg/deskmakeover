@@ -40,36 +40,60 @@ pub enum Command {
     Unknown(String),
 }
 
-/// Parses argv (the program name already stripped).
+/// Parses argv (the program name already stripped). This is a PRIVILEGE BOUNDARY (audit F6), so the
+/// grammar is STRICT: an unknown flag, a duplicate flag, a dangling flag, a surplus argument, or a
+/// non-whitelisted `--style` value all reject to `Command::Unknown` (→ exit 2). Only a MISSING
+/// `--style` keeps the `Refined` default; a PRESENT-but-invalid one is refused, never silently
+/// downgraded. The C# helper's lenient `GetOption` is deliberately NOT mirrored (it is being retired).
 pub fn parse(args: &[String]) -> Command {
     let Some(command) = args.first() else {
         return Command::None;
     };
     match command.trim().to_ascii_lowercase().as_str() {
-        "version" => Command::Version,
-        "apply-overlay" => {
-            let style = option(args, "--style")
-                .and_then(|s| Style::parse(&s))
-                .unwrap_or(Style::Refined);
-            Command::ApplyOverlay { style, file: option(args, "--file") }
-        }
-        "restore-overlay" => Command::RestoreOverlay,
+        "version" if args.len() == 1 => Command::Version,
+        "version" => Command::Unknown("version takes no arguments".into()),
+        "apply-overlay" => parse_apply_overlay(&args[1..]),
+        "restore-overlay" if args.len() == 1 => Command::RestoreOverlay,
+        "restore-overlay" => Command::Unknown("restore-overlay takes no arguments".into()),
         other => Command::Unknown(other.to_string()),
     }
 }
 
-/// Finds `--name <value>` after the command. Unlike the oracle (which lowercased every option
-/// value), the raw value is preserved so a case-sensitive `--file` path is not corrupted.
-fn option(args: &[String], name: &str) -> Option<String> {
-    if args.len() < 2 {
-        return None;
-    }
-    for i in 1..args.len() - 1 {
-        if args[i].eq_ignore_ascii_case(name) {
-            return Some(args[i + 1].trim().to_string());
+/// Strict `apply-overlay` grammar: only `--style <whitelisted>` and `--file <value>`, each at most
+/// once, each requiring its value; anything else refuses.
+fn parse_apply_overlay(rest: &[String]) -> Command {
+    let mut style: Option<Style> = None;
+    let mut file: Option<String> = None;
+    let mut i = 0;
+    while i < rest.len() {
+        match rest[i].to_ascii_lowercase().as_str() {
+            "--style" => {
+                let Some(val) = rest.get(i + 1) else {
+                    return Command::Unknown("apply-overlay: --style needs a value".into());
+                };
+                if style.is_some() {
+                    return Command::Unknown("apply-overlay: duplicate --style".into());
+                }
+                let Some(parsed) = Style::parse(val) else {
+                    return Command::Unknown(format!("apply-overlay: unknown style {val:?}"));
+                };
+                style = Some(parsed);
+                i += 2;
+            }
+            "--file" => {
+                let Some(val) = rest.get(i + 1) else {
+                    return Command::Unknown("apply-overlay: --file needs a value".into());
+                };
+                if file.is_some() {
+                    return Command::Unknown("apply-overlay: duplicate --file".into());
+                }
+                file = Some(val.trim().to_string());
+                i += 2;
+            }
+            other => return Command::Unknown(format!("apply-overlay: unexpected argument {other:?}")),
         }
     }
-    None
+    Command::ApplyOverlay { style: style.unwrap_or(Style::Refined), file }
 }
 
 #[cfg(test)]
@@ -95,10 +119,14 @@ mod tests {
     }
 
     #[test]
-    fn unknown_style_falls_back_to_refined_default() {
-        // A bogus style is not honoured; the default is used (the whitelist still gates the value).
-        let cmd = parse(&argv(&["apply-overlay", "--style", "rm-rf"]));
-        assert_eq!(cmd, Command::ApplyOverlay { style: Style::Refined, file: None });
+    fn present_but_invalid_style_is_rejected_not_downgraded() {
+        // A bogus style value REFUSES (privilege boundary) rather than silently becoming Refined.
+        assert!(matches!(parse(&argv(&["apply-overlay", "--style", "rm-rf"])), Command::Unknown(_)));
+    }
+
+    #[test]
+    fn missing_style_keeps_the_refined_default() {
+        assert_eq!(parse(&argv(&["apply-overlay"])), Command::ApplyOverlay { style: Style::Refined, file: None });
     }
 
     #[test]
@@ -125,22 +153,20 @@ mod tests {
     }
 
     #[test]
-    fn trailing_option_flag_without_a_value_is_ignored() {
-        // `--file` as the very last token has no value → None (oracle scans 1..len-1).
-        let cmd = parse(&argv(&["apply-overlay", "--style", "transparent", "--file"]));
-        assert_eq!(cmd, Command::ApplyOverlay { style: Style::Transparent, file: None });
-        // `--style` with no value → falls back to the default.
-        let cmd2 = parse(&argv(&["apply-overlay", "--style"]));
-        assert_eq!(cmd2, Command::ApplyOverlay { style: Style::Refined, file: None });
+    fn dangling_flags_and_unknown_arguments_are_rejected() {
+        // A privilege boundary refuses anything it does not fully understand.
+        assert!(matches!(parse(&argv(&["apply-overlay", "--style", "transparent", "--file"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["apply-overlay", "--style"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["apply-overlay", "--unexpected", "v", "--file", "x.ico"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["apply-overlay", "surplus"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["version", "extra"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["restore-overlay", "x"])), Command::Unknown(_)));
     }
 
     #[test]
-    fn first_matching_option_wins() {
-        let cmd = parse(&argv(&["apply-overlay", "--file", "first.ico", "--file", "second.ico"]));
-        match cmd {
-            Command::ApplyOverlay { file: Some(f), .. } => assert_eq!(f, "first.ico"),
-            other => panic!("unexpected {other:?}"),
-        }
+    fn duplicate_flags_are_rejected() {
+        assert!(matches!(parse(&argv(&["apply-overlay", "--file", "first.ico", "--file", "second.ico"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["apply-overlay", "--style", "custom", "--style", "refined"])), Command::Unknown(_)));
     }
 
     #[test]

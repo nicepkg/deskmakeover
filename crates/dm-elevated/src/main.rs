@@ -18,7 +18,19 @@ mod secure_dir;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
+    // args_os(), not args(): a non-Unicode argument must be REJECTED (exit 2), never panic the
+    // privileged helper before parsing can refuse it (audit F6).
+    let argv: Vec<String> = match std::env::args_os()
+        .skip(1)
+        .map(|a| a.into_string())
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(v) => v,
+        Err(_) => {
+            eprintln!("Unsupported helper operation: a non-Unicode argument was supplied");
+            return ExitCode::from(2);
+        }
+    };
     match args::parse(&argv) {
         args::Command::None => {
             println!("DeskMakeover elevated helper. No operation requested.");

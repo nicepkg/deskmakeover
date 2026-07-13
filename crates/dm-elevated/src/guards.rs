@@ -41,6 +41,28 @@ pub fn validate_ico(bytes: &[u8]) -> Result<(), String> {
     parse(bytes).map(|_| ()).map_err(|e| format!("overlay file is not a valid .ico: {e}"))
 }
 
+/// Rejects a `--file` path SHAPE a privileged helper must never open (audit F6): a UNC path
+/// (`\\server\share\…`, which authenticates as SYSTEM to an attacker's server), the device/extended
+/// namespaces (`\\.\`, `\\?\`), and any non-drive-absolute path (a bare relative path resolves
+/// against the helper's cwd). This is a portable string check so it unit-tests on the host; the
+/// remaining reparse-point FOLLOW is closed at OPEN time on Windows (FILE_FLAG_OPEN_REPARSE_POINT
+/// on the handle `read_capped_ico` opens) — [WINDOWS-VERIFY].
+pub fn validate_overlay_path(path: &str) -> Result<(), String> {
+    let norm = path.trim().replace('/', "\\");
+    if norm.is_empty() {
+        return Err("overlay --file path is empty".to_string());
+    }
+    if norm.starts_with("\\\\") {
+        return Err(format!("overlay --file must be a local path, not UNC/device: {path:?}"));
+    }
+    let b = norm.as_bytes();
+    let drive_absolute = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && b[2] == b'\\';
+    if !drive_absolute {
+        return Err(format!("overlay --file must be a drive-absolute path: {path:?}"));
+    }
+    Ok(())
+}
+
 /// Opens `path` ONCE and returns its validated overlay-ICO bytes through that single handle.
 ///
 /// This closes a TOCTOU: the previous flow called `metadata()` and then `read()` on the path
@@ -98,6 +120,18 @@ mod tests {
     fn check_size_rejects_empty_and_oversized() {
         assert!(check_size(0).is_err());
         assert!(check_size(MAX_ICO_BYTES + 1).is_err());
+    }
+
+    #[test]
+    fn validate_overlay_path_rejects_unc_device_and_relative() {
+        assert!(validate_overlay_path(r"\\attacker\share\x.ico").is_err(), "UNC");
+        assert!(validate_overlay_path(r"\\.\PhysicalDrive0").is_err(), "device");
+        assert!(validate_overlay_path(r"\\?\C:\x.ico").is_err(), "extended/device");
+        assert!(validate_overlay_path(r"..\..\evil.ico").is_err(), "relative");
+        assert!(validate_overlay_path("overlay.ico").is_err(), "bare relative");
+        assert!(validate_overlay_path("").is_err(), "empty");
+        assert!(validate_overlay_path(r"C:\ProgramData\DeskMakeover\overlay.ico").is_ok());
+        assert!(validate_overlay_path("C:/ProgramData/DeskMakeover/overlay.ico").is_ok(), "forward slashes normalise");
     }
 
     #[test]

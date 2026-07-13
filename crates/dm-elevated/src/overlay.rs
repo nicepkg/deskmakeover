@@ -89,15 +89,26 @@ mod windows_impl {
         if !state.exists() {
             return Ok(()); // untouched — nothing to restore
         }
-        let original = std::fs::read_to_string(&state).map_err(io)?;
+        let original = read_state_capped(&state)?;
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
         let key = hklm.create_subkey(SHELL_ICONS_KEY).map_err(io)?.0;
         if original == ABSENT_MARKER {
-            let _ = key.delete_value(OVERLAY_VALUE); // idempotent if already gone
+            // Ignore ONLY a genuine not-found (idempotent); an access-denied/hive failure must NOT be
+            // swallowed into a false success that then discards the only restore anchor (audit F6).
+            match key.delete_value(OVERLAY_VALUE) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(io(e)),
+            }
         } else {
             key.set_value(OVERLAY_VALUE, &original).map_err(io)?;
         }
         std::fs::remove_file(&state).map_err(io)?;
+        // [WINDOWS-VERIFY residual] the snapshot stores the value as a lossy String, so a
+        // REG_EXPAND_SZ / non-string / embedded-NUL original is captured as `__absent__` and restore
+        // DELETES it (data loss); and restore rewrites without a CAS against the value we installed.
+        // Fixing both needs winreg get_raw_value/set_raw_value + a recorded applied-value, verified on
+        // the box (winreg is Windows-only + this crate's msvc-check is blocked by blake3 asm).
         notify_shell();
         Ok(())
     }
@@ -117,6 +128,9 @@ mod windows_impl {
     fn materialize_ico(dir: &Path, style: Style, source_file: Option<&str>) -> Result<PathBuf, String> {
         let src = source_file
             .ok_or_else(|| format!("--file (a rendered .ico) is required for the {} overlay", style.as_str()))?;
+        // Reject a UNC/device/relative path SHAPE (audit F6) BEFORE opening it as SYSTEM — a UNC path
+        // would authenticate to an attacker's server; a relative one resolves against the cwd.
+        crate::guards::validate_overlay_path(src)?;
         let bytes = read_capped_ico(Path::new(src))?;
         // Atomic O_EXCL-temp + fsync + rename, matching the durability discipline the
         // .lnk/.url/desktop.ini writers use: this ICO is referenced live by HKLM Shell Icons and
@@ -211,6 +225,20 @@ mod windows_impl {
             Err(_) if target.exists() => Ok(()),
             Err(e) => Err(e.to_string()),
         }
+    }
+
+    /// Bounded read of the snapshot state file (audit F6): it holds a small registry-value snapshot in
+    /// the admin-only data dir, so cap the read rather than slurp an arbitrary (corrupt/planted) file.
+    const MAX_STATE_BYTES: u64 = 64 * 1024;
+    fn read_state_capped(path: &Path) -> Result<String, String> {
+        use std::io::Read;
+        let mut f = std::fs::File::open(path).map_err(io)?;
+        let mut buf = Vec::new();
+        f.take(MAX_STATE_BYTES + 1).read_to_end(&mut buf).map_err(io)?;
+        if buf.len() as u64 > MAX_STATE_BYTES {
+            return Err("overlay state file exceeds the cap".to_string());
+        }
+        String::from_utf8(buf).map_err(|e| e.to_string())
     }
 
     fn notify_shell() {

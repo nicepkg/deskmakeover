@@ -84,6 +84,10 @@ describe('calm probe channel (ledger truth)', () => {
     expect(probeTransition('writable', 'verified', { state: 'needsReconfirm' })).toBe('needsReconfirm')
   })
 
+  test('a crossed boundary outranks a stale ownership claim', () => {
+    expect(probeTransition('writable', 'verified', { state: 'needsReconfirm', ownedByUs: true })).toBe('needsReconfirm')
+  })
+
   test('guided probes never yield write-pipeline states and keep settled outcomes', () => {
     expect(probeTransition('guided', 'confirmedOff', { state: 'quiet' })).toBe('confirmedOff')
     expect(probeTransition('guided', 'userAttested', { state: 'quiet' })).toBe('userAttested')

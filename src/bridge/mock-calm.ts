@@ -20,6 +20,8 @@ export interface CalmApplyRow {
   id: CalmControlId
   /** skipped = no write happened (environment changed between probe and apply). */
   outcome: 'verified' | 'setAwaiting' | 'reverted' | 'skipped'
+  /** Why a row was skipped — surfaces as the row's honest caption (codex R2). */
+  reason?: 'changed'
 }
 
 export interface CalmRestoreRow {
@@ -91,7 +93,7 @@ export class MockCalmBackend implements CalmBackend {
     return ids.map((id): CalmApplyRow => {
       controlById(id) // throws on unknown ids — the mock is as strict as Rust will be
       if (this.opts.failing?.includes(id)) return { id, outcome: 'reverted' }
-      if (this.opts.skipping?.includes(id)) return { id, outcome: 'skipped' }
+      if (this.opts.skipping?.includes(id)) return { id, outcome: 'skipped', reason: 'changed' }
       this.applied.add(id)
       if (this.opts.awaiting?.includes(id)) return { id, outcome: 'setAwaiting' }
       return { id, outcome: 'verified' }

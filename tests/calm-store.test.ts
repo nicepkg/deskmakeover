@@ -15,6 +15,7 @@ function resetStore(backend: MockCalmBackend) {
     op: 'idle',
     rows: Object.fromEntries(CALM_CATALOG.map((c) => [c.id, 'unknown'])) as Record<CalmControlId, CalmRowState>,
     excluded: new Set(),
+    skipReasons: {},
     walkedId: null,
     lastApply: null,
   })
@@ -86,16 +87,17 @@ describe('calm store', () => {
     expect(countQuieted(s.rows)).toBe(2)
   })
 
-  test('a skipped write returns the row to pushing and is counted as skipped', async () => {
+  test('a skipped write returns the row to pushing, is counted, and carries its reason', async () => {
     resetStore(new MockCalmBackend({ latencyMs: 0, skipping: ['taskbar.taskview'] }))
     await useCalm.getState().probe()
     await useCalm.getState().applyAll()
     const s = useCalm.getState()
     expect(s.rows['taskbar.taskview']).toBe('pushing')
     expect(s.lastApply).toEqual({ verified: 2, awaiting: 0, reverted: 0, skipped: 1 })
+    expect(s.skipReasons['taskbar.taskview']).toBe('changed')
   })
 
-  test('total backend failure strands no row in pending', async () => {
+  test('a lost apply reply never claims rollback — rows recover through a fresh probe', async () => {
     class ExplodingBackend extends MockCalmBackend {
       override async apply(): Promise<never> {
         throw new Error('ipc down')
@@ -103,15 +105,14 @@ describe('calm store', () => {
     }
     resetStore(new ExplodingBackend({ latencyMs: 0 }))
     await useCalm.getState().probe()
-    await useCalm.getState().applyAll()
+    await useCalm.getState().applyAll() // awaits the recovery probe internally
     const s = useCalm.getState()
     for (const id of ['start.recommendations', 'taskbar.search', 'taskbar.taskview'] as CalmControlId[]) {
-      expect(s.rows[id]).toBe('reverted')
+      // Environment truth (mock: nothing committed) — NOT an unproven 「已还原」 claim.
+      expect(s.rows[id]).toBe('pushing')
     }
     expect(s.op).toBe('idle')
-    // reverted rows stay actionable — the next applyAll retries them
-    await useCalm.getState().applyAll()
-    expect(useCalm.getState().rows['taskbar.search']).toBe('reverted') // still failing backend, still honest
+    expect(s.lastApply).toEqual({ verified: 0, awaiting: 0, reverted: 0, skipped: 0 })
   })
 
   test('sign-out rows land setAwaiting: not counted as quieted, but owned (Restore stays)', async () => {

@@ -38,7 +38,7 @@ const WRITABLE_TRANSITIONS: Readonly<Record<CalmRowState, readonly CalmRowState[
   unknown: ['quiet', 'pushing', 'unsupported', 'managed', 'needsReconfirm'],
   quiet: ['pushing', 'unsupported', 'managed', 'needsReconfirm'], // drift / re-probe
   pushing: ['pending', 'quiet', 'unsupported', 'managed', 'needsReconfirm'],
-  pending: ['verified', 'setAwaiting', 'reverted', 'pushing'], // pushing = skipped, no write happened
+  pending: ['verified', 'setAwaiting', 'reverted', 'pushing', 'unknown'], // pushing = skipped; unknown = reply lost, re-probe required
   verified: ['pushing', 'needsReconfirm', 'quiet', 'external'],
   setAwaiting: ['verified', 'pushing', 'needsReconfirm', 'external'],
   reverted: ['pushing', 'pending', 'quiet', 'unsupported', 'managed'], // retry or re-probe
@@ -102,6 +102,11 @@ export function probeTransition(
     if (from === 'userAttested' && probe.state !== 'pushing') return from
     const to = probe.state === 'managed' || probe.state === 'needsReconfirm' ? 'pushing' : probe.state
     return from === to ? from : assertTransition('guided', from, to)
+  }
+  // A crossed certification boundary outranks ownership (codex R2): a stale
+  // ledger claim must never bypass 需重新确认.
+  if (probe.state === 'needsReconfirm') {
+    return from === 'needsReconfirm' ? from : assertTransition('writable', from, 'needsReconfirm')
   }
   if (probe.ownedByUs && probe.state === 'quiet') return 'verified'
   const to = probe.state

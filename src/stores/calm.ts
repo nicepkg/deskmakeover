@@ -25,11 +25,16 @@ export function setCalmBackend(b: CalmBackend) {
 
 const EXCLUDED_KEY = 'dm.calm.excluded'
 
+// A failed load silently re-arming excluded controls would betray the user's
+// explicit choice (codex R2 #3) — track it and say so on the next probe.
+let excludedLoadFailed = false
+
 function loadExcluded(): Set<CalmControlId> {
   try {
     const raw = localStorage.getItem(EXCLUDED_KEY)
     return new Set(raw ? (JSON.parse(raw) as CalmControlId[]) : [])
   } catch {
+    excludedLoadFailed = true
     return new Set()
   }
 }
@@ -49,6 +54,8 @@ interface CalmState {
   op: CalmOp
   rows: Record<CalmControlId, CalmRowState>
   excluded: Set<CalmControlId>
+  /** Honest per-row skip captions from the last apply (cleared on apply/probe). */
+  skipReasons: Partial<Record<CalmControlId, 'changed'>>
   /** The guided row whose route we last opened — re-probed on window refocus. */
   walkedId: CalmControlId | null
   lastApply: CalmApplySummary | null
@@ -104,6 +111,7 @@ export const useCalm = create<CalmState>((set, get) => {
     op: 'idle',
     rows: initialRows(),
     excluded: loadExcluded(),
+    skipReasons: {},
     walkedId: null,
     lastApply: null,
 
@@ -117,8 +125,12 @@ export const useCalm = create<CalmState>((set, get) => {
           for (const p of probed) {
             rows[p.id] = probeTransition(kindOf(p.id), rows[p.id], p)
           }
-          return { rows, probed: true }
+          return { rows, probed: true, skipReasons: {} }
         })
+        if (excludedLoadFailed) {
+          excludedLoadFailed = false
+          useToasts.getState().show(t('Calm_Toast_ExcludeLoadFailed'), 'warn')
+        }
       } finally {
         set({ op: 'idle' })
       }
@@ -147,7 +159,8 @@ export const useCalm = create<CalmState>((set, get) => {
         useToasts.getState().show(t('Calm_Toast_NothingToDo'))
         return
       }
-      set({ op: 'apply' })
+      set({ op: 'apply', skipReasons: {} })
+      let lostReply = false
       try {
         for (const id of ids) setRow(id, 'pending')
         const summary: CalmApplySummary = { verified: 0, awaiting: 0, reverted: 0, skipped: 0 }
@@ -155,32 +168,43 @@ export const useCalm = create<CalmState>((set, get) => {
         try {
           results = await backend.apply(ids)
         } catch {
-          results = [] // total backend failure — every pending row falls to reverted below
+          results = [] // reply lost — handled below as UNKNOWN, never a rollback claim
         }
-        const byId = new Map(results.map((r) => [r.id, r.outcome]))
+        const byId = new Map(results.map((r) => [r.id, r]))
+        const skipReasons: Partial<Record<CalmControlId, 'changed'>> = {}
         for (const id of ids) {
-          // A row the backend never answered for is treated as failed — pending
-          // must never be a terminal state (codex R1 #8).
-          const outcome = byId.get(id) ?? 'reverted'
-          if (outcome === 'verified') {
+          const row = byId.get(id)
+          if (!row) {
+            // The backend never answered: the write MAY have committed. Claiming
+            // 「已还原」 would be an unproven rollback (codex R2 #1) — drop to
+            // unknown and re-probe the environment for the truth.
+            setRow(id, 'unknown')
+            lostReply = true
+            continue
+          }
+          if (row.outcome === 'verified') {
             setRow(id, 'verified')
             summary.verified++
-          } else if (outcome === 'setAwaiting') {
+          } else if (row.outcome === 'setAwaiting') {
             setRow(id, 'setAwaiting')
             summary.awaiting++
-          } else if (outcome === 'skipped') {
+          } else if (row.outcome === 'skipped') {
             setRow(id, 'pushing') // no write happened — the surface still pushes
+            if (row.reason) skipReasons[id] = row.reason
             summary.skipped++
           } else {
-            setRow(id, 'reverted')
+            setRow(id, 'reverted') // an EXPLICIT rollback report from the backend
             summary.reverted++
           }
         }
-        set({ lastApply: summary })
-        applyToast(summary)
+        set({ lastApply: summary, skipReasons })
+        if (lostReply) useToasts.getState().show(t('Calm_Toast_Unconfirmed'), 'warn')
+        else applyToast(summary)
       } finally {
         set({ op: 'idle' })
       }
+      // Recover the unknown rows from environment truth, outside the apply op.
+      if (lostReply) await get().probe()
     },
 
     restoreAll: async () => {

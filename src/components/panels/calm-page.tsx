@@ -1,20 +1,68 @@
 import * as React from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDown, ExternalLink, RotateCcw } from 'lucide-react'
+import {
+  Bell, Check, ChevronDown, ChevronUp, ExternalLink, Flame, FolderSync, Info, LayoutGrid,
+  LayoutPanelLeft, ListChecks, Lock, RotateCcw, Search, Settings, Sparkles, SquareStack,
+} from 'lucide-react'
 import { InspectorCard } from '@/components/common/inspector'
 import { ConfirmSheet } from '@/components/common/ceremony'
 import { CtaButton, type HeroPhase } from '@/components/common/cta-button'
-import { ToggleSwitch } from '@/components/common/toggle-switch'
-import { controlById, type CalmControl, type CalmControlId } from '@/lib/calm/catalog'
+import { controlById, type CalmControl, type CalmControlId, type CalmSurface } from '@/lib/calm/catalog'
 import type { CalmRowState } from '@/lib/calm/states'
 import { applyCandidates, countOwnedWrites, countQuieted, groupedRows, useCalm } from '@/stores/calm'
-import { format, useT } from '@/lib/i18n'
+import { format, useT, type StringKey } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
-// 清爽系统 (spec 08, Direction B): a calm full PAGE — hero strip + three honest
-// outcome groups. Page-scale type like 设置 (13px labels, 54px rows). The three
-// groups ARE the honesty: what one click can quiet / what we walk you through /
-// what this build holds back. Guided rows are NEVER toggles (ADR-0023 D3).
+// 清爽系统 (spec 08 Direction B + the 2026-07-13 three-seat polish review): a calm
+// full PAGE — hero band + three honest outcome groups. The WHERE axis is answered
+// per-row (surface glyph pin + place tag), never by regrouping: the tier grouping
+// (one-click / guided / held) is ADR-0023's load-bearing honesty and stays.
+// Guided rows are NEVER toggles (ADR-0023 D3).
+
+// Per-control glyphs (fallback: surface) — the row's visual anchor for 关的是哪里.
+const CONTROL_GLYPHS: Partial<Record<CalmControlId, typeof LayoutGrid>> = {
+  'start.recommendations': LayoutGrid,
+  'taskbar.search': Search,
+  'taskbar.taskview': SquareStack,
+  'search.highlights': Flame,
+  'notifications.suggestions': Bell,
+  'notifications.welcome': Sparkles,
+  'notifications.finishSetup': ListChecks,
+  'settings.suggestions': Settings,
+  'explorer.syncNotifications': FolderSync,
+  'widgets.feed': LayoutPanelLeft,
+  'taskbar.widgetsButton': LayoutPanelLeft,
+  'lockscreen.status': Lock,
+  'tray.entries': ChevronUp,
+}
+
+const SURFACE_GLYPHS: Record<CalmSurface, typeof LayoutGrid> = {
+  start: LayoutGrid,
+  search: Search,
+  taskbar: SquareStack,
+  notifications: Bell,
+  settings: Settings,
+  system: Sparkles,
+  explorer: FolderSync,
+  widgets: LayoutPanelLeft,
+  lockscreen: Lock,
+}
+
+const SURFACE_LABELS: Record<CalmSurface, StringKey> = {
+  start: 'Calm_Surface_Start',
+  search: 'Calm_Surface_Search',
+  taskbar: 'Calm_Surface_Taskbar',
+  notifications: 'Calm_Surface_Notifications',
+  settings: 'Calm_Surface_Settings',
+  system: 'Calm_Surface_System',
+  explorer: 'Calm_Surface_Explorer',
+  widgets: 'Calm_Surface_Widgets',
+  lockscreen: 'Calm_Surface_Lockscreen',
+}
+
+function glyphFor(control: CalmControl) {
+  return CONTROL_GLYPHS[control.id] ?? SURFACE_GLYPHS[control.surface]
+}
 
 export function CalmPage() {
   const t = useT()
@@ -36,50 +84,96 @@ export function CalmPage() {
   const quieted = countQuieted(rows)
   const owned = countOwnedWrites(rows)
   const candidates = applyCandidates(rows, excluded)
+  const awaiting = groups.oneClick.filter((id) => rows[id] === 'setAwaiting').length
 
-  // Honest hero phases (codex R1 #15): actionable → ready; anything settled and
-  // nothing left to do → synced (covers 全部已生效 AND 系统本来就安静); only an
-  // unfinished probe scans.
+  // Honest hero phases (codex R2 #4): ready only with real candidates; synced only
+  // when our verified writes exist AND nothing is still awaiting; awaiting gets its
+  // own non-interactive truth; otherwise the CTA stays quiet — never a false ✓.
   const phase: HeroPhase =
-    !probed || op === 'probe' ? 'scanning' : op !== 'idle' ? 'working' : candidates.length > 0 ? 'ready' : 'synced'
-  const ctaLabel = op === 'apply' ? t('Calm_Cta_Working') : phase === 'synced' ? t('Calm_Cta_Done') : t('Calm_Cta')
+    !probed || op === 'probe'
+      ? 'scanning'
+      : op !== 'idle'
+        ? 'working'
+        : candidates.length > 0
+          ? 'ready'
+          : awaiting > 0
+            ? 'scanning'
+            : quieted > 0
+              ? 'synced'
+              : 'scanning'
+  const ctaLabel =
+    op === 'restore'
+      ? t('Calm_Restore_Working')
+      : op === 'apply'
+        ? t('Calm_Cta_Working')
+        : phase === 'synced'
+          ? t('Calm_Cta_Done')
+          : awaiting > 0 && candidates.length === 0
+            ? t('Calm_Cta_Awaiting')
+            : t('Calm_Cta')
   const includedNames = candidates.map((id) => t(controlById(id).labelKey)).join(t('Calm_ListJoin'))
+
+  // The hero constellation: every surface the one-click package touches, as glyph
+  // pins — a first visual answer to 关的是哪里 before a single row is read.
+  const constellation = [...new Set(groups.oneClick.map((id) => controlById(id).surface))]
+  const litSurfaces = new Set(
+    groups.oneClick.filter((id) => rows[id] === 'verified').map((id) => controlById(id).surface),
+  )
 
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[880px] px-10 py-8">
         <header className="mb-6">
           <h1 className="text-display font-medium text-t1">{t('Panel_CalmTitle')}</h1>
-          <p className="mt-1.5 text-[12.5px] text-t2">{t('Calm_HeroPromise')}</p>
         </header>
 
-        {/* Hero strip: the one-click covers automatic-certified switches ONLY. */}
-        <div className="mb-6 flex items-center gap-4">
-          <div className="w-[280px] shrink-0">
+        {/* Hero band (review P1-3): constellation + promise left, CTA right. */}
+        <div className="mb-6 flex items-center justify-between gap-6 rounded-2xl border border-hair bg-raised px-6 py-5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              {constellation.map((surface) => {
+                const Glyph = SURFACE_GLYPHS[surface]
+                const lit = litSurfaces.has(surface)
+                return (
+                  <span
+                    key={surface}
+                    title={t(SURFACE_LABELS[surface])}
+                    className={cn(
+                      'flex size-8 items-center justify-center rounded-[10px] transition-colors duration-300',
+                      lit ? 'bg-wash-chip text-coral-ink' : 'bg-chip text-t2',
+                    )}
+                  >
+                    <Glyph size={16} strokeWidth={1.6} />
+                  </span>
+                )
+              })}
+              <span className="ml-1.5 text-[12.5px] text-t2">
+                {quieted > 0 ? format(t('Calm_Summary'), quieted) : format(t('Calm_CanQuiet'), candidates.length)}
+              </span>
+            </div>
+            <p className="mt-2 text-[12.5px] text-t2">{t('Calm_HeroPromise')}</p>
+          </div>
+          <div className="w-[210px] shrink-0">
             <CtaButton phase={phase} onClick={() => setConfirmOpen(true)}>
               {ctaLabel}
             </CtaButton>
+            {/* Restore gates on OWNED writes, not the verified count (codex R1 Block #2). */}
+            {owned > 0 && (
+              <button
+                type="button"
+                onClick={() => void useCalm.getState().restoreAll()}
+                className="mt-2 inline-flex w-full items-center justify-center gap-1 text-[12px] text-t3 transition-colors hover:text-t1"
+              >
+                <RotateCcw size={12} />
+                {t('Calm_Restore')}
+              </button>
+            )}
           </div>
-          {quieted > 0 && (
-            <p className="text-[12.5px] text-t2">{format(t('Calm_Summary'), quieted)}</p>
-          )}
-          {/* Restore gates on OWNED writes, not the verified count — a batch that
-              landed all-setAwaiting still owns writes (codex R1 Block #2). */}
-          {owned > 0 && (
-            <button
-              type="button"
-              onClick={() => void useCalm.getState().restoreAll()}
-              className="ml-auto inline-flex items-center gap-1 text-[12px] text-t3 transition-colors hover:text-t1"
-            >
-              <RotateCcw size={12} />
-              {t('Calm_Restore')}
-            </button>
-          )}
         </div>
 
         <div className="flex flex-col gap-6">
           {groups.oneClick.length > 0 && (
-            <Group label={t('Calm_Group_OneClick')}>
+            <Group label={t('Calm_Group_OneClick')} subtitle={t('Calm_Group_OneClick_Sub')}>
               {groups.oneClick.map((id) => (
                 <OneClickRow key={id} id={id} />
               ))}
@@ -87,7 +181,7 @@ export function CalmPage() {
           )}
 
           {groups.guided.length > 0 && (
-            <Group label={t('Calm_Group_Guided')}>
+            <Group label={t('Calm_Group_Guided')} subtitle={t('Calm_Group_Guided_Sub')}>
               {groups.guided.map((id) => (
                 <GuidedRow key={id} id={id} />
               ))}
@@ -98,12 +192,18 @@ export function CalmPage() {
         </div>
       </div>
 
-      {/* Explain before apply (spec 08 §4): name what changes, and what does NOT —
-          the guided note names the widgets feed honestly instead of implying 全部. */}
+      {/* Explain before apply (spec 08 §4) — three lines, no dangling references
+          (review P2-4): what closes / the guarantee / the guided exception. */}
       <ConfirmSheet
         open={confirmOpen}
         title={t('Calm_Confirm_Title')}
-        body={`${format(t('Calm_Confirm_List'), includedNames)} ${t('Calm_Confirm_Body')} ${t('Calm_Confirm_GuidedNote')}`}
+        body={
+          <>
+            <span className="block">{format(t('Calm_Confirm_List'), includedNames)}</span>
+            <span className="mt-1.5 block">{t('Calm_Confirm_Body')}</span>
+            <span className="mt-1.5 block text-t3">{t('Calm_Confirm_GuidedNote')}</span>
+          </>
+        }
         confirmLabel={t('Calm_Confirm_Go')}
         cancelLabel={t('Calm_Confirm_Cancel')}
         onConfirm={() => {
@@ -116,19 +216,21 @@ export function CalmPage() {
   )
 }
 
-function Group({ label, footer, children }: { label: string; footer?: string; children: ReactNode }) {
+/** Group header at cardtitle weight — the honest IA speaks at full volume
+ *  (review P1-2), with a one-line subtitle saying why this tier exists. */
+function Group({ label, subtitle, footer, children }: { label: string; subtitle: string; footer?: string; children: ReactNode }) {
   return (
     <section>
-      <p className="mb-2 px-1 text-[12px] font-medium text-t3">{label}</p>
+      <p className="mb-0.5 px-1 text-cardtitle font-medium text-t1">{label}</p>
+      <p className="mb-2 px-1 text-[12px] text-t3">{subtitle}</p>
       <InspectorCard>{children}</InspectorCard>
       {footer && <p className="mt-2 px-1 text-[11.5px] leading-relaxed text-t3/70">{footer}</p>}
     </section>
   )
 }
 
-/** Group 3 — collapsed by default (spec 08 §2): a quiet disclosure line, expanding
- *  into per-row reasons. The restraint footer explains only the UNCERTIFIED rows;
- *  managed rows carry their own 「由你的组织管理」 reason (codex R1 #13). */
+/** Group 3 — collapsed by default (spec 08 §2): the restraint framing sentence
+ *  explains only UNCERTIFIED rows; managed rows carry 「由你的组织管理」 (R1 #13). */
 function HeldGroup({ ids, rows }: { ids: CalmControlId[]; rows: Record<CalmControlId, CalmRowState> }) {
   const t = useT()
   const [open, setOpen] = React.useState(false)
@@ -139,12 +241,13 @@ function HeldGroup({ ids, rows }: { ids: CalmControlId[]; rows: Record<CalmContr
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="mb-2 flex items-center gap-1 px-1 text-[12px] font-medium text-t3 transition-colors hover:text-t1"
+        className="mb-0.5 flex items-center gap-1.5 px-1 text-cardtitle font-medium text-t1 transition-colors hover:text-coral-ink"
       >
-        <ChevronDown size={12} className={cn('transition-transform', !open && '-rotate-90')} />
+        <ChevronDown size={14} className={cn('text-t3 transition-transform', !open && '-rotate-90')} />
         {t('Calm_Group_Held')}
-        <span className="font-normal text-t3/70">{format(t('Calm_Held_Count'), ids.length)}</span>
+        <span className="rounded-full bg-chip px-1.5 py-0.5 text-[11px] font-normal text-t3">{ids.length}</span>
       </button>
+      <p className="mb-2 px-1 pl-6 text-[12px] text-t3">{t('Calm_Group_Held_Sub')}</p>
       {open && (
         <>
           <InspectorCard>
@@ -161,16 +264,48 @@ function HeldGroup({ ids, rows }: { ids: CalmControlId[]; rows: Record<CalmContr
   )
 }
 
-function RowShell({ control, right }: { control: CalmControl; right: ReactNode }) {
+/** One row: glyph pin (WHERE) · place tag + copy · right-anchored control column. */
+function RowShell({
+  control,
+  state,
+  caption,
+  right,
+}: {
+  control: CalmControl
+  state: CalmRowState
+  caption?: ReactNode
+  right: ReactNode
+}) {
   const t = useT()
+  const Glyph = glyphFor(control)
+  const lit = state === 'verified'
   return (
-    <div className="flex min-h-[54px] items-center justify-between gap-6 px-5 py-3">
-      <div className="min-w-0">
-        <p className="text-body text-t1">{t(control.labelKey)}</p>
-        <p className="mt-1 text-[12px] text-t3">{t(control.descKey)}</p>
-        {control.collateralKey && <p className="mt-0.5 text-[11.5px] text-t3/70">{t(control.collateralKey)}</p>}
+    <div className="flex min-h-[54px] items-center gap-4 px-5 py-3">
+      <span
+        className={cn(
+          'flex size-7 shrink-0 items-center justify-center rounded-[9px] transition-colors duration-300',
+          lit ? 'bg-wash-chip text-coral-ink' : 'bg-chip text-t2',
+        )}
+      >
+        <Glyph size={16} strokeWidth={1.6} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-body text-t1">
+          {t(control.labelKey)}
+          <span className="ml-2 rounded-[5px] bg-chip px-1.5 py-0.5 align-[1px] text-[10.5px] text-t3">
+            {t(SURFACE_LABELS[control.surface])}
+          </span>
+        </p>
+        <p className="mt-0.5 text-[12px] text-t3">{t(control.descKey)}</p>
+        {control.collateralKey && (
+          <p className="mt-1 flex items-center gap-1 text-[11.5px] text-t3">
+            <Info size={11} className="shrink-0" />
+            {t(control.collateralKey)}
+          </p>
+        )}
+        {caption}
       </div>
-      <div className="flex shrink-0 items-center gap-2">{right}</div>
+      <div className="flex min-w-[132px] shrink-0 items-center justify-end gap-2">{right}</div>
     </div>
   )
 }
@@ -209,21 +344,47 @@ function StateChip({ state }: { state: CalmRowState }) {
   )
 }
 
+/** Batch-inclusion checkbox (review UX P1-3): a checkbox reads 选中/排除 without a
+ *  toggle's on/off polarity ambiguity — same grammar as the icons kindPolicy boxes. */
+function IncludeCheckbox({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onChange}
+      className={cn(
+        'flex size-4 items-center justify-center rounded-[5px] border transition-colors',
+        checked ? 'border-transparent bg-primary text-primary-foreground' : 'border-hair bg-transparent text-transparent hover:border-t3',
+      )}
+    >
+      <Check size={12} strokeWidth={3} />
+    </button>
+  )
+}
+
 function OneClickRow({ id }: { id: CalmControlId }) {
   const t = useT()
   const control = controlById(id)
   const state = useCalm((s) => s.rows[id])
   const excluded = useCalm((s) => s.excluded.has(id))
-  const toggleable = state === 'pushing' || state === 'reverted'
+  const skipReason = useCalm((s) => s.skipReasons[id])
+  const selectable = state === 'pushing' || state === 'reverted'
   return (
     <RowShell
       control={control}
+      state={state}
+      caption={
+        skipReason && (
+          <p className="mt-1 text-[11.5px] text-t3">{t('Calm_SkipReason_Changed')}</p>
+        )
+      }
       right={
-        toggleable ? (
+        selectable ? (
           <div className="flex items-center gap-2">
             {state === 'reverted' && <StateChip state={state} />}
-            {/* Exclusion semantics (ADR-0004 §2): checked = stays in the package. */}
-            <ToggleSwitch checked={!excluded} onChange={() => useCalm.getState().toggleExcluded(id)} label={t(control.labelKey)} />
+            <IncludeCheckbox checked={!excluded} onChange={() => useCalm.getState().toggleExcluded(id)} label={t(control.labelKey)} />
           </div>
         ) : (
           <StateChip state={state} />
@@ -244,6 +405,12 @@ function GuidedRow({ id }: { id: CalmControlId }) {
   return (
     <RowShell
       control={control}
+      state={state}
+      caption={
+        walked && control.routeKey ? (
+          <p className="mt-1 text-[11.5px] text-t2">{t(control.routeKey)}</p>
+        ) : undefined
+      }
       right={
         settled ? (
           <StateChip state={state} />
@@ -273,6 +440,7 @@ function HeldRow({ id }: { id: CalmControlId }) {
     <div className="opacity-60">
       <RowShell
         control={control}
+        state={state}
         right={
           <span className="whitespace-nowrap text-[12px] text-t3">
             {state === 'managed' ? t('Calm_Held_Managed') : t('Calm_Held_NotYet')}
@@ -288,7 +456,7 @@ function ChipButton({ onClick, children }: { onClick: () => void; children: Reac
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 rounded-[9px] bg-chip px-2.5 py-1.5 text-[12px] text-t2 transition-colors hover:bg-raised-hov hover:text-t1"
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded-[9px] bg-chip px-2.5 py-1.5 text-[12px] text-t2 transition-colors hover:bg-raised-hov hover:text-t1"
     >
       {children}
     </button>

@@ -55,7 +55,8 @@ export function ConfirmSheet({
 }: {
   open: boolean
   title: string
-  body?: string
+  /** A string paragraph, or structured content (e.g. the calm sheet's three-line consent). */
+  body?: ReactNode
   confirmLabel: string
   cancelLabel: string
   destructive?: boolean

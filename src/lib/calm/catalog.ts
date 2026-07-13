@@ -8,7 +8,11 @@ import type { StringKey } from '@/lib/i18n'
 import type { CalmRowState } from './states'
 
 export type CalmTier = 'automatic' | 'advanced' | 'guided'
-export type CalmSurface = 'start' | 'search' | 'taskbar' | 'notifications' | 'explorer' | 'widgets' | 'lockscreen'
+// The WHERE axis (review 2026-07-13): every row carries its Windows surface so the
+// UI can anchor "关的是哪里" with a glyph + place label. 'system' = full-screen OS
+// moments (post-update welcome / finish-setup) that are not the notification center.
+export type CalmSurface =
+  | 'start' | 'search' | 'taskbar' | 'notifications' | 'settings' | 'system' | 'explorer' | 'widgets' | 'lockscreen'
 
 export type CalmControlId =
   | 'start.recommendations'
@@ -97,7 +101,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
   },
   {
     id: 'notifications.welcome',
-    surface: 'notifications',
+    surface: 'system',
     tier: 'automatic',
     labelKey: 'Calm_Welcome',
     descKey: 'Calm_Welcome_Desc',
@@ -106,7 +110,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
   },
   {
     id: 'notifications.finishSetup',
-    surface: 'notifications',
+    surface: 'system',
     tier: 'automatic',
     labelKey: 'Calm_FinishSetup',
     descKey: 'Calm_FinishSetup_Desc',
@@ -115,7 +119,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
   },
   {
     id: 'settings.suggestions',
-    surface: 'notifications',
+    surface: 'settings',
     tier: 'automatic',
     labelKey: 'Calm_SettingsSuggestions',
     descKey: 'Calm_SettingsSuggestions_Desc',

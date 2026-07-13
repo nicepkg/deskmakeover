@@ -49,6 +49,19 @@
   so the id degrades to the original icon rather than crashing. Minimal defensive guard; deeper
   width/height-aware analysis deferred. Owner-decision #5 resolved to reject-at-boundary.
 
+- **2026-07-13 — B4 elevated privilege boundary (F6) — DONE.** `3ffd7c0`. `args` STRICT grammar
+  (unknown/duplicate/dangling/surplus/invalid-style → exit 2; missing-style keeps Refined); `main`
+  `args_os()` (non-Unicode arg rejected, not a panic); `guards::validate_overlay_path` rejects
+  UNC/device/non-drive-absolute `--file` (unit-tested); `overlay` wires it + propagates delete errors +
+  bounded state read. dm-elevated cannot msvc-check (blake3 asm) so `overlay::windows_impl` is fully
+  blind; `args`/`guards` run-tested on Mac (32). **[WV] residuals:** overlay snapshot lossy String
+  (REG_EXPAND_SZ/non-string original → restore deletes it = data loss) + no CAS + no cross-process
+  mutex — need winreg `get_raw_value`/`set_raw_value` + a named mutex on the box.
+- **2026-07-13 — B5 recycle-bin restore (F5, dm-windows) — DONE, msvc-clean.** `f386f48`. An
+  originally-absent key restores by removing ONLY the three owned values (not `delete_subkey_all`, which
+  recursively destroyed unrelated values/subkeys); the removal + `write_or_delete` None branch propagate
+  a non-NotFound delete failure. Runtime [WINDOWS-VERIFY].
+
 ### F4b — allocation caps run AFTER the IPC payload is materialized (codex B2-🔴 residual)
 The command-body caps prevent the DECODE/second allocation, but Tauri/Serde deserializes the FULL
 invoke payload (a multi-GB base64 string, huge `items` array) BEFORE the command sees its length; and

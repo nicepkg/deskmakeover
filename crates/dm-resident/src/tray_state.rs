@@ -43,14 +43,18 @@ pub enum TrayEvent {
 /// defines and this core relies on:
 /// - **Working→Off (mid-batch):** the host loop checks the persisted enabled flag BEFORE scheduling
 ///   the next reconcile/apply; a batch already handed to [`crate::reconciler::Reconciler::apply_batch`]
-///   is a SINGLE atomic `TxnDriver` transaction, so it either has not reached its commit point (the
-///   desktop is untouched) or has fully committed (all N icons applied, still fully undoable) — never
-///   a torn partial. No batch-cancellation plumbing is needed in the decision core; the atomicity is
-///   the guarantee.
-/// - **Error→Off:** the durable fault record (the pending-privileged queue, the unrecovered journal
-///   txn) is RETAINED — toggling off never discards it. Re-enabling runs the unconditional
-///   `recover_from_journal` at the top of `reconcile`, so an unresolved fault re-surfaces (the host
-///   re-enters ERROR); a resolved one lets the cycle proceed. Retention is structural, not a flag.
+///   is a SINGLE `TxnDriver` transaction that is DURABLE + crash-recoverable — it converges to
+///   all-applied (commit) or all-original (rollback/recovery), never a PERMANENT torn desktop. The
+///   driver writes items sequentially, so a disable can land during the ≤2 s write while the desktop
+///   is transiently mid-transition, but that in-flight txn still converges atomically; the guarantee
+///   is transactional durability + recovery, not instantaneous visibility atomicity. No
+///   batch-cancellation plumbing is needed in the decision core.
+/// - **Error→Off:** a RECORDED fault (the pending-privileged queue, an unrecovered journal txn) is
+///   retained — toggling off never discards it; re-enabling runs the unconditional
+///   `recover_from_journal` at the top of `reconcile`, so it re-surfaces (the host re-enters ERROR).
+///   One fault class has no record to retain (a failure that PREVENTED journaling itself, e.g. the
+///   journal denies writes): it re-manifests at the NEXT apply rather than at enable — self-re-raising
+///   rather than retained. Retention is structural for recorded faults.
 pub fn transition(current: TrayState, event: TrayEvent) -> TrayState {
     use TrayEvent as E;
     use TrayState as S;

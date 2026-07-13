@@ -455,19 +455,25 @@ who unchecks it while the desktop is paused, a batch is running, or an error is 
 expects automation to stop — a dead no-op there is a UX trap. The two states that needed
 defined semantics before this could be legal:
 
-- **WORKING → OFF (mid-batch).** The host loop checks the persisted `enabled` flag BEFORE
-  it schedules the next reconcile or apply. A batch already handed to the reconciler's
-  `apply_batch` is a SINGLE atomic `TxnDriver` transaction, so at the moment of disable it
-  has either not reached its commit point (the desktop is untouched — nothing applied) or
-  already fully committed (all N icons applied and still fully undoable via §13's ladder).
-  There is never a torn, half-formatted batch. No batch-cancellation plumbing lives in the
-  decision core; per-transaction atomicity is the guarantee, so the worst-case latency of a
-  disable is one in-flight batch (≤2 s typical, §12's WORKING budget).
-- **ERROR → OFF.** Disabling never discards the fault record. The pending-privileged queue
-  and any unrecovered journal transaction are RETAINED across the toggle. Re-enabling runs
-  the unconditional `recover_from_journal` at the top of the reconcile cycle (§3), so an
-  unresolved fault re-surfaces (the tray returns to ERROR) and a resolved one lets the cycle
-  proceed — retention is structural, not a discardable flag.
+- **WORKING → OFF (mid-batch).** The host loop checks the persisted `enabled` flag BEFORE it
+  schedules the next reconcile or apply. A batch already handed to `apply_batch` is a SINGLE
+  `TxnDriver` transaction that is DURABLE and crash-recoverable: it commits all N items, or on any
+  failure rolls back / is recovered to all-original — the final converged state is always
+  all-or-nothing, never a PERMANENT torn desktop. The driver writes items sequentially, so a disable
+  CAN land during the ≤2 s write while the desktop is transiently mid-transition (some items redrawn,
+  others not); that in-flight transaction still converges atomically (commit, rollback, or
+  crash-recovery), so the worst a disable costs is one in-flight batch of latency and it can never
+  leave a lasting partial. No batch-cancellation plumbing lives in the decision core; transactional
+  durability + recovery is the guarantee, not instantaneous per-pixel visibility atomicity.
+- **ERROR → OFF.** Disabling never discards a RECORDED fault: the pending-privileged queue and any
+  unrecovered journal transaction are retained across the toggle, and re-enabling runs the
+  unconditional `recover_from_journal` at the top of the cycle (§3) so a recorded fault re-surfaces
+  (the tray returns to ERROR) and a resolved one lets the cycle proceed — retention is structural,
+  not a discardable flag. ONE fault class has no journal record to retain: a failure that PREVENTED
+  journaling itself (e.g. the journal location denies writes, so `TxnBegin` fails before any record
+  or mutation). Re-enabling then reads an empty journal and returns to WATCHING, and that fault
+  re-manifests at the NEXT apply (which hits the same denial → ERROR again), not at enable — an
+  un-recordable fault is self-re-raising rather than retained.
 
 OFF→OFF (disabling when already disabled) is the idempotent no-op.
 - Menu (fixed order, the normative version of §1's placeholder): 状态行(不可点) /

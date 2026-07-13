@@ -44,51 +44,67 @@ pub fn quote_arg(arg: &str) -> String {
 mod tests {
     use super::*;
 
-    /// A reference `CommandLineToArgvW` post-`argv[0]` parser: given a single quoted token, decode
-    /// it back to the original argument. Used to prove `quote_arg` round-trips (the property that
-    /// actually matters — the elevated helper must recover the exact path).
-    fn parse_first_arg(cmdline: &str) -> String {
-        let bytes: Vec<char> = cmdline.chars().collect();
-        let mut out = String::new();
+    /// A reference `CommandLineToArgvW` parser (post-`argv[0]`): decode a command line into its FULL
+    /// argument vector. Parsing everything — not just the first token (codex) — is what makes the
+    /// injection test real: a trailing token that leaked past the quoting would show up as a SECOND
+    /// element, so `round_trips`/`injection` assert exactly one argument comes back.
+    fn parse_args(cmdline: &str) -> Vec<String> {
+        let chars: Vec<char> = cmdline.chars().collect();
+        let mut args = Vec::new();
         let mut i = 0;
-        let mut in_quotes = false;
-        while i < bytes.len() {
-            let c = bytes[i];
-            if c == '\\' {
-                let mut n = 0;
-                while i < bytes.len() && bytes[i] == '\\' {
-                    n += 1;
-                    i += 1;
-                }
-                if i < bytes.len() && bytes[i] == '"' {
-                    for _ in 0..n / 2 {
-                        out.push('\\');
-                    }
-                    if n % 2 == 1 {
-                        out.push('"');
+        while i < chars.len() {
+            while i < chars.len() && (chars[i] == ' ' || chars[i] == '\t') {
+                i += 1; // skip whitespace between arguments
+            }
+            if i >= chars.len() {
+                break;
+            }
+            let mut out = String::new();
+            let mut in_quotes = false;
+            while i < chars.len() {
+                let c = chars[i];
+                if c == '\\' {
+                    let mut n = 0;
+                    while i < chars.len() && chars[i] == '\\' {
+                        n += 1;
                         i += 1;
                     }
-                } else {
-                    for _ in 0..n {
-                        out.push('\\');
+                    if i < chars.len() && chars[i] == '"' {
+                        for _ in 0..n / 2 {
+                            out.push('\\');
+                        }
+                        if n % 2 == 1 {
+                            out.push('"'); // odd run → the quote is escaped (literal)
+                            i += 1;
+                        }
+                        // even run → the quote stays a delimiter, handled next iteration
+                    } else {
+                        for _ in 0..n {
+                            out.push('\\');
+                        }
                     }
+                } else if c == '"' {
+                    in_quotes = !in_quotes;
+                    i += 1;
+                } else if (c == ' ' || c == '\t') && !in_quotes {
+                    break; // end of this argument
+                } else {
+                    out.push(c);
+                    i += 1;
                 }
-            } else if c == '"' {
-                in_quotes = !in_quotes;
-                i += 1;
-            } else if (c == ' ' || c == '\t') && !in_quotes {
-                break;
-            } else {
-                out.push(c);
-                i += 1;
             }
+            args.push(out);
         }
-        out
+        args
     }
 
     fn round_trips(arg: &str) {
         let quoted = quote_arg(arg);
-        assert_eq!(parse_first_arg(&quoted), arg, "quote_arg({arg:?}) = {quoted:?} did not round-trip");
+        assert_eq!(
+            parse_args(&quoted),
+            vec![arg.to_string()],
+            "quote_arg({arg:?}) = {quoted:?} did not round-trip to exactly one argument"
+        );
     }
 
     #[test]
@@ -125,12 +141,13 @@ mod tests {
 
     #[test]
     fn injection_attempt_cannot_add_tokens() {
-        // A path crafted to break the old bare-quote wrapping must round-trip to ONE argument.
+        // A path crafted to break the old bare-quote wrapping must round-trip to EXACTLY ONE
+        // argument — no leaked --style/--file tokens the elevated helper would parse separately.
         let evil = r#"C:\x.ico" --style custom --file C:\evil.ico"#;
         round_trips(evil);
-        // And the encoding contains no unescaped delimiter that would split it.
-        let quoted = quote_arg(evil);
-        assert_eq!(parse_first_arg(&quoted), evil);
+        let parsed = parse_args(&quote_arg(evil));
+        assert_eq!(parsed, vec![evil.to_string()]);
+        assert_eq!(parsed.len(), 1, "the crafted path must not split into multiple tokens");
     }
 
     #[test]

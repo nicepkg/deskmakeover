@@ -113,9 +113,18 @@ fn write_or_delete(key: &RegKey, name: &str, value: Option<&RegistryValue>) -> P
             let raw = RegValue { bytes: encode_wide(&v.raw), vtype: RegType::REG_EXPAND_SZ };
             key.set_raw_value(name, &raw).map_err(io)
         }
-        // The only remaining kind is REG_SZ_KIND (read_value fails closed on any other type,
-        // APPLY-3), so `set_value` faithfully round-trips the original REG_SZ string.
-        Some(v) => key.set_value(name, &v.raw).map_err(io),
+        Some(v) if v.kind == REG_SZ_KIND => key.set_value(name, &v.raw).map_err(io),
+        // APPLY-3 (codex 🟠): read_value fails closed on non-string types, so a FRESHLY-captured
+        // anchor's kind is always REG_SZ/REG_EXPAND_SZ. A DESERIALIZED anchor, though, carries an
+        // unrestricted serialized `u32` (RegistryValue derives Serialize) — a corrupt, foreign, or
+        // pre-fix-lossy persisted anchor could hold any value. Silently writing it as REG_SZ (the
+        // old fall-through) would type-change the user's value on restore. Refuse instead: a restore
+        // that cannot faithfully reproduce the captured kind must not rewrite it as a different type.
+        Some(v) => Err(PortError::Io(format!(
+            "recycle-bin restore anchor for {name:?} has an unrecognised registry kind {}; \
+             refusing to write a type-changed value",
+            v.kind
+        ))),
     }
 }
 

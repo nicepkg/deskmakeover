@@ -13,7 +13,7 @@ mod settings;
 mod style;
 mod wallpaper;
 
-pub use common::ToastDto;
+pub use common::{SystemInfoDto, ToastDto};
 pub use icons::{
     ArrowOverlayDto, GridMetricsDto, IconChunkItemDto, IconItemDto, IconKindDto, IconOpResultDto,
     IconPersistedDto, IconScanDto, LookVersionDto, OverrideModeDto,

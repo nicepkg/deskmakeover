@@ -5,11 +5,29 @@
 
 use dm_contracts::{
     IconChunkItemDto, IconOpResultDto, IconPersistedDto, IconScanDto, SettingsDto, SettingsPatch,
-    WallpaperResultDto, WallpaperScreensDto,
+    SystemInfoDto, WallpaperResultDto, WallpaperScreensDto,
 };
 use tauri::State;
 
 use crate::AppState;
+
+#[tauri::command]
+#[specta::specta]
+pub fn diagnostics_get_info() -> Result<SystemInfoDto, String> {
+    // Audit #7: return real host facts, replacing the browser `(mock)` stub that fell through even
+    // on the real Tauri app (so a Windows diagnostics report showed `osVersion: "Win32 (mock)"`).
+    // `webview_version()` is Tauri's cross-platform query — the Edge WebView2 runtime version on
+    // Windows ([WINDOWS-VERIFY]), the WebKit version on macOS. `arch` is real; `os_version` is the
+    // coarse target-OS name (the detailed Windows build number is a [WINDOWS-VERIFY] enrichment that
+    // would need a Win32/os_info source not pulled in for this marginal path). `host_log_tail` is
+    // empty until F8's host error-log buffer exists (the DTO documents the same).
+    Ok(SystemInfoDto {
+        os_version: std::env::consts::OS.to_string(),
+        webview2_version: tauri::webview_version().unwrap_or_else(|_| "unavailable".to_string()),
+        arch: std::env::consts::ARCH.to_string(),
+        host_log_tail: Vec::new(),
+    })
+}
 
 #[tauri::command]
 #[specta::specta]

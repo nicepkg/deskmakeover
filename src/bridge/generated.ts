@@ -6,6 +6,7 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 export const commands = {
 	settingsGet: () => typedError<SettingsDto, string>(__TAURI_INVOKE("settings_get")),
 	settingsSet: (patch: SettingsPatch) => typedError<SettingsDto, string>(__TAURI_INVOKE("settings_set", { patch })),
+	diagnosticsGetInfo: () => typedError<SystemInfoDto, string>(__TAURI_INVOKE("diagnostics_get_info")),
 	wallpaperGetScreens: () => typedError<WallpaperScreensDto, string>(__TAURI_INVOKE("wallpaper_get_screens")),
 	wallpaperApplyBaked: (monitorId: string, pngBase64: string) => typedError<WallpaperResultDto, string>(__TAURI_INVOKE("wallpaper_apply_baked", { monitorId, pngBase64 })),
 	wallpaperRestore: (monitorId: string) => typedError<WallpaperResultDto, string>(__TAURI_INVOKE("wallpaper_restore", { monitorId })),
@@ -230,6 +231,19 @@ export type SettingsPatch = {
 	language?: Language | null,
 	keepNewIconsStyled?: boolean | null,
 	wallpaperCoachShown?: boolean | null,
+};
+
+/**
+ *  Environment snapshot for the diagnostics report (mirrors the TS `SystemInfoDto`). Returned by
+ *  `diagnostics.getInfo` — the audit #7 fix that replaces the browser `(mock)` stub (which shipped
+ *  even on the real Tauri app, so a Windows diagnostics report read `osVersion: "Win32 (mock)"`)
+ *  with real host facts. `hostLogTail` stays empty until the host error-log buffer is wired (F8).
+ */
+export type SystemInfoDto = {
+	osVersion: string,
+	webview2Version: string,
+	arch: string,
+	hostLogTail: string[],
 };
 
 /**

@@ -1,7 +1,8 @@
 //! Recycle Bin styling via the per-user `DefaultIcon` registry values. Ported from
 //! `DeskMakeover.Shell/RecycleBinIconWriter.cs`. Per-user (HKCU) only — no elevation. Value kinds
 //! (`REG_SZ` vs `REG_EXPAND_SZ`) and unexpanded `%SystemRoot%` text are preserved for
-//! byte-identical restore. [WINDOWS-VERIFY] runtime.
+//! byte-identical restore; a `DefaultIcon` of any OTHER (non-string) registry type is refused at
+//! read time rather than silently collapsed to `REG_SZ` (APPLY-3). [WINDOWS-VERIFY] runtime.
 
 use dm_domain::{PortError, PortResult, RecycleBinAnchor, RegistryValue};
 use winreg::enums::{RegType, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER};
@@ -76,8 +77,25 @@ fn state_from(key: &RegKey, key_existed: bool) -> PortResult<RecycleBinAnchor> {
 fn read_value(key: &RegKey, name: &str) -> PortResult<Option<RegistryValue>> {
     match key.get_raw_value(name) {
         Ok(raw) => {
+            // APPLY-3: preserve the value's real string kind faithfully. `DefaultIcon` is a path
+            // string (`REG_SZ` / `REG_EXPAND_SZ`) by definition; ANY other type is an unexpected or
+            // corrupt state. The old code collapsed every non-EXPAND type to `REG_SZ` and decoded
+            // its bytes as UTF-16 — a `REG_DWORD`/`REG_BINARY`/`REG_MULTI_SZ` value would be read as
+            // garbled text and RESTORED as a `REG_SZ`, silently rewriting the user's real value with
+            // a different type. Refuse rather than corrupt: fail closed so the caller keeps the real
+            // state (no lossy round-trip). [WINDOWS-VERIFY] runtime.
+            let kind = match raw.vtype {
+                RegType::REG_SZ => REG_SZ_KIND,
+                RegType::REG_EXPAND_SZ => REG_EXPAND_SZ_KIND,
+                other => {
+                    return Err(PortError::Io(format!(
+                        "recycle-bin value {name:?} has an unexpected registry type {other:?}; \
+                         refusing to style to avoid a lossy, type-changing restore"
+                    )))
+                }
+            };
             let text = decode_wide(&raw.bytes);
-            Ok(Some(RegistryValue { raw: text, kind: reg_type_num(&raw.vtype) }))
+            Ok(Some(RegistryValue { raw: text, kind }))
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(PortError::Io(format!("read recycle-bin value {name:?}: {e}"))),
@@ -95,14 +113,9 @@ fn write_or_delete(key: &RegKey, name: &str, value: Option<&RegistryValue>) -> P
             let raw = RegValue { bytes: encode_wide(&v.raw), vtype: RegType::REG_EXPAND_SZ };
             key.set_raw_value(name, &raw).map_err(io)
         }
+        // The only remaining kind is REG_SZ_KIND (read_value fails closed on any other type,
+        // APPLY-3), so `set_value` faithfully round-trips the original REG_SZ string.
         Some(v) => key.set_value(name, &v.raw).map_err(io),
-    }
-}
-
-fn reg_type_num(t: &RegType) -> u32 {
-    match t {
-        RegType::REG_EXPAND_SZ => REG_EXPAND_SZ_KIND,
-        _ => REG_SZ_KIND,
     }
 }
 

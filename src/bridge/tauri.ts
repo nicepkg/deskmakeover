@@ -36,6 +36,8 @@ const HANDLED = new Set([
   'icons.exportCompare',
   'shell.openExternal',
   'shell.openDataFolder',
+  // Diagnostics (audit #7): real host facts, not the browser `(mock)` stub.
+  'diagnostics.getInfo',
 ])
 
 export function tauriHandles(method: string): boolean {
@@ -73,6 +75,8 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
   switch (method) {
     case 'settings.get':
       return unwrap(await commands.settingsGet())
+    case 'diagnostics.getInfo':
+      return unwrap(await commands.diagnosticsGetInfo())
     case 'settings.set':
       return unwrap(await commands.settingsSet(params as Parameters<typeof commands.settingsSet>[0]))
     // Wallpaper (schema 6 thin, D1): the store reconciles + assembles; Rust returns

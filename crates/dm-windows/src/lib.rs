@@ -14,6 +14,7 @@
 //! [`classify`], which compiles and is unit-tested on the host.
 
 pub mod classify;
+pub mod cmdline;
 pub mod durable;
 pub mod fingerprint_surface;
 pub mod pathcheck;

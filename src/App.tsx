@@ -181,9 +181,11 @@ function PaperModule() {
 }
 
 function CalmModule() {
-  const probe = useCalm((s) => s.probe)
+  // Modules stay mounted (spec 05 §4), so mount-only probing would go stale —
+  // every ENTRY into 清爽 re-probes (the spec 08 §6 entry HealthCheck).
+  const module = useApp((s) => s.module)
   useEffect(() => {
-    void probe()
-  }, [probe])
+    if (module === 'calm') void useCalm.getState().probe()
+  }, [module])
   return <CalmPage />
 }

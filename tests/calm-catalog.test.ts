@@ -3,8 +3,10 @@ import { CALM_CATALOG, controlById, groupOf } from '../src/lib/calm/catalog'
 import {
   COUNTED_AS_OURS,
   HELD_STATES,
+  OWNED_WRITES,
   assertTransition,
   canTransition,
+  probeTransition,
   type CalmRowState,
 } from '../src/lib/calm/states'
 
@@ -13,10 +15,10 @@ import {
 
 const ALL_STATES: CalmRowState[] = [
   'unknown', 'quiet', 'pushing', 'pending', 'verified', 'setAwaiting', 'reverted',
-  'needsReconfirm', 'unsupported', 'managed', 'confirmedOff', 'userAttested',
+  'needsReconfirm', 'external', 'unsupported', 'managed', 'confirmedOff', 'userAttested',
 ]
 
-describe('calm state machine', () => {
+describe('calm state machine (write pipeline)', () => {
   test('verified is reachable ONLY through the pending pipeline (writable rows)', () => {
     for (const from of ALL_STATES) {
       const legal = canTransition('writable', from, 'verified')
@@ -43,11 +45,49 @@ describe('calm state machine', () => {
     expect(canTransition('writable', 'needsReconfirm', 'verified')).toBe(false)
   })
 
-  test('only verified counts as ours — guided outcomes never do', () => {
+  test('a skipped write returns to pushing; a drifted restore lands external, never verified', () => {
+    expect(canTransition('writable', 'pending', 'pushing')).toBe(true) // skipped, no write
+    expect(canTransition('writable', 'verified', 'external')).toBe(true)
+    expect(canTransition('writable', 'setAwaiting', 'external')).toBe(true)
+    expect(canTransition('writable', 'external', 'verified')).toBe(false)
+  })
+
+  test('only verified counts as ours — guided/external/awaiting outcomes never do', () => {
     expect([...COUNTED_AS_OURS]).toEqual(['verified'])
-    expect(COUNTED_AS_OURS.has('userAttested' as CalmRowState)).toBe(false)
-    expect(COUNTED_AS_OURS.has('confirmedOff' as CalmRowState)).toBe(false)
-    expect(COUNTED_AS_OURS.has('setAwaiting' as CalmRowState)).toBe(false)
+    for (const s of ['userAttested', 'confirmedOff', 'setAwaiting', 'external'] as CalmRowState[]) {
+      expect(COUNTED_AS_OURS.has(s)).toBe(false)
+    }
+    // Restore gating: setAwaiting IS an owned write even though not yet counted.
+    expect(OWNED_WRITES.has('setAwaiting')).toBe(true)
+    expect(OWNED_WRITES.has('verified')).toBe(true)
+    expect(OWNED_WRITES.has('external')).toBe(false)
+  })
+})
+
+describe('calm probe channel (ledger truth)', () => {
+  test('an owned intact row re-probes back to verified — ownership survives re-probe', () => {
+    expect(probeTransition('writable', 'unknown', { state: 'quiet', ownedByUs: true })).toBe('verified')
+    expect(probeTransition('writable', 'verified', { state: 'quiet', ownedByUs: true })).toBe('verified')
+  })
+
+  test('a probe can never mint verified without ownership', () => {
+    expect(probeTransition('writable', 'unknown', { state: 'quiet' })).toBe('quiet')
+    expect(probeTransition('writable', 'pushing', { state: 'quiet' })).toBe('quiet')
+  })
+
+  test('ownership with a moved value is drift, not a claim', () => {
+    expect(probeTransition('writable', 'verified', { state: 'pushing', ownedByUs: true })).toBe('pushing')
+  })
+
+  test('the feature-update boundary is reachable via probe', () => {
+    expect(probeTransition('writable', 'unknown', { state: 'needsReconfirm' })).toBe('needsReconfirm')
+    expect(probeTransition('writable', 'verified', { state: 'needsReconfirm' })).toBe('needsReconfirm')
+  })
+
+  test('guided probes never yield write-pipeline states and keep settled outcomes', () => {
+    expect(probeTransition('guided', 'confirmedOff', { state: 'quiet' })).toBe('confirmedOff')
+    expect(probeTransition('guided', 'userAttested', { state: 'quiet' })).toBe('userAttested')
+    expect(probeTransition('guided', 'confirmedOff', { state: 'pushing' })).toBe('pushing') // Windows re-enabled it
   })
 })
 
@@ -86,7 +126,7 @@ describe('calm catalog invariants', () => {
     }
   })
 
-  test('the widgets feed leads the guided group (the opening act)', () => {
+  test('the widgets family leads the guided group (the opening act)', () => {
     const guided = CALM_CATALOG.filter((c) => c.tier === 'guided')
     expect(guided[0]?.id).toBe('widgets.feed')
   })
@@ -95,6 +135,8 @@ describe('calm catalog invariants', () => {
     const c = controlById('taskbar.search')
     expect(groupOf(c, 'pushing')).toBe('oneClick')
     expect(groupOf(c, 'verified')).toBe('oneClick')
+    expect(groupOf(c, 'external')).toBe('oneClick')
+    expect(groupOf(c, 'needsReconfirm')).toBe('oneClick')
     for (const held of HELD_STATES) expect(groupOf(c, held)).toBe('held')
     expect(groupOf(controlById('widgets.feed'), 'pushing')).toBe('guided')
   })

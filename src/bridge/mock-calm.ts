@@ -3,20 +3,23 @@
 // commands behind dm-contracts (bridge schema 8); this port is the seam so the
 // store never knows which side it is talking to. The mock simulates the honest
 // environment truth: starter-slice rows are certified, next-in-line rows are
-// fail-closed (uncertified), guided rows can only be walked.
+// fail-closed (uncertified), guided rows can only be walked. Ownership is
+// ledger-shaped: an applied row re-probes as quiet + ownedByUs.
 
 import { CALM_CATALOG, controlById, type CalmControlId } from '@/lib/calm/catalog'
-
-export type CalmProbeState = 'quiet' | 'pushing' | 'unsupported' | 'managed'
+import type { CalmProbeState } from '@/lib/calm/states'
 
 export interface CalmProbeRow {
   id: CalmControlId
   state: CalmProbeState
+  /** Ledger truth: we wrote this row and the raw value still matches our write. */
+  ownedByUs?: boolean
 }
 
 export interface CalmApplyRow {
   id: CalmControlId
-  outcome: 'verified' | 'setAwaiting' | 'reverted'
+  /** skipped = no write happened (environment changed between probe and apply). */
+  outcome: 'verified' | 'setAwaiting' | 'reverted' | 'skipped'
 }
 
 export interface CalmRestoreRow {
@@ -43,8 +46,12 @@ export interface MockCalmOptions {
   awaiting?: CalmControlId[]
   /** Rows whose apply fails and rolls back (exercises the honest reverted path). */
   failing?: CalmControlId[]
+  /** Rows whose apply is skipped without a write (probe→apply environment change). */
+  skipping?: CalmControlId[]
   /** Rows the user "hand-edited" after apply — restore must skip them (mark, don't clobber). */
   drifted?: CalmControlId[]
+  /** Rows behind a crossed certification boundary (feature update) — 需重新确认. */
+  boundaryCrossed?: CalmControlId[]
   latencyMs?: number
 }
 
@@ -63,33 +70,40 @@ export class MockCalmBackend implements CalmBackend {
 
   async probe(): Promise<CalmProbeRow[]> {
     await this.wait()
-    return CALM_CATALOG.map((c) => {
-      if (this.opts.managed?.includes(c.id)) return { id: c.id, state: 'managed' as const }
-      if (c.tier === 'guided') return { id: c.id, state: 'pushing' as const }
+    return CALM_CATALOG.map((c): CalmProbeRow => {
+      if (this.opts.managed?.includes(c.id)) return { id: c.id, state: 'managed' }
+      if (c.tier === 'guided') return { id: c.id, state: 'pushing' }
+      if (this.opts.boundaryCrossed?.includes(c.id)) return { id: c.id, state: 'needsReconfirm' }
       // Mock environment truth: only the starter slice is lab-certified today;
       // every other automatic row fails closed — exactly what group 3 is for.
-      if (!c.starterSlice) return { id: c.id, state: 'unsupported' as const }
-      return { id: c.id, state: this.applied.has(c.id) ? ('quiet' as const) : ('pushing' as const) }
+      if (!c.starterSlice) return { id: c.id, state: 'unsupported' }
+      if (this.applied.has(c.id)) {
+        // Ledger-owned: value intact unless the drifted option simulates a hand-edit.
+        if (this.opts.drifted?.includes(c.id)) return { id: c.id, state: 'pushing' }
+        return { id: c.id, state: 'quiet', ownedByUs: true }
+      }
+      return { id: c.id, state: 'pushing' }
     })
   }
 
   async apply(ids: CalmControlId[]): Promise<CalmApplyRow[]> {
     await this.wait()
-    return ids.map((id) => {
+    return ids.map((id): CalmApplyRow => {
       controlById(id) // throws on unknown ids — the mock is as strict as Rust will be
-      if (this.opts.failing?.includes(id)) return { id, outcome: 'reverted' as const }
+      if (this.opts.failing?.includes(id)) return { id, outcome: 'reverted' }
+      if (this.opts.skipping?.includes(id)) return { id, outcome: 'skipped' }
       this.applied.add(id)
-      if (this.opts.awaiting?.includes(id)) return { id, outcome: 'setAwaiting' as const }
-      return { id, outcome: 'verified' as const }
+      if (this.opts.awaiting?.includes(id)) return { id, outcome: 'setAwaiting' }
+      return { id, outcome: 'verified' }
     })
   }
 
   async restore(): Promise<CalmRestoreRow[]> {
     await this.wait()
-    const rows = [...this.applied].map((id) => {
-      if (this.opts.drifted?.includes(id)) return { id, outcome: 'skippedDrift' as const }
+    const rows = [...this.applied].map((id): CalmRestoreRow => {
+      if (this.opts.drifted?.includes(id)) return { id, outcome: 'skippedDrift' }
       this.applied.delete(id)
-      return { id, outcome: 'restored' as const }
+      return { id, outcome: 'restored' }
     })
     return rows
   }

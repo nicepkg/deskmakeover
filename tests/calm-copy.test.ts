@@ -46,10 +46,19 @@ describe('calm copy gate', () => {
   })
 
   test('precision: hiding taskbar entries never claims disabling the feature', () => {
+    // MUST say hide + the still-works escape; MUST NOT say 关闭搜索/关闭任务视图.
+    expect(zhHans.Calm_TaskbarSearch_Desc.startsWith('隐藏')).toBe(true)
     expect(zhHans.Calm_TaskbarSearch_Desc).toContain('Win+S')
+    expect(zhHans.Calm_TaskbarSearch_Desc.includes('关闭搜索')).toBe(false)
+    expect(en.Calm_TaskbarSearch_Desc.startsWith('Hide')).toBe(true)
     expect(en.Calm_TaskbarSearch_Desc).toContain('Win+S')
+    expect(/disable/i.test(en.Calm_TaskbarSearch_Desc)).toBe(false)
+    expect(zhHans.Calm_TaskView_Desc.startsWith('隐藏')).toBe(true)
     expect(zhHans.Calm_TaskView_Desc).toContain('Win+Tab')
+    expect(zhHans.Calm_TaskView_Desc.includes('关闭任务视图')).toBe(false)
+    expect(en.Calm_TaskView_Desc.startsWith('Hide')).toBe(true)
     expect(en.Calm_TaskView_Desc).toContain('Win+Tab')
+    expect(/disable/i.test(en.Calm_TaskView_Desc)).toBe(false)
   })
 
   test('precision: Start copy reduces, never promises removal of every promo', () => {

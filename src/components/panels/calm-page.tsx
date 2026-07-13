@@ -1,13 +1,13 @@
 import * as React from 'react'
 import type { ReactNode } from 'react'
-import { ExternalLink, RotateCcw } from 'lucide-react'
+import { ChevronDown, ExternalLink, RotateCcw } from 'lucide-react'
 import { InspectorCard } from '@/components/common/inspector'
 import { ConfirmSheet } from '@/components/common/ceremony'
 import { CtaButton, type HeroPhase } from '@/components/common/cta-button'
 import { ToggleSwitch } from '@/components/common/toggle-switch'
 import { controlById, type CalmControl, type CalmControlId } from '@/lib/calm/catalog'
 import type { CalmRowState } from '@/lib/calm/states'
-import { countQuieted, groupedRows, useCalm } from '@/stores/calm'
+import { applyCandidates, countOwnedWrites, countQuieted, groupedRows, useCalm } from '@/stores/calm'
 import { format, useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -19,8 +19,7 @@ import { cn } from '@/lib/utils'
 export function CalmPage() {
   const t = useT()
   const probed = useCalm((s) => s.probed)
-  const probing = useCalm((s) => s.probing)
-  const applying = useCalm((s) => s.applying)
+  const op = useCalm((s) => s.op)
   const rows = useCalm((s) => s.rows)
   const excluded = useCalm((s) => s.excluded)
   const [confirmOpen, setConfirmOpen] = React.useState(false)
@@ -35,12 +34,16 @@ export function CalmPage() {
 
   const groups = groupedRows(rows)
   const quieted = countQuieted(rows)
-  const pushable = groups.oneClick.filter(
-    (id) => rows[id] === 'pushing' && controlById(id).inDefaultPackage && !excluded.has(id),
-  ).length
+  const owned = countOwnedWrites(rows)
+  const candidates = applyCandidates(rows, excluded)
 
-  const phase: HeroPhase = !probed || probing ? 'scanning' : applying ? 'working' : pushable > 0 ? 'ready' : quieted > 0 ? 'synced' : 'scanning'
-  const ctaLabel = applying ? t('Calm_Cta_Working') : phase === 'synced' ? t('Calm_Cta_Done') : t('Calm_Cta')
+  // Honest hero phases (codex R1 #15): actionable → ready; anything settled and
+  // nothing left to do → synced (covers 全部已生效 AND 系统本来就安静); only an
+  // unfinished probe scans.
+  const phase: HeroPhase =
+    !probed || op === 'probe' ? 'scanning' : op !== 'idle' ? 'working' : candidates.length > 0 ? 'ready' : 'synced'
+  const ctaLabel = op === 'apply' ? t('Calm_Cta_Working') : phase === 'synced' ? t('Calm_Cta_Done') : t('Calm_Cta')
+  const includedNames = candidates.map((id) => t(controlById(id).labelKey)).join(t('Calm_ListJoin'))
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -60,7 +63,9 @@ export function CalmPage() {
           {quieted > 0 && (
             <p className="text-[12.5px] text-t2">{format(t('Calm_Summary'), quieted)}</p>
           )}
-          {quieted > 0 && (
+          {/* Restore gates on OWNED writes, not the verified count — a batch that
+              landed all-setAwaiting still owns writes (codex R1 Block #2). */}
+          {owned > 0 && (
             <button
               type="button"
               onClick={() => void useCalm.getState().restoreAll()}
@@ -89,22 +94,16 @@ export function CalmPage() {
             </Group>
           )}
 
-          {groups.held.length > 0 && (
-            <Group label={t('Calm_Group_Held')} footer={t('Calm_Held_Reason_Uncertified')}>
-              {groups.held.map((id) => (
-                <HeldRow key={id} id={id} />
-              ))}
-            </Group>
-          )}
+          {groups.held.length > 0 && <HeldGroup ids={groups.held} rows={rows} />}
         </div>
       </div>
 
-      {/* Explain before apply (spec 08 §4): what changes, what does NOT — the
-          guided note names the widgets feed honestly instead of implying 全部. */}
+      {/* Explain before apply (spec 08 §4): name what changes, and what does NOT —
+          the guided note names the widgets feed honestly instead of implying 全部. */}
       <ConfirmSheet
         open={confirmOpen}
         title={t('Calm_Confirm_Title')}
-        body={`${t('Calm_Confirm_Body')} ${t('Calm_Confirm_GuidedNote')}`}
+        body={`${format(t('Calm_Confirm_List'), includedNames)} ${t('Calm_Confirm_Body')} ${t('Calm_Confirm_GuidedNote')}`}
         confirmLabel={t('Calm_Confirm_Go')}
         cancelLabel={t('Calm_Confirm_Cancel')}
         onConfirm={() => {
@@ -123,6 +122,41 @@ function Group({ label, footer, children }: { label: string; footer?: string; ch
       <p className="mb-2 px-1 text-[12px] font-medium text-t3">{label}</p>
       <InspectorCard>{children}</InspectorCard>
       {footer && <p className="mt-2 px-1 text-[11.5px] leading-relaxed text-t3/70">{footer}</p>}
+    </section>
+  )
+}
+
+/** Group 3 — collapsed by default (spec 08 §2): a quiet disclosure line, expanding
+ *  into per-row reasons. The restraint footer explains only the UNCERTIFIED rows;
+ *  managed rows carry their own 「由你的组织管理」 reason (codex R1 #13). */
+function HeldGroup({ ids, rows }: { ids: CalmControlId[]; rows: Record<CalmControlId, CalmRowState> }) {
+  const t = useT()
+  const [open, setOpen] = React.useState(false)
+  const hasUncertified = ids.some((id) => rows[id] === 'unsupported')
+  return (
+    <section>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="mb-2 flex items-center gap-1 px-1 text-[12px] font-medium text-t3 transition-colors hover:text-t1"
+      >
+        <ChevronDown size={12} className={cn('transition-transform', !open && '-rotate-90')} />
+        {t('Calm_Group_Held')}
+        <span className="font-normal text-t3/70">{format(t('Calm_Held_Count'), ids.length)}</span>
+      </button>
+      {open && (
+        <>
+          <InspectorCard>
+            {ids.map((id) => (
+              <HeldRow key={id} id={id} />
+            ))}
+          </InspectorCard>
+          {hasUncertified && (
+            <p className="mt-2 px-1 text-[11.5px] leading-relaxed text-t3/70">{t('Calm_Held_Reason_Uncertified')}</p>
+          )}
+        </>
+      )}
     </section>
   )
 }
@@ -151,6 +185,7 @@ function StateChip({ state }: { state: CalmRowState }) {
     setAwaiting: t('Calm_State_Awaiting'),
     reverted: t('Calm_State_Reverted'),
     quiet: t('Calm_State_Quiet'),
+    external: t('Calm_State_External'),
     confirmedOff: t('Calm_State_ConfirmedOff'),
     userAttested: t('Calm_State_UserAttested'),
     needsReconfirm: t('Calm_State_NeedsReconfirm'),
@@ -164,8 +199,8 @@ function StateChip({ state }: { state: CalmRowState }) {
         state === 'verified' && 'font-medium text-coral-ink',
         state === 'pending' && 'animate-pulse text-t3',
         state === 'reverted' && 'text-t2',
-        (state === 'quiet' || state === 'setAwaiting' || state === 'confirmedOff' || state === 'userAttested' || state === 'needsReconfirm') &&
-          'text-t3',
+        (state === 'quiet' || state === 'setAwaiting' || state === 'external' || state === 'confirmedOff' ||
+          state === 'userAttested' || state === 'needsReconfirm') && 'text-t3',
       )}
     >
       {state === 'verified' && '✓ '}
@@ -179,13 +214,17 @@ function OneClickRow({ id }: { id: CalmControlId }) {
   const control = controlById(id)
   const state = useCalm((s) => s.rows[id])
   const excluded = useCalm((s) => s.excluded.has(id))
+  const toggleable = state === 'pushing' || state === 'reverted'
   return (
     <RowShell
       control={control}
       right={
-        state === 'pushing' ? (
-          // Exclusion semantics (ADR-0004 §2): checked = stays in the package.
-          <ToggleSwitch checked={!excluded} onChange={() => useCalm.getState().toggleExcluded(id)} label={t(control.labelKey)} />
+        toggleable ? (
+          <div className="flex items-center gap-2">
+            {state === 'reverted' && <StateChip state={state} />}
+            {/* Exclusion semantics (ADR-0004 §2): checked = stays in the package. */}
+            <ToggleSwitch checked={!excluded} onChange={() => useCalm.getState().toggleExcluded(id)} label={t(control.labelKey)} />
+          </div>
         ) : (
           <StateChip state={state} />
         )
@@ -234,7 +273,11 @@ function HeldRow({ id }: { id: CalmControlId }) {
     <div className="opacity-60">
       <RowShell
         control={control}
-        right={<span className="whitespace-nowrap text-[12px] text-t3">{state === 'managed' ? t('Calm_Held_Managed') : null}</span>}
+        right={
+          <span className="whitespace-nowrap text-[12px] text-t3">
+            {state === 'managed' ? t('Calm_Held_Managed') : t('Calm_Held_NotYet')}
+          </span>
+        }
       />
     </div>
   )

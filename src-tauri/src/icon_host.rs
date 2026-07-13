@@ -284,6 +284,13 @@ impl IconHost {
             .map(|s| (s.name, (s.x, s.y)))
             .collect();
         let mut next_sources: HashMap<String, Vec<u8>> = HashMap::new();
+        // Hard per-scan source-preview budget (codex R2 B-5). The source cache pins the whole live
+        // generation (a live key is never evicted mid-serve), so without an upstream bound a
+        // pathological desktop of thousands of unique high-entropy 256² icons would pin hundreds of MiB
+        // past SOURCE_CACHE_CAP. Once the decoded, deduped source bytes reach this budget the remaining
+        // items are served WITHOUT a preview (an honest bounded scan) rather than growing unbounded.
+        let mut source_bytes = 0usize;
+        let mut budget_logged = false;
         let mut dtos = Vec::with_capacity(items.len());
         let mut scanned = Vec::with_capacity(items.len());
         for (i, item) in items.into_iter().enumerate() {
@@ -309,24 +316,39 @@ impl IconHost {
                     .filter(|(last_applied, _)| last_applied == &fingerprint)
                     .map(|(_, anchor)| anchor)
             };
-            let (urls, extract_err) = match self.extractor.extract(&item, original) {
-                Ok(sources) => {
-                    let mut urls = Vec::with_capacity(sources.len());
-                    // Consume the extracted sources: each PNG buffer MOVES into the cache instead of
-                    // being cloned (codex R2 B-12) — `extract` already handed us owned `DecodedImage`s
-                    // and the Vec is dropped right after, so a large desktop pays one fewer full copy
-                    // per source.
-                    for (slot, src) in sources.into_iter().enumerate() {
-                        urls.push(cache_source_into(
-                            &mut next_sources,
-                            item.id.as_str(),
-                            slot as u32,
-                            src,
-                        ));
+            // Past the per-scan source budget → serve this item without a preview (codex R2 B-5). NOT
+            // silent: log once so a truncated scan is visible, never mistaken for full coverage.
+            if source_bytes >= SCAN_SOURCE_BUDGET && !budget_logged {
+                log::warn!(
+                    "icons scan: reached the {}-byte source-preview budget; remaining icons served without a preview",
+                    SCAN_SOURCE_BUDGET
+                );
+                budget_logged = true;
+            }
+            let (urls, extract_err) = if source_bytes >= SCAN_SOURCE_BUDGET {
+                (Vec::new(), Some("图标过多：已达本次扫描的预览内存预算，部分图标暂无预览".to_string()))
+            } else {
+                match self.extractor.extract(&item, original) {
+                    Ok(sources) => {
+                        let mut urls = Vec::with_capacity(sources.len());
+                        // Consume the extracted sources: each PNG buffer MOVES into the cache instead of
+                        // being cloned (codex R2 B-12) — `extract` already handed us owned `DecodedImage`s
+                        // and the Vec is dropped right after, so a large desktop pays one fewer full copy
+                        // per source. Each unique source's bytes count against the per-scan budget.
+                        for (slot, src) in sources.into_iter().enumerate() {
+                            let (url, added) = cache_source_into(
+                                &mut next_sources,
+                                item.id.as_str(),
+                                slot as u32,
+                                src,
+                            );
+                            source_bytes += added;
+                            urls.push(url);
+                        }
+                        (urls, None)
                     }
-                    (urls, None)
+                    Err(e) => (Vec::new(), Some(format!("图标读取失败：{e}"))),
                 }
-                Err(e) => (Vec::new(), Some(format!("图标读取失败：{e}"))),
             };
             let degraded_reason = if provenance_unknown {
                 Some("待修复：上次操作未完成，刷新后重试".to_string())
@@ -1029,6 +1051,11 @@ fn icon_protocol_url(key: &str) -> String {
 /// of a large desktop (256px PNGs are small), bounding memory while covering the handoff window.
 const SOURCE_CACHE_CAP: usize = 32 * 1024 * 1024;
 
+/// The hard ceiling on ONE scan's decoded, deduped source-preview bytes (codex R2 B-5). Set below
+/// `SOURCE_CACHE_CAP` so the live generation the scan pins leaves headroom for the previous
+/// generation's in-flight URLs during the swap→adopt handoff. Items past it are served preview-less.
+const SCAN_SOURCE_BUDGET: usize = SOURCE_CACHE_CAP * 3 / 4;
+
 /// The `dmicon://` source cache. A scan republishes the freshly-extracted generation, but the OLD
 /// webview frame keeps requesting the PREVIOUS scan's content-addressed URLs until the frontend
 /// re-renders against the new scan DTO — serving only the live generation would 404 those in-flight
@@ -1100,15 +1127,19 @@ impl SourceCache {
     }
 }
 
+/// Caches one source's PNG (moving the buffer) and returns its protocol URL plus the NEW bytes it
+/// added to `sources` — 0 when content addressing dedups an already-present key, so the caller's
+/// running per-scan budget counts each unique source once (codex R2 B-5).
 fn cache_source_into(
     sources: &mut HashMap<String, Vec<u8>>,
     item_id: &str,
     slot: u32,
     src: DecodedImage,
-) -> String {
+) -> (String, usize) {
     let key = format!("{item_id}/{slot}/{}", &dm_icon_codec::content_hash(&src.png)[..16]);
+    let added = if sources.contains_key(&key) { 0 } else { src.png.len() };
     sources.insert(key.clone(), src.png); // MOVE the owned PNG buffer — no clone (codex R2 B-12)
-    icon_protocol_url(&key)
+    (icon_protocol_url(&key), added)
 }
 
 fn now_secs() -> i64 {
@@ -1187,16 +1218,40 @@ mod tests {
         }
     }
 
-    fn host_with_overlay(
+    /// A big DISTINCT source per item (the bytes vary by item id so content addressing never dedups
+    /// them), to push the per-scan source budget past its ceiling (codex R2 B-5).
+    struct BigSourceExtractor {
+        bytes_per_source: usize,
+    }
+    impl IconSourceExtractor for BigSourceExtractor {
+        fn extract(
+            &self,
+            item: &dm_domain::DesktopItem,
+            _original: Option<&dm_domain::RestoreAnchor>,
+        ) -> dm_domain::PortResult<Vec<DecodedImage>> {
+            let mut png = vec![0u8; self.bytes_per_source];
+            for (i, b) in item.id.as_str().bytes().enumerate() {
+                if i < png.len() {
+                    png[i] = b;
+                }
+            }
+            Ok(vec![DecodedImage { width: 256, height: 256, png }])
+        }
+    }
+
+    fn host_with(
         dir: &std::path::Path,
         overlay: Arc<dyn OverlayControl + Send + Sync>,
+        extractor: Option<Arc<dyn IconSourceExtractor + Send + Sync>>,
     ) -> (IconHost, Arc<DevIconDesktop>) {
         let desk = DevIconDesktop::new();
         let settings = Arc::new(SettingsStore::open(&dir.join("settings.sqlite3")).unwrap());
+        let extractor =
+            extractor.unwrap_or_else(|| Arc::new(DevIconSourceExtractor(desk.clone())));
         let host = IconHost::new(
             IconHostPorts {
                 scanner: Arc::new(DevDesktopScanner),
-                extractor: Arc::new(DevIconSourceExtractor(desk.clone())),
+                extractor,
                 reader: Arc::new(DevIconReader(desk.clone())),
                 applier: Arc::new(DevIconApplier(desk.clone())),
                 overlay,
@@ -1211,8 +1266,32 @@ mod tests {
         (host, desk)
     }
 
+    fn host_with_overlay(
+        dir: &std::path::Path,
+        overlay: Arc<dyn OverlayControl + Send + Sync>,
+    ) -> (IconHost, Arc<DevIconDesktop>) {
+        host_with(dir, overlay, None)
+    }
+
     fn host_with_desk(dir: &std::path::Path) -> (IconHost, Arc<DevIconDesktop>) {
-        host_with_overlay(dir, Arc::new(DevOverlayControl))
+        host_with(dir, Arc::new(DevOverlayControl), None)
+    }
+
+    #[test]
+    fn a_scan_past_the_source_budget_serves_later_items_preview_less() {
+        // codex R2 B-5: the source cache pins the whole live generation, so the scan must bound its own
+        // preview bytes. With 8 dev items each yielding a DISTINCT ~4 MiB source (32 MiB > the 24 MiB
+        // budget), the later items must be served WITHOUT source URLs (an honest bounded scan) rather
+        // than pinning unbounded memory. The earlier items still get previews.
+        let dir = tempfile::tempdir().unwrap();
+        let big = Arc::new(BigSourceExtractor { bytes_per_source: 4 * 1024 * 1024 });
+        let (h, _desk) = host_with(dir.path(), Arc::new(DevOverlayControl), Some(big));
+        let scan = h.scan().unwrap();
+        let with_preview = scan.items.iter().filter(|it| !it.source_urls.is_empty()).count();
+        let without = scan.items.iter().filter(|it| it.source_urls.is_empty()).count();
+        assert!(with_preview > 0, "the first items still get previews");
+        assert!(without > 0, "items past the budget are served preview-less, not pinned unbounded");
+        assert!(with_preview < scan.items.len(), "the budget bounded the previewed set");
     }
 
     fn host(dir: &std::path::Path) -> IconHost {

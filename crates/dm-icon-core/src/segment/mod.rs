@@ -35,6 +35,17 @@ pub struct Segmentation {
 
 /// segment.ts `segmentSubject` (memoization is a caller concern — pure here).
 pub fn segment_subject(c: &Raster) -> Segmentation {
+    segment_subject_with_edges(c, has_transparent_edges(c))
+}
+
+/// `segment_subject` given the source's already-computed transparent-edge flag — the
+/// exact-input variant the shared analysis bundle feeds so `has_transparent_edges` is
+/// not recomputed inside segmentation (the expensive BFS is the same either way).
+/// BYTE-IDENTICAL to `segment_subject(c)` when `transparent_edges == has_transparent_edges(c)`:
+/// the flag ONLY selects the alpha-silhouette vs flood branch; the 0-dim guard, the
+/// majority filter, and the plate split are untouched. (On a 0-dim raster the guard
+/// returns before the flag is used, so an eagerly-computed flag is harmless.)
+pub fn segment_subject_with_edges(c: &Raster, transparent_edges: bool) -> Segmentation {
     let w = c.width;
     let h = c.height;
     let n = w * h;
@@ -47,7 +58,7 @@ pub fn segment_subject(c: &Raster) -> Segmentation {
         return Segmentation { mask: Vec::new(), mode: SegMode::Alpha, field: None };
     }
 
-    let (sil0, mode) = if has_transparent_edges(c) {
+    let (sil0, mode) = if transparent_edges {
         let mut s = vec![0u8; n];
         for (i, slot) in s.iter_mut().enumerate() {
             *slot = if c.data[i * 4 + 3] >= SOLID_ALPHA { 1 } else { 0 };

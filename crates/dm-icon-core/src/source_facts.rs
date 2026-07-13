@@ -36,11 +36,12 @@
 use std::sync::Arc;
 
 use crate::analysis::{
-    find_content_bounds, foreground_auto, has_transparent_edges, solid_bounds,
-    try_detect_background, ContentBounds,
+    find_content_bounds, foreground_auto, foreground_from, has_transparent_edges, solid_bounds,
+    try_detect_background, try_detect_background_with_bounds, ContentBounds,
 };
+use crate::profile::{icon_profile_from, IconProfile};
 use crate::raster::{Raster, Rgba};
-use crate::segment::{segment_subject, Segmentation};
+use crate::segment::{segment_subject, segment_subject_with_edges, Segmentation};
 
 /// Bumped whenever any cached source-fact algorithm changes — invalidates cached
 /// facts across a persisted store (the `RenderSession` folds it into the cache key).
@@ -67,7 +68,10 @@ pub struct SourceFacts {
 }
 
 impl SourceFacts {
-    /// Compute every source fact once. Pure — depends only on `c`'s pixels.
+    /// Compute every source fact once, INDEPENDENTLY (each sub-analysis from scratch).
+    /// Pure — depends only on `c`'s pixels. Retained as the byte-identity reference the
+    /// bundle path is diffed against (`bundle_cert`); the hot path builds facts through
+    /// [`SourceFacts::from_shared`] so nothing is computed twice.
     pub fn compute(c: &Raster) -> Self {
         Self {
             raster_dims: (c.width, c.height),
@@ -77,6 +81,31 @@ impl SourceFacts {
             foreground: foreground_auto(c),
             segmentation: Arc::new(segment_subject(c)),
             transparent_edges: has_transparent_edges(c),
+        }
+    }
+
+    /// Assemble facts from ALREADY-computed shared sub-analysis — no recomputation.
+    /// Every argument must equal its standalone recompute (the caller,
+    /// [`build_analysis_bundle`], guarantees that via the exact-input `_with_*`
+    /// variants), so a `from_shared` fact is byte-identical to a `compute` fact.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_shared(
+        raster_dims: (usize, usize),
+        content_bounds: ContentBounds,
+        solid_bounds: Option<ContentBounds>,
+        detected_background: Option<Rgba>,
+        foreground: Option<ContentBounds>,
+        segmentation: Arc<Segmentation>,
+        transparent_edges: bool,
+    ) -> Self {
+        Self {
+            raster_dims,
+            content_bounds,
+            solid_bounds,
+            detected_background,
+            foreground,
+            segmentation,
+            transparent_edges,
         }
     }
 
@@ -91,6 +120,47 @@ impl SourceFacts {
     fn backs(&self, c: &Raster) -> bool {
         self.raster_dims == (c.width, c.height)
     }
+}
+
+/// The `IconProfile` + `SourceFacts` of one source, built from a SINGLE shared
+/// sub-analysis. A cold styled render needs BOTH for the same raster; computing them
+/// apart ran the expensive `segment_subject` BFS and `try_detect_background` TWICE per
+/// source (`RenderSession::analyze` then `ensure_source_facts`). This bundle computes
+/// each shared sub-analysis ONCE and hands the same values to both builders.
+pub(crate) struct AnalysisBundle {
+    pub profile: IconProfile,
+    pub facts: SourceFacts,
+}
+
+/// Compute the shared source analysis ONCE and assemble both the `IconProfile` and the
+/// immutable `SourceFacts` from it (codex R2 C-5). BYTE-NEUTRAL: every sub-analysis is
+/// a pure function of `c`'s pixels, computed with the exact-input `_with_*` variants
+/// that return bit-identical results to the standalone functions `icon_profile` and
+/// `SourceFacts::compute` call — so `bundle.profile == icon_profile(c)` and
+/// `bundle.facts == SourceFacts::compute(c)` byte-for-byte. The order of these
+/// independent pure computations is irrelevant (no shared mutable state); the
+/// segmentation is computed once and SHARED (the profile clones its mask, the facts
+/// hold the `Arc`). Proven by `bundle_cert::bundle_equals_direct_recompute` and the
+/// four-way 1487-cell parity certificate.
+pub(crate) fn build_analysis_bundle(c: &Raster) -> AnalysisBundle {
+    let transparent_edges = has_transparent_edges(c);
+    let content_bounds = find_content_bounds(c);
+    let solid = solid_bounds(c);
+    let detected_background = try_detect_background_with_bounds(c, content_bounds);
+    let foreground = foreground_from(c, content_bounds, detected_background);
+    let segmentation = Arc::new(segment_subject_with_edges(c, transparent_edges));
+    let facts = SourceFacts::from_shared(
+        (c.width, c.height),
+        content_bounds,
+        solid,
+        detected_background,
+        foreground,
+        Arc::clone(&segmentation),
+        transparent_edges,
+    );
+    let profile =
+        icon_profile_from(c, transparent_edges, content_bounds, detected_background, &segmentation);
+    AnalysisBundle { profile, facts }
 }
 
 // ── fast-gated accessors ────────────────────────────────────────────────────────
@@ -152,6 +222,132 @@ pub(crate) fn segmentation(sf: Option<&SourceFacts>, c: &Raster) -> Arc<Segmenta
         #[cfg(feature = "fast")]
         Some(sf) if sf.backs(c) => Arc::clone(&sf.segmentation),
         _ => Arc::new(segment_subject(c)),
+    }
+}
+
+// ── shared-bundle byte-identity cert ─────────────────────────────────────────────
+// Runs under BOTH scalar and fast (the bundle path is feature-agnostic). Proves the
+// C-5 dedup is byte-neutral at the fact/profile level: the shared bundle equals the
+// independent recompute for every field — masks byte-for-byte, every f64 via
+// `to_bits()` (exact, not epsilon). The end-to-end anchor is the four-way cert.
+#[cfg(test)]
+mod bundle_cert {
+    use super::*;
+    use crate::profile::{icon_profile, IconProfileKind};
+
+    /// A small solid dot on a transparent field → Bare (transparent edges, no bg).
+    fn dot() -> Raster {
+        let mut r = Raster::new(64, 64);
+        for y in 20..44 {
+            for x in 20..44 {
+                let i4 = (y * 64 + x) * 4;
+                r.data[i4] = 200;
+                r.data[i4 + 1] = 60;
+                r.data[i4 + 2] = 40;
+                r.data[i4 + 3] = 255;
+            }
+        }
+        r
+    }
+
+    /// A teal plate with a lighter centred blob → OwnBoard (a detectable own bg + a
+    /// non-trivial segmentation mask).
+    fn plated() -> Raster {
+        let mut r = Raster::new(64, 64);
+        for i in 0..64 * 64 {
+            r.data[i * 4] = 20;
+            r.data[i * 4 + 1] = 140;
+            r.data[i * 4 + 2] = 160;
+            r.data[i * 4 + 3] = 255;
+        }
+        for y in 24..40 {
+            for x in 24..40 {
+                let i4 = (y * 64 + x) * 4;
+                r.data[i4] = 240;
+                r.data[i4 + 1] = 240;
+                r.data[i4 + 2] = 240;
+            }
+        }
+        r
+    }
+
+    /// A fully opaque solid square → FullSquare (coverage 1.0, opaque edges) — the
+    /// branch where the profile has NO subject mask but the facts still segment.
+    fn full_square() -> Raster {
+        let mut r = Raster::new(64, 64);
+        for i in 0..64 * 64 {
+            r.data[i * 4] = 90;
+            r.data[i * 4 + 1] = 110;
+            r.data[i * 4 + 2] = 200;
+            r.data[i * 4 + 3] = 255;
+        }
+        r
+    }
+
+    /// A larger floating blob on a transparent field (flood/alpha segmentation).
+    fn floating() -> Raster {
+        let mut r = Raster::new(96, 96);
+        for y in 24..72 {
+            for x in 24..72 {
+                let i4 = (y * 96 + x) * 4;
+                r.data[i4] = 30;
+                r.data[i4 + 1] = 180;
+                r.data[i4 + 2] = 90;
+                r.data[i4 + 3] = 255;
+            }
+        }
+        r
+    }
+
+    fn opt_bits(x: Option<f64>) -> Option<u64> {
+        x.map(f64::to_bits)
+    }
+
+    fn assert_profile_bit_equal(a: &IconProfile, b: &IconProfile) {
+        assert_eq!(a.kind, b.kind, "kind");
+        assert_eq!(a.transparent_edges, b.transparent_edges, "transparent_edges");
+        assert_eq!(a.background, b.background, "background");
+        assert_eq!(opt_bits(a.background_lightness), opt_bits(b.background_lightness), "background_lightness bits");
+        assert_eq!(a.subject_colour, b.subject_colour, "subject_colour");
+        assert_eq!(a.subject_lightness.to_bits(), b.subject_lightness.to_bits(), "subject_lightness bits");
+        assert_eq!(a.subject_mask, b.subject_mask, "subject_mask");
+        assert_eq!(a.subject_rim_colour, b.subject_rim_colour, "subject_rim_colour");
+        assert_eq!(a.subject_rim_lightness.to_bits(), b.subject_rim_lightness.to_bits(), "subject_rim_lightness bits");
+    }
+
+    fn assert_facts_bit_equal(a: &SourceFacts, b: &SourceFacts) {
+        assert_eq!(a.raster_dims, b.raster_dims, "raster_dims");
+        assert_eq!(a.content_bounds, b.content_bounds, "content_bounds");
+        assert_eq!(a.solid_bounds, b.solid_bounds, "solid_bounds");
+        assert_eq!(a.detected_background, b.detected_background, "detected_background");
+        assert_eq!(a.foreground, b.foreground, "foreground");
+        assert_eq!(a.transparent_edges, b.transparent_edges, "transparent_edges");
+        assert_eq!(a.segmentation.mask, b.segmentation.mask, "segmentation.mask");
+        assert_eq!(a.segmentation.field, b.segmentation.field, "segmentation.field");
+        assert_eq!(a.segmentation.mode, b.segmentation.mode, "segmentation.mode");
+    }
+
+    /// The shared bundle path must be byte-identical to independent recomputation for
+    /// BOTH the profile and the facts, across every profile kind (Bare / OwnBoard /
+    /// FullSquare) and a degenerate empty raster. This is the fact-level proof of the
+    /// C-5 byte-safety claim.
+    #[test]
+    fn bundle_equals_direct_recompute() {
+        let sources = [dot(), plated(), full_square(), floating(), Raster::new(40, 40)];
+        // Sanity: the fixtures cover all three profile kinds, so the assertions below
+        // exercise both the mask-clone branch and the FullSquare no-mask branch.
+        let kinds: Vec<_> = sources.iter().map(|c| icon_profile(c).kind).collect();
+        assert!(kinds.contains(&IconProfileKind::Bare), "fixtures miss Bare");
+        assert!(kinds.contains(&IconProfileKind::OwnBoard), "fixtures miss OwnBoard");
+        assert!(kinds.contains(&IconProfileKind::FullSquare), "fixtures miss FullSquare");
+
+        for c in sources {
+            let bundle = build_analysis_bundle(&c);
+            let direct_profile = icon_profile(&c);
+            let direct_facts = SourceFacts::compute(&c);
+            assert_profile_bit_equal(&bundle.profile, &direct_profile);
+            assert_facts_bit_equal(&bundle.facts, &direct_facts);
+        }
     }
 }
 

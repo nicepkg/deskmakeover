@@ -11,9 +11,9 @@ use std::collections::HashMap;
 use crate::compose::{render_tile_cached, ComposeDiagnostics, RenderOpts};
 use crate::config::Config;
 use crate::mask_cache::MaskCache;
-use crate::profile::{icon_profile, IconProfile};
+use crate::profile::IconProfile;
 use crate::raster::Raster;
-use crate::source_facts::{SourceFacts, SOURCE_FACTS_SCHEMA_VERSION};
+use crate::source_facts::{build_analysis_bundle, AnalysisBundle, SOURCE_FACTS_SCHEMA_VERSION};
 
 /// Bumped whenever the analysis/profile algorithm changes — invalidates cached
 /// profiles across a persisted store.
@@ -46,26 +46,26 @@ struct Registered {
     key: SourceKey,
 }
 
-struct CachedProfile {
-    schema: u32,
-    profile: IconProfile,
-}
-
-struct CachedSourceFacts {
-    schema: u32,
-    facts: SourceFacts,
+/// One cache entry per source: the shared analysis bundle (`IconProfile` +
+/// `SourceFacts`) built from a SINGLE sub-analysis. The two schema versions are stamped
+/// together and BOTH gate staleness (recompute if EITHER moved), so the merged cache
+/// stays as correct as the two it replaced.
+struct CachedAnalysis {
+    profile_schema: u32,
+    facts_schema: u32,
+    bundle: AnalysisBundle,
 }
 
 #[derive(Default)]
 pub struct RenderSession {
     sources: HashMap<String, Registered>,
-    profiles: HashMap<SourceKey, CachedProfile>,
-    /// Immutable per-source analysis facts (content/solid/foreground bounds,
-    /// background, segmentation, transparent-edges) the compose path would otherwise
-    /// recompute every render — keyed by the content `SourceKey` + schema, same as the
-    /// profile (M6 Phase 2). Fed as `Option<&SourceFacts>` into compose; the fast
-    /// accessors read it, the scalar reference recomputes.
-    source_facts: HashMap<SourceKey, CachedSourceFacts>,
+    /// Per-source shared analysis, keyed by the content `SourceKey`. Collapses the
+    /// former split profile/source-fact caches into ONE compute (codex R2 C-5): a cold
+    /// styled render needs both the `IconProfile` and the immutable `SourceFacts` for
+    /// the same raster, and computing them apart ran `segment_subject` (the BFS) and
+    /// `try_detect_background` twice. The bundle is a pure function of the pixels, so a
+    /// cached entry is byte-identical to a fresh `icon_profile` + `SourceFacts::compute`.
+    analyses: HashMap<SourceKey, CachedAnalysis>,
     look: Option<Config>,
     /// Session-owned geometry mask cache — reused across every `render`, so the
     /// dominant `shape_mask` recompute collapses to a warm hit (M6 Phase 1). Under
@@ -97,19 +97,37 @@ impl RenderSession {
         self.sources.insert(id.into(), Registered { raster, key });
     }
 
-    /// The cached profile for a registered source, computing + caching on a miss
-    /// or when the analysis schema version has moved.
+    /// The cached profile for a registered source, computing + caching the shared
+    /// analysis bundle on a miss or when either schema version has moved. Standalone
+    /// callers (`seed_of`) get the identical profile; the bundle also warms the source
+    /// facts, so a subsequent `render` reuses both with zero recompute.
     pub fn analyze(&mut self, id: &str) -> Option<&IconProfile> {
         let key = self.sources.get(id)?.key;
-        let stale = self
-            .profiles
-            .get(&key)
-            .map_or(true, |c| c.schema != ANALYSIS_SCHEMA_VERSION);
+        self.ensure_analysis(id, key)?;
+        self.analyses.get(&key).map(|c| &c.bundle.profile)
+    }
+
+    /// Compute + cache the shared analysis bundle (profile + source facts) for a source
+    /// on a miss or when EITHER schema version has moved (codex R2 C-5). This is the ONE
+    /// compute path both `analyze` and `render` go through: `segment_subject` and
+    /// `try_detect_background` run ONCE for both the profile and the facts instead of
+    /// once each. Pure — a cached bundle is byte-identical to a fresh recompute.
+    fn ensure_analysis(&mut self, id: &str, key: SourceKey) -> Option<()> {
+        let stale = self.analyses.get(&key).map_or(true, |c| {
+            c.profile_schema != ANALYSIS_SCHEMA_VERSION || c.facts_schema != SOURCE_FACTS_SCHEMA_VERSION
+        });
         if stale {
-            let profile = icon_profile(&self.sources.get(id)?.raster);
-            self.profiles.insert(key, CachedProfile { schema: ANALYSIS_SCHEMA_VERSION, profile });
+            let bundle = build_analysis_bundle(&self.sources.get(id)?.raster);
+            self.analyses.insert(
+                key,
+                CachedAnalysis {
+                    profile_schema: ANALYSIS_SCHEMA_VERSION,
+                    facts_schema: SOURCE_FACTS_SCHEMA_VERSION,
+                    bundle,
+                },
+            );
         }
-        self.profiles.get(&key).map(|c| &c.profile)
+        Some(())
     }
 
     /// The decode-time hue-spread seed (subject rim colour hex) for a source, or
@@ -124,23 +142,8 @@ impl RenderSession {
         self.look = Some(config);
     }
 
-    /// Render a registered source under the current look, consuming the cached
-    /// profile (byte-identical to a fresh analysis).
-    /// Compute + cache the immutable source facts for a source (miss or schema move),
-    /// mirroring `analyze`. Pure — a cached fact is byte-identical to a recompute.
-    fn ensure_source_facts(&mut self, id: &str, key: SourceKey) {
-        let stale = self
-            .source_facts
-            .get(&key)
-            .map_or(true, |c| c.schema != SOURCE_FACTS_SCHEMA_VERSION);
-        if !stale {
-            return;
-        }
-        let Some(reg) = self.sources.get(id) else { return };
-        let facts = SourceFacts::compute(&reg.raster);
-        self.source_facts.insert(key, CachedSourceFacts { schema: SOURCE_FACTS_SCHEMA_VERSION, facts });
-    }
-
+    /// Render a registered source under the current look, consuming the cached shared
+    /// analysis bundle (byte-identical to a fresh analysis).
     pub fn render(
         &mut self,
         id: &str,
@@ -156,19 +159,19 @@ impl RenderSession {
         // facts on that lane). Analysis is needed ONLY for a styled render. Byte-identical output.
         self.look.as_ref()?; // None until set_look — bail before any analysis
         if !show_original {
-            self.analyze(id)?; // populate the profile cache
-            self.ensure_source_facts(id, key); // populate the source-fact cache
+            self.ensure_analysis(id, key)?; // ONE shared compute → profile + source facts
         }
         let config = self.look.as_ref()?; // re-borrow for the render (still Some past the guard above)
         let raster = &self.sources.get(id)?.raster;
-        let profile = self.profiles.get(&key).map(|c| &c.profile);
-        let facts = self.source_facts.get(&key).map(|c| &c.facts);
+        let entry = self.analyses.get(&key);
+        let profile = entry.map(|c| &c.bundle.profile);
+        let facts = entry.map(|c| &c.bundle.facts);
         Some(render_tile_cached(raster, config, is_shortcut, show_original, size, opts, diag, profile, &mut self.mask_cache, facts))
     }
 
     #[cfg(test)]
     fn cached_source_facts_count(&self) -> usize {
-        self.source_facts.len()
+        self.analyses.len()
     }
 }
 

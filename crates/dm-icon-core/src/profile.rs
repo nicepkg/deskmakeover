@@ -5,12 +5,12 @@
 
 use crate::analysis::{
     bounds_h, bounds_w, dominant_color, find_content_bounds, has_transparent_edges,
-    try_detect_background,
+    try_detect_background, ContentBounds,
 };
 use crate::color::perceived_lightness;
 use crate::js_math::js_round;
 use crate::raster::{Raster, Rgba};
-use crate::segment::segment_subject;
+use crate::segment::{segment_subject, Segmentation};
 
 /// Owner five-step classification (profile.ts `IconProfileKind`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,55 +121,100 @@ fn subject_rim(c: &Raster) -> (Option<Rgba>, f64) {
     (None, 0.5)
 }
 
-/// profile.ts `iconProfile`.
+/// profile.ts `iconProfile`. Standalone: computes the shared sub-analysis (background,
+/// segmentation) LAZILY — only the non-FullSquare branch pays for them, exactly as
+/// before. The shared-bundle entry is [`icon_profile_from`].
 pub fn icon_profile(c: &Raster) -> IconProfile {
     let transparent_edges = has_transparent_edges(c);
     let bounds = find_content_bounds(c);
-    let coverage = (bounds_w(bounds) * bounds_h(bounds)) as f64 / (c.width * c.height) as f64;
-
-    if !transparent_edges && coverage >= FULL_SQUARE_MIN_COVERAGE {
-        // A filled standard square is a complete subject by itself.
-        let (rim_colour, rim_lightness) = subject_rim(c);
-        IconProfile {
-            kind: IconProfileKind::FullSquare,
-            transparent_edges,
-            background: None,
-            background_lightness: None,
-            subject_colour: dominant_color(c, None).map(|d| d.colour),
-            subject_lightness: mask_mean_lightness(c, None),
-            subject_mask: None,
-            subject_rim_colour: rim_colour,
-            subject_rim_lightness: rim_lightness,
-        }
+    if is_full_square(c, transparent_edges, bounds) {
+        full_square_profile(c, transparent_edges)
     } else {
         let background = try_detect_background(c);
         let mask = segment_subject(c).mask;
-        let subject_colour = dominant_color(c, Some(&mask)).map(|d| d.colour);
-        let subject_lightness = mask_mean_lightness(c, Some(&mask));
-        let (rim_colour, rim_lightness) = subject_rim(c);
-        match background {
-            Some(bg) => IconProfile {
-                kind: IconProfileKind::OwnBoard,
-                transparent_edges,
-                background: Some(Rgba { a: 255, ..bg }),
-                background_lightness: Some(perceived_lightness(bg.r, bg.g, bg.b)),
-                subject_colour,
-                subject_lightness,
-                subject_mask: Some(mask),
-                subject_rim_colour: rim_colour,
-                subject_rim_lightness: rim_lightness,
-            },
-            None => IconProfile {
-                kind: IconProfileKind::Bare,
-                transparent_edges,
-                background: None,
-                background_lightness: None,
-                subject_colour,
-                subject_lightness,
-                subject_mask: Some(mask),
-                subject_rim_colour: rim_colour,
-                subject_rim_lightness: rim_lightness,
-            },
-        }
+        subject_profile(c, transparent_edges, mask, background)
+    }
+}
+
+/// Build the profile from ALREADY-computed shared analysis — the source analysis
+/// bundle path (codex R2 C-5). `transparent_edges`, content `bounds`, the detected
+/// `background`, and the ONE shared `segmentation` are computed once and shared with
+/// `SourceFacts`, so `segment_subject` / `try_detect_background` do NOT run a second
+/// time. BYTE-IDENTICAL to `icon_profile(c)` when every input equals its standalone
+/// recompute (`build_analysis_bundle` guarantees that via the exact-input `_with_*`
+/// variants): the FullSquare test and both field builders are the same code; the ONLY
+/// change is the subject mask is CLONED out of the shared `Segmentation` instead of
+/// recomputed — a memcpy that yields the identical bytes the BFS would.
+pub fn icon_profile_from(
+    c: &Raster,
+    transparent_edges: bool,
+    bounds: ContentBounds,
+    background: Option<Rgba>,
+    segmentation: &Segmentation,
+) -> IconProfile {
+    if is_full_square(c, transparent_edges, bounds) {
+        full_square_profile(c, transparent_edges)
+    } else {
+        subject_profile(c, transparent_edges, segmentation.mask.clone(), background)
+    }
+}
+
+/// A filled standard square (opaque edges + ≥98% coverage) is a complete subject by
+/// itself. Depends only on `transparent_edges` + content `bounds`, both always cheap.
+fn is_full_square(c: &Raster, transparent_edges: bool, bounds: ContentBounds) -> bool {
+    let coverage = (bounds_w(bounds) * bounds_h(bounds)) as f64 / (c.width * c.height) as f64;
+    !transparent_edges && coverage >= FULL_SQUARE_MIN_COVERAGE
+}
+
+/// The FullSquare profile — no own background, no subject mask.
+fn full_square_profile(c: &Raster, transparent_edges: bool) -> IconProfile {
+    let (rim_colour, rim_lightness) = subject_rim(c);
+    IconProfile {
+        kind: IconProfileKind::FullSquare,
+        transparent_edges,
+        background: None,
+        background_lightness: None,
+        subject_colour: dominant_color(c, None).map(|d| d.colour),
+        subject_lightness: mask_mean_lightness(c, None),
+        subject_mask: None,
+        subject_rim_colour: rim_colour,
+        subject_rim_lightness: rim_lightness,
+    }
+}
+
+/// The OwnBoard / Bare profile, built from the segmentation `mask` (moved in) and the
+/// detected `background`. Shared by the standalone and bundle entry points.
+fn subject_profile(
+    c: &Raster,
+    transparent_edges: bool,
+    mask: Vec<u8>,
+    background: Option<Rgba>,
+) -> IconProfile {
+    let subject_colour = dominant_color(c, Some(&mask)).map(|d| d.colour);
+    let subject_lightness = mask_mean_lightness(c, Some(&mask));
+    let (rim_colour, rim_lightness) = subject_rim(c);
+    match background {
+        Some(bg) => IconProfile {
+            kind: IconProfileKind::OwnBoard,
+            transparent_edges,
+            background: Some(Rgba { a: 255, ..bg }),
+            background_lightness: Some(perceived_lightness(bg.r, bg.g, bg.b)),
+            subject_colour,
+            subject_lightness,
+            subject_mask: Some(mask),
+            subject_rim_colour: rim_colour,
+            subject_rim_lightness: rim_lightness,
+        },
+        None => IconProfile {
+            kind: IconProfileKind::Bare,
+            transparent_edges,
+            background: None,
+            background_lightness: None,
+            subject_colour,
+            subject_lightness,
+            subject_mask: Some(mask),
+            subject_rim_colour: rim_colour,
+            subject_rim_lightness: rim_lightness,
+        },
     }
 }

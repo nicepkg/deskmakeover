@@ -8,7 +8,7 @@ mod background;
 mod dominant;
 mod shape_match;
 
-pub use background::{corners_symmetric, try_detect_background};
+pub use background::{corners_symmetric, try_detect_background, try_detect_background_with_bounds};
 pub use dominant::{dominant_color, DominantColour};
 pub use shape_match::{foreground_bounds, max_scale_inside, matches_shape};
 
@@ -20,8 +20,22 @@ use crate::shapes::IconShape;
 /// own background exactly as the TS object does (tolerance 48). None when the
 /// icon has no detectable background.
 pub fn foreground_auto(c: &Raster) -> Option<ContentBounds> {
-    let bg = try_detect_background(c)?;
-    foreground_bounds(c, find_content_bounds(c), bg, 48)
+    foreground_from(c, find_content_bounds(c), try_detect_background(c))
+}
+
+/// `foreground_auto` given the source's already-computed content `bounds` and detected
+/// `background` — the exact-input variant the shared analysis bundle feeds so neither
+/// `find_content_bounds` nor `try_detect_background` is recomputed. BYTE-IDENTICAL to
+/// `foreground_auto(c)` when `bounds == find_content_bounds(c)` and
+/// `background == try_detect_background(c)`: the `?` short-circuits on a None background
+/// exactly as `try_detect_background(c)?` does, then the same `foreground_bounds(_, _, _, 48)`.
+pub fn foreground_from(
+    c: &Raster,
+    bounds: ContentBounds,
+    background: Option<Rgba>,
+) -> Option<ContentBounds> {
+    let bg = background?;
+    foreground_bounds(c, bounds, bg, 48)
 }
 
 /// Mirror of the memoized `analysis.maxScaleInside(c, shape)`.

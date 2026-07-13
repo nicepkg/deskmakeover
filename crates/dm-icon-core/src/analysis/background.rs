@@ -9,7 +9,17 @@ use crate::raster::{Raster, Rgba};
 /// The icon's own background colour, or None for a bare logo (analysis.ts
 /// `tryDetectBackground`).
 pub fn try_detect_background(c: &Raster) -> Option<Rgba> {
-    try_canvas_background(c).or_else(|| try_shape_background(c))
+    try_detect_background_with_bounds(c, find_content_bounds(c))
+}
+
+/// `try_detect_background` given the source's already-computed content `bounds` — the
+/// exact-input variant the shared analysis bundle feeds so `find_content_bounds` is
+/// not recomputed inside the shape-ring probe. BYTE-IDENTICAL to `try_detect_background(c)`:
+/// the ONLY difference is `bounds` is passed in instead of recomputed by
+/// `try_shape_background`, and the caller guarantees `bounds == find_content_bounds(c)`.
+/// The canvas-ring pass is unchanged, so control flow and every accumulation match.
+pub fn try_detect_background_with_bounds(c: &Raster, bounds: ContentBounds) -> Option<Rgba> {
+    try_canvas_background(c).or_else(|| try_shape_background_with_bounds(c, bounds))
 }
 
 fn try_canvas_background(c: &Raster) -> Option<Rgba> {
@@ -23,8 +33,7 @@ fn try_canvas_background(c: &Raster) -> Option<Rgba> {
     }
 }
 
-fn try_shape_background(c: &Raster) -> Option<Rgba> {
-    let bounds = find_content_bounds(c);
+fn try_shape_background_with_bounds(c: &Raster, bounds: ContentBounds) -> Option<Rgba> {
     if opaque_coverage(c, bounds) < 0.62 {
         return None;
     }

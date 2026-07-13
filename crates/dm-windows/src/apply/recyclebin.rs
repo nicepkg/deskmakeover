@@ -4,16 +4,15 @@
 //! byte-identical restore; a `DefaultIcon` of any OTHER (non-string) registry type is refused at
 //! read time rather than silently collapsed to `REG_SZ` (APPLY-3). [WINDOWS-VERIFY] runtime.
 
-use dm_domain::{PortError, PortResult, RecycleBinAnchor, RegistryValue};
-use winreg::enums::{RegType, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER};
-use winreg::{RegKey, RegValue};
+use dm_domain::{PortError, PortResult, RecycleBinAnchor};
+use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER};
+use winreg::RegKey;
+
+use crate::apply::reg_icon::{io, read_value, write_or_delete};
 
 const USER_KEY: &str =
     r"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\DefaultIcon";
 const MACHINE_KEY: &str = r"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\DefaultIcon";
-
-const REG_SZ_KIND: u32 = 1;
-const REG_EXPAND_SZ_KIND: u32 = 2;
 
 /// Reads the current effective `DefaultIcon` state (the restore anchor). Prefers the per-user
 /// override; falls back to the machine CLSID; else records "no key".
@@ -88,79 +87,4 @@ fn state_from(key: &RegKey, key_existed: bool) -> PortResult<RecycleBinAnchor> {
         empty: read_value(key, "empty")?,
         full: read_value(key, "full")?,
     })
-}
-
-/// A missing value is a benign `None`; any other read error propagates (P2-#3).
-fn read_value(key: &RegKey, name: &str) -> PortResult<Option<RegistryValue>> {
-    match key.get_raw_value(name) {
-        Ok(raw) => {
-            // APPLY-3: preserve the value's real string kind faithfully. `DefaultIcon` is a path
-            // string (`REG_SZ` / `REG_EXPAND_SZ`) by definition; ANY other type is an unexpected or
-            // corrupt state. The old code collapsed every non-EXPAND type to `REG_SZ` and decoded
-            // its bytes as UTF-16 — a `REG_DWORD`/`REG_BINARY`/`REG_MULTI_SZ` value would be read as
-            // garbled text and RESTORED as a `REG_SZ`, silently rewriting the user's real value with
-            // a different type. Refuse rather than corrupt: fail closed so the caller keeps the real
-            // state (no lossy round-trip). [WINDOWS-VERIFY] runtime.
-            let kind = match raw.vtype {
-                RegType::REG_SZ => REG_SZ_KIND,
-                RegType::REG_EXPAND_SZ => REG_EXPAND_SZ_KIND,
-                other => {
-                    return Err(PortError::Io(format!(
-                        "recycle-bin value {name:?} has an unexpected registry type {other:?}; \
-                         refusing to style to avoid a lossy, type-changing restore"
-                    )))
-                }
-            };
-            let text = decode_wide(&raw.bytes);
-            Ok(Some(RegistryValue { raw: text, kind }))
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(PortError::Io(format!("read recycle-bin value {name:?}: {e}"))),
-    }
-}
-
-fn write_or_delete(key: &RegKey, name: &str, value: Option<&RegistryValue>) -> PortResult<()> {
-    match value {
-        None => match key.delete_value(name) {
-            // A non-NotFound failure must PROPAGATE, not report a false-successful restore (codex B5).
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(io(e)),
-        },
-        Some(v) if v.kind == REG_EXPAND_SZ_KIND => {
-            // Preserve REG_EXPAND_SZ with its unexpanded text.
-            let raw = RegValue { bytes: encode_wide(&v.raw), vtype: RegType::REG_EXPAND_SZ };
-            key.set_raw_value(name, &raw).map_err(io)
-        }
-        Some(v) if v.kind == REG_SZ_KIND => key.set_value(name, &v.raw).map_err(io),
-        // APPLY-3 (codex 🟠): read_value fails closed on non-string types, so a FRESHLY-captured
-        // anchor's kind is always REG_SZ/REG_EXPAND_SZ. A DESERIALIZED anchor, though, carries an
-        // unrestricted serialized `u32` (RegistryValue derives Serialize) — a corrupt, foreign, or
-        // pre-fix-lossy persisted anchor could hold any value. Silently writing it as REG_SZ (the
-        // old fall-through) would type-change the user's value on restore. Refuse instead: a restore
-        // that cannot faithfully reproduce the captured kind must not rewrite it as a different type.
-        Some(v) => Err(PortError::Io(format!(
-            "recycle-bin restore anchor for {name:?} has an unrecognised registry kind {}; \
-             refusing to write a type-changed value",
-            v.kind
-        ))),
-    }
-}
-
-/// Decodes a registry UTF-16LE string blob, trimming the terminating NUL.
-fn decode_wide(bytes: &[u8]) -> String {
-    let wide: Vec<u16> = bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
-    let end = wide.iter().position(|&c| c == 0).unwrap_or(wide.len());
-    String::from_utf16_lossy(&wide[..end])
-}
-
-/// Encodes a string as UTF-16LE with a terminating NUL, for `set_raw_value`.
-fn encode_wide(text: &str) -> Vec<u8> {
-    let mut wide: Vec<u16> = text.encode_utf16().collect();
-    wide.push(0);
-    wide.iter().flat_map(|c| c.to_le_bytes()).collect()
-}
-
-fn io(e: std::io::Error) -> PortError {
-    PortError::Io(e.to_string())
 }

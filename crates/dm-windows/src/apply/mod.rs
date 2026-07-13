@@ -3,11 +3,13 @@
 //! work inline. Ported from `DeskMakeover.Shell/DesktopIconOperationFactory.cs` (kind dispatch).
 
 mod folder;
+mod reg_icon;
 mod shortcut;
 mod url_shortcut;
 
 pub(crate) mod file_wrapper;
 pub(crate) mod recyclebin;
+pub(crate) mod system;
 
 use std::sync::Arc;
 
@@ -53,17 +55,11 @@ impl IconApplier for WindowsIconApplier {
                 })?;
                 recyclebin::apply(&empty.path, &icon)?
             }
-            // System virtual items (This PC / Network / User Files / Control Panel) style via the
-            // per-user CLSID `DefaultIcon` values (spec 06 §6). The classifier advertises them as
-            // styleable (P1-12), but the HKCU CLSID writer + their discovery are a Windows-scoped
-            // follow-up. Return an HONEST, labelled pending error — never the generic Unsupported or
-            // a panic — so a spec-compliant discovered System item is not silently mis-rejected.
-            // Tracked in the wave-2 [WINDOWS-VERIFY] ledger.
-            ItemKind::System => {
-                return Err(PortError::Unsupported(
-                    "[WINDOWS-VERIFY] System DefaultIcon styling is not yet wired (HKCU CLSID writer + discovery pending)".into(),
-                ))
-            }
+            // System virtual items (This PC / Network / User Files / Control Panel) style via each
+            // namespace CLSID's per-user `DefaultIcon` value (spec 06 §6) — the single-value sibling
+            // of the Recycle Bin. The CLSID rides the item's parsing path (`::{GUID}`).
+            // [WINDOWS-VERIFY] runtime.
+            ItemKind::System => system::apply(&system::parse_clsid(&target.path)?, &icon)?,
             // Only genuinely un-styleable (broken/unreadable) items remain.
             ItemKind::Unsupported => {
                 return Err(PortError::Unsupported(format!("apply for {:?}", target.kind)))
@@ -88,6 +84,7 @@ impl IconApplier for WindowsIconApplier {
             }
             RestoreAnchor::RegularFile(wrapper) => file_wrapper::restore(&target.path, wrapper),
             RestoreAnchor::RecycleBin(state) => recyclebin::restore(state),
+            RestoreAnchor::SystemIcon(state) => system::restore(state),
             RestoreAnchor::CaptureFailed { reason } => {
                 Err(PortError::Unsupported(format!("no restore material: {reason}")))
             }

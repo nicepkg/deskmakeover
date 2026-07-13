@@ -17,7 +17,7 @@ use dm_domain::{
     PriorWrapper, RestoreAnchor, WrapperAnchor,
 };
 
-use crate::apply::{file_wrapper, recyclebin};
+use crate::apply::{file_wrapper, recyclebin, system};
 use crate::classify::parse_icon_location;
 use crate::com::StaExecutor;
 use crate::fingerprint_surface::{self as fp, SurfaceState, WrapperSurface};
@@ -115,11 +115,14 @@ impl ItemStateReader for WindowsStateReader {
                 let full = a.full.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
                 Ok(SurfaceState::RecycleBin { default, empty, full }.fingerprint())
             }
-            // System is styleable per spec 06 §6 but its HKCU CLSID reader is a Windows-scoped
-            // follow-up — an honest labelled pending error, not the generic Unsupported (P1-12).
-            ItemKind::System => Err(PortError::Unsupported(
-                "[WINDOWS-VERIFY] System DefaultIcon read is not yet wired (HKCU CLSID reader pending)".into(),
-            )),
+            // System (This PC / Network / …): the styleable surface is the effective per-CLSID
+            // `DefaultIcon` — one icon location, so it fingerprints as an `IconRef` exactly like a
+            // shortcut's, and matches `expected_after_apply`'s IconRef for a System item (P1-12).
+            ItemKind::System => {
+                let a = system::read_current(&system::parse_clsid(&target.path)?)?;
+                let (path, index) = a.value.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                Ok(SurfaceState::IconRef { path, index }.fingerprint())
+            }
             ItemKind::Unsupported => {
                 Err(PortError::Unsupported(format!("fingerprint for {:?}", target.kind)))
             }
@@ -135,9 +138,9 @@ impl ItemStateReader for WindowsStateReader {
             ItemKind::Folder => Ok(capture_folder(&target.path)?),
             ItemKind::RegularFile => Ok(capture_file(&target.path)?),
             ItemKind::RecycleBin => Ok(RestoreAnchor::RecycleBin(recyclebin::read_current()?)),
-            ItemKind::System => Err(PortError::Unsupported(
-                "[WINDOWS-VERIFY] System DefaultIcon anchor is not yet wired (HKCU CLSID reader pending)".into(),
-            )),
+            ItemKind::System => {
+                Ok(RestoreAnchor::SystemIcon(system::read_current(&system::parse_clsid(&target.path)?)?))
+            }
             ItemKind::Unsupported => {
                 Err(PortError::Unsupported(format!("anchor for {:?}", target.kind)))
             }

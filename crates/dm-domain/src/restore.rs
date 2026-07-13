@@ -85,6 +85,23 @@ pub struct RegistryValue {
     pub kind: u32,
 }
 
+/// The captured original per-user `DefaultIcon` for a System desktop CLSID (This PC, Network, User
+/// Files, Control Panel). Mirrors the Recycle Bin's per-user-key model but for a SINGLE value: a
+/// desktop namespace icon has one `(Default)` `DefaultIcon` entry, not the bin's empty/full pair.
+///
+/// `key_existed` refers ONLY to the PER-USER (HKCU) override key — the one apply writes and restore
+/// tears down. It drives restore unambiguously: `true` → rewrite `value`; `false` → REMOVE the
+/// per-user value we created. `value` is the EFFECTIVE current `DefaultIcon` (per-user when present,
+/// else the machine default) captured for source extraction; a `false` + `Some(value)` shape is the
+/// legitimate machine-default fallback, never a contradiction (same discipline as [`RecycleBinAnchor`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemIconAnchor {
+    /// The desktop-namespace CLSID this anchor targets, e.g. `{20D04FE0-3AEA-1069-A2D8-08002B30309D}`.
+    pub clsid: String,
+    pub key_existed: bool,
+    pub value: Option<RegistryValue>,
+}
+
 /// The exact-restore material for one item, discriminated by capture shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "anchor")]
@@ -104,6 +121,8 @@ pub enum RestoreAnchor {
     RegularFile(WrapperAnchor),
     /// Recycle Bin registry state.
     RecycleBin(RecycleBinAnchor),
+    /// System desktop CLSID (This PC / Network / …) per-user `DefaultIcon` registry state.
+    SystemIcon(SystemIconAnchor),
     /// Capture failed — recorded so the presence of restore material can be verified before
     /// an apply proceeds (oracle: `restore.captureError`).
     CaptureFailed { reason: String },
@@ -164,6 +183,26 @@ mod tests {
         let json = serde_json::to_string(&a).unwrap();
         // Compact base64 blob, not a numeric byte array.
         assert!(json.contains("cHJpb3IgbG5r"), "expected base64 content, got {json}");
+    }
+
+    #[test]
+    fn system_icon_anchor_round_trips_with_and_without_user_key() {
+        let with = RestoreAnchor::SystemIcon(SystemIconAnchor {
+            clsid: "{20D04FE0-3AEA-1069-A2D8-08002B30309D}".into(),
+            key_existed: true,
+            value: Some(RegistryValue { raw: "%SystemRoot%\\System32\\imageres.dll,-109".into(), kind: 2 }),
+        });
+        // Machine-default fallback: no per-user key, yet the effective machine value is captured.
+        let machine_fallback = RestoreAnchor::SystemIcon(SystemIconAnchor {
+            clsid: "{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}".into(),
+            key_existed: false,
+            value: Some(RegistryValue { raw: "shell32.dll,-30".into(), kind: 1 }),
+        });
+        for anchor in [with, machine_fallback] {
+            assert!(anchor.has_material());
+            let back: RestoreAnchor = serde_json::from_str(&serde_json::to_string(&anchor).unwrap()).unwrap();
+            assert_eq!(anchor, back);
+        }
     }
 
     #[test]

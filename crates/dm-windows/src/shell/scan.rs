@@ -94,7 +94,7 @@ fn scan_blocking() -> PortResult<Vec<DesktopItem>> {
     // it explicitly so the mirror matches the real desktop 1:1 (oracle:
     // `DesktopPreviewService.AddRecycleBin`; identity via `RecycleBinProbe`). No display name →
     // skipped silently rather than failing the scan. [WINDOWS-VERIFY] runtime.
-    if let Some(name) = recycle_bin_display_name() {
+    if let Some(name) = shell_display_name(RECYCLE_BIN_PARSING) {
         items.push(DesktopItem {
             id: ItemId::from_raw("recyclebin"),
             name,
@@ -106,6 +106,30 @@ fn scan_blocking() -> PortResult<Vec<DesktopItem>> {
             status_message: None,
         });
     }
+    // The System desktop-namespace icons (This PC / User Files / Network / Control Panel) are also
+    // VIRTUAL shell items the filesystem walk never sees — inject each ENABLED one, matching the real
+    // desktop 1:1 (spec 06 §6). Enablement is the per-CLSID DWORD under `HideDesktopIcons`; a CLSID
+    // whose display name cannot be resolved is skipped silently, like the bin. The CLSID rides the
+    // item's parsing path (`::{GUID}`), which the System applier/reader parse back out.
+    // [WINDOWS-VERIFY] runtime.
+    for (id, clsid) in SYSTEM_DESKTOP_CLSIDS {
+        if !system_icon_enabled(clsid) {
+            continue;
+        }
+        let parsing = format!("::{clsid}");
+        if let Some(name) = shell_display_name(&parsing) {
+            items.push(DesktopItem {
+                id: ItemId::from_raw(*id),
+                name,
+                path: parsing,
+                kind: ItemKind::System,
+                icon: None,
+                state: ItemState::Ready,
+                requires_explicit_consent: false,
+                status_message: None,
+            });
+        }
+    }
     // Oracle sorts by name, current-culture case-insensitive; ASCII-lowercase is the closest
     // portable approximation and is corrected on the Windows box if a locale diff surfaces.
     items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -116,15 +140,40 @@ fn scan_blocking() -> PortResult<Vec<DesktopItem>> {
 /// `shell:RecycleBinFolder` resolves to the same folder).
 const RECYCLE_BIN_PARSING: &str = "::{645FF040-5081-101B-9F08-00AA002F954E}";
 
-/// The Recycle Bin's localized display name (回收站 / Recycle Bin / …), or `None` when the shell
-/// item cannot be resolved — in which case the bin is skipped, exactly like the oracle probe.
-fn recycle_bin_display_name() -> Option<String> {
+/// The stylable System desktop-namespace CLSIDs (stable ItemId, CLSID GUID). The Recycle Bin is
+/// injected separately above (it has its own empty/full pair). The GUIDs are the canonical Windows
+/// desktop namespace class ids. [WINDOWS-VERIFY] runtime.
+const SYSTEM_DESKTOP_CLSIDS: &[(&str, &str)] = &[
+    ("thispc", "{20D04FE0-3AEA-1069-A2D8-08002B30309D}"),
+    ("userfiles", "{59031a47-3f72-44a7-89c5-5595fe6b30ee}"),
+    ("network", "{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}"),
+    ("controlpanel", "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}"),
+];
+
+/// Whether a desktop-namespace CLSID icon is currently SHOWN on the desktop. The per-CLSID DWORD
+/// under `HideDesktopIcons\NewStartPanel` is 1 when HIDDEN; an absent value or 0 means shown (the
+/// default), so a missing policy key shows everything. [WINDOWS-VERIFY] runtime.
+fn system_icon_enabled(clsid: &str) -> bool {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    match hkcu
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel")
+    {
+        Ok(key) => key.get_value::<u32, _>(clsid).map(|hidden| hidden == 0).unwrap_or(true),
+        Err(_) => true,
+    }
+}
+
+/// A virtual shell item's localized display name (回收站 / 此电脑 / …), or `None` when the shell item
+/// cannot be resolved — in which case it is skipped, exactly like the oracle's Recycle Bin probe.
+fn shell_display_name(parsing: &str) -> Option<String> {
     use windows::core::HSTRING;
     use windows::Win32::UI::Shell::{IShellItem, SHCreateItemFromParsingName, SIGDN_NORMALDISPLAY};
     // SAFETY: COM on the STA thread; the returned PWSTR is CoTaskMem-owned and freed here.
     unsafe {
         let item: IShellItem =
-            SHCreateItemFromParsingName(&HSTRING::from(RECYCLE_BIN_PARSING), None).ok()?;
+            SHCreateItemFromParsingName(&HSTRING::from(parsing), None).ok()?;
         let pw = item.GetDisplayName(SIGDN_NORMALDISPLAY).ok()?;
         let name = pw.to_string().ok();
         windows::Win32::System::Com::CoTaskMemFree(Some(pw.as_ptr() as *const _));

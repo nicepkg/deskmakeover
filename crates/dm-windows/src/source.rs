@@ -231,7 +231,7 @@ fn expand_env(value: &str) -> String {
 mod win {
     use dm_domain::{
         DecodedImage, DesktopItem, DesktopIniAnchor, ItemKind, PortError, PortResult,
-        RecycleBinAnchor, RestoreAnchor,
+        RecycleBinAnchor, RestoreAnchor, SystemIconAnchor,
     };
     use windows::core::{HSTRING, PCWSTR};
     use windows::Win32::Foundation::{HWND, SIZE};
@@ -311,8 +311,18 @@ mod win {
                 shell_item_image(&item.path).ok().flatten().map(|i| vec![i])
             }
             RestoreAnchor::RecycleBin(a) => original_recycle_bin(a),
+            RestoreAnchor::SystemIcon(a) => original_system(a),
             RestoreAnchor::CaptureFailed { .. } => None,
         }
+    }
+
+    /// The original System icon from the CAPTURED per-CLSID `DefaultIcon` value — the LIVE shell
+    /// image would be OUR styled icon, so it must never be re-read here (that would compound
+    /// `Style(Style(original))`). A value-less anchor (the original was a pure shell built-in with no
+    /// registry `DefaultIcon`) is unrecoverable → `None` → terminal degrade upstream, never a fallback
+    /// to the styled live surface.
+    fn original_system(a: &SystemIconAnchor) -> Option<Vec<DecodedImage>> {
+        a.value.as_ref().and_then(|v| resource_from_value(&v.raw)).map(|i| vec![i])
     }
 
     /// Atomically creates an unpredictable scratch file under `%TEMP%` and writes `bytes`,

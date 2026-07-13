@@ -64,6 +64,11 @@ pub struct JournalEntry {
     pub intent: TransactionIntent,
     pub state: TransactionState,
     pub values: Vec<TransactionValue>,
+    /// The recipe's policy-guard addresses, captured at prepare so recovery checks THIS
+    /// transaction's guards — not whatever the catalog holds now — before any reverse write. A guard
+    /// that appeared since apply blocks the rollback/restore even if the leaf stays user-writable
+    /// (the ACL probe alone would miss it; codex W2 R3).
+    pub policy_guards: Vec<RegistryAddress>,
     /// The managed anchor visible before prepare; a commit is conditional on this generation so a
     /// stale writer can never overwrite a newer managed record, and a rollback restores it.
     pub managed_before: Option<ManagedSetting>,
@@ -79,6 +84,9 @@ pub struct ManagedSetting {
     /// The receipt proved at the apply that installed this anchor (audit trail; a restore writes a
     /// fresh journal receipt of its own).
     pub apply_receipt: VerificationReceipt,
+    /// The recipe's policy-guard addresses at the apply that installed this anchor, so a later
+    /// restore checks the transaction's own guards regardless of catalog drift (codex W2 R3).
+    pub policy_guards: Vec<RegistryAddress>,
     pub last_transaction: u64,
     pub values: Vec<ManagedValue>,
 }
@@ -113,6 +121,8 @@ pub struct PrepareRequest {
     pub receipt: VerificationReceipt,
     pub intent: TransactionIntent,
     pub values: Vec<TransactionValue>,
+    /// The recipe's policy-guard addresses, persisted with the transaction for the reverse paths.
+    pub policy_guards: Vec<RegistryAddress>,
     /// The managed generation the caller observed under the lease; prepare rejects a stale value.
     pub managed_before: Option<ManagedSetting>,
 }
@@ -302,6 +312,7 @@ impl JournalStore for MemoryJournal {
             intent: request.intent,
             state: TransactionState::Prepared,
             values: request.values,
+            policy_guards: request.policy_guards,
             managed_before: request.managed_before,
         });
         Ok(id)

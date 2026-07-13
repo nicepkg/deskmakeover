@@ -210,6 +210,7 @@ fn the_journal_rejects_a_prepare_while_a_transaction_is_incomplete() {
         receipt: VerificationReceipt::NoBaseline,
         intent: TransactionIntent::Apply,
         values: Vec::<TransactionValue>::new(),
+        policy_guards: Vec::new(),
         managed_before: None,
     };
     journal.prepare(&lease, request("one")).unwrap();

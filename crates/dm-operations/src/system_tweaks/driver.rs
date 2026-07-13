@@ -198,6 +198,17 @@ where
             });
         }
 
+        // The recipe's policy-guard addresses, captured now and PERSISTED with the transaction (and
+        // the committed anchor) so every reverse path checks THIS transaction's guards regardless of
+        // later catalog drift — a guard that appears since apply is never written over, even to undo
+        // (codex W2 R3). Kept out of the catalog-version coupling that would otherwise deadlock a
+        // migrated recipe's restore.
+        let guard_addrs: Vec<RegistryAddress> = descriptor
+            .policy_guards
+            .iter()
+            .map(|guard| guard.address.clone())
+            .collect();
+
         let plan = VerificationPlan::new(
             descriptor
                 .effect_verifier
@@ -221,6 +232,7 @@ where
                     receipt: receipt.clone(),
                     intent: TransactionIntent::Apply,
                     values: values.clone(),
+                    policy_guards: guard_addrs.clone(),
                     managed_before: managed_before.clone(),
                 },
             )
@@ -235,7 +247,7 @@ where
             // feature update or a policy that landed after prepare must NOT be written into (codex
             // W1 R3 NEW; README contract 3, the reference's per-leaf same-environment guard).
             if let Err(cause) = self.reauth_before_write(&descriptor, &environment, &value.address) {
-                return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &cause);
+                return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &guard_addrs, &cause);
             }
             match self.backend.compare_exchange(
                 RegistryWriteIntent::Apply,
@@ -245,8 +257,18 @@ where
             ) {
                 Ok(_) => {
                     written.push(value.clone());
-                    if self.read(&value.address)? != value.desired {
-                        return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, "read-back");
+                    // The write COMMITTED (the leaf is now in `written`). Verify the immediate
+                    // read-back explicitly: a mismatch OR a read error must route through fail_apply
+                    // (which undoes/keeps-prepared), never bubble a plain error that hides a
+                    // committed write from recovery (codex W2 R3 Major).
+                    match self.read(&value.address) {
+                        Ok(live) if live != value.desired => {
+                            return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &guard_addrs, "read-back mismatch");
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &guard_addrs, &format!("read-back error: {error}"));
+                        }
                     }
                 }
                 Err(dm_domain::system_tweaks::RegistryError::Interrupted) => {
@@ -254,7 +276,7 @@ where
                     return Err(DriverError::Interrupted(transaction));
                 }
                 Err(error) => {
-                    return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &error.to_string());
+                    return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &guard_addrs, &error.to_string());
                 }
             }
         }
@@ -262,7 +284,7 @@ where
         if let Err(cause) =
             self.verify_terminal(VerificationPhase::ApplyDesired, plan, &receipt, &values)
         {
-            return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &cause);
+            return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &guard_addrs, &cause);
         }
         // A final re-authentication AFTER the terminal proof, BEFORE committing ownership: an
         // environment change, a new policy guard, OR a policy that took over ANY leaf during settle
@@ -272,7 +294,7 @@ where
             .reauth(&descriptor, &environment)
             .and_then(|()| self.assert_no_leaf_managed(&values));
         if let Err(cause) = final_reauth {
-            return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &cause);
+            return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &guard_addrs, &cause);
         }
 
         let managed = ManagedSetting {
@@ -281,6 +303,7 @@ where
             environment,
             verification: plan,
             apply_receipt: receipt,
+            policy_guards: guard_addrs,
             last_transaction: transaction,
             values: values
                 .into_iter()
@@ -335,6 +358,7 @@ where
                     receipt: receipt.clone(),
                     intent: TransactionIntent::Restore,
                     values: values.clone(),
+                    policy_guards: managed.policy_guards.clone(),
                     managed_before: Some(managed.clone()),
                 },
             )
@@ -344,7 +368,7 @@ where
         // a clean restore, an external edit (disown — the user took the value back, even in a race
         // AFTER prepare, so it is never a permanent Pending — codex W1 R5 #1), and a policy/I-O
         // block (stay Prepared for recovery).
-        match self.advance_restore(&values) {
+        match self.advance_restore(&values, &managed.policy_guards) {
             Ok(RestoreSettle::Disown) => {
                 self.journal
                     .commit_restore(&lease, transaction, feature)

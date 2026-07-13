@@ -56,6 +56,30 @@ where
         Ok(())
     }
 
+    /// The first catalog policy-guard address that is now PRESENT, else `None`. An authoritative
+    /// administrative-template guard appearing since apply means the leaf is now policy-owned even
+    /// if its HKCU value is still user-writable — so the ACL-only `is_policy_managed` probe would
+    /// miss it. Every reverse-write path consults this before writing, closing that gap (codex W2
+    /// R3). The guard addresses are resolved by the caller with a `recipe_version` match, so a
+    /// catalog upgrade can never apply the wrong guard set to an old transaction.
+    pub(super) fn any_guard_present(
+        &self,
+        guards: &[RegistryAddress],
+    ) -> Result<Option<RegistryAddress>, String> {
+        for address in guards {
+            if self
+                .backend
+                .read(address)
+                .map_err(|error| format!("guard read {address}: {error}"))?
+                .value()
+                .is_some()
+            {
+                return Ok(Some(address.clone()));
+            }
+        }
+        Ok(None)
+    }
+
     /// Undo a failed/interrupted APPLY back to each leaf's `before` (the value we OBSERVED when the
     /// transaction started — NOT the true original), reverse order, writing ONLY a leaf still at
     /// the `desired` value we wrote. A leaf already at `before` was never written (no-op); a leaf
@@ -63,7 +87,16 @@ where
     /// `Err` so the caller keeps the transaction prepared for recovery (contract 9/10). Undoing to
     /// `before` (not `original`) is what makes a failed RE-apply preserve the user's drift instead
     /// of forcing the true original (codex W1 R2 #2).
-    pub(super) fn undo_apply(&mut self, values: &[TransactionValue]) -> Result<(), String> {
+    pub(super) fn undo_apply(
+        &mut self,
+        values: &[TransactionValue],
+        guards: &[RegistryAddress],
+    ) -> Result<(), String> {
+        // A policy guard that appeared since apply makes the whole recipe policy-owned; no leaf may
+        // be written back even to undo. Refuse the entire rollback and keep it prepared (codex W2 R3).
+        if let Some(address) = self.any_guard_present(guards)? {
+            return Err(format!("policy guard appeared at {address}; rollback refused"));
+        }
         let mut conflicts: Vec<String> = Vec::new();
         for value in values.iter().rev() {
             let live = match self.backend.read(&value.address) {
@@ -117,7 +150,13 @@ where
     pub(super) fn advance_restore(
         &mut self,
         values: &[TransactionValue],
+        guards: &[RegistryAddress],
     ) -> Result<RestoreSettle, String> {
+        // An authoritative policy guard that appeared since apply blocks the restore entirely — the
+        // recipe is now policy-owned; stay prepared for recovery rather than write (codex W2 R3).
+        if let Some(address) = self.any_guard_present(guards)? {
+            return Err(format!("policy guard appeared at {address}; restore refused"));
+        }
         // Phase 1 — classify (read-only). We OWN a leaf only while its live value still equals the
         // `before` (last_applied) we recorded; a live value that has moved AT ALL means the user
         // took it back (even to the original) → disown, never overwrite. A policy takeover or an
@@ -175,6 +214,7 @@ where
         written: &[TransactionValue],
         plan: VerificationPlan,
         receipt: &VerificationReceipt,
+        guards: &[RegistryAddress],
         cause: &str,
     ) -> Result<ApplyOutcome, DriverError> {
         let _ = values; // the full value set is kept in the journal entry; the undo acts on `written`
@@ -186,7 +226,7 @@ where
                 .map_err(|error| DriverError::Journal(error.to_string()))?;
             return Ok(ApplyOutcome::Reverted);
         }
-        match self.undo_apply(written) {
+        match self.undo_apply(written, guards) {
             Ok(()) => {
                 // Verify only the leaves we wrote are back to their `before`; unwritten leaves were
                 // never touched and are not this transaction's to prove.
@@ -299,7 +339,13 @@ where
     pub(super) fn recover_restore(
         &mut self,
         values: &[TransactionValue],
+        guards: &[RegistryAddress],
     ) -> Result<RestoreSettle, String> {
+        // A policy guard that appeared since apply blocks recovery of the restore; stay prepared as
+        // a conflict for the owner rather than write over a now-policy-owned leaf (codex W2 R3).
+        if let Some(address) = self.any_guard_present(guards)? {
+            return Err(format!("policy guard appeared at {address}; restore refused"));
+        }
         // Phase 1 — classify. Policy/IO block; a third value disowns; before/desired are ours.
         for value in values {
             if self

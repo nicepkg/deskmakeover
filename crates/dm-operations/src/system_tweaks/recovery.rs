@@ -57,7 +57,7 @@ where
             // to the original. Both refuse to overwrite an external edit or a policy takeover.
             match entry.intent {
                 TransactionIntent::Apply => {
-                    if let Err(cause) = self.undo_apply(&entry.values) {
+                    if let Err(cause) = self.undo_apply(&entry.values, &entry.policy_guards) {
                         report.conflicts.push(conflict(cause));
                         continue;
                     }
@@ -75,7 +75,7 @@ where
                 // third value, and — critically — a Clean recovery MUST re-prove the terminal state
                 // with the persisted receipt before commit (codex W1 R6: a failed effect proof must
                 // never be laundered into a no-proof disown).
-                TransactionIntent::Restore => match self.recover_restore(&entry.values) {
+                TransactionIntent::Restore => match self.recover_restore(&entry.values, &entry.policy_guards) {
                     Ok(super::engine::RestoreSettle::Disown) => {
                         self.journal
                             .commit_restore(&lease, entry.id, &entry.feature)

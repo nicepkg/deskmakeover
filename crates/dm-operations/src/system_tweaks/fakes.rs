@@ -33,6 +33,7 @@ pub struct MemoryRegistry {
     interrupt_on_write: Option<usize>,
     replace_before_cas: Option<Replacement>,
     manage_after: Option<(usize, RegistryAddress)>,
+    set_value_after: Option<(usize, RegistryAddress, RawRegistryValue)>,
 }
 
 impl MemoryRegistry {
@@ -61,6 +62,18 @@ impl MemoryRegistry {
     /// mid-transaction, e.g. during a verifier settle).
     pub fn mark_managed_after_writes(&mut self, after: usize, address: RegistryAddress) {
         self.manage_after = Some((after, address));
+    }
+
+    /// After `after` successful writes, materialize `value` at `address` (emulates an HKLM policy
+    /// GUARD value appearing mid-transaction — distinct from `mark_managed_after_writes`, which sets
+    /// the ACL-managed flag; a guard is a present registry value the reverse paths read).
+    pub fn set_value_after_writes(
+        &mut self,
+        after: usize,
+        address: RegistryAddress,
+        value: RawRegistryValue,
+    ) {
+        self.set_value_after = Some((after, address, value));
     }
 
     pub fn fail_compare_exchange_at(&mut self, call: usize) {
@@ -185,6 +198,12 @@ impl RegistryBackend for MemoryRegistry {
             if self.successful_writes >= after {
                 self.manage_after = None;
                 self.managed.insert(managed);
+            }
+        }
+        if let Some((after, address, value)) = self.set_value_after.clone() {
+            if self.successful_writes >= after {
+                self.set_value_after = None;
+                self.write(&address, &RegistrySnapshot::Present(value));
             }
         }
         if self.interrupt_on_write == Some(self.successful_writes) {

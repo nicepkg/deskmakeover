@@ -107,6 +107,21 @@ fn search() -> SettingId {
     SettingId::new("taskbar.search")
 }
 
+/// The HKLM administrative-template guard `taskbar.search` declares (catalog `policy_guards`). Its
+/// presence means the setting is now policy-owned; the reverse paths must refuse to write.
+fn search_guard() -> RegistryAddress {
+    RegistryAddress::new(
+        RegistryHive::LocalMachine,
+        RegistryView::Registry64,
+        r"Software\Policies\Microsoft\Windows\Windows Search",
+        "SearchOnTaskbarMode",
+    )
+}
+
+fn search_leaf() -> RegistryAddress {
+    addr(SEARCH, "SearchboxTaskbarMode")
+}
+
 #[test]
 fn a_certified_apply_verifies_and_owns_the_feature() {
     let mut driver = driver();
@@ -268,6 +283,63 @@ fn a_crash_mid_apply_leaves_a_recoverable_prepared_transaction() {
     assert!(driver.managed_for_test(&feature).is_none());
 }
 
+
+// ── codex W2 R3: an authoritative policy guard that appears AFTER apply must block every reverse
+// write, even while the mutation leaf is still user-writable (the ACL `is_policy_managed` probe
+// alone would miss it). The guards are persisted with the transaction, so restore/rollback/recovery
+// all consult THIS transaction's guards. ─────────────────────────────────────────────────────────
+
+#[test]
+fn restore_refuses_when_a_policy_guard_appeared_after_apply() {
+    let mut driver = driver();
+    driver.apply(&search()).unwrap(); // owned; the leaf is now 0
+    // An HKLM policy guard appears; the HKCU leaf stays user-writable (default registry).
+    driver.set_live_for_test(search_guard(), RawRegistryValue::dword(1));
+    // Restore must NOT write the leaf back to the original; it stays prepared for the owner.
+    assert!(matches!(
+        driver.restore(&search()),
+        Err(DriverError::Pending { .. })
+    ));
+    // The applied value (0) stands — the now-policy-owned leaf was never clobbered back to 1.
+    assert_eq!(driver.read_live_for_test(search_leaf()).as_dword(), Some(0));
+    // Still owned: the restore did not complete.
+    assert!(driver.managed_for_test(&search()).is_some());
+}
+
+#[test]
+fn a_guard_appearing_mid_apply_blocks_the_rollback() {
+    let mut registry = pushing_registry();
+    // The guard value materializes right after the single write lands...
+    registry.set_value_after_writes(1, search_guard(), RawRegistryValue::dword(1));
+    // ...and the effect proof then fails, forcing a rollback that the guard must refuse.
+    let mut verifier = MemoryVerifier::new();
+    verifier.fail_next_effect("search box did not reload");
+    let mut driver = driver_with(registry, verifier);
+    // The apply cannot cleanly finish, and the guard blocks the undo → stays prepared (Pending),
+    // never clobbering the now-policy-owned leaf back to 1.
+    assert!(matches!(
+        driver.apply(&search()),
+        Err(DriverError::Pending { .. })
+    ));
+    assert_eq!(driver.read_live_for_test(search_leaf()).as_dword(), Some(0));
+}
+
+#[test]
+fn recovery_refuses_when_a_policy_guard_appeared() {
+    let mut registry = pushing_registry();
+    registry.interrupt_after_writes(1); // crash right after the single write
+    let mut driver = driver_with(registry, MemoryVerifier::new());
+    // The interrupted apply leaves a prepared transaction (the leaf is written to 0).
+    assert!(driver.apply(&search()).is_err());
+    // A policy guard now appears while the transaction sits prepared.
+    driver.set_live_for_test(search_guard(), RawRegistryValue::dword(1));
+    // Recovery must NOT roll the leaf back over the now-policy-owned setting; it stays a conflict.
+    let report = driver.recover().unwrap();
+    assert!(report.recovered.is_empty());
+    assert_eq!(report.conflicts.len(), 1);
+    // The applied value stands; never clobbered back to 1.
+    assert_eq!(driver.read_live_for_test(search_leaf()).as_dword(), Some(0));
+}
 
 mod regression;
 

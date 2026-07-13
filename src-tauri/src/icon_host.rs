@@ -654,7 +654,9 @@ impl IconHost {
         let IconMutState { ledger, history, journal, op_epoch, .. } = &mut *st;
         let outcome = self
             .ops()
-            .reset_to_original(journal, ledger, history)
+            // §14 privileged-scope roots — `Unresolved` on an unwired Windows host resets nothing
+            // (fail closed); the non-elevated applier never touches a Public Desktop / ProgramData row.
+            .reset_to_original(&self.scope_roots, journal, ledger, history)
             .map_err(|e| e.to_string())?;
         // A reset is a mutation → bump the epoch so a concurrent in-flight apply rejects.
         *op_epoch += 1;

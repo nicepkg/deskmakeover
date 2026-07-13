@@ -12,7 +12,7 @@
 //!   reads as "nothing applied";
 //! * a `TxnRolledBack` transaction is already clean.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use dm_domain::{IconApplier, ItemStateReader, ItemTarget, RestoreAnchor};
 
@@ -58,6 +58,12 @@ struct TxnRecovery {
     /// Items in first-seen order.
     order: Vec<dm_domain::ItemId>,
     items: HashMap<String, ItemRecovery>,
+    /// Items with a durable per-item `ItemRolledBack` record: their in-transaction rollback
+    /// already restored them to their original, so a crash-recovery replay must NOT restore them a
+    /// SECOND time (codex E `recovery:250`). Replaying the restore would clobber any edit the user
+    /// made between the per-item rollback and restart — the exact terminal-write-lost scenario where
+    /// the whole txn still reads as "incomplete" but individual items are already terminal.
+    rolled_back_items: HashSet<String>,
 }
 
 /// Startup entry point: read the journal, then [`recover`] over it. This is the call the
@@ -247,7 +253,10 @@ fn apply_record(group: &mut TxnRecovery, record: &JournalRecord) {
                 rec.new_fingerprint = Some(*new_fingerprint);
             }
         }
-        JournalRecord::ItemVerified { .. } | JournalRecord::ItemRolledBack { .. } => {}
+        JournalRecord::ItemRolledBack { item, .. } => {
+            group.rolled_back_items.insert(item.as_str().to_string());
+        }
+        JournalRecord::ItemVerified { .. } => {}
     }
 }
 
@@ -267,6 +276,14 @@ fn abort_incomplete(
         // committed it after this one was abandoned, so its live styled state (and ledger entry) is
         // authoritative. Restoring the original here would clobber it (desktop O, ledger C).
         if committed_owner.get(id.as_str()).is_some_and(|&owner| owner > txn) {
+            continue;
+        }
+        // Durably rolled back already (codex E `recovery:250`): a per-item `ItemRolledBack` record is
+        // in the journal, so the txn's own rollback restored this item to its original before the
+        // crash — only the txn-level terminal was lost. Restoring it AGAIN would clobber a user edit
+        // made between that rollback and restart. It is already terminal + un-styled (an incomplete
+        // txn never committed a ledger row, so there is nothing to remove); skip it entirely.
+        if group.rolled_back_items.contains(id.as_str()) {
             continue;
         }
         let rec = &group.items[id.as_str()];

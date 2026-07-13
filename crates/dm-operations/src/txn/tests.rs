@@ -298,6 +298,52 @@ fn rollback_restore_failure_withholds_terminal_so_recovery_can_retry() {
     assert!(ledger.all().unwrap().is_empty());
 }
 
+#[test]
+fn durably_rolled_back_item_is_not_restored_again_over_a_user_edit() {
+    // codex E recovery:250: an item durably rolled back during the txn's own rollback
+    // (`ItemRolledBack` journaled) is already terminal — restored to its original. If the txn-level
+    // terminal write is then lost (crash right after the per-item rollback) the whole txn still
+    // reads as "incomplete". Recovery must NOT restore that item a SECOND time: replaying the
+    // anchor over a user edit made between rollback and restart destroys the edit.
+    let world = World::shared();
+    let a = target("A");
+    let b = target("B");
+    seed(&world, &a, b"orig-A");
+    seed(&world, &b, b"orig-B");
+    world.borrow_mut().fail_apply(&b.path); // B's mutation fails → the driver rolls A (and B) back
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    driver
+        .apply(1, vec![request(&a, &world, "hashA"), request(&b, &world, "hashB")], &mut journal, &mut ledger)
+        .unwrap();
+
+    // A is back on its original after the in-call rollback, and ItemRolledBack(A) is durable.
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
+    let mut records: Vec<JournalRecord> = journal.records().to_vec();
+    assert!(records
+        .iter()
+        .any(|r| matches!(r, JournalRecord::ItemRolledBack { item, .. } if item.as_str() == "A")));
+    // Simulate the lost txn-level terminal: drop TxnRolledBack, keeping the per-item rollbacks.
+    records.retain(|r| !matches!(r, JournalRecord::TxnRolledBack { .. }));
+
+    // Between the rollback and restart the user re-styles A themselves.
+    world.borrow_mut().put(&a.path, b"user-edit-after-rollback");
+
+    let mut fresh = MemLedgerStore::new();
+    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+
+    // The durably-rolled-back item is left exactly as the user left it — never re-restored.
+    assert_eq!(
+        world.borrow().get(&a.path).unwrap(),
+        b"user-edit-after-rollback",
+        "durably rolled-back A must not be restored again over the user edit"
+    );
+    assert!(!out.aborted.contains(&ItemId::from_raw("A")));
+    assert!(out.degraded.is_empty(), "a clean skip is not a degraded outcome");
+}
+
 /// The kill-point battery: run a two-item apply, then for every truncation of the journal
 /// replay recovery against the world as it was at that fsync — plus a "torn write" variant —
 /// and assert each item lands EXACTLY on its original (incomplete txn) or its target

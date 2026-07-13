@@ -148,7 +148,8 @@ impl Fixture {
         let fake = FakePlatform::new(self.world.clone());
         let platform = IconPlatform::new(&fake, &fake, &self.assets);
         let ops = IconOps::new(platform, &self.settings);
-        ops.reset_to_original(&mut self.journal, &mut self.ledger, &self.history).unwrap()
+        ops.reset_to_original(&scope::ScopeRoots::Unprivileged, &mut self.journal, &mut self.ledger, &self.history)
+            .unwrap()
     }
 
     fn ico_files(&self) -> Vec<String> {
@@ -450,7 +451,7 @@ fn reset_checkpoints_the_journal_so_a_restart_cannot_revive_the_ledger() {
     {
         let fake = FakePlatform::new(world.clone());
         let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
-        ops.reset_to_original(&mut journal, &mut ledger, &history).unwrap();
+        ops.reset_to_original(&scope::ScopeRoots::Unprivileged, &mut journal, &mut ledger, &history).unwrap();
     }
     assert!(ledger.all().unwrap().is_empty(), "reset emptied the ledger");
     assert_eq!(world.borrow().get(&app.path).unwrap(), b"orig-app", "desktop reverted to original");
@@ -465,6 +466,56 @@ fn reset_checkpoints_the_journal_so_a_restart_cannot_revive_the_ledger() {
         restart_ledger.all().unwrap().is_empty(),
         "a restart after reset must NOT revive the deleted ledger rows",
     );
+}
+
+#[test]
+fn reset_leaves_privileged_scope_rows_untouched_and_surfaces_them() {
+    // audit F2b (owner#6 = SKIP + surface): a NON-elevated reset must never restore a Public
+    // Desktop / ProgramData ledger row through the ordinary applier — it leaves the row AND the
+    // desktop untouched and surfaces a "needs elevation" note, so a future elevated reset can
+    // finish it, rather than attempting a restore that would only fail on a privileged target.
+    let dir = tempfile::tempdir().unwrap();
+    let world = World::shared();
+    let app = item("app", ItemKind::Shortcut); // path C:/Desktop/app
+    world.borrow_mut().put(&app.path, b"orig-app");
+    let assets = FsAssetStore::new(dir.path().join("assets"));
+    let settings = SettingsStore::open(&dir.path().join("s.sqlite3")).unwrap();
+    let mut history = LookHistoryStore::new(dir.path().join("h.json"));
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    let mut txn = TxnIdAllocator::starting_at(1);
+
+    // Style it → a real committed ledger row + a styled desktop.
+    {
+        let fake = FakePlatform::new(world.clone());
+        let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
+        let mut s = IconApplySession::begin(0, 1);
+        s.push("app", 0, master_b64([9, 9, 9, 255]));
+        let scan = vec![ScannedItem {
+            item: app.clone(),
+            fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()),
+            source_ok: true,
+        }];
+        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &mut txn, &mut journal, &mut ledger, &mut history)
+            .unwrap();
+    }
+    let styled = world.borrow().get(&app.path).unwrap();
+    assert!(ledger.get(&app.id).unwrap().is_some(), "row exists before reset");
+
+    // Reset under a Resolved scope whose Public Desktop root COVERS `C:/Desktop` → the row is privileged.
+    let privileged = scope::ScopeRoots::resolved(vec!["C:/Desktop".into()], vec!["C:/ProgramData".into()]).unwrap();
+    let out = {
+        let fake = FakePlatform::new(world.clone());
+        let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
+        ops.reset_to_original(&privileged, &mut journal, &mut ledger, &history).unwrap()
+    };
+
+    // Untouched: the desktop keeps its styled bytes, the ledger keeps the row, and it is surfaced.
+    assert_eq!(world.borrow().get(&app.path).unwrap(), styled, "privileged desktop must NOT be restored");
+    assert!(ledger.get(&app.id).unwrap().is_some(), "privileged row must NOT be dropped");
+    assert!(out.restored.is_empty(), "nothing restored under a privileged scope");
+    let degraded = out.degraded.expect("a privileged skip is surfaced");
+    assert!(degraded.contains("needs elevation"), "surfaced note names elevation: {degraded}");
 }
 
 #[test]

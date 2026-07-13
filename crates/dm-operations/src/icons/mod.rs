@@ -554,6 +554,7 @@ impl<'a> IconOps<'a> {
     /// tracked follow-up, not a correctness gap in the desktop state.
     pub fn reset_to_original(
         &self,
+        scope: &scope::ScopeRoots,
         journal: &mut dyn JournalSink,
         ledger: &mut dyn LedgerStore,
         history: &LookHistoryStore,
@@ -607,6 +608,18 @@ impl<'a> IconOps<'a> {
         let mut restored = Vec::new();
         let mut skipped = Vec::new();
         for entry in ledger.all()? {
+            // §14 red-line (audit F2b, owner#6 = SKIP + surface): a privileged-scope row — a Public
+            // Desktop / ProgramData target that only the legitimate ELEVATED path may have styled
+            // (or, defensively, a pre-B1 fail-open row) — must NOT be touched by the NON-elevated
+            // `self.platform.applier`. Leave the row AND the desktop untouched and surface a
+            // repair-required note so the UI can tell the user it needs elevation, rather than
+            // attempting a restore that would only fail (or, worse, silently corrupt if the applier
+            // ever gained rights it should not use here). `Unresolved` scope classifies EVERY row
+            // privileged, so an unwired Windows host resets nothing rather than guessing (fail closed).
+            if scope.classify(&entry.target.path).is_some() {
+                repair.push(format!("reset skipped privileged {} (needs elevation)", entry.item.as_str()));
+                continue;
+            }
             match self.platform.reader.read_fingerprint(&entry.target) {
                 // The user deleted the icon: clear its row (its ICO becomes collectable below).
                 Err(PortError::NotFound(_)) => {

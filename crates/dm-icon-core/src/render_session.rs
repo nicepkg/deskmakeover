@@ -151,9 +151,15 @@ impl RenderSession {
         diag: &mut ComposeDiagnostics,
     ) -> Option<Raster> {
         let key = self.sources.get(id)?.key;
-        self.analyze(id)?; // populate the profile cache
-        self.ensure_source_facts(id, key); // populate the source-fact cache
-        let config = self.look.as_ref()?; // None until set_look — align with the Option API
+        // Do NO analysis when its result would be discarded (codex R2 C-5): a no-look render returns
+        // None, and `show_original` resamples the source only (render_tile_cached ignores profile +
+        // facts on that lane). Analysis is needed ONLY for a styled render. Byte-identical output.
+        self.look.as_ref()?; // None until set_look — bail before any analysis
+        if !show_original {
+            self.analyze(id)?; // populate the profile cache
+            self.ensure_source_facts(id, key); // populate the source-fact cache
+        }
+        let config = self.look.as_ref()?; // re-borrow for the render (still Some past the guard above)
         let raster = &self.sources.get(id)?.raster;
         let profile = self.profiles.get(&key).map(|c| &c.profile);
         let facts = self.source_facts.get(&key).map(|c| &c.facts);

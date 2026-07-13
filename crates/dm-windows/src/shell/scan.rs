@@ -132,7 +132,7 @@ fn scan_blocking() -> PortResult<Vec<DesktopItem>> {
     }
     // Oracle sorts by name, current-culture case-insensitive; ASCII-lowercase is the closest
     // portable approximation and is corrected on the Windows box if a locale diff surfaces.
-    items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    items.sort_by_key(|item| item.name.to_lowercase());
     Ok(items)
 }
 

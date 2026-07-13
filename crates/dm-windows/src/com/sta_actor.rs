@@ -137,7 +137,7 @@ fn pump(_apartment: Apartment) {
             // every later .run() fails permanently with "STA thread is gone" — one bad job would
             // kill all COM (shortcut/wrapper/scan) for the rest of the process. The caller still
             // observes its dropped reply channel as an error; the thread survives. (COM-1)
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || job()));
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
         } else {
             // SAFETY: dispatch non-job messages so marshaled cross-apartment COM calls complete.
             unsafe {

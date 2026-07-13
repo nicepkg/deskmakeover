@@ -18,6 +18,10 @@ pub mod cmdline;
 pub mod durable;
 pub mod fingerprint_surface;
 pub mod pathcheck;
+// The calm (清爽) settings platform adapters. Cross-platform MODULE: the `translate`/`profile_facts`
+// decision cores compile and are unit-tested on the Mac host; the `WinregBackend`/profile FFI shells
+// inside are `cfg(windows)` and `[WINDOWS-VERIFY]` (Wave 2).
+pub mod system_tweaks;
 pub mod textfmt;
 
 #[cfg(windows)]
@@ -65,6 +69,8 @@ pub use shell::WindowsDesktopGeometry;
 pub use source::WindowsIconSourceExtractor;
 #[cfg(windows)]
 pub use state_reader::WindowsStateReader;
+#[cfg(windows)]
+pub use system_tweaks::{WindowsSystemProfileProbe, WinregBackend};
 #[cfg(windows)]
 pub use topology::WindowsMonitorTopology;
 #[cfg(windows)]

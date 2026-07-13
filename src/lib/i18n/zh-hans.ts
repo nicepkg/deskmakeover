@@ -92,6 +92,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Calm_LockStatus": "锁屏推送",
   "Calm_LockStatus_Desc": "不再显示天气、资讯卡片",
   "Calm_LockStatus_Route": "我们会打开锁屏设置，把锁屏状态调整为「无」后回来",
+  "Calm_Notice_ReClose": "重新关闭",
+  "Calm_Notice_Reopened": "Windows 更新后，有 {0} 项推送又打开了",
   "Calm_NotifSuggestions": "通知建议",
   "Calm_NotifSuggestions_Desc": "不再弹「试试这个功能」这类建议",
   "Calm_Restore": "恢复系统推送",

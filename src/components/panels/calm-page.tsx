@@ -24,6 +24,7 @@ export function CalmPage() {
   const op = useCalm((s) => s.op)
   const rows = useCalm((s) => s.rows)
   const excluded = useCalm((s) => s.excluded)
+  const reopened = useCalm((s) => s.reopened)
   const [confirmOpen, setConfirmOpen] = React.useState(false)
 
   // Guided return-probe: when the window regains focus after a walk, re-check the
@@ -74,13 +75,32 @@ export function CalmPage() {
             row or new controls land. The row schematics carry all the visuals. */}
         <div className="mb-6 flex items-center gap-6 rounded-2xl border border-hair bg-raised px-6 py-5">
           <div className="min-w-0 flex-1">
-            <p className="text-cardtitle font-medium text-t1">
+            {/* Typographic hierarchy (owner 2026-07-13): the count line IS the
+                page's message — large; everything explanatory shrinks and fades. */}
+            <p className="text-[17px] font-medium tracking-[-0.01em] text-t1">
               {quieted > 0 ? format(t('Calm_Summary'), quieted) : format(t('Calm_CanQuiet'), candidates.length)}
             </p>
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-t2">{t('Calm_HeroPromise')}</p>
+            <p className="mt-1.5 text-[12px] leading-relaxed text-t3">{t('Calm_HeroPromise')}</p>
+            {/* HealthCheck re-propose (spec 08 §6): additive notice, never an
+                auto-replay — 重新关闭 runs the same verify pipeline, scoped. */}
+            {reopened.length > 0 && (
+              <p className="mt-2.5 flex items-center gap-2 text-[12.5px] font-medium text-t1">
+                <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-amber" />
+                {format(t('Calm_Notice_Reopened'), reopened.length)}
+                <ChipButton onClick={() => void useCalm.getState().applyAll(reopened)}>
+                  {t('Calm_Notice_ReClose')}
+                </ChipButton>
+              </p>
+            )}
           </div>
           <div className="w-[200px] shrink-0">
-            <CtaButton phase={phase} onClick={() => setConfirmOpen(true)}>
+            {/* Spec 08 §10: verified success is coral-ink on this page — the shared
+                synced teal would read as the banned green-family shield (codex R3 #5). */}
+            <CtaButton
+              phase={phase}
+              onClick={() => setConfirmOpen(true)}
+              className={phase === 'synced' ? 'bg-coral/10 text-coral-ink' : undefined}
+            >
               {ctaLabel}
             </CtaButton>
             {/* Restore gates on OWNED writes, not the verified count. */}
@@ -140,14 +160,15 @@ export function CalmPage() {
   )
 }
 
-/** Group header at cardtitle weight, with a one-line why-this-tier subtitle. */
+/** Group header — one tier below the hero, one above row labels; the
+ *  why-this-tier subtitle shrinks and fades (scan layer, not reading layer). */
 function Group({ label, subtitle, footer, children }: { label: string; subtitle: string; footer?: string; children: ReactNode }) {
   return (
     <section>
-      <p className="mb-0.5 px-1 text-cardtitle font-medium text-t1">{label}</p>
-      <p className="mb-2 px-1 text-[12px] text-t3">{subtitle}</p>
+      <p className="mb-0.5 px-1 text-[15px] font-medium text-t1">{label}</p>
+      <p className="mb-2 px-1 text-[11.5px] text-t3/80">{subtitle}</p>
       <InspectorCard>{children}</InspectorCard>
-      {footer && <p className="mt-2 px-1 text-[11.5px] leading-relaxed text-t3/70">{footer}</p>}
+      {footer && <p className="mt-2 px-1 text-[11px] leading-relaxed text-t3/70">{footer}</p>}
     </section>
   )
 }
@@ -163,13 +184,13 @@ function HeldGroup({ ids, rows }: { ids: CalmControlId[]; rows: Record<CalmContr
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="mb-0.5 flex items-center gap-1.5 px-1 text-cardtitle font-medium text-t1 transition-colors hover:text-coral-ink"
+        className="mb-0.5 flex items-center gap-1.5 px-1 text-[15px] font-medium text-t1 transition-colors hover:text-coral-ink"
       >
         <ChevronDown size={14} className={cn('text-t3 transition-transform', !open && '-rotate-90')} />
         {t('Calm_Group_Held')}
         <span className="rounded-full bg-chip px-1.5 py-0.5 text-[11px] font-normal text-t3">{ids.length}</span>
       </button>
-      <p className="mb-2 px-1 pl-6 text-[12px] text-t3">{t('Calm_Group_Held_Sub')}</p>
+      <p className="mb-2 px-1 pl-6 text-[11.5px] text-t3/80">{t('Calm_Group_Held_Sub')}</p>
       {open && (
         <>
           <InspectorCard>
@@ -212,10 +233,12 @@ function RowShell({
         className={compactSchematic ? 'w-[64px]' : 'w-[104px]'}
       />
       <div className="min-w-0 flex-1">
-        <p className="text-body text-t1">{t(control.labelKey)}</p>
+        {/* Row hierarchy (owner 2026-07-13): the NAME is what users scan — medium
+            weight; the result sentence drops to the faded reading layer. */}
+        <p className="text-[14px] font-medium text-t1">{t(control.labelKey)}</p>
         <p className="mt-0.5 text-[12px] text-t3">{t(control.descKey)}</p>
         {control.collateralKey && (
-          <p className="mt-1 flex items-center gap-1 text-[11.5px] text-t3">
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-t3/75">
             <Info size={11} className="shrink-0" />
             {t(control.collateralKey)}
           </p>

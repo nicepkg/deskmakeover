@@ -16,6 +16,7 @@ function resetStore(backend: MockCalmBackend) {
     rows: Object.fromEntries(CALM_CATALOG.map((c) => [c.id, 'unknown'])) as Record<CalmControlId, CalmRowState>,
     excluded: new Set(),
     skipReasons: {},
+    reopened: [],
     walkedId: null,
     lastApply: null,
   })
@@ -141,6 +142,84 @@ describe('calm store', () => {
     await useCalm.getState().applyAll()
     await useCalm.getState().restoreOne('taskbar.search')
     expect(useCalm.getState().rows['taskbar.search']).toBe('external')
+  })
+
+  test('a row we quieted that turns back on RE-PROPOSES — never a silent replay, never a plain candidate', async () => {
+    resetStore(new MockCalmBackend({ latencyMs: 0, drifted: ['taskbar.search'] }))
+    await useCalm.getState().probe()
+    await useCalm.getState().applyAll() // all three verified (drift happens after)
+    await useCalm.getState().probe() // HealthCheck: ledger-owned + the value moved
+    let s = useCalm.getState()
+    expect(s.rows['taskbar.search']).toBe('pushing') // candidate again — with provenance
+    expect(s.reopened).toEqual(['taskbar.search'])
+    expect(s.rows['taskbar.taskview']).toBe('verified') // intact rows untouched
+    // 「重新关闭」 = a SCOPED re-apply through the same verify pipeline.
+    await useCalm.getState().applyAll(s.reopened)
+    s = useCalm.getState()
+    expect(s.rows['taskbar.search']).toBe('verified')
+    expect(s.reopened).toEqual([])
+    expect(s.lastApply?.verified).toBe(1) // scoped: nothing else re-ran
+  })
+
+  test('a stale guided re-probe never clears a NEWER walk token (codex R3 #4)', async () => {
+    resetStore(new MockCalmBackend({ latencyMs: 15 }))
+    await useCalm.getState().probe()
+    await useCalm.getState().walkGuided('taskbar.widgetsButton') // readable row
+    const stale = useCalm.getState().reProbeWalked() // in flight…
+    await useCalm.getState().walkGuided('widgets.feed') // …user opens another walk
+    await stale
+    const s = useCalm.getState()
+    expect(s.rows['taskbar.widgetsButton']).toBe('confirmedOff') // the probe's truth still lands
+    expect(s.walkedId).toBe('widgets.feed') // the NEW token survives
+  })
+
+  test('a lost restoreOne reply never claims restored — the row recovers via probe', async () => {
+    class ExplodingRestoreOne extends MockCalmBackend {
+      override async restoreOne(): Promise<never> {
+        throw new Error('ipc down')
+      }
+    }
+    resetStore(new ExplodingRestoreOne({ latencyMs: 0 }))
+    await useCalm.getState().probe()
+    await useCalm.getState().applyAll()
+    await useCalm.getState().restoreOne('taskbar.search') // awaits the recovery probe
+    const s = useCalm.getState()
+    expect(s.rows['taskbar.search']).toBe('verified') // ledger truth: the write is intact
+    expect(s.op).toBe('idle')
+  })
+
+  test('a lost restoreAll reply never claims restored — owned rows recover via probe', async () => {
+    class ExplodingRestore extends MockCalmBackend {
+      override async restore(): Promise<never> {
+        throw new Error('ipc down')
+      }
+    }
+    resetStore(new ExplodingRestore({ latencyMs: 0 }))
+    await useCalm.getState().probe()
+    await useCalm.getState().applyAll()
+    await useCalm.getState().restoreAll()
+    const s = useCalm.getState()
+    expect(s.rows['taskbar.search']).toBe('verified')
+    expect(s.op).toBe('idle')
+  })
+
+  test('restoreOne is refused while another operation holds the lock', async () => {
+    resetStore(new MockCalmBackend({ latencyMs: 20 }))
+    await useCalm.getState().probe()
+    const applying = useCalm.getState().applyAll()
+    await useCalm.getState().restoreOne('taskbar.search') // no-op — lock held
+    await applying
+    const s = useCalm.getState()
+    expect(s.rows['taskbar.search']).toBe('verified') // the apply outcome, not a restore
+    expect(countOwnedWrites(s.rows)).toBe(3)
+  })
+
+  test('restoreOne on a setAwaiting row returns it to pushing', async () => {
+    resetStore(new MockCalmBackend({ latencyMs: 0, awaiting: ['start.recommendations'] }))
+    await useCalm.getState().probe()
+    await useCalm.getState().applyAll()
+    await useCalm.getState().restoreOne('start.recommendations')
+    expect(useCalm.getState().rows['start.recommendations']).toBe('pushing')
   })
 
   test("restore marks hand-edited rows external (mark, don't clobber) — no longer ours, not counted", async () => {

@@ -14,6 +14,11 @@ export interface CalmProbeRow {
   state: CalmProbeState
   /** Ledger truth: we wrote this row and the raw value still matches our write. */
   ownedByUs?: boolean
+  /** HealthCheck drift (spec 08 §6): the ledger holds our write but the raw value
+   *  no longer matches AND the surface pushes again — the row was turned back on
+   *  since we quieted it. Drives the 「又打开了 → 重新关闭」 re-propose notice;
+   *  NEVER an auto-replay (codex R3 #1). */
+  driftedFromUs?: boolean
 }
 
 export interface CalmApplyRow {
@@ -82,8 +87,9 @@ export class MockCalmBackend implements CalmBackend {
       // every other automatic row fails closed — exactly what group 3 is for.
       if (!c.starterSlice) return { id: c.id, state: 'unsupported' }
       if (this.applied.has(c.id)) {
-        // Ledger-owned: value intact unless the drifted option simulates a hand-edit.
-        if (this.opts.drifted?.includes(c.id)) return { id: c.id, state: 'pushing' }
+        // Ledger-owned but the value moved: the surface pushes again — report the
+        // drift so the store can re-propose (never silently a plain candidate).
+        if (this.opts.drifted?.includes(c.id)) return { id: c.id, state: 'pushing', driftedFromUs: true }
         return { id: c.id, state: 'quiet', ownedByUs: true }
       }
       return { id: c.id, state: 'pushing' }
@@ -105,8 +111,10 @@ export class MockCalmBackend implements CalmBackend {
   async restore(): Promise<CalmRestoreRow[]> {
     await this.wait()
     const rows = [...this.applied].map((id): CalmRestoreRow => {
-      if (this.opts.drifted?.includes(id)) return { id, outcome: 'skippedDrift' }
+      // A restore-skip DISOWNS the ledger row (theirs now) — a later probe must
+      // not keep re-proposing a row we no longer claim.
       this.applied.delete(id)
+      if (this.opts.drifted?.includes(id)) return { id, outcome: 'skippedDrift' }
       return { id, outcome: 'restored' }
     })
     return rows
@@ -115,8 +123,8 @@ export class MockCalmBackend implements CalmBackend {
   async restoreOne(id: CalmControlId): Promise<CalmRestoreRow> {
     await this.wait()
     controlById(id)
+    this.applied.delete(id) // restored or disowned — either way no longer ours
     if (this.opts.drifted?.includes(id)) return { id, outcome: 'skippedDrift' }
-    this.applied.delete(id)
     return { id, outcome: 'restored' }
   }
 

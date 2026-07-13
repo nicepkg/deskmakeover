@@ -39,8 +39,8 @@ const WRITABLE_TRANSITIONS: Readonly<Record<CalmRowState, readonly CalmRowState[
   quiet: ['pushing', 'unsupported', 'managed', 'needsReconfirm'], // drift / re-probe
   pushing: ['pending', 'quiet', 'unsupported', 'managed', 'needsReconfirm'],
   pending: ['verified', 'setAwaiting', 'reverted', 'pushing', 'unknown'], // pushing = skipped; unknown = reply lost, re-probe required
-  verified: ['pushing', 'needsReconfirm', 'quiet', 'external'],
-  setAwaiting: ['verified', 'pushing', 'needsReconfirm', 'external'],
+  verified: ['pushing', 'needsReconfirm', 'quiet', 'external', 'unknown'], // unknown = restore reply lost
+  setAwaiting: ['verified', 'pushing', 'needsReconfirm', 'external', 'unknown'],
   reverted: ['pushing', 'pending', 'quiet', 'unsupported', 'managed'], // retry or re-probe
   needsReconfirm: ['pushing', 'quiet', 'unsupported', 'managed'], // only via a fresh probe
   external: ['pushing', 'quiet', 'unsupported', 'managed'], // re-probe reads it fresh

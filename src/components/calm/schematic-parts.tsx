@@ -16,17 +16,20 @@ export function highlightVisual(state: CalmRowState): HighlightVisual {
   switch (state) {
     case 'pending':
       return 'working'
+    // Every noise-gone state is DONE: the noise has left the surface, so any
+    // outline would be a ghost socket around nothing (codex R3 #2 — 'quiet'
+    // previously drew a muted frame over its own removed noise).
     case 'verified':
     case 'confirmedOff':
     case 'userAttested':
+    case 'quiet':
       return 'done'
     case 'setAwaiting':
       return 'awaiting'
-    case 'quiet':
     case 'external':
     case 'unsupported':
     case 'managed':
-      return 'muted'
+      return 'muted' // noise still present — the quiet frame marks the area
     default:
       return 'armed' // pushing / reverted / unknown / needsReconfirm
   }
@@ -66,6 +69,7 @@ export function NoiseGroup({ state, delay = 0, children }: { state: CalmRowState
  *  after-state is the clean reflowed surface, not a ghost outline — the row's
  *  ✓已生效 chip carries the receipt. Never a security palette. */
 export function Highlight({ region, visual }: { region: SchematicRegion; visual: HighlightVisual }) {
+  const reduced = useReducedMotion()
   const { x, y, w, h, rx = 3 } = region
   if (visual === 'done') return null
   if (visual === 'muted') {
@@ -90,19 +94,24 @@ export function Highlight({ region, visual }: { region: SchematicRegion; visual:
       {visual === 'armed' && (
         <circle cx={x + w - 1} cy={y + 1} r="1.8" fill="var(--coral)" className="calm-pulse" />
       )}
-      {visual === 'working' && (
-        <motion.rect
-          x={x}
-          y={y - 1}
-          width={12}
-          height={1.5}
-          rx={0.75}
-          fill="var(--coral)"
-          initial={{ x: x - 6 }}
-          animate={{ x: x + w - 6 }}
-          transition={{ duration: 1.1, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut' }}
-        />
-      )}
+      {visual === 'working' &&
+        // Reduced motion: a STATIC progress mark, never an infinite sweep
+        // (codex R3 #3 — every other schematic part already degrades).
+        (reduced ? (
+          <rect x={x} y={y - 1} width={w} height={1.5} rx={0.75} fill="var(--coral)" opacity="0.5" />
+        ) : (
+          <motion.rect
+            x={x}
+            y={y - 1}
+            width={12}
+            height={1.5}
+            rx={0.75}
+            fill="var(--coral)"
+            initial={{ x: x - 6 }}
+            animate={{ x: x + w - 6 }}
+            transition={{ duration: 1.1, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut' }}
+          />
+        ))}
     </g>
   )
 }

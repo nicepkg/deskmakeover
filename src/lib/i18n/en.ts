@@ -90,6 +90,8 @@ export const en = {
   "Calm_LockStatus": "Lock screen extras",
   "Calm_LockStatus_Desc": "No more weather and news cards",
   "Calm_LockStatus_Route": "We open the lock screen settings; set the status to none and come back",
+  "Calm_Notice_ReClose": "Turn off again",
+  "Calm_Notice_Reopened": "After a Windows update, {0} quieted items turned back on",
   "Calm_NotifSuggestions": "Notification suggestions",
   "Calm_NotifSuggestions_Desc": "No more try this feature suggestions",
   "Calm_Restore": "Restore Windows suggestions",

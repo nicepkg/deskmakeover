@@ -56,12 +56,17 @@ interface CalmState {
   excluded: Set<CalmControlId>
   /** Honest per-row skip captions from the last apply (cleared on apply/probe). */
   skipReasons: Partial<Record<CalmControlId, 'changed'>>
+  /** HealthCheck drift (spec 08 §6): rows WE quieted that were turned back on
+   *  since — surfaces the 「又打开了 → 重新关闭」 re-propose notice. Probe-derived,
+   *  recomputed every probe; re-closing goes through the NORMAL apply pipeline. */
+  reopened: CalmControlId[]
   /** The guided row whose route we last opened — re-probed on window refocus. */
   walkedId: CalmControlId | null
   lastApply: CalmApplySummary | null
   probe: () => Promise<void>
   toggleExcluded: (id: CalmControlId) => void
-  applyAll: () => Promise<void>
+  /** Apply the one-click package; `only` scopes it (the re-propose notice). */
+  applyAll: (only?: CalmControlId[]) => Promise<void>
   restoreAll: () => Promise<void>
   /** Per-row undo (owner 2026-07-13): one control back to its original. */
   restoreOne: (id: CalmControlId) => Promise<void>
@@ -114,6 +119,7 @@ export const useCalm = create<CalmState>((set, get) => {
     rows: initialRows(),
     excluded: loadExcluded(),
     skipReasons: {},
+    reopened: [],
     walkedId: null,
     lastApply: null,
 
@@ -124,10 +130,15 @@ export const useCalm = create<CalmState>((set, get) => {
         const probed = await backend.probe()
         set((s) => {
           const rows = { ...s.rows }
+          // Drift provenance (codex R3 #1): a row we quieted that was turned back
+          // on must NOT collapse into a plain candidate — it carries the §6
+          // re-propose notice. Recomputed from ledger truth on every probe.
+          const reopened: CalmControlId[] = []
           for (const p of probed) {
             rows[p.id] = probeTransition(kindOf(p.id), rows[p.id], p)
+            if (p.driftedFromUs && rows[p.id] === 'pushing') reopened.push(p.id)
           }
-          return { rows, probed: true, skipReasons: {} }
+          return { rows, probed: true, skipReasons: {}, reopened }
         })
         if (excludedLoadFailed) {
           excludedLoadFailed = false
@@ -153,15 +164,18 @@ export const useCalm = create<CalmState>((set, get) => {
       })
     },
 
-    applyAll: async () => {
+    applyAll: async (only) => {
       const { rows, excluded, op } = get()
       if (op !== 'idle') return
-      const ids = applyCandidates(rows, excluded)
+      const all = applyCandidates(rows, excluded)
+      const ids = only ? all.filter((id) => only.includes(id)) : all
       if (ids.length === 0) {
         useToasts.getState().show(t('Calm_Toast_NothingToDo'))
         return
       }
-      set({ op: 'apply', skipReasons: {} })
+      // The dispatched rows leave the re-propose notice — their fate is now the
+      // apply pipeline's truth (verified / reverted / skipped, all self-evident).
+      set((s) => ({ op: 'apply', skipReasons: {}, reopened: s.reopened.filter((id) => !ids.includes(id)) }))
       let lostReply = false
       try {
         for (const id of ids) setRow(id, 'pending')
@@ -211,36 +225,60 @@ export const useCalm = create<CalmState>((set, get) => {
 
     restoreAll: async () => {
       if (get().op !== 'idle') return
+      // Snapshot the rows a restore would touch — a lost reply drops THEM to
+      // unknown (the restore MAY have committed; a claimed state would lie).
+      const touched = CALM_CATALOG.filter((c) => OWNED_WRITES.has(get().rows[c.id])).map((c) => c.id)
       set({ op: 'restore' })
+      let lostReply = false
       try {
-        const results = await backend.restore()
-        let restored = 0
-        let skipped = 0
-        for (const r of results) {
-          if (r.outcome === 'restored') {
-            setRow(r.id, 'pushing') // the surface pushes again — stated plainly
-            restored++
-          } else {
-            // Hand-edited since our write: it is THEIRS now — mark, don't clobber,
-            // and stop displaying it as ours (codex R1 Block #1).
-            setRow(r.id, 'external')
-            skipped++
-          }
+        let results: Awaited<ReturnType<CalmBackend['restore']>> | null = null
+        try {
+          results = await backend.restore()
+        } catch {
+          lostReply = true
         }
-        const toasts = useToasts.getState()
-        if (skipped > 0) toasts.show(format(t('Calm_Toast_RestoredSkipped'), restored, skipped))
-        else toasts.show(format(t('Calm_Toast_Restored'), restored))
+        if (results) {
+          let restored = 0
+          let skipped = 0
+          for (const r of results) {
+            if (r.outcome === 'restored') {
+              setRow(r.id, 'pushing') // the surface pushes again — stated plainly
+              restored++
+            } else {
+              // Hand-edited since our write: it is THEIRS now — mark, don't clobber,
+              // and stop displaying it as ours (codex R1 Block #1).
+              setRow(r.id, 'external')
+              skipped++
+            }
+          }
+          const toasts = useToasts.getState()
+          if (skipped > 0) toasts.show(format(t('Calm_Toast_RestoredSkipped'), restored, skipped))
+          else toasts.show(format(t('Calm_Toast_Restored'), restored))
+        } else {
+          for (const id of touched) setRow(id, 'unknown')
+          useToasts.getState().show(t('Calm_Toast_Unconfirmed'), 'warn')
+        }
       } finally {
         set({ op: 'idle' })
       }
+      if (lostReply) await get().probe() // environment truth, outside the restore op
     },
 
     restoreOne: async (id) => {
       if (get().op !== 'idle') return
       set({ op: 'restore' })
+      let lostReply = false
       try {
-        const r = await backend.restoreOne(id)
-        if (r.outcome === 'restored') {
+        let r: Awaited<ReturnType<CalmBackend['restoreOne']>> | null = null
+        try {
+          r = await backend.restoreOne(id)
+        } catch {
+          lostReply = true
+        }
+        if (!r) {
+          setRow(id, 'unknown') // reply lost — never an unproven claim
+          useToasts.getState().show(t('Calm_Toast_Unconfirmed'), 'warn')
+        } else if (r.outcome === 'restored') {
           setRow(id, 'pushing') // the surface pushes again — stated plainly
           useToasts.getState().show(format(t('Calm_Toast_RestoredOne'), t(controlById(id).labelKey)))
         } else {
@@ -250,6 +288,7 @@ export const useCalm = create<CalmState>((set, get) => {
       } finally {
         set({ op: 'idle' })
       }
+      if (lostReply) await get().probe()
     },
 
     walkGuided: async (id) => {
@@ -269,8 +308,10 @@ export const useCalm = create<CalmState>((set, get) => {
       const off = await backend.reProbeGuided(id)
       if (off === true) {
         setRow(id, 'confirmedOff')
-        set({ walkedId: null })
       }
+      // Compare-and-set (codex R3 #4): the user may have walked ANOTHER guided
+      // row while this probe was in flight — never clear the NEW walk token.
+      if (off === true && get().walkedId === id) set({ walkedId: null })
       // off === false → still pushing (row already says so); null → unreadable, the
       // page asks the user and records userAttested via attestGuided.
     },

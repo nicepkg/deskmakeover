@@ -50,5 +50,5 @@ export const SCHEMATICS: Record<CalmControlId, SchematicSpec> = {
   'widgets.feed': { scene: 'widgets', region: { x: 26, y: 7, w: 38, h: 44, rx: 3 } },
   'taskbar.widgetsButton': { scene: 'taskbar', region: { x: 4.5, y: 45.5, w: 17, h: 13, rx: 4 } },
   'lockscreen.status': { scene: 'lock', region: { x: 24, y: 29, w: 56, h: 14, rx: 3 } },
-  'tray.entries': { scene: 'taskbar', region: { x: 88.5, y: 45.5, w: 12.5, h: 13, rx: 4 } },
+  'tray.entries': { scene: 'taskbar', region: { x: 79, y: 45.5, w: 21.5, h: 13, rx: 4 } },
 }

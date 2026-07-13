@@ -113,22 +113,41 @@ function WeatherEntry({ x, y }: { x: number; y: number }) {
 }
 
 /** Colourful pinned-app dots (yellow folder + neutral/teal companions). */
-function PinnedApps({ x, y }: { x: number; y: number }) {
+function PinnedApps({ x, y, count = 3 }: { x: number; y: number; count?: number }) {
   return (
     <g>
       <rect x={x} y={y} width="5" height="5" rx="1.2" fill="#FFC94A" />
-      <rect x={x + 7} y={y} width="5" height="5" rx="1.2" fill="var(--raised)" stroke="var(--hair)" />
-      <rect x={x + 14} y={y} width="5" height="5" rx="1.2" fill="#3FB6A8" opacity="0.75" />
+      {count > 1 && <rect x={x + 7} y={y} width="5" height="5" rx="1.2" fill="var(--raised)" stroke="var(--hair)" />}
+      {count > 2 && <rect x={x + 14} y={y} width="5" height="5" rx="1.2" fill="#3FB6A8" opacity="0.75" />}
+    </g>
+  )
+}
+
+/** Overflowable tray app icons, left of the hidden-icons caret. The tidy-up
+ *  tucks THESE away (copy: 挑出想显示的，其余收起) — the caret itself STAYS,
+ *  it is the entrance to the tucked-away icons (codex R3 #6). */
+function TrayIcons({ x, y }: { x: number; y: number }) {
+  return (
+    <g fill={INK}>
+      <rect x={x} y={y} width="2.2" height="2.2" rx="0.6" opacity="0.5" />
+      <rect x={x + 3.2} y={y} width="2.2" height="2.2" rx="0.6" opacity="0.35" />
+      <rect x={x + 6.4} y={y} width="2.2" height="2.2" rx="0.6" opacity="0.45" />
     </g>
   )
 }
 
 /** The Win11 taskbar drawn from tb-left/tb-right (shared by taskbar scenes).
- *  When this row's element is verified-gone, the cluster REFLOWS left exactly
- *  like the real taskbar compacts — no empty socket is ever left behind. */
+ *  The real taskbar is CENTRE-aligned (weather far-left, tray far-right, the
+ *  cluster centred) — so when this row's element is verified-gone the survivors
+ *  RE-CENTRE around the cluster's middle (owner 2026-07-13): members left of the
+ *  gap slide right by half the freed width, members right of it slide left by
+ *  half. Never a one-sided left compaction, never an empty socket. */
 function TaskbarStrip({ control, state, delay }: SceneProps) {
   const searchGone = control === 'taskbar.search' && noiseGone(state)
   const taskviewGone = control === 'taskbar.taskview' && noiseGone(state)
+  // freed width ÷ 2: search capsule ≈ 28 (26 + gap), task view ≈ 10.5 (7.4 + gap)
+  const half = searchGone ? 14 : 5.25
+  const recentre = searchGone || taskviewGone
   const search = (
     <g>
       <rect x="34" y="47.5" width="26" height="9" rx="4.5" fill="var(--raised)" stroke="var(--hair)" />
@@ -152,22 +171,26 @@ function TaskbarStrip({ control, state, delay }: SceneProps) {
         <WeatherEntry x={6} y={47.5} />
       )}
       {/* centered cluster: blue start → search capsule → task view → pinned apps */}
-      <StartSquares x={26} y={48.5} />
-      {control === 'taskbar.search' ? <NoiseGroup state={state} delay={delay}>{search}</NoiseGroup> : search}
-      <ReflowGroup gone={searchGone} dx={-28}>
-        {control === 'taskbar.taskview' ? <NoiseGroup state={state} delay={delay}>{taskview}</NoiseGroup> : taskview}
-        <ReflowGroup gone={taskviewGone} dx={-10.5}>
-          <PinnedApps x={73} y={49.5} />
-        </ReflowGroup>
+      <ReflowGroup gone={recentre} dx={half}>
+        <StartSquares x={26} y={48.5} />
       </ReflowGroup>
-      {/* right: hidden-icons caret · status pills · two-line clock */}
-      {control === 'tray.entries' ? (
+      <ReflowGroup gone={taskviewGone} dx={half}>
+        {control === 'taskbar.search' ? <NoiseGroup state={state} delay={delay}>{search}</NoiseGroup> : search}
+      </ReflowGroup>
+      <ReflowGroup gone={searchGone} dx={-half}>
+        {control === 'taskbar.taskview' ? <NoiseGroup state={state} delay={delay}>{taskview}</NoiseGroup> : taskview}
+      </ReflowGroup>
+      <ReflowGroup gone={recentre} dx={-half}>
+        <PinnedApps x={73} y={49.5} count={control === 'tray.entries' ? 1 : 3} />
+      </ReflowGroup>
+      {/* right: tray app icons (tray row only — they are what gets tucked away;
+          the caret STAYS as the entrance to them) · caret · pills · clock */}
+      {control === 'tray.entries' && (
         <NoiseGroup state={state} delay={delay}>
-          <ChevronUp x={91.5} y={52} />
+          <TrayIcons x={81} y={51} />
         </NoiseGroup>
-      ) : (
-        <ChevronUp x={91.5} y={52} />
       )}
+      <ChevronUp x={91.5} y={52} />
       <Placeholder x={94} y={48.5} w={4.5} h={3} o={0.35} rx={1} />
       <Placeholder x={94} y={53} w={4.5} h={3} o={0.3} rx={1} />
     </>

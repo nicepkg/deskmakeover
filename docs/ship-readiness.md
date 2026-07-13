@@ -5,7 +5,10 @@
 > holds the detail. Update it in place as items close — it is a living tracker, not a dated snapshot.
 >
 > **Last reconciled:** 2026-07-13 (icon-bridge convergence + extractor + ledger-aware source +
-> exportCompare + live positions + M7 resident decision core + version switch — all Mac-green).
+> exportCompare + live positions + M7 resident decision core + version switch — all Mac-green;
+> plus the owner's "这些都做" pass over §Open owner decisions: tray any-state-disable, ICON-5/9/11,
+> audit #7 + ELEV-3/APPLY-3/CORE-1, shortcut-mark None, preset-v2 guards, two-axis dispositions,
+> badge-lightness declined — all Mac-green + committed, Release identity still owner-only).
 
 ## The one fact that frames everything
 
@@ -162,17 +165,50 @@ records the state-space gaps the R4 guard-removal exposed (historical):
 
 _R1–R4 (33 findings) all fixed earlier; R4's Major 1+1b deleted the generation guard for strict single-flight, R4's B1–B5 hardened the degraded error-contract. Detail swept to `docs/journal/2026-07.md`._
 
-## Open owner decisions (from STATE.md)
+## Open owner decisions — RESOLVED 2026-07-13 (owner order "这些都做")
 
-- **ICON-5 / ICON-9 / ICON-11** — HELD dead-code questions (rounding, mono branch, 5 `color.rs` fns).
-- **Audit #7 + 3 marginal P3s** — owner-approved GO, not started (`diagnostics.getInfo`, ELEV-3, APPLY-3, CORE-1).
-- **Preset collection v2**, **two-axis colour reshape**, **shortcut-mark default** (badge ON vs decreed None), **ADR-0016 badge lightness** — all owner-pending.
-- **Release identity** — first version number, repo public, signing cert, `public/real-icons/` ship sign-off.
-- **Tray toggle-off from any state** (M7 codex m7b-🟠2) — spec §12's state table declares `ToggleOff`
-  ONLY `Watching→Off`; the machine now matches it literally, so the tray "关闭自动整理" is a no-op
-  from Paused/Working/Error. If the product wants the toggle to disable from ANY state (arguably
-  better UX), spec §12 must first define Working-batch-cancellation + Error-state-retention
-  semantics. **Ace's recommendation: yes, the toggle should work from any state — flag for owner.**
+The owner dispositioned the whole list "都做". Each is resolved below with its evidence; a few
+resolve to "already true / retain / decline" on evidence, which is called out honestly rather than
+built to look busy. Only **Release identity** stays owner-only (it cannot be resolved by an agent).
+
+- **Tray toggle-off from any state** (M7 codex m7b-🟠2) — ✅ **DONE (`ae48aba`).** `ToggleOff` is now
+  legal from ANY state → OFF (spec §12 + new §12.1): Working→Off relies on per-batch `TxnDriver`
+  atomicity (never a torn partial); Error→Off retains the fault record via the unconditional
+  `recover_from_journal` at the next enable. +1 state-machine test.
+- **ICON-5 / ICON-9 / ICON-11** — ✅ **RESOLVED (`5ac018a`).** ICON-5 (`clamp_u8_round_half_even`)
+  DELETED — a Rust-only orphan (no named-oracle mirror) modelling a store the oracle never triggers,
+  with a lying doc. ICON-9 (mono per-pixel tail) + ICON-11 (5 `color.rs` fns) **RETAINED, documented**:
+  each is a 1:1 port of a NAMED frozen-oracle export (`color.ts`), dead in the oracle too; deleting the
+  Rust halves would diverge the certified byte-parity port (ADR-0019) for zero pixel gain.
+- **Audit #7 + 3 marginal P3s** — ✅ **DONE (`c8ded4a`).** `diagnostics.getInfo` is a real Rust command
+  (no longer the `(mock)` stub that shipped on Tauri); ELEV-3 (CommandLineToArgvW quoting, new
+  `cmdline.rs`, Mac-tested), CORE-1 (`WaitForSingleObject` result checked), APPLY-3 (non-string
+  `DefaultIcon` type fails closed) all hardened; msvc-clean + bindings drift-guard green.
+- **Shortcut-mark default (badge ON vs decreed None)** — ✅ **RESOLVED = None (`d1f507d`).** The owner
+  decree 2026-07-07 + the durable rule 「presets never carry a shortcut mark」 win over the panel's
+  badge-ON. Code already ships None everywhere (every base config `shortcutShape:null`;
+  `shortcutShape` is not a `TYPE_PATCH_KEY` so a type override cannot re-add it). Now locked with a test.
+- **Preset collection v2** — ✅ **RESOLVED (`d1f507d`).** Factory lineup confirmed = the seven presets,
+  spectrum default (test-locked). Owed guards closed: fixed-plate silhouette-shadow regression
+  (STATE §-1a ①), retired-#65470D guard. Genuinely MOOT items disposed, not faked: the colour-migrate
+  test (the schema 3→4 migration already happened; no live mapping to test) and the folder-drift probe
+  (folders derive by design now — see two-axis) are obsolete; alpha-plate is out of scope ("plumbing
+  not algorithm"). spec 02/06 amended off the legacy `colorMode` model.
+- **Two-axis colour reshape** — ✅ **RESOLVED.** Folders **derive their plate by design** (各自色):
+  the earlier 统一金 pick is superseded by the v2 acceptance; `#65470D` 深金板 is retired (survives only
+  as a user swatch). The "multicolour folders" the designer saw are the INTENDED derive lane, not a bug.
+  灰暗文件板 = **option A 暖纸色板 already shipped** (File plate `#E9E2D4`). Owed tests/spec amendments
+  closed with preset-v2 above.
+- **ADR-0016 badge lightness** — ⛔ **DECLINED for v1 (frozen-oracle constraint).** The ring-seam
+  lightness polish would land in `icon-compositor/marks.ts`, which is FROZEN as the parity oracle
+  (ADR-0019: "no fixes except oracle corrections") with no reserved slot; a cosmetic tweak there would
+  break byte parity. Revisit only after the compositor unfreezes at certification. Not a defect — a
+  deliberate deferral.
+- **Release identity** — 🔒 **OWNER-ONLY (cannot be agent-resolved).** First version number, making the
+  repo public, the Authenticode signing cert, and the `public/real-icons/` ship sign-off are all your
+  calls / actions. **Ace's strong recommendation: stay `Unreleased` (or a `0.x` pre-release) until the
+  Windows runtime pass — not one line of the Windows platform layer has ever run on Windows, so a `1.0`
+  would be dishonest.** Making the repo public + obtaining the cert are things only you can do.
 
 ## Honest summary
 

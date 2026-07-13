@@ -1,7 +1,10 @@
 # ADR-0015 — Icon renderer ownership: web interactive renderer, C# frozen oracle
 
-Date: 2026-07-09 · Status: accepted (owner) · Record:
-`docs/reviews/2026-07-09-icon-frontend-panel.md` (4 recon agents + 4 isolated seats)
+Date: 2026-07-09 · Status: accepted — renderer ownership **amended by
+[ADR-0019](0019-tauri-rust-replatform.md)**: the single pixel truth is now one Rust `dm-icon-core`
+(WASM preview + native apply/background); the TS compositor + the C# `TileRenderer` are demoted to
+frozen parity oracles. The freeze discipline + the ICO/resample port decisions carry forward. ·
+Record: `docs/reviews/2026-07-09-icon-frontend-panel.md` (4 recon agents + 4 isolated seats)
 
 ## Context
 

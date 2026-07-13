@@ -1,6 +1,9 @@
 # ADR-0011: UI replatforms to WebView2 + React; the engine stays C#
 
-**Status:** accepted
+**Status:** superseded by [ADR-0019](0019-tauri-rust-replatform.md) — the C# engine + the
+standalone WebView2 host are retired to `legacy/`; the React UI now runs under Tauri 2 (WebView2
+on Windows) over a Rust engine. The "UI is a React web app" decision carries forward; "the engine
+stays C#" does not.
 **Date:** 2026-07-08
 Amends ADR-0001 (WPF as the UI stack) and ADR-0008 (prototype parity is now
 served by porting the React prototype's design back to React). Specs 02/03/04

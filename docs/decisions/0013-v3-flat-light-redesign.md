@@ -1,6 +1,8 @@
 # ADR-0013 — v3 "Premium Flat" redesign: light-first, bundled type, ceremony & gesture unification
 
-- **Status**: accepted (owner interview 2026-07-08, 12 decisions D1-D12)
+- **Status**: accepted (owner interview 2026-07-08, 12 decisions D1-D12) — later **amended by
+  [ADR-0021](0021-global-arrow-overlay-default.md)**: this ADR's native-arrow 60s penance gate is
+  retired (the global transparent overlay is now the default; the rest of the welcome ceremony stands).
 - **Supersedes / amends**: ADR-0012's dark-default and Segoe-stack typography; spec 02 v2
   chrome sections (rewritten as v3). Engine rendering law (WYSIWYG sections) untouched.
 - **Evidence**: `docs/reviews/2026-07-08-ui-v3-premium-flat-panel.md` (panel run #2 on

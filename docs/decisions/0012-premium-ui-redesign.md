@@ -1,6 +1,9 @@
 # ADR-0012: Premium UI redesign — retire the prototype as law, adopt a macOS-Settings visual language
 
-**Status:** accepted
+**Status:** superseded by [ADR-0013](0013-v3-flat-light-redesign.md) — v3 "Premium Flat" replaces
+this ADR's dark-default + Segoe visual language with light-first + bundled type. The load-bearing
+decision here ("the v2 prototype is no longer the binding UI law") STANDS; only the visual language
+was replaced.
 **Date:** 2026-07-08
 **Amends:** ADR-0008 (the `桌面美颜 v2.dc.html` prototype is no longer the binding
 UI contract), spec 02 (visual language — rewritten), spec 03 (settings + IA),

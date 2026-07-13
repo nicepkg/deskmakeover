@@ -1,6 +1,8 @@
 # ADR-0014 — Zone editor rebuild: client-side compositor + Adaptive Frost
 
-- Status: accepted (owner, 2026-07-09)
+- Status: accepted — host I/O ownership **amended by [ADR-0019](0019-tauri-rust-replatform.md)**
+  (source decode / PNG write / `SetWallpaper` / backup-restore are now Rust, not the C# host; the
+  client-side Pixi compositor + Adaptive Frost decisions stand). (owner, 2026-07-09)
 - Supersedes: the rendering pipeline of ADR-0009/ADR-0012 for the wallpaper module
   (spec 04 §4 "one C# renderer"); the 4-named-styles axis; the handwritten-centered
   title recipe.

@@ -1,6 +1,8 @@
 # ADR-0008 · The v2 prototype is the binding UI/UX contract for v1.0
 
-**Status:** accepted
+**Status:** superseded by [ADR-0012](0012-premium-ui-redesign.md) — the v2 prototype is no longer
+the binding UI contract; it is now historical reference only (`docs/references/prototype/`). The
+specs are the source of truth.
 **Date:** 2026-07-06
 Supersedes: the single-mark decision of [ADR-0007](0007-stacked-card-distinction.md)
 (stacked cards survive as one of seven styles), the round-6 "three-band" layout,

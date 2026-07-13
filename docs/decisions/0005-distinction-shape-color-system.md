@@ -5,6 +5,10 @@ Status: Accepted · 2026-07-06 · Amended by [ADR-0008](0008-prototype-v2-ui-con
 = the seven-style gallery (the 珐琅/缎带/票根 candidates are dead). Governance (VOC
 3-state, default 美化, 3-second misread gate) and the one-picker colour system stand.
 Supersedes the badge parts of [ADR-0003](0003-voc-driven-product-revisions.md).
+**Later reversal (owner 2026-07-07):** the "default = 美化 (mark ON), no default-none" governance
+clause no longer holds — the default shortcut mark is now **None** (presets ship None; see
+[ADR-0017](0017-per-type-distinction-system.md), the mark-default conflict is tracked in
+`docs/STATE.md` §Open questions).
 Inputs: [VOC v1](../../../ai-command-center/docs/ideas/desktop-beauty/voc-and-product-analysis.md)
 (founder position §1.1, constraint §4.3-1, comment cluster A) + a PM/UI/UX expert panel.
 

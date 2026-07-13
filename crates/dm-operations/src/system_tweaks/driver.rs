@@ -25,9 +25,7 @@ use super::journal::{
     JournalStore, ManagedSetting, ManagedValue, PrepareRequest, TransactionIntent,
     TransactionValue,
 };
-use super::verify::{
-    VerificationBackend, VerificationPhase, VerificationPlan, VerificationReceipt,
-};
+use super::verify::{VerificationBackend, VerificationPhase, VerificationPlan};
 
 /// A driver failure. Coarse by kind so the host branches on the kind, not a deep cause chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +39,9 @@ pub enum DriverError {
     RecoveryRequired(Vec<u64>),
     /// The feature is not currently owned by DeskMakeover (restore has nothing to do).
     NotManaged(SettingId),
+    /// The owned recipe changed (version or leaf set) — restore-before-reapply is required so an
+    /// old leaf is never orphaned without a restore record.
+    MigrationRequired(SettingId),
     /// A write was interrupted; the transaction is prepared and awaits recovery.
     Interrupted(u64),
     /// A rollback/restore could not cleanly finish; the transaction stays prepared for recovery.
@@ -59,6 +60,7 @@ impl std::fmt::Display for DriverError {
             Self::Unavailable(reason) => write!(f, "unavailable: {reason:?}"),
             Self::RecoveryRequired(ids) => write!(f, "recovery required for {ids:?}"),
             Self::NotManaged(id) => write!(f, "not managed: {id}"),
+            Self::MigrationRequired(id) => write!(f, "recipe changed, restore before re-apply: {id}"),
             Self::Interrupted(txn) => write!(f, "interrupted, transaction {txn} awaits recovery"),
             Self::Pending { transaction, cause } => {
                 write!(f, "transaction {transaction} pending recovery: {cause}")
@@ -188,20 +190,52 @@ where
             return Err(DriverError::Unavailable(UnavailableReason::FeatureNotVerified));
         }
 
-        // Validate the live base of each leaf; a missing key, unexpected kind, or backend-managed
-        // target is skipped WITHOUT a write rather than clobbered.
+        let managed_before = self.journal_managed(&lease, feature)?;
+        // A re-apply must target the SAME recipe (version + leaf addresses) the anchor was written
+        // under; a recipe migration would otherwise orphan a leaf we still own with no restore
+        // record (README 381-382). Require an explicit restore-before-reapply instead.
+        if let Some(managed) = &managed_before {
+            if managed.recipe_version != descriptor.recipe_version
+                || !self.same_address_set(managed, &descriptor.mutations)
+            {
+                return Err(DriverError::MigrationRequired(feature.clone()));
+            }
+        }
+
+        // Read + validate each leaf EXACTLY ONCE, and build the transaction from those SAME
+        // snapshots — a "validate A then write B" second read could let an external kind change
+        // slip past the shape check into the CAS expected (codex W1 R2 #8).
+        let mut values = Vec::with_capacity(descriptor.mutations.len());
         for mutation in &descriptor.mutations {
             if self.is_backend_managed(&mutation.address)? {
                 return Err(DriverError::Unavailable(UnavailableReason::PolicyManaged(
                     mutation.address.clone(),
                 )));
             }
-            if !mutation.accepts(&self.read(&mutation.address)?) {
+            let current = self.read(&mutation.address)?;
+            if !mutation.accepts(&current) {
                 return Ok(ApplyOutcome::Skipped(SkipReason::Changed));
             }
+            // The TRUE original is preserved from the anchor on a re-apply, else it is the value we
+            // just observed.
+            let original = managed_before
+                .as_ref()
+                .and_then(|managed| {
+                    managed
+                        .values
+                        .iter()
+                        .find(|value| value.address == mutation.address)
+                        .map(|value| value.original.clone())
+                })
+                .unwrap_or_else(|| current.clone());
+            values.push(TransactionValue {
+                address: mutation.address.clone(),
+                original,
+                before: current,
+                desired: mutation.desired.clone(),
+            });
         }
 
-        let managed_before = self.journal_managed(&lease, feature)?;
         let plan = VerificationPlan::new(
             descriptor
                 .effect_verifier
@@ -212,7 +246,6 @@ where
             .verifier
             .prepare_receipt(&self.backend, plan)
             .map_err(|error| DriverError::Verification(error.to_string()))?;
-        let values = self.apply_values(&descriptor.mutations, managed_before.as_ref())?;
 
         let transaction = self
             .journal
@@ -231,6 +264,9 @@ where
             )
             .map_err(|error| DriverError::Journal(error.to_string()))?;
 
+        // Track the leaves we actually wrote, so a failure undoes ONLY those (a leaf a CAS conflict
+        // never wrote is left untouched — codex W1 R2 #8/#2).
+        let mut written: Vec<TransactionValue> = Vec::new();
         for value in &values {
             match self.backend.compare_exchange(
                 RegistryWriteIntent::Apply,
@@ -239,8 +275,9 @@ where
                 &value.desired,
             ) {
                 Ok(_) => {
+                    written.push(value.clone());
                     if self.read(&value.address)? != value.desired {
-                        return self.fail_apply(&lease, transaction, feature, &values, plan, &receipt, "read-back");
+                        return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, "read-back");
                     }
                 }
                 Err(dm_domain::system_tweaks::RegistryError::Interrupted) => {
@@ -248,18 +285,18 @@ where
                     return Err(DriverError::Interrupted(transaction));
                 }
                 Err(error) => {
-                    return self.fail_apply(&lease, transaction, feature, &values, plan, &receipt, &error.to_string());
+                    return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &error.to_string());
                 }
             }
         }
 
         if self.probe_environment()? != environment {
-            return self.fail_apply(&lease, transaction, feature, &values, plan, &receipt, "environment changed");
+            return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, "environment changed");
         }
         if let Err(cause) =
             self.verify_terminal(VerificationPhase::ApplyDesired, plan, &receipt, &values)
         {
-            return self.fail_apply(&lease, transaction, feature, &values, plan, &receipt, &cause);
+            return self.fail_apply(&lease, transaction, feature, &values, &written, plan, &receipt, &cause);
         }
 
         let managed = ManagedSetting {
@@ -304,6 +341,13 @@ where
                 desired: value.original.clone(),
             })
             .collect();
+        // Capture a FRESH receipt for THIS restore before its first write, so the effect proof
+        // uses a current baseline (the apply's receipt may be days stale) and recovery re-uses this
+        // one (codex W1 R2 #4).
+        let receipt = self
+            .verifier
+            .prepare_receipt(&self.backend, managed.verification)
+            .map_err(|error| DriverError::Verification(error.to_string()))?;
         let transaction = self
             .journal
             .prepare(
@@ -313,7 +357,7 @@ where
                     recipe_version: managed.recipe_version,
                     environment: managed.environment.clone(),
                     verification: managed.verification,
-                    receipt: managed.apply_receipt.clone(),
+                    receipt: receipt.clone(),
                     intent: TransactionIntent::Restore,
                     values: values.clone(),
                     managed_before: Some(managed.clone()),
@@ -346,7 +390,7 @@ where
         if let Err(cause) = self.verify_terminal(
             VerificationPhase::RestoreOriginal,
             managed.verification,
-            &managed.apply_receipt,
+            &receipt,
             &values,
         ) {
             return Err(DriverError::Pending { transaction, cause });
@@ -435,35 +479,21 @@ where
         }
     }
 
-    /// Build the transaction leaves for an apply. The live-before is the current snapshot; the
-    /// TRUE original is preserved from the managed anchor on a re-apply (so a later restore returns
-    /// to the real original, not a drifted value), else it is the current snapshot.
-    fn apply_values(
+    /// Whether the anchor's leaf addresses are exactly the descriptor's current mutation addresses
+    /// (a recipe migration that changed the leaf set must not silently re-apply — codex R2 #9).
+    fn same_address_set(
         &self,
+        managed: &ManagedSetting,
         mutations: &[SettingMutation],
-        managed_before: Option<&ManagedSetting>,
-    ) -> Result<Vec<TransactionValue>, DriverError> {
-        mutations
-            .iter()
-            .map(|mutation| {
-                let current = self.read(&mutation.address)?;
-                let original = managed_before
-                    .and_then(|managed| {
-                        managed
-                            .values
-                            .iter()
-                            .find(|value| value.address == mutation.address)
-                            .map(|value| value.original.clone())
-                    })
-                    .unwrap_or_else(|| current.clone());
-                Ok(TransactionValue {
-                    address: mutation.address.clone(),
-                    original,
-                    before: current,
-                    desired: mutation.desired.clone(),
-                })
-            })
-            .collect()
+    ) -> bool {
+        if managed.values.len() != mutations.len() {
+            return false;
+        }
+        mutations.iter().all(|mutation| {
+            managed
+                .values
+                .iter()
+                .any(|value| value.address == mutation.address)
+        })
     }
-
 }

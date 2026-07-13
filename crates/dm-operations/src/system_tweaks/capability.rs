@@ -58,7 +58,7 @@ impl VerificationManifest {
     /// advanced allowlist), which keeps the "automatic vs advanced" distinction in the catalog
     /// tier while granting zero writes today.
     pub fn initial(catalog: &[TweakDescriptor]) -> Self {
-        Self::new(catalog.iter().filter_map(|descriptor| {
+        Self::new(catalog.iter().map(|descriptor| {
             let rule = match descriptor.tier {
                 TweakTier::AutomaticCandidate => VerificationRule::Standard(StandardVerification {
                     families: Vec::new(),
@@ -67,7 +67,7 @@ impl VerificationManifest {
                 TweakTier::Advanced => VerificationRule::Advanced(Vec::new()),
                 TweakTier::Guided => VerificationRule::ManualOnly,
             };
-            Some((descriptor.id.clone(), rule))
+            (descriptor.id.clone(), rule)
         }))
     }
 

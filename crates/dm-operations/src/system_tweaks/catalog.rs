@@ -80,6 +80,9 @@ pub struct TweakDescriptor {
     pub forbidden_mutations: Vec<ForbiddenMutation>,
     pub manual_route: Option<ManualRoute>,
     pub effect_verifier: Option<EffectVerifier>,
+    /// Guided rows only: whether the app can re-probe a readable off/on state after the walk
+    /// (mirrors the frontend catalog's `readableState`). `None` for writable rows.
+    pub readable_state: Option<bool>,
 }
 
 const EXPLORER_ADVANCED: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
@@ -117,10 +120,11 @@ fn automatic(id: &str, mutation: SettingMutation, effect: EffectVerifier) -> Twe
         forbidden_mutations: Vec::new(),
         manual_route: None,
         effect_verifier: Some(effect),
+        readable_state: None,
     }
 }
 
-fn guided(id: &str, route: ManualRoute) -> TweakDescriptor {
+fn guided(id: &str, route: ManualRoute, readable_state: bool) -> TweakDescriptor {
     TweakDescriptor {
         id: SettingId::new(id),
         recipe_version: 1,
@@ -130,6 +134,7 @@ fn guided(id: &str, route: ManualRoute) -> TweakDescriptor {
         forbidden_mutations: Vec::new(),
         manual_route: Some(route),
         effect_verifier: None,
+        readable_state: Some(readable_state),
     }
 }
 
@@ -218,11 +223,12 @@ pub fn first_batch() -> Vec<TweakDescriptor> {
         finish_setup,
         settings_suggestions,
         explorer_sync,
-        // Guided rows — no stable setter; the app opens the route and never writes.
-        guided("widgets.feed", ManualRoute::WidgetsBoardSettings),
-        guided("taskbar.widgetsButton", ManualRoute::SettingsPage("ms-settings:taskbar")),
-        guided("lockscreen.status", ManualRoute::SettingsPage("ms-settings:lockscreen")),
-        guided("tray.entries", ManualRoute::SettingsPage("ms-settings:taskbar")),
+        // Guided rows — no stable setter; the app opens the route and never writes. Only the
+        // taskbar Widgets button exposes a readable off/on state (mirrors the frontend catalog).
+        guided("widgets.feed", ManualRoute::WidgetsBoardSettings, false),
+        guided("taskbar.widgetsButton", ManualRoute::SettingsPage("ms-settings:taskbar"), true),
+        guided("lockscreen.status", ManualRoute::SettingsPage("ms-settings:lockscreen"), false),
+        guided("tray.entries", ManualRoute::SettingsPage("ms-settings:taskbar"), false),
     ]
 }
 
@@ -302,6 +308,15 @@ impl TweakCatalog {
                 if !is_legal_desired(&mutation.desired) {
                     return Err(CatalogError::IllegalDesired(mutation.address.clone()));
                 }
+                // An `Other(raw)` in the accepted-existing set would let an unknown live kind pass
+                // `accepts()` into a write path — a recipe only ever accepts standard kinds.
+                if mutation
+                    .accepted_existing_kinds
+                    .iter()
+                    .any(|kind| !kind.is_standard())
+                {
+                    return Err(CatalogError::IllegalDesired(mutation.address.clone()));
+                }
                 if !seen_addresses.insert(address_identity(&mutation.address)) {
                     return Err(CatalogError::ResourceCollision(mutation.address.clone()));
                 }
@@ -324,11 +339,15 @@ impl TweakCatalog {
     }
 }
 
-/// A recipe may only ever establish a concrete standard-kind value. A deletion (`ValueMissing` /
-/// `KeyMissing`) or an `Other(raw)` extension type is never a legitimate desired write.
+/// A recipe may only ever establish a concrete, well-formed standard-kind value. W1 recipes are
+/// all `REG_DWORD`, so a desired DWORD must be exactly 4 bytes; a deletion (`ValueMissing` /
+/// `KeyMissing`), an `Other(raw)` extension type, or a malformed DWORD width is never legitimate.
 fn is_legal_desired(desired: &RegistrySnapshot) -> bool {
     match desired {
-        RegistrySnapshot::Present(value) => value.kind.is_standard(),
+        RegistrySnapshot::Present(value) => {
+            value.kind.is_standard()
+                && (value.kind != RegistryValueKind::Dword || value.bytes.len() == 4)
+        }
         RegistrySnapshot::ValueMissing | RegistrySnapshot::KeyMissing => false,
     }
 }

@@ -253,6 +253,14 @@ impl MemoryJournal {
             self.managed.push(anchor);
         }
     }
+
+    /// Test-only: bump a committed anchor's recorded recipe version to simulate a recipe migration.
+    #[cfg(test)]
+    pub(crate) fn bump_managed_version_for_test(&mut self, feature: &SettingId) {
+        if let Some(setting) = self.managed.iter_mut().find(|s| &s.feature == feature) {
+            setting.recipe_version += 1;
+        }
+    }
 }
 
 impl JournalStore for MemoryJournal {

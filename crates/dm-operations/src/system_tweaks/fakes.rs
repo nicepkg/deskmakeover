@@ -60,6 +60,12 @@ impl MemoryRegistry {
         self.fail_on_cas = Some(call);
     }
 
+    /// Fail the NEXT compare-exchange regardless of how many have already run (cumulative-count
+    /// agnostic — convenient when a prior operation already advanced the CAS counter).
+    pub fn fail_next_compare_exchange(&mut self) {
+        self.fail_on_cas = Some(self.cas_calls + 1);
+    }
+
     pub fn interrupt_after_writes(&mut self, additional: usize) {
         self.interrupt_on_write = Some(self.successful_writes + additional);
     }

@@ -47,12 +47,18 @@ where
             .map_err(|error| DriverError::Journal(error.to_string()))?;
 
         for entry in incomplete {
-            let phase = match entry.intent {
-                TransactionIntent::Apply => VerificationPhase::ApplyRollback,
-                TransactionIntent::Restore => VerificationPhase::RestoreOriginal,
+            // An interrupted apply undoes back to `before`; an interrupted restore advances
+            // forward to the original. Both refuse to overwrite an external edit.
+            let (phase, settle) = match entry.intent {
+                TransactionIntent::Apply => {
+                    (VerificationPhase::ApplyRollback, self.undo_apply(&entry.values))
+                }
+                TransactionIntent::Restore => (
+                    VerificationPhase::RestoreOriginal,
+                    self.advance_restore(&entry.values),
+                ),
             };
-            // Roll each leaf back to its original where safe; an external edit blocks recovery.
-            if let Err(cause) = self.rollback_to_original(&entry.values) {
+            if let Err(cause) = settle {
                 report.conflicts.push(RecoveryConflict {
                     transaction: entry.id,
                     feature: entry.feature,

@@ -20,15 +20,14 @@ where
     V: VerificationBackend<B>,
     P: SystemProfileProbe,
 {
-    /// Roll each leaf back to its original, reverse order, writing ONLY where the live value is
-    /// one this transaction could itself have produced (the original already, the desired we just
-    /// wrote, or the before we captured). A live value that is none of those is an EXTERNAL EDIT:
-    /// it is never overwritten — the whole rollback returns `Err` so the caller keeps the
-    /// transaction prepared for recovery/manual resolution (contract 9/10, never-clobber).
-    pub(super) fn rollback_to_original(
-        &mut self,
-        values: &[TransactionValue],
-    ) -> Result<(), String> {
+    /// Undo a failed/interrupted APPLY back to each leaf's `before` (the value we OBSERVED when the
+    /// transaction started — NOT the true original), reverse order, writing ONLY a leaf still at
+    /// the `desired` value we wrote. A leaf already at `before` was never written (no-op); a leaf
+    /// at any OTHER value is an external edit and is never overwritten — the whole undo returns
+    /// `Err` so the caller keeps the transaction prepared for recovery (contract 9/10). Undoing to
+    /// `before` (not `original`) is what makes a failed RE-apply preserve the user's drift instead
+    /// of forcing the true original (codex W1 R2 #2).
+    pub(super) fn undo_apply(&mut self, values: &[TransactionValue]) -> Result<(), String> {
         let mut conflicts: Vec<String> = Vec::new();
         for value in values.iter().rev() {
             let live = match self.backend.read(&value.address) {
@@ -38,12 +37,10 @@ where
                     continue;
                 }
             };
-            if live == value.original {
-                continue; // already at the original — nothing to undo
+            if live == value.before {
+                continue; // never written, or already undone
             }
-            let ours = live == value.desired || live == value.before;
-            if !ours {
-                // An external edit sits here — refuse to overwrite it.
+            if live != value.desired {
                 conflicts.push(format!("external edit at {}", value.address));
                 continue;
             }
@@ -51,7 +48,7 @@ where
                 RegistryWriteIntent::Undo,
                 &value.address,
                 &live,
-                &value.original,
+                &value.before,
             ) {
                 conflicts.push(format!("undo {}: {error}", value.address));
             }
@@ -63,9 +60,47 @@ where
         }
     }
 
-    /// Handle a failed apply: roll each leaf back to its original ONLY where safe, and mark the
-    /// transaction rolled back only if the rollback finished cleanly and the rollback terminal
-    /// state verifies. Otherwise leave it prepared for recovery.
+    /// Drive a RESTORE forward to each leaf's original (`desired` for restore values), writing ONLY
+    /// a leaf still at the `before` value we last applied. A leaf already at the original is a
+    /// no-op; a leaf at any other value is an external edit and is never overwritten (never-clobber).
+    pub(super) fn advance_restore(&mut self, values: &[TransactionValue]) -> Result<(), String> {
+        let mut conflicts: Vec<String> = Vec::new();
+        for value in values {
+            let live = match self.backend.read(&value.address) {
+                Ok(live) => live,
+                Err(error) => {
+                    conflicts.push(format!("read {}: {error}", value.address));
+                    continue;
+                }
+            };
+            if live == value.desired {
+                continue; // already at the original
+            }
+            if live != value.before {
+                conflicts.push(format!("external edit at {}", value.address));
+                continue;
+            }
+            if let Err(error) = self.backend.compare_exchange(
+                RegistryWriteIntent::Undo,
+                &value.address,
+                &live,
+                &value.desired,
+            ) {
+                conflicts.push(format!("restore {}: {error}", value.address));
+            }
+        }
+        if conflicts.is_empty() {
+            Ok(())
+        } else {
+            Err(conflicts.join("; "))
+        }
+    }
+
+    /// Handle a failed apply: undo ONLY the leaves this transaction actually wrote (`written`),
+    /// back to their `before`, and mark the transaction rolled back only if the undo finished
+    /// cleanly and the rollback terminal state verifies. A leaf we never wrote is left untouched
+    /// (a pure CAS conflict that wrote nothing aborts cleanly). Otherwise the transaction stays
+    /// prepared for recovery.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn fail_apply(
         &mut self,
@@ -73,14 +108,26 @@ where
         transaction: u64,
         feature: &SettingId,
         values: &[TransactionValue],
+        written: &[TransactionValue],
         plan: VerificationPlan,
         receipt: &VerificationReceipt,
         cause: &str,
     ) -> Result<ApplyOutcome, DriverError> {
-        match self.rollback_to_original(values) {
+        let _ = values; // the full value set is kept in the journal entry; the undo acts on `written`
+        // Nothing was written (a CAS conflict on the first leaf, say) → the desktop is untouched by
+        // us, so the transaction aborts cleanly with no rollback to prove.
+        if written.is_empty() {
+            self.journal
+                .mark_apply_rolled_back(lease, transaction, feature)
+                .map_err(|error| DriverError::Journal(error.to_string()))?;
+            return Ok(ApplyOutcome::Reverted);
+        }
+        match self.undo_apply(written) {
             Ok(()) => {
+                // Verify only the leaves we wrote are back to their `before`; unwritten leaves were
+                // never touched and are not this transaction's to prove.
                 if let Err(verify_cause) =
-                    self.verify_terminal(VerificationPhase::ApplyRollback, plan, receipt, values)
+                    self.verify_terminal(VerificationPhase::ApplyRollback, plan, receipt, written)
                 {
                     return Err(DriverError::Pending {
                         transaction,
@@ -150,22 +197,32 @@ where
                 return Err(format!("delayed read-back mismatch at {address}"));
             }
         }
-        self.verifier
-            .verify_effect(&self.backend, &context)
-            .map_err(|error| error.to_string())
+        // The feature effect verifier is APPLY-direction only — it proves the feature took effect
+        // (e.g. Start promotions absent). A rollback/restore returns the surface toward its
+        // original ON state, where "promotions absent" is false by design, so it is proven by the
+        // delayed read-back alone (codex W1 R2: running the apply verifier on a rollback wedged the
+        // transaction). The receipt is still persisted for the apply's audit + recovery.
+        if phase == VerificationPhase::ApplyDesired {
+            self.verifier
+                .verify_effect(&self.backend, &context)
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
     }
 }
 
-/// The expected terminal value for one leaf under a given phase: the desired value after an apply,
-/// the true original after a rollback or a restore.
+/// The expected terminal value for one leaf under a given phase:
+/// - `ApplyDesired` → the desired value we established;
+/// - `ApplyRollback` → the `before` we OBSERVED (undoing a failed apply restores the pre-apply
+///   state, which for a re-apply is the user's drift, NOT the true original — codex W1 R2 #2);
+/// - `RestoreOriginal` → the original (`desired` for a restore's values).
 pub(super) fn expected_terminal(
     phase: VerificationPhase,
     value: &TransactionValue,
 ) -> RegistrySnapshot {
     match phase {
         VerificationPhase::ApplyDesired => value.desired.clone(),
-        VerificationPhase::ApplyRollback | VerificationPhase::RestoreOriginal => {
-            value.original.clone()
-        }
+        VerificationPhase::ApplyRollback => value.before.clone(),
+        VerificationPhase::RestoreOriginal => value.original.clone(),
     }
 }

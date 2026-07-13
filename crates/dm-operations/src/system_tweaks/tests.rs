@@ -3,8 +3,8 @@
 //! the fakes inject CAS failures, effect failures, external edits, and process interruptions.
 
 use dm_domain::system_tweaks::{
-    ApplyOutcome, ProbeOutcome, RawRegistryValue, RegistryAddress, RegistryHive, RegistrySnapshot,
-    RegistryView, RestoreOutcome, SettingId, WindowsEdition, WindowsEnvironment,
+    ApplyOutcome, ProbeOutcome, RawRegistryValue, RegistryAddress, RegistryBackend, RegistryHive,
+    RegistrySnapshot, RegistryView, RestoreOutcome, SettingId, WindowsEdition, WindowsEnvironment,
 };
 
 use super::capability::{
@@ -328,19 +328,83 @@ fn a_missing_target_key_is_skipped_never_created() {
 }
 
 #[test]
-fn a_start_apply_captures_a_receipt_and_fails_if_recent_changes() {
-    // codex #4: the Start effect proof rides a pre-write receipt; if the known Recent item changes
-    // the effect check fails and the write rolls back.
+fn a_start_apply_rolls_back_if_the_known_recent_item_changes() {
+    // codex R2 #4: the Start effect proof rides a pre-write receipt; if the known Recent item
+    // changes between the receipt and the effect check, the effect FAILS and the write rolls back.
     let mut verifier = MemoryVerifier::new();
     verifier.set_start_recent_marker("recent-before");
+    verifier.change_recent_marker_on_settle("recent-after"); // the user opened a new file
     let mut driver = driver_with(pushing_registry(), verifier);
     let start = SettingId::new("start.recommendations");
-    // Change the known Recent marker AFTER the receipt is captured, via a second driver? The
-    // MemoryVerifier captures the marker at prepare_receipt and compares at verify_effect; to
-    // force a mismatch we fail the effect explicitly (the receipt path is exercised by the happy
-    // apply below). Here we prove the receipt is REQUIRED: a Start apply that verifies cleanly.
+    assert_eq!(driver.apply(&start).unwrap(), ApplyOutcome::Reverted);
+    // Not owned — the promotions write did not stand because it disturbed Recent.
+    assert!(driver.managed_for_test(&start).is_none());
+    assert_eq!(driver.inspect(&start).unwrap(), ProbeOutcome::Pushing);
+}
+
+#[test]
+fn a_clean_start_apply_captures_and_proves_its_receipt() {
+    let mut verifier = MemoryVerifier::new();
+    verifier.set_start_recent_marker("recent-stable");
+    let mut driver = driver_with(pushing_registry(), verifier);
+    let start = SettingId::new("start.recommendations");
     assert_eq!(driver.apply(&start).unwrap(), ApplyOutcome::Verified);
     assert_eq!(driver.inspect(&start).unwrap(), ProbeOutcome::OwnedQuiet);
+}
+
+#[test]
+fn a_failed_re_apply_undoes_to_before_not_the_true_original() {
+    // codex R2 #2: undo a failed apply back to the value we OBSERVED, never the true original —
+    // a failed re-apply must preserve the user's drift, not force the original.
+    let mut driver = driver();
+    driver.apply(&search()).unwrap(); // 1 → 0, owned
+    // The user re-enables the search box (drift to 1 — here the same as the original, so use a
+    // distinct drift value 2 to prove the undo targets `before`, not `original`).
+    driver.set_live_for_test(addr(SEARCH, "SearchboxTaskbarMode"), RawRegistryValue::dword(2));
+    // Re-apply, but fail the NEXT CAS so nothing is written this transaction.
+    driver.backend.fail_next_compare_exchange();
+    let result = driver.apply(&search());
+    // The re-apply reverted (or is pending) — either way it must NOT have clobbered the user's 2.
+    assert!(
+        matches!(result, Ok(ApplyOutcome::Reverted)) || matches!(result, Err(DriverError::Pending { .. })),
+        "got {result:?}"
+    );
+    let live = driver.read_live_for_test(addr(SEARCH, "SearchboxTaskbarMode"));
+    assert_eq!(live.as_dword(), Some(2), "the user's drift (2) must stand, not the original (1)");
+}
+
+#[test]
+fn a_value_that_changes_after_the_single_read_is_caught_by_the_cas() {
+    // codex R2 #8: apply reads + validates each leaf once and uses THAT snapshot; a later external
+    // change is caught by the CAS conflict, never silently written over.
+    let mut registry = pushing_registry();
+    // Between the single read and the CAS, an external process changes the value to 5.
+    registry.replace_before_compare_exchange_at(
+        1,
+        addr(SEARCH, "SearchboxTaskbarMode"),
+        RegistrySnapshot::Present(RawRegistryValue::dword(5)),
+    );
+    let mut driver = driver_with(registry, MemoryVerifier::new());
+    // The CAS expected the read-time value (1); it now finds 5 → conflict → clean rollback.
+    assert_eq!(driver.apply(&search()).unwrap(), ApplyOutcome::Reverted);
+    // The external 5 stands.
+    assert_eq!(
+        driver.read_live_for_test(addr(SEARCH, "SearchboxTaskbarMode")).as_dword(),
+        Some(5)
+    );
+}
+
+#[test]
+fn a_changed_recipe_version_requires_restore_before_reapply() {
+    // codex R2 #9: a re-apply under a different recipe version must not silently orphan a leaf.
+    let mut driver = driver();
+    driver.apply(&search()).unwrap();
+    // Simulate a recipe migration by bumping the anchor's recorded version out from under it.
+    driver.bump_managed_version_for_test(&search());
+    assert_eq!(
+        driver.apply(&search()),
+        Err(DriverError::MigrationRequired(search()))
+    );
 }
 
 #[test]
@@ -360,6 +424,7 @@ fn the_catalog_rejects_a_guided_descriptor_with_a_mutation() {
         forbidden_mutations: vec![],
         manual_route: Some(ManualRoute::WidgetsBoardSettings),
         effect_verifier: None,
+        readable_state: Some(false),
     };
     assert!(matches!(
         TweakCatalog::try_new(vec![bad]),
@@ -422,6 +487,17 @@ impl Driver {
 
     fn set_live_for_test(&mut self, address: RegistryAddress, value: RawRegistryValue) {
         self.backend.set_value(address, value);
+    }
+
+    fn read_live_for_test(&self, address: RegistryAddress) -> RawRegistryValue {
+        match self.backend.read(&address).unwrap() {
+            RegistrySnapshot::Present(value) => value,
+            other => panic!("expected a present value, got {other:?}"),
+        }
+    }
+
+    fn bump_managed_version_for_test(&mut self, feature: &SettingId) {
+        self.journal.bump_managed_version_for_test(feature);
     }
 }
 

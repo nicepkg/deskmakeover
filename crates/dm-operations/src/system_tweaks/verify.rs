@@ -56,11 +56,12 @@ pub enum VerificationReceipt {
 
 impl VerificationReceipt {
     /// Whether this receipt shape satisfies the given effect verifier's evidence requirement.
-    /// Recovery cannot substitute a weaker receipt than the plan demands.
+    /// Recovery cannot substitute a weaker receipt than the plan demands. A `StartKnownRecent`
+    /// with an EMPTY marker is not a real baseline and does not satisfy (contract 5).
     pub fn satisfies(&self, effect: EffectVerifier) -> bool {
         match effect {
             EffectVerifier::StartPromotionsAbsentAndKnownRecentPreserved => {
-                matches!(self, Self::StartKnownRecent { .. })
+                matches!(self, Self::StartKnownRecent { marker } if !marker.is_empty())
             }
             EffectVerifier::DelayedReadBackAndSettingsUi
             | EffectVerifier::AdvertisingIdIsEmpty => matches!(self, Self::NoBaseline),
@@ -167,6 +168,9 @@ pub struct MemoryVerifier {
     next_settle_replacement: Option<(RegistryAddress, RegistrySnapshot)>,
     next_settle_failure: Option<String>,
     next_effect_failure: Option<String>,
+    /// If set, the next settle mutates the known Recent marker — the effect check then sees the
+    /// receipt's stale marker and fails (a promotions write must not disturb Recent).
+    change_marker_on_settle: Option<String>,
 }
 
 impl Default for MemoryVerifier {
@@ -179,6 +183,7 @@ impl Default for MemoryVerifier {
             next_settle_replacement: None,
             next_settle_failure: None,
             next_effect_failure: None,
+            change_marker_on_settle: None,
         }
     }
 }
@@ -201,10 +206,15 @@ impl MemoryVerifier {
         self.next_effect_failure = Some(message.into());
     }
 
-    /// Emulate the user's known Recent item changing between the receipt and the effect check
-    /// (the Start effect proof must then fail — a promotions write must not clear Recent).
+    /// Set the known Recent marker the receipt will capture.
     pub fn set_start_recent_marker(&mut self, marker: impl Into<String>) {
         self.start_recent_marker = marker.into();
+    }
+
+    /// Emulate the user's known Recent item changing DURING settle — between the receipt capture
+    /// and the effect check — so the Start effect proof fails against the stale receipt.
+    pub fn change_recent_marker_on_settle(&mut self, marker: impl Into<String>) {
+        self.change_marker_on_settle = Some(marker.into());
     }
 }
 
@@ -233,6 +243,9 @@ impl<B: RegistryBackend> VerificationBackend<B> for MemoryVerifier {
         _context: &VerificationContext,
     ) -> Result<(), VerificationError> {
         self.settle_calls += 1;
+        if let Some(marker) = self.change_marker_on_settle.take() {
+            self.start_recent_marker = marker;
+        }
         if let Some(message) = self.next_settle_failure.take() {
             return Err(VerificationError::Settle(message));
         }

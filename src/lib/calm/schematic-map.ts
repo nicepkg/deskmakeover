@@ -38,17 +38,17 @@ export interface SchematicSpec {
  *  at the taskbar's FAR LEFT, lock-screen status cards TOP-LEFT, Settings promo
  *  inside the card grid, Explorer banner under the address bar. */
 export const SCHEMATICS: Record<CalmControlId, SchematicSpec> = {
-  'start.recommendations': { scene: 'start', region: { x: 25, y: 30, w: 54, h: 17, rx: 3 } },
-  'taskbar.search': { scene: 'taskbar', region: { x: 34, y: 45.5, w: 30, h: 13, rx: 5 } },
-  'taskbar.taskview': { scene: 'taskbar', region: { x: 63.5, y: 45.5, w: 12, h: 13, rx: 4 } },
-  'search.highlights': { scene: 'searchPanel', region: { x: 55, y: 18, w: 32, h: 36, rx: 3 } },
+  'start.recommendations': { scene: 'start', region: { x: 25, y: 30.5, w: 54, h: 16.5, rx: 3 } },
+  'taskbar.search': { scene: 'taskbar', region: { x: 32, y: 45.5, w: 30, h: 13, rx: 5 } },
+  'taskbar.taskview': { scene: 'taskbar', region: { x: 61, y: 45.5, w: 12, h: 13, rx: 4 } },
+  'search.highlights': { scene: 'searchPanel', region: { x: 39, y: 16, w: 53, h: 36, rx: 3 } },
   'notifications.suggestions': { scene: 'notif', region: { x: 58, y: 20, w: 38, h: 13, rx: 3 } },
   'notifications.welcome': { scene: 'systemFull', region: { x: 3, y: 3, w: 98, h: 58, rx: 6 } },
   'notifications.finishSetup': { scene: 'systemFull', region: { x: 3, y: 3, w: 98, h: 58, rx: 6 } },
-  'settings.suggestions': { scene: 'settings', region: { x: 63, y: 22, w: 33, h: 16, rx: 3 } },
-  'explorer.syncNotifications': { scene: 'explorer', region: { x: 24, y: 18.5, w: 72, h: 10, rx: 3 } },
-  'widgets.feed': { scene: 'widgets', region: { x: 8, y: 29.5, w: 52, h: 23, rx: 3 } },
-  'taskbar.widgetsButton': { scene: 'taskbar', region: { x: 4.5, y: 45.5, w: 18, h: 13, rx: 4 } },
-  'lockscreen.status': { scene: 'lock', region: { x: 4, y: 4, w: 56, h: 13, rx: 3 } },
-  'tray.entries': { scene: 'taskbar', region: { x: 85.5, y: 45.5, w: 15, h: 13, rx: 4 } },
+  'settings.suggestions': { scene: 'settings', region: { x: 63, y: 22, w: 33, h: 31, rx: 3 } },
+  'explorer.syncNotifications': { scene: 'explorer', region: { x: 12, y: 11, w: 61, h: 27, rx: 3 } },
+  'widgets.feed': { scene: 'widgets', region: { x: 26, y: 7, w: 38, h: 44, rx: 3 } },
+  'taskbar.widgetsButton': { scene: 'taskbar', region: { x: 4.5, y: 45.5, w: 17, h: 13, rx: 4 } },
+  'lockscreen.status': { scene: 'lock', region: { x: 24, y: 29, w: 56, h: 14, rx: 3 } },
+  'tray.entries': { scene: 'taskbar', region: { x: 88.5, y: 45.5, w: 12.5, h: 13, rx: 4 } },
 }

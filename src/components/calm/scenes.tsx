@@ -4,19 +4,31 @@ import type { CalmRowState } from '@/lib/calm/states'
 import type { CalmScene } from '@/lib/calm/schematic-map'
 import { NoiseGroup } from './schematic-parts'
 
-// The nine mini-screen scenes, redrawn against REAL Windows 11 layout research
-// (win11-layout-scout 2026-07-13): weather/widgets pinned FAR LEFT, the centered
-// start→search→taskview cluster, search flyout news in the RIGHT column,
-// notification calendar at the BOTTOM, lock-screen status cards TOP-LEFT, the
-// Settings promo cards in the grid below the device header. Icon glyphs are our
-// own simple geometry (flat 2×2 start squares, magnifier, stacked task-view
-// rects, ^ tray chevron, weather pill) — evocative, never extracted brand art.
-// The row's noise elements wrap in NoiseGroup so an honest settle empties the
-// marked region. Scenes stay wireframes: placeholder ink, never fake screenshots.
+// The nine mini-screen scenes, drawn AGAINST DOWNLOADED REAL SCREENSHOTS
+// (win11-screenshot-hunter 2026-07-13, scratchpad/win11-shots/ — taskbar
+// close-ups tb-left/tb-right, widgets-old-vs-new, search-before-after,
+// explorer-backup-banner, lockscreen-hero, scoobe-hero, settings-home,
+// notif-collapsed-calendar). Pixel truths encoded here:
+//   · taskbar: weather pill FAR LEFT (icon + two text lines) · centered cluster =
+//     BLUE flat start squares → dark search capsule (magnifier left, colourful
+//     daily-highlight icon right) → task-view stack → colourful pinned apps ·
+//     tray = ^ caret · status pills · two-line clock.
+//   · widgets board: anchored LEFT (~60% width); inside it the personal cards sit
+//     in the left third and the MSN news/ads feed fills the RIGHT two thirds.
+//   · search flyout: narrow Suggested list left (~30%), main area right (~70%)
+//     with a promo hero card, news rows and trending pills — the right side is
+//     the noise.
+//   · explorer: no full-width banner — a cloud breadcrumb chip in the address bar
+//     plus a bubble card right below it.
+//   · lock screen: big clock top-centre, the status/weather cards CENTRED below.
+// #0067C0/#4CC2FF are the reviewed OS-authentic mirror hexes (banned-colors
+// exception set) — they depict Windows itself, never our chrome.
 
 type SceneProps = { control: CalmControlId; state: CalmRowState; delay?: number }
 
 const INK = 'var(--t3)'
+const WIN_BLUE = '#0067C0'
+const WIN_BLUE_LIGHT = '#4CC2FF'
 
 function Placeholder({ x, y, w, h, o = 0.3, rx = 1.5 }: { x: number; y: number; w: number; h: number; o?: number; rx?: number }) {
   return <rect x={x} y={y} width={w} height={h} rx={rx} fill={INK} opacity={o} />
@@ -27,31 +39,31 @@ function TaskbarAnchor() {
   return <rect x="4" y="57" width="96" height="5" rx="2" fill="var(--chip)" />
 }
 
-// ---- own-geometry mini glyphs (scout's shape descriptions) ----
+// ---- glyphs traced from the real close-ups ----
 
-/** Flat 2×2 window panes with a cross gutter (Win11 start, upright, never skewed). */
-function StartSquares({ x, y, s = 6 }: { x: number; y: number; s?: number }) {
-  const p = s / 2 - 0.4
+/** Flat 2×2 Windows-blue panes (tb-left.png: upright, even gutter). */
+function StartSquares({ x, y, s = 6.4 }: { x: number; y: number; s?: number }) {
+  const p = s / 2 - 0.5
   return (
-    <g fill={INK} opacity="0.55">
-      <rect x={x} y={y} width={p} height={p} rx="0.4" />
-      <rect x={x + p + 0.8} y={y} width={p} height={p} rx="0.4" />
-      <rect x={x} y={y + p + 0.8} width={p} height={p} rx="0.4" />
-      <rect x={x + p + 0.8} y={y + p + 0.8} width={p} height={p} rx="0.4" />
+    <g fill={WIN_BLUE_LIGHT}>
+      <rect x={x} y={y} width={p} height={p} rx="0.3" />
+      <rect x={x + p + 1} y={y} width={p} height={p} rx="0.3" />
+      <rect x={x} y={y + p + 1} width={p} height={p} rx="0.3" />
+      <rect x={x + p + 1} y={y + p + 1} width={p} height={p} rx="0.3" />
     </g>
   )
 }
 
-function Magnifier({ x, y, r = 2 }: { x: number; y: number; r?: number }) {
+function Magnifier({ x, y, r = 1.8 }: { x: number; y: number; r?: number }) {
   return (
     <g stroke={INK} strokeWidth="1" fill="none" opacity="0.55" strokeLinecap="round">
       <circle cx={x} cy={y} r={r} />
-      <line x1={x + r * 0.75} y1={y + r * 0.75} x2={x + r * 1.7} y2={y + r * 1.7} />
+      <line x1={x + r * 0.75} y1={y + r * 0.75} x2={x + r * 1.6} y2={y + r * 1.6} />
     </g>
   )
 }
 
-/** Two overlapping rounded rects — Win11 task view. */
+/** Two overlapping rounded rects (task view, as in tb-left.png). */
 function TaskViewGlyph({ x, y }: { x: number; y: number }) {
   return (
     <g fill="none" stroke={INK} strokeWidth="1" opacity="0.55">
@@ -61,7 +73,7 @@ function TaskViewGlyph({ x, y }: { x: number; y: number }) {
   )
 }
 
-/** The tray "show hidden icons" caret. */
+/** Tray "show hidden icons" caret. */
 function ChevronUp({ x, y }: { x: number; y: number }) {
   return (
     <path
@@ -76,43 +88,55 @@ function ChevronUp({ x, y }: { x: number; y: number }) {
   )
 }
 
-/** The far-left live weather pill (amber sun + temperature dash). */
-function WeatherPill({ x, y }: { x: number; y: number }) {
+/** Far-left live weather: icon + TWO stacked text lines (82°F / Clear). */
+function WeatherEntry({ x, y }: { x: number; y: number }) {
   return (
     <g>
-      <rect x={x} y={y} width="15" height="9" rx="3" fill="var(--chip)" />
-      <circle cx={x + 4.5} cy={y + 4.5} r="2.1" fill="var(--amber)" opacity="0.85" />
-      <Placeholder x={x + 8} y={y + 3.5} w={5} h={2} o={0.45} rx={1} />
+      <circle cx={x + 2.6} cy={y + 4.5} r="2.4" fill="var(--amber)" opacity="0.85" />
+      <Placeholder x={x + 6.5} y={y + 1.5} w={7} h={2} o={0.45} rx={1} />
+      <Placeholder x={x + 6.5} y={y + 5.5} w={5} h={2} o={0.3} rx={1} />
     </g>
   )
 }
 
-/** The Win11 taskbar strip drawn once, reused by every taskbar-rooted scene. */
+/** Colourful pinned-app dots (yellow folder + neutral/teal companions). */
+function PinnedApps({ x, y }: { x: number; y: number }) {
+  return (
+    <g>
+      <rect x={x} y={y} width="5" height="5" rx="1.2" fill="#FFC94A" />
+      <rect x={x + 7} y={y} width="5" height="5" rx="1.2" fill="var(--raised)" stroke="var(--hair)" />
+      <rect x={x + 14} y={y} width="5" height="5" rx="1.2" fill="#3FB6A8" opacity="0.75" />
+    </g>
+  )
+}
+
+/** The Win11 taskbar drawn from tb-left/tb-right (shared by taskbar scenes). */
 function TaskbarStrip({ control, state, delay }: SceneProps) {
   const search = (
     <g>
-      <rect x="36" y="47.5" width="26" height="9" rx="4.5" fill="var(--raised)" stroke="var(--hair)" />
-      <Magnifier x={41.5} y={52} r={1.8} />
-      <Placeholder x={46} y={51} w={13} h={2} o={0.35} rx={1} />
+      <rect x="34" y="47.5" width="26" height="9" rx="4.5" fill="var(--raised)" stroke="var(--hair)" />
+      <Magnifier x={39} y={52} />
+      <Placeholder x={43.5} y={51} w={9} h={2} o={0.35} rx={1} />
+      {/* the colourful daily search-highlight icon at the capsule's right end */}
+      <circle cx="56" cy="52" r="1.9" fill="var(--amber)" opacity="0.9" />
+      <circle cx="56.7" cy="51.4" r="0.7" fill={WIN_BLUE_LIGHT} />
     </g>
   )
-  const taskview = <TaskViewGlyph x={66} y={48.5} />
+  const taskview = <TaskViewGlyph x={63.5} y={48.5} />
   return (
     <>
       <rect x="4" y="44" width="96" height="16" rx="4" fill="var(--chip)" />
-      {/* far left: the live weather / widgets entry */}
-      <WeatherPill x={6} y={47.5} />
-      {/* centered cluster: start → search → task view → pinned */}
-      <StartSquares x={27} y={48.5} />
+      {/* far left: live weather entry (icon + two text lines) */}
+      <WeatherEntry x={6} y={47.5} />
+      {/* centered cluster: blue start → search capsule → task view → pinned apps */}
+      <StartSquares x={26} y={48.5} />
       {control === 'taskbar.search' ? <NoiseGroup state={state} delay={delay}>{search}</NoiseGroup> : search}
       {control === 'taskbar.taskview' ? <NoiseGroup state={state} delay={delay}>{taskview}</NoiseGroup> : taskview}
-      {[75, 81].map((x) => (
-        <Placeholder key={x} x={x} y={49} w={4.5} h={5.5} o={0.35} rx={1.2} />
-      ))}
-      {/* right: hidden-icons caret · status pills · clock */}
-      <ChevronUp x={88.5} y={52} />
-      <Placeholder x={91.5} y={49.5} w={4} h={5} o={0.3} rx={1} />
-      <Placeholder x={96.5} y={49.5} w={2.5} h={5} o={0.35} rx={0.8} />
+      <PinnedApps x={73} y={49.5} />
+      {/* right: hidden-icons caret · status pills · two-line clock */}
+      <ChevronUp x={91.5} y={52} />
+      <Placeholder x={94} y={48.5} w={4.5} h={3} o={0.35} rx={1} />
+      <Placeholder x={94} y={53} w={4.5} h={3} o={0.3} rx={1} />
     </>
   )
 }
@@ -126,38 +150,44 @@ function TaskbarScene(props: SceneProps) {
   )
 }
 
-/** Search flyout: full-width input + tabs; LEFT = top apps + recent; the news /
- *  trending "quick searches" live in the RIGHT ~40% column (the noise). */
+/** Search flyout (search-before-after.png): Suggested list on the LEFT ~30%,
+ *  the main area right — promo hero card, news rows, trending pills = the noise. */
 function SearchPanelScene({ state, delay }: SceneProps) {
   return (
     <>
       <TaskbarAnchor />
-      <rect x="14" y="4" width="76" height="50" rx="6" fill="var(--raised)" stroke="var(--hair)" />
-      <rect x="19" y="8" width="66" height="6" rx="3" fill="var(--chip)" />
-      <Magnifier x={23} y={11} r={1.5} />
-      {[19, 28, 37].map((x) => (
-        <Placeholder key={x} x={x} y={16.5} w={7} h={2} o={0.25} rx={1} />
+      <rect x="10" y="4" width="84" height="50" rx="6" fill="var(--raised)" stroke="var(--hair)" />
+      <rect x="14" y="8" width="76" height="6" rx="3" fill="var(--chip)" />
+      <Magnifier x={18} y={11} r={1.5} />
+      {/* left: the Suggested app/recents list */}
+      {[18, 24, 30, 36, 42, 48].map((y) => (
+        <g key={y}>
+          <rect x="14" y={y} width="4" height="4" rx="1" fill={INK} opacity="0.3" />
+          <Placeholder x={20} y={y + 1} w={16} h={2} o={0.25} rx={1} />
+        </g>
       ))}
-      {/* left column: top apps grid + recent rows */}
-      {[22, 30].map((y) => [19, 27, 35, 43].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={6} h={6} o={0.3} rx={1.5} />))}
-      {[40, 45, 50].map((y) => (
-        <Placeholder key={y} x={19} y={y} w={32} h={3} o={0.22} rx={1.5} />
-      ))}
-      {/* right column: quick searches / trending news — the noise */}
+      {/* right main area: promo hero + news rows + trending pills — the noise */}
       <NoiseGroup state={state} delay={delay}>
-        <rect x="57" y="20" width="28" height="32" rx="3" fill="var(--chip)" />
-        <Placeholder x={60} y={23} w={16} h={2.2} o={0.45} rx={1} />
-        <rect x="60" y="27.5" width="22" height="9" rx="2" fill={INK} opacity="0.18" />
-        <Placeholder x={60} y={39} w={20} h={2} o={0.35} rx={1} />
-        <Placeholder x={60} y={43} w={17} h={2} o={0.3} rx={1} />
-        <Placeholder x={60} y={47} w={19} h={2} o={0.25} rx={1} />
+        <rect x="41" y="18" width="30" height="15" rx="2.5" fill={INK} opacity="0.18" />
+        <Placeholder x={44} y={21} w={14} h={2.4} o={0.45} rx={1} />
+        {[19.5, 25, 30.5].map((y) => (
+          <g key={y}>
+            <rect x="74" y={y} width="16" height="4" rx="1.5" fill="var(--chip)" />
+          </g>
+        ))}
+        <Placeholder x={41} y={37} w={17} h={2.2} o={0.4} rx={1} />
+        {[41, 46].map((y) =>
+          [41, 58, 75].map((x) => (
+            <rect key={`${x}-${y}`} x={x} y={y} width="15" height="3.5" rx="1.75" fill="var(--chip)" />
+          )),
+        )}
       </NoiseGroup>
     </>
   )
 }
 
-/** Start panel: pinned 6-wide grid on the top two thirds, the Recommended band
- *  (the noise) on the bottom third, user/power footer. */
+/** Start panel (start-old-classic.png): pinned 6-wide grid, the slim Recommended
+ *  item rows below (the noise), avatar left / power right in the footer. */
 function StartScene({ state, delay }: SceneProps) {
   return (
     <>
@@ -168,12 +198,12 @@ function StartScene({ state, delay }: SceneProps) {
         [27, 36, 45, 54, 63, 72].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={5.5} h={5} o={0.3} rx={1.2} />),
       )}
       <NoiseGroup state={state} delay={delay}>
-        <Placeholder x={27} y={31.5} w={14} h={2.2} o={0.4} rx={1} />
-        {[35.5, 41].map((y) =>
+        <Placeholder x={27} y={32} w={14} h={2.2} o={0.4} rx={1} />
+        {[36.5, 41.5].map((y) =>
           [27, 52].map((x) => (
             <g key={`${x}-${y}`}>
-              <rect x={x} y={y} width="23" height="4.5" rx="1.5" fill="var(--chip)" />
-              <circle cx={x + 2.5} cy={y + 2.2} r="1.3" fill={INK} opacity="0.35" />
+              <rect x={x} y={y} width="3.5" height="3.5" rx="1" fill={INK} opacity="0.35" />
+              <Placeholder x={x + 5.5} y={y + 0.8} w={17} h={1.8} o={0.28} rx={0.9} />
             </g>
           )),
         )}
@@ -185,8 +215,9 @@ function StartScene({ state, delay }: SceneProps) {
   )
 }
 
-/** Notification center: slides from the right, cards on top (the suggestion card
- *  is the noise), the month calendar at the BOTTOM. */
+/** Notification center (notif-collapsed-calendar.jpg): right-edge flyout,
+ *  notification cards on TOP (the suggestion card is the noise), clock/calendar
+ *  card at the BOTTOM. */
 function NotifScene({ state, delay }: SceneProps) {
   return (
     <>
@@ -201,15 +232,16 @@ function NotifScene({ state, delay }: SceneProps) {
         <Placeholder x={68} y={27.5} w={12} h={1.8} o={0.3} rx={0.9} />
       </NoiseGroup>
       <rect x="60" y="33.5" width="34" height="6" rx="2" fill="var(--chip)" />
-      {/* month calendar at the bottom */}
+      {/* clock + month calendar at the bottom */}
       <rect x="60" y="42" width="34" height="11" rx="2" fill="var(--chip)" />
-      {[45, 48.5].map((y) => [63, 68, 73, 78, 83, 88].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={3} h={2.2} o={0.25} rx={0.6} />))}
+      <Placeholder x={63} y={44.5} w={10} h={3} o={0.45} rx={1} />
+      {[48.5].map((y) => [63, 68, 73, 78, 83, 88].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={3} h={2.2} o={0.25} rx={0.6} />))}
     </>
   )
 }
 
-/** Settings home: left nav, device header on top, the promo card in the
- *  interactive card grid below the header (the noise). */
+/** Settings home (settings-home.jpg): left nav, device header, card grid below —
+ *  the promo/suggestion cards live in the RIGHT column (the noise). */
 function SettingsScene({ state, delay }: SceneProps) {
   return (
     <>
@@ -223,22 +255,24 @@ function SettingsScene({ state, delay }: SceneProps) {
       <rect x="33" y="9" width="18" height="11" rx="2" fill="var(--chip)" />
       <Placeholder x={54} y={11} w={22} h={2.4} o={0.4} rx={1} />
       <Placeholder x={54} y={15.5} w={16} h={2} o={0.3} rx={1} />
-      {/* interactive card grid; the promo/suggestion card is the noise */}
+      {/* card grid; the promo/suggestion cards = the right column (the noise) */}
       <rect x="33" y="24" width="29" height="12" rx="2.5" fill="var(--chip)" />
+      <rect x="33" y="39" width="29" height="12" rx="2.5" fill="var(--chip)" />
       <NoiseGroup state={state} delay={delay}>
         <rect x="65" y="24" width="29" height="12" rx="2.5" fill="var(--chip)" />
         <circle cx="70" cy="29" r="2" fill={INK} opacity="0.4" />
         <Placeholder x={74} y={26.5} w={16} h={2} o={0.4} rx={1} />
         <Placeholder x={74} y={30} w={12} h={2} o={0.3} rx={1} />
+        <rect x="65" y="39" width="29" height="12" rx="2.5" fill="var(--chip)" />
+        <Placeholder x={69} y={42} w={18} h={2} o={0.4} rx={1} />
+        <Placeholder x={69} y={45.5} w={10} h={2.5} o={0.45} rx={1.2} />
       </NoiseGroup>
-      <rect x="33" y="39" width="29" height="12" rx="2.5" fill="var(--chip)" />
-      <rect x="65" y="39" width="29" height="12" rx="2.5" fill="var(--chip)" />
     </>
   )
 }
 
-/** File Explorer: command bar, address bar, and the OneDrive/Office promo banner
- *  right below the address bar, above the file list (the noise). */
+/** File Explorer (explorer-backup-banner.jpg): NOT a full-width banner — a cloud
+ *  breadcrumb chip in the address bar plus the bubble card right below it. */
 function ExplorerScene({ state, delay }: SceneProps) {
   return (
     <>
@@ -249,90 +283,102 @@ function ExplorerScene({ state, delay }: SceneProps) {
       ))}
       <rect x="12" y="12.5" width="82" height="5" rx="2" fill="var(--chip)" />
       <NoiseGroup state={state} delay={delay}>
-        <rect x="26" y="20" width="68" height="7" rx="2" fill="var(--chip)" />
-        <circle cx="30.5" cy="23.5" r="1.8" fill={INK} opacity="0.4" />
-        <Placeholder x={34} y={22.5} w={34} h={2} o={0.4} rx={1} />
-        <Placeholder x={84} y={22} w={7} h={3} o={0.4} rx={1.5} />
+        {/* the Start OneDrive breadcrumb chip inside the address bar… */}
+        <rect x="14" y="13" width="14" height="4" rx="2" fill={INK} opacity="0.22" />
+        <circle cx="17.5" cy="15" r="1.3" fill={INK} opacity="0.5" />
+        {/* …and the bubble card hanging right below it */}
+        <rect x="26" y="20" width="44" height="16" rx="3" fill={INK} opacity="0.15" />
+        <Placeholder x={30} y={23} w={30} h={2} o={0.45} rx={1} />
+        <Placeholder x={30} y={26.5} w={24} h={2} o={0.3} rx={1} />
+        <rect x="30" y="30.5" width="14" height="3.5" rx="1.75" fill={INK} opacity="0.45" />
       </NoiseGroup>
       <rect x="12" y="20" width="11" height="30" rx="2.5" fill="var(--chip)" opacity="0.7" />
-      {[31, 39].map((y) => [26, 44, 62, 80].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={14} h={5} o={0.25} rx={2} />))}
-      <Placeholder x={26} y={47} w={60} h={3} o={0.2} rx={1.5} />
+      {[40, 47].map((y) => [26, 44, 62, 80].map((x) => <Placeholder key={`${x}-${y}`} x={x} y={y} w={14} h={5} o={0.25} rx={2} />))}
     </>
   )
 }
 
-/** SCOOBE full-screen takeover: centered title + toggle list + the primary
- *  continue button; the whole interruption is the noise. */
+/** SCOOBE (scoobe-hero.webp): full-screen takeover — floating app icons left,
+ *  title + feature rows centre-right, the primary Continue bottom-right. */
 function SystemFullScene({ state, delay }: SceneProps) {
   return (
     <NoiseGroup state={state} delay={delay}>
       <rect x="3" y="3" width="98" height="58" rx="6" fill="var(--chip)" />
-      <circle cx="52" cy="15" r="4.5" fill={INK} opacity="0.25" />
-      <Placeholder x={34} y={23} w={36} h={3} o={0.45} rx={1.5} />
-      <Placeholder x={40} y={28.5} w={24} h={2} o={0.3} rx={1} />
-      {[34, 54].map((x) =>
-        [34, 40].map((y) => (
-          <g key={`${x}-${y}`}>
-            <rect x={x} y={y} width="16" height="4" rx="2" fill="var(--raised)" opacity="0.9" />
-            <circle cx={x + 13.5} cy={y + 2} r="1.2" fill={INK} opacity="0.35" />
-          </g>
-        )),
-      )}
-      <Placeholder x={34} y={49} w={8} h={2} o={0.3} rx={1} />
-      <rect x="56" y="47.5" width="14" height="5" rx="2.5" fill="var(--coral)" opacity="0.7" />
+      {/* floating decorative app icons on the left */}
+      {[
+        [12, 14], [20, 26], [10, 38], [18, 48],
+      ].map(([x, y]) => (
+        <rect key={`${x}-${y}`} x={x} y={y} width="6" height="6" rx="1.6" fill={INK} opacity="0.25" />
+      ))}
+      {/* title + feature rows, centre-right */}
+      <Placeholder x={36} y={10} w={40} h={3.2} o={0.45} rx={1.5} />
+      <Placeholder x={36} y={16} w={28} h={2} o={0.3} rx={1} />
+      {[23, 31, 39].map((y) => (
+        <g key={y}>
+          <rect x="36" y={y} width="5" height="5" rx="1.4" fill={INK} opacity="0.3" />
+          <Placeholder x={44} y={y + 0.5} w={26} h={1.8} o={0.4} rx={0.9} />
+          <Placeholder x={44} y={y + 3.2} w={20} h={1.5} o={0.25} rx={0.75} />
+        </g>
+      ))}
+      {/* remind-me link + the primary Continue, bottom-right */}
+      <Placeholder x={58} y={51} w={14} h={2} o={0.3} rx={1} />
+      <rect x="76" y="49" width="16" height="5.5" rx="2.5" fill={WIN_BLUE} opacity="0.85" />
     </NoiseGroup>
   )
 }
 
-/** Widgets board: slides from the LEFT — search on top, gear at the top-right,
- *  pinned weather/calendar cards, then the MSN news feed below (the noise). */
+/** Widgets board (widgets-old-vs-new.png): anchored to the LEFT edge (~60%
+ *  width); personal cards fill the board's left third, the MSN news/ads feed
+ *  fills the board's RIGHT two thirds — the feed is the noise. */
 function WidgetsScene({ state, delay }: SceneProps) {
   return (
     <>
       <TaskbarAnchor />
-      <rect x="6" y="4" width="56" height="50" rx="5" fill="var(--raised)" stroke="var(--hair)" />
-      <rect x="10" y="8" width="34" height="5" rx="2.5" fill="var(--chip)" />
-      <circle cx="56" cy="10.5" r="2" fill={INK} opacity="0.35" />
-      {/* pinned cards: weather + calendar */}
-      <rect x="10" y="16" width="24" height="12" rx="2.5" fill="var(--chip)" />
-      <circle cx="15" cy="21" r="2.4" fill="var(--amber)" opacity="0.85" />
-      <Placeholder x={19} y={19} w={10} h={2} o={0.4} rx={1} />
-      <rect x="37" y="16" width="21" height="12" rx="2.5" fill="var(--chip)" />
-      <Placeholder x={40} y={19} w={13} h={2} o={0.35} rx={1} />
-      {/* the news feed below — the noise */}
+      <rect x="4" y="4" width="62" height="50" rx="5" fill="var(--raised)" stroke="var(--hair)" />
+      {/* left third: personal widget cards (weather + phone/watchlist) */}
+      <rect x="8" y="9" width="17" height="16" rx="2.5" fill="var(--chip)" />
+      <circle cx="12.5" cy="13.5" r="2.2" fill="var(--amber)" opacity="0.85" />
+      <Placeholder x={16} y={12.5} w={7} h={2} o={0.4} rx={1} />
+      <rect x={10} y={18} width="13" height="5" rx="1.5" fill={INK} opacity="0.18" />
+      <rect x="8" y="28" width="17" height="10" rx="2.5" fill="var(--chip)" />
+      <rect x="8" y="41" width="17" height="9" rx="2.5" fill="var(--chip)" />
+      {/* right two thirds: the news/ads feed — the noise */}
       <NoiseGroup state={state} delay={delay}>
-        {[31, 42].map((y) =>
-          [10, 35].map((x) => (
+        <rect x="28" y="9" width="34" height="17" rx="2.5" fill={INK} opacity="0.18" />
+        <Placeholder x={31} y={20} w={22} h={2.4} o={0.5} rx={1} />
+        {[29, 40].map((y) =>
+          [28, 46].map((x) => (
             <g key={`${x}-${y}`}>
-              <rect x={x} y={y} width="23" height="9" rx="2" fill="var(--chip)" />
-              <rect x={x + 1.5} y={y + 1.5} width="7" height="6" rx="1" fill={INK} opacity="0.18" />
-              <Placeholder x={x + 10} y={y + 2} w={11} h={1.8} o={0.4} rx={0.9} />
-              <Placeholder x={x + 10} y={y + 5} w={8} h={1.8} o={0.3} rx={0.9} />
+              <rect x={x} y={y} width="16" height="9" rx="2" fill="var(--chip)" />
+              <Placeholder x={x + 1.5} y={y + 1.5} w={13} h={1.6} o={0.35} rx={0.8} />
+              <Placeholder x={x + 1.5} y={y + 4.2} w={9} h={1.6} o={0.25} rx={0.8} />
             </g>
           )),
         )}
       </NoiseGroup>
+      {/* desktop sliver on the right — the board does NOT span the screen */}
+      <rect x="70" y="10" width="28" height="40" rx="3" fill="var(--chip)" opacity="0.35" />
     </>
   )
 }
 
-/** Lock screen: the status widget cards live at the TOP-LEFT (22H2+), the big
- *  clock centered in the upper half, app status dots at the bottom. */
+/** Lock screen (lockscreen-hero.webp): big clock top-centre, date under it, the
+ *  weather/status cards CENTRED below the clock (the noise). */
 function LockScene({ state, delay }: SceneProps) {
   return (
     <>
       <rect x="2" y="2" width="100" height="60" rx="7" fill="var(--chip)" opacity="0.8" />
+      <Placeholder x={38} y={10} w={28} h={9} o={0.5} rx={2} />
+      <Placeholder x={43} y={22} w={18} h={2.5} o={0.35} rx={1.2} />
       <NoiseGroup state={state} delay={delay}>
-        {[6, 24, 42].map((x, i) => (
+        {[26, 44, 62].map((x, i) => (
           <g key={x}>
-            <rect x={x} y={6} width="16" height="9" rx="2" fill="var(--raised)" opacity="0.9" />
-            {i === 0 && <circle cx={x + 3.5} cy={10.5} r="1.8" fill="var(--amber)" opacity="0.85" />}
-            <Placeholder x={x + (i === 0 ? 7 : 3)} y={9.5} w={i === 0 ? 6 : 10} h={2} o={0.4} rx={1} />
+            <rect x={x} y={31} width="16" height="10" rx="2" fill="var(--raised)" opacity="0.9" />
+            {i === 0 && <circle cx={x + 3.5} cy={36} r="1.8" fill="var(--amber)" opacity="0.85" />}
+            <Placeholder x={x + (i === 0 ? 7 : 3)} y={34.8} w={i === 0 ? 6 : 10} h={2} o={0.4} rx={1} />
           </g>
         ))}
       </NoiseGroup>
-      <Placeholder x={38} y={22} w={28} h={9} o={0.5} rx={2} />
-      <Placeholder x={43} y={34} w={18} h={2.5} o={0.35} rx={1.2} />
       {[46, 52, 58].map((x) => (
         <Placeholder key={x} x={x} y={52} w={3.5} h={3.5} o={0.3} rx={1} />
       ))}

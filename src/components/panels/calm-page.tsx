@@ -4,7 +4,7 @@ import { Check, ChevronDown, ExternalLink, Info, RotateCcw } from 'lucide-react'
 import { InspectorCard } from '@/components/common/inspector'
 import { ConfirmSheet } from '@/components/common/ceremony'
 import { CtaButton, type HeroPhase } from '@/components/common/cta-button'
-import { HeroSchematic, SurfaceSchematic, applyStaggerDelay } from '@/components/calm/surface-schematic'
+import { SurfaceSchematic, applyStaggerDelay } from '@/components/calm/surface-schematic'
 import { controlById, type CalmControl, type CalmControlId } from '@/lib/calm/catalog'
 import type { CalmRowState } from '@/lib/calm/states'
 import { applyCandidates, countOwnedWrites, countQuieted, groupedRows, useCalm } from '@/stores/calm'
@@ -73,9 +73,10 @@ export function CalmPage() {
           <h1 className="text-display font-medium text-t1">{t('Panel_CalmTitle')}</h1>
         </header>
 
-        {/* Hero: the establishing schematic IS the subject; the CTA animates it. */}
+        {/* Hero: dynamic words only (owner 2026-07-13) — a fixed establishing image
+            would hard-code the starter count and lie the moment the user excludes a
+            row or new controls land. The row schematics carry all the visuals. */}
         <div className="mb-6 flex items-center gap-6 rounded-2xl border border-hair bg-raised px-6 py-5">
-          <HeroSchematic rows={rows} className="w-[192px]" />
           <div className="min-w-0 flex-1">
             <p className="text-cardtitle font-medium text-t1">
               {quieted > 0 ? format(t('Calm_Summary'), quieted) : format(t('Calm_CanQuiet'), candidates.length)}

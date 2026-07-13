@@ -88,6 +88,14 @@
   runtime:** the exact per-user override key path (mirrors recyclebin's `Explorer\CLSID\..\DefaultIcon`),
   the enabled-check DWORD semantics, and every CLSID GUID need box confirmation. Blind — msvc typecheck +
   dm-domain anchor round-trip test only; no runtime verification.
+  - **codex re-review (`ffb202e`): 5 findings, 4 FIXED + 1 MOOT.** 🟠 version-switch compounding
+    (`Style(Style(O))`) — PRE-EXISTING, all owned kinds: `bake_and_apply` now passes the ledger's
+    original anchor so owned items re-bake from the true source (resident batch already fresh-guarded).
+    🟠 empty-key suppresses machine fallback (system + recyclebin, same latent bug): decoupled
+    `key_existed` (restore) from the EFFECTIVE value (per-user else machine, for source+CAS). 🟠
+    `parse_clsid` accepted any `{...}` incl. `\`-injection → strict `{8-4-4-4-12}` GUID validation. 🟡
+    enabled-check failed OPEN on all errors → fail-closed on non-NotFound. 🟡 shared-helper error text =
+    MOOT (generic is correct for a shared helper). codex verified the System post-apply CAS consistency.
 
 ### F4b — allocation caps run AFTER the IPC payload is materialized (codex B2-🔴 residual)
 The command-body caps prevent the DECODE/second allocation, but Tauri/Serde deserializes the FULL

@@ -6,15 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:ship": "bun run wasm && bun run build",
+    "build:ship": "bun run wasm && bun scripts/stage-sidecar.mjs && bun run build",
     "lint": "oxlint",
     "test": "bun test",
-    "wasm": "node scripts/build-icon-wasm.mjs",
+    "wasm": "bun scripts/build-icon-wasm.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "tauri:build": "tauri build",
-    "gen:bindings": "cargo run -p deskmakeover-desktop --bin gen-bindings",
+    "gen:bindings": "cargo run -p deskmakeover-desktop --bin gen-bindings --features bindgen",
     "check:bindings": "cargo test -p deskmakeover-desktop --test bindings"
   },
   "dependencies": {

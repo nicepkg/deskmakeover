@@ -1,8 +1,9 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Build dm-icon-wasm for wasm32 and copy the release artifact into public/,
 // where vite serves it at /dm_icon_wasm.wasm (dev + dist). Run when the Rust
 // icon core changes and the WASM preview path is in use. The copied .wasm is a
-// build artifact (gitignored). Cross-platform (node only, no shell).
+// build artifact (gitignored). Cross-platform, Bun-only (owner rule: never
+// node/npm); uses `node:*` builtins that Bun implements, no shell.
 //
 // Built with `--features fast`: the shipped preview artifact carries the M6
 // geometry-mask cache (byte-identical to the scalar reference — the four-way

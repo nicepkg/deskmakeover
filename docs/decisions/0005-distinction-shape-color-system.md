@@ -9,8 +9,8 @@ Supersedes the badge parts of [ADR-0003](0003-voc-driven-product-revisions.md).
 clause no longer holds — the default shortcut mark is now **None** (presets ship None; see
 [ADR-0017](0017-per-type-distinction-system.md), the mark-default conflict is tracked in
 `docs/STATE.md` §Open questions).
-Inputs: [VOC v1](../../../ai-command-center/docs/ideas/desktop-beauty/voc-and-product-analysis.md)
-(founder position §1.1, constraint §4.3-1, comment cluster A) + a PM/UI/UX expert panel.
+Inputs: an internal VOC v1 analysis (founder position §1.1, constraint §4.3-1, comment cluster A —
+held outside this repo, not shipped with it) + a PM/UI/UX expert panel.
 
 ## Context
 

@@ -1,6 +1,6 @@
 # Code Style
 
-DeskMakeover follows the owner standards from `ai-command-center` with project-local
+DeskMakeover follows the owner's cross-project engineering standards with project-local
 emphasis. Two stacks live here: the **web UI** (React 19 + TypeScript + Tailwind 4 +
 Motion, Bun-only) and the **Rust engine/host** (Tauri 2 shell + `dm-*` crates + Win32/COM
 adapters). The `legacy/` .NET/C# tree is a frozen parity oracle only — no feature work.

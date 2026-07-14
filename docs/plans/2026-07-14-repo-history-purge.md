@@ -85,8 +85,8 @@ git push --force --tags origin           # includes last-dotnet
 ### Expected result
 
 Pack **~123 MB → ~35-40 MB** (evidence ~70 MB + C# ~23 MB reclaimed; fonts 17 MB + testdata/icons
-30 MB + normal code churn remain). Fonts (subset to ~500 KB) are a separate, later build task; the
-owner chose to leave them for this pass.
+30 MB + normal code churn remain). Fonts stay as-is — the owner decided NOT to subset them (they are
+runtime assets and 17 MB is acceptable).
 
 ### Recoverability
 

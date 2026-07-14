@@ -178,8 +178,14 @@ export type KindPolicy = Record<IconKindBucket, boolean>
  *  and a bounded plate colour. Filter stays global (material mixing veto). */
 export interface TypePatch {
   shape?: IconShape
-  /** 原彩 excluded: types may only step DOWN (no colour islands). */
-  subject?: 'Mono' | 'BlackWhite'
+  /** Per-type subject (owner correction 2026-07-12): the per-type rows carry a
+   *  系统默认 ⊘ = Original, mirroring the main Subject row's ⊘. Allowing
+   *  'Original' relaxes ADR-0017's original "step DOWN only / no colour islands"
+   *  law so a type can KEEP its own colours even when the global steps down. This
+   *  is frontend-only: the Rust background resolver already accepts any subject
+   *  string (`TypePatchJson.subject: Option<String>`) and TypePatch rides the
+   *  opaque `styleJson` (not a bridge DTO), so no binding/kernel change. */
+  subject?: Subject
   tint?: string
   plateBand?: PlateBand
   monoStyle?: MonoStyle

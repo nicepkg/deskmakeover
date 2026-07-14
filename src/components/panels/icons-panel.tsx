@@ -5,7 +5,7 @@ import { IconAction, InspectorCard, PropertyRow, Reveal, SwatchButton, SwatchPic
 import type { SwatchOption } from '@/components/common/inspector'
 import { ChevronDown, History, RotateCcw } from 'lucide-react'
 import { AutoDot, ColorSwatchDot, QUICK_SWATCHES, WheelRing } from '@/components/common/color-controls'
-import { BwGlyph, FaithfulGlyph, FieldGlyph, FilterSwatch, MarkGlyph, NoneGlyph, PairDot, QuadPlateGlyph, ShapeSwatch, WinArrowGlyph } from '@/components/common/chip-preview'
+import { BwGlyph, FilterSwatch, MarkGlyph, NoneGlyph, PairDot, QuadPlateGlyph, ShapeSwatch, WinArrowGlyph } from '@/components/common/chip-preview'
 import { ColorPickerPanel } from '@/components/common/color-picker'
 import { HistoryStrip } from '@/components/common/history-strip'
 import { Confetti, useCelebration } from '@/components/common/confetti'
@@ -63,6 +63,8 @@ export function IconsPanel() {
   const overlayRestoring = useIcons((s) => s.overlayRestoring)
   const { mutate, selectPreset, selectSystemDefault, apply, restore, stageVersion, hover, hoverBare } = useIcons.getState()
   const [moreShapes, setMoreShapes] = React.useState(false)
+  const [morePlate, setMorePlate] = React.useState(false)
+  const [moreMark, setMoreMark] = React.useState(false)
   const [morePresets, setMorePresets] = React.useState(false)
   // Fold-animation hover freeze (owner diagnosis 2026-07-10: hovering a card
   // MID-EXPANSION fires the full-desktop try-on render inside the animation
@@ -148,39 +150,67 @@ export function IconsPanel() {
   // options must not render each one — the pointer has to REST ~90ms before a
   // candidate paints. Leaving reverts instantly; clicks never wait. Hooks live
   // ABOVE the loading early-return (hook-order law).
-  const hoverTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  //
+  // TWO independent timers, one per preview CHANNEL — the style/preset cards
+  // preview via `hover(config)`, the System Default card via `hoverBare(true)`.
+  // A single shared timer let a preset card's mouseleave cancel the System
+  // Default card's just-armed bare preview (or vice-versa) whenever the leave
+  // fired AFTER the enter, so hovering a preset then back onto 系统默认 silently
+  // stopped previewing and reading stale (owner bug 2026-07-12). The rule that
+  // makes the hand-off order-proof: ENTERING a channel cancels the OTHER
+  // channel (pending timer + committed preview); LEAVING reverts ONLY its own
+  // channel and never touches the other's timer.
+  const configTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const bareTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const tryOn = React.useCallback(
     (change: Partial<ConfigDto>, typeOverrides?: TypeOverrides) => (hovering: boolean) => {
-      if (hoverTimer.current) clearTimeout(hoverTimer.current)
+      if (configTimer.current) {
+        clearTimeout(configTimer.current)
+        configTimer.current = null
+      }
       if (hovering) {
-        hoverTimer.current = setTimeout(() => {
-          hoverTimer.current = null
+        // A config preview supersedes any pending/active bare preview.
+        if (bareTimer.current) {
+          clearTimeout(bareTimer.current)
+          bareTimer.current = null
+        }
+        hoverBare(false)
+        configTimer.current = setTimeout(() => {
+          configTimer.current = null
           hover(change, typeOverrides)
         }, 90)
       } else {
-        hoverTimer.current = null
+        // Revert ONLY the config channel — never cancel a bare preview the
+        // pointer may have armed on the System Default card in the same move.
         hover(null)
       }
     },
-    [hover],
+    [hover, hoverBare],
   )
   // The System Default card's try-on (owner 2026-07-12: hovering it must preview
-  // like every other style card). Shares hoverTimer with tryOn — one pending
-  // hover at a time, same 90ms feel; the preview channel is hoveringBare.
+  // like every other style card); same 90ms feel, symmetric with tryOn.
   const bareTryOn = React.useCallback(
     (hovering: boolean) => {
-      if (hoverTimer.current) clearTimeout(hoverTimer.current)
+      if (bareTimer.current) {
+        clearTimeout(bareTimer.current)
+        bareTimer.current = null
+      }
       if (hovering) {
-        hoverTimer.current = setTimeout(() => {
-          hoverTimer.current = null
+        // A bare preview supersedes any pending/active config preview.
+        if (configTimer.current) {
+          clearTimeout(configTimer.current)
+          configTimer.current = null
+        }
+        hover(null)
+        bareTimer.current = setTimeout(() => {
+          bareTimer.current = null
           hoverBare(true)
         }, 90)
       } else {
-        hoverTimer.current = null
         hoverBare(false)
       }
     },
-    [hoverBare],
+    [hover, hoverBare],
   )
 
   // Continuous colour drags (picker area / hue strip) fire per pointer move;
@@ -204,6 +234,12 @@ export function IconsPanel() {
   const ctaLabel = bareLook ? (state.applied ? t('Cta_RestoreDefault') : t('Cta_Synced')) : ctaText
   const shapeInMore = MORE_SHAPES.some((s) => s.value === c.shape)
   const shortcutShapeInMore = MORE_SHAPES.some((s) => s.value === c.shortcutShape)
+  // Plate + shortcut-mark now fold their overflow behind 更多 (owner 2026-07-14: both rows
+  // exceeded two lines). Curated stays in the first row; the toggle lights when a folded
+  // value is active. Plate folds its preset colour palette; the mark row folds MARKS[3..].
+  const plateInMore =
+    c.plateColor !== null && TYPE_PLATE_SWATCHES.some((h) => h.toUpperCase() === c.plateColor!.toUpperCase())
+  const markInMore = c.distinction === 'Mark' && MARKS.slice(3).some((m) => m.value === c.markStyle)
   // Pure black/white are redundant with the 黑白 option (owner call 2026-07-09):
   // hidden from the dot row whatever the bridge sends; still reachable via 调色盘.
   const monoDots = state.monoSwatches.filter((s) => !['#FFFFFF', '#141414'].includes(s.toUpperCase()))
@@ -215,33 +251,45 @@ export function IconsPanel() {
     !TYPE_PLATE_SWATCHES.some((h) => h.toUpperCase() === c.plateColor!.toUpperCase())
 
   // Shared SwatchPicker option builders (curated + 更多 rows, the filter flow).
-  const shapeOption = (s: { value: IconShape; key: StringKey }): SwatchOption => ({
-    key: s.value,
-    title: t(s.key),
-    selected: c.shape === s.value,
-    onPick: () => mutate({ shape: s.value }),
-    onHover: tryOn({ shape: s.value }),
-    glyph: <ShapeSwatch shape={s.value} active={c.shape === s.value} />,
-  })
-  const shortcutShapeOption = (s: { value: IconShape; key: StringKey }): SwatchOption => ({
-    key: s.value,
-    title: t(s.key),
-    selected: c.shortcutShape === s.value,
-    onPick: () => mutate({ shortcutShape: s.value }),
-    onHover: tryOn({ shortcutShape: s.value }),
-    glyph: <ShapeSwatch shape={s.value} active={c.shortcutShape === s.value} />,
-  })
-  const filterOption = (o: { value: FilterStyle; key: StringKey }): SwatchOption => ({
-    key: o.value,
-    title: t(o.key),
-    selected: c.filter === o.value,
-    onPick: () => mutate({ filter: o.value }),
-    onHover: tryOn({ filter: o.value }),
-    glyph: <FilterSwatch filter={o.value} active={c.filter === o.value} />,
-  })
+  // Owner item 6: while 系统默认 (bareLook) is active EVERY row highlights its ⊘
+  // (the None option) and suppresses the rest — so the ⊘ predicate ORs bareLook
+  // and every non-⊘ predicate ANDs !bareLook.
+  const shapeOption = (s: { value: IconShape; key: StringKey }): SwatchOption => {
+    const sel = s.value === 'None' ? bareLook || c.shape === 'None' : !bareLook && c.shape === s.value
+    return {
+      key: s.value,
+      title: t(s.key),
+      selected: sel,
+      onPick: () => mutate({ shape: s.value }),
+      onHover: tryOn({ shape: s.value }),
+      glyph: <ShapeSwatch shape={s.value} active={sel} />,
+    }
+  }
+  const shortcutShapeOption = (s: { value: IconShape; key: StringKey }): SwatchOption => {
+    const sel = !bareLook && c.shortcutShape === s.value
+    return {
+      key: s.value,
+      title: t(s.key),
+      selected: sel,
+      onPick: () => mutate({ shortcutShape: s.value }),
+      onHover: tryOn({ shortcutShape: s.value }),
+      glyph: <ShapeSwatch shape={s.value} active={sel} />,
+    }
+  }
+  const filterOption = (o: { value: FilterStyle; key: StringKey }): SwatchOption => {
+    const sel = o.value === 'None' ? bareLook || c.filter === 'None' : !bareLook && c.filter === o.value
+    return {
+      key: o.value,
+      title: t(o.key),
+      selected: sel,
+      onPick: () => mutate({ filter: o.value }),
+      onHover: tryOn({ filter: o.value }),
+      glyph: <FilterSwatch filter={o.value} active={sel} />,
+    }
+  }
 
   return (
-    <aside className="@container relative flex w-[280px] shrink-0 flex-col gap-2.5 pl-1 pr-3 pt-1">
+    <aside className="@container relative flex w-[280px] shrink-0 flex-col gap-2.5 px-2 pt-1">
       {/* -mt-px/pt-px: 1px of clip headroom inside the scroller (zero net layout
           shift) so the preset cards' hover lift never shears their top border
           against the overflow edge. The status line lives INSIDE the scroller —
@@ -441,7 +489,7 @@ export function IconsPanel() {
                 type="button"
                 onClick={() => setMoreShapes((v) => !v)}
                 className={cn(
-                  'flex items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] transition-colors',
+                  '-mr-1.5 flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] transition-colors',
                   moreShapes || shapeInMore ? 'bg-wash-chip text-coral-ink' : 'text-t3 hover:text-t1',
                 )}
               >
@@ -471,17 +519,21 @@ export function IconsPanel() {
               its own row below. */}
           <PropertyRow label={t('Subject_Label')}>
             <div className="flex flex-wrap items-center gap-1">
+              {/* 原彩 leads the row wearing the shared ⊘ (owner item 1): "keep the
+                  artwork's own colours" IS the subject's system-default, so it
+                  speaks the same slash-circle grammar as every other row's ⊘ and
+                  lights whenever 系统默认 (bareLook) is active (item 6). */}
               <SwatchButton
                 title={t('Subject_Orig')}
-                selected={c.subject === 'Original'}
+                selected={bareLook || c.subject === 'Original'}
                 onHover={tryOn({ subject: 'Original' })}
                 onClick={() => mutate({ subject: 'Original' })}
               >
-                <FieldGlyph />
+                <NoneGlyph active={bareLook || c.subject === 'Original'} />
               </SwatchButton>
               <SwatchButton
                 title={t('Color_Bw')}
-                selected={c.subject === 'BlackWhite'}
+                selected={!bareLook && c.subject === 'BlackWhite'}
                 onHover={tryOn({ subject: 'BlackWhite' })}
                 onClick={() => mutate({ subject: 'BlackWhite' })}
               >
@@ -491,7 +543,7 @@ export function IconsPanel() {
                 <SwatchButton
                   key={s}
                   title={s}
-                  selected={c.subject === 'Mono' && c.tint.toUpperCase() === s.toUpperCase()}
+                  selected={!bareLook && c.subject === 'Mono' && c.tint.toUpperCase() === s.toUpperCase()}
                   onHover={tryOn({ subject: 'Mono', tint: s })}
                   onClick={() => mutate({ subject: 'Mono', tint: s })}
                 >
@@ -506,9 +558,9 @@ export function IconsPanel() {
                     type="button"
                     title={t('Palette_Button')}
                     aria-label={t('Palette_Button')}
-                    className={swatchButtonClass(monoCustomTint)}
+                    className={swatchButtonClass(!bareLook && monoCustomTint)}
                   >
-                    <WheelRing size={20} value={c.tint} active={monoCustomTint} />
+                    <WheelRing size={20} value={c.tint} active={!bareLook && monoCustomTint} />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent side="bottom" align="end" className="w-auto rounded-[14px] p-3">
@@ -523,7 +575,7 @@ export function IconsPanel() {
               </Popover>
             </div>
             {/* 单色 depth: 渐层 = tonal ramp; 纯平 = 极致单色 flat subject. */}
-            <Reveal show={c.subject === 'Mono'}>
+            <Reveal show={!bareLook && c.subject === 'Mono'}>
               <Segmented
                 size="sm"
                 className="mt-2"
@@ -542,7 +594,22 @@ export function IconsPanel() {
               white), 白, the bounded swatches, the free wheel. ALWAYS
               visible; needs a container, so shape=None DISABLES (never
               hides — hiding was the recolour dead-end's root). */}
-          <PropertyRow label={t('Plate_Label')}>
+          <PropertyRow
+            label={t('Plate_Label')}
+            labelExtra={
+              <button
+                type="button"
+                onClick={() => setMorePlate((v) => !v)}
+                className={cn(
+                  '-mr-1.5 flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] transition-colors',
+                  morePlate || plateInMore ? 'bg-wash-chip text-coral-ink' : 'text-t3 hover:text-t1',
+                )}
+              >
+                {t('Plate_More')}
+                <ChevronDown size={11} className={cn('shrink-0 transition-transform duration-150', morePlate && 'rotate-180')} />
+              </button>
+            }
+          >
             <div
               className={cn(
                 'flex flex-wrap items-center gap-1',
@@ -550,50 +617,50 @@ export function IconsPanel() {
               )}
               aria-disabled={c.shape === 'None'}
             >
+              {/* 系统默认底板 wears the shared ⊘ (owner item 2). The plate model
+                  has NO config distinct from 本色 for "no plate", so the ⊘ is the
+                  row's system-default marker: it lights while 系统默认 (bareLook)
+                  is active (item 6), and an explicit pick commits the least-
+                  synthetic plate — 本色 (own board, white fallback) — leaving the
+                  bare look (owner click clarification: a row ⊘ is a per-axis
+                  choice, not the whole-panel 系统默认 reset). */}
+              {/* ⊘ = the system-default plate, folded onto Faithful's logic (owner 2026-07-14:
+                  drop the separate 本色 button, wire its behaviour here). Lights when 系统默认
+                  is active OR the plate is at the faithful (null + white) config — so clicking it
+                  visibly selects AND repaints, no more "no reaction". */}
+              <SwatchButton
+                title={t('Plate_None')}
+                selected={bareLook || (c.plateColor === null && c.plateFallback === 'white')}
+                onHover={tryOn({ plateColor: null, plateFallback: 'white' })}
+                onClick={() => mutate({ plateColor: null, plateFallback: 'white' })}
+              >
+                <NoneGlyph active={bareLook || (c.plateColor === null && c.plateFallback === 'white')} />
+              </SwatchButton>
               <SwatchButton
                 title={t('Plate_Auto')}
-                selected={c.plateColor === null && c.plateFallback === 'derived'}
+                selected={!bareLook && c.plateColor === null && c.plateFallback === 'derived'}
                 onHover={tryOn({ plateColor: null, plateFallback: 'derived' })}
                 onClick={() => mutate({ plateColor: null, plateFallback: 'derived' })}
               >
                 <QuadPlateGlyph band={c.plateBand} />
               </SwatchButton>
               <SwatchButton
-                title={t('Plate_Faithful')}
-                selected={c.plateColor === null && c.plateFallback === 'white'}
-                onHover={tryOn({ plateColor: null, plateFallback: 'white' })}
-                onClick={() => mutate({ plateColor: null, plateFallback: 'white' })}
-              >
-                <FaithfulGlyph />
-              </SwatchButton>
-              <SwatchButton
                 title={t('Plate_White')}
-                selected={c.plateColor?.toUpperCase() === '#FFFFFF'}
+                selected={!bareLook && c.plateColor?.toUpperCase() === '#FFFFFF'}
                 onHover={tryOn({ plateColor: '#FFFFFF' })}
                 onClick={() => mutate({ plateColor: '#FFFFFF' })}
               >
                 <PairDot fg="#FFFFFF" bg="#FFFFFF" />
               </SwatchButton>
-              {TYPE_PLATE_SWATCHES.map((hex) => (
-                <SwatchButton
-                  key={hex}
-                  title={hex}
-                  selected={c.plateColor?.toUpperCase() === hex.toUpperCase()}
-                  onHover={tryOn({ plateColor: hex })}
-                  onClick={() => mutate({ plateColor: hex })}
-                >
-                  <span className="block size-5 rounded-md ring-1 ring-hair" style={{ background: hex }} />
-                </SwatchButton>
-              ))}
               <Popover>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
                     title={t('Palette_Button')}
                     aria-label={t('Palette_Button')}
-                    className={swatchButtonClass(customPlate)}
+                    className={swatchButtonClass(!bareLook && customPlate)}
                   >
-                    <WheelRing size={20} value={c.plateColor ?? '#FFFFFF'} active={customPlate} />
+                    <WheelRing size={20} value={c.plateColor ?? '#FFFFFF'} active={!bareLook && customPlate} />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent side="bottom" align="end" className="w-auto rounded-[14px] p-3">
@@ -606,11 +673,34 @@ export function IconsPanel() {
                 </PopoverContent>
               </Popover>
             </div>
+            {/* Preset plate palette folds behind 更多 (owner 2026-07-14: the row exceeded two lines). */}
+            <Reveal show={morePlate}>
+              <div
+                className={cn(
+                  'flex flex-wrap items-center gap-1 pt-2',
+                  c.shape === 'None' && 'pointer-events-none opacity-40',
+                )}
+                aria-disabled={c.shape === 'None'}
+              >
+                {TYPE_PLATE_SWATCHES.map((hex) => (
+                  <SwatchButton
+                    key={hex}
+                    title={hex}
+                    selected={!bareLook && c.plateColor?.toUpperCase() === hex.toUpperCase()}
+                    onHover={tryOn({ plateColor: hex })}
+                    onClick={() => mutate({ plateColor: hex })}
+                  >
+                    <span className="block size-5 rounded-md ring-1 ring-hair" style={{ background: hex }} />
+                  </SwatchButton>
+                ))}
+              </div>
+            </Reveal>
             {c.shape === 'None' && (
               <p className="mt-1.5 text-[11px] text-t3">{t('Plate_NeedShape')}</p>
             )}
-            {/* Derived-plate depth: only meaningful for 原彩 × 随图标. */}
-            <Reveal show={c.subject === 'Original' && c.plateColor === null && c.plateFallback === 'derived'}>
+            {/* Derived-plate depth: only meaningful for 原彩 × 随图标 (and never
+                while the bare system-default look owns the row — item 6). */}
+            <Reveal show={!bareLook && c.subject === 'Original' && c.plateColor === null && c.plateFallback === 'derived'}>
               <Segmented
                 size="sm"
                 className="mt-2"
@@ -639,23 +729,36 @@ export function IconsPanel() {
           <PropertyRow
             label={t('Axis_Dist')}
             labelExtra={
-              c.distinction === 'Mark' && c.markStyle !== 'Shadow' ? (
-                <motion.span
-                  initial={reduced ? false : { scale: 0.5, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: 'spring', stiffness: 520, damping: 26 }}
-                  className="flex"
+              <div className="flex items-center gap-1.5">
+                {!bareLook && c.distinction === 'Mark' && c.markStyle !== 'Shadow' ? (
+                  <motion.span
+                    initial={reduced ? false : { scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 520, damping: 26 }}
+                    className="flex"
+                  >
+                    <AuxColorDot
+                      value={c.markColor}
+                      swatches={state.markSwatches}
+                      wallpaper={state.palette}
+                      autoLabel={t('MarkColor_Auto')}
+                      label={t('MarkColor_Label')}
+                      onPick={throttledMarkColor}
+                    />
+                  </motion.span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setMoreMark((v) => !v)}
+                  className={cn(
+                    '-mr-1.5 flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] transition-colors',
+                    moreMark || markInMore ? 'bg-wash-chip text-coral-ink' : 'text-t3 hover:text-t1',
+                  )}
                 >
-                  <AuxColorDot
-                    value={c.markColor}
-                    swatches={state.markSwatches}
-                    wallpaper={state.palette}
-                    autoLabel={t('MarkColor_Auto')}
-                    label={t('MarkColor_Label')}
-                    onPick={throttledMarkColor}
-                  />
-                </motion.span>
-              ) : undefined
+                  {t('Mark_More')}
+                  <ChevronDown size={11} className={cn('shrink-0 transition-transform duration-150', moreMark && 'rotate-180')} />
+                </button>
+              </div>
             }
           >
             <SwatchPicker
@@ -663,35 +766,55 @@ export function IconsPanel() {
                 {
                   key: 'none',
                   title: t('Dist_None'),
-                  selected: c.distinction === 'None',
+                  // Item 6: this row is the ONE exception — while 系统默认 is active
+                  // the native arrow (Keep) is the true system default, so 无标识
+                  // does NOT light for bareLook (it stays a real, distinct choice).
+                  selected: !bareLook && c.distinction === 'None',
                   onPick: () => mutate({ distinction: 'None' }),
                   onHover: tryOn({ distinction: 'None' }),
-                  glyph: <NoneGlyph active={c.distinction === 'None'} />,
+                  glyph: <NoneGlyph active={!bareLook && c.distinction === 'None'} />,
                 },
-                ...MARKS.map((m) => ({
+                // Curated marks stay in the first row; the rest fold behind 更多 (owner
+                // 2026-07-14). The native arrow (Keep) stays visible — it lights while
+                // 系统默认 (bareLook) is active (item 6), so it must not hide in the fold.
+                ...MARKS.slice(0, 3).map((m) => ({
                   key: m.value,
                   title: t(m.key),
-                  selected: c.distinction === 'Mark' && c.markStyle === m.value,
+                  selected: !bareLook && c.distinction === 'Mark' && c.markStyle === m.value,
                   onPick: () => mutate({ distinction: 'Mark', markStyle: m.value }),
                   onHover: tryOn({ distinction: 'Mark', markStyle: m.value }),
-                  glyph: <MarkGlyph mark={m.value} active={c.distinction === 'Mark' && c.markStyle === m.value} />,
+                  glyph: <MarkGlyph mark={m.value} active={!bareLook && c.distinction === 'Mark' && c.markStyle === m.value} />,
                 })),
                 // LAST, behind the gate (owner decree): picking the native arrow
-                // opens a sixty-second penance sheet before it takes effect. It
-                // flows naturally at the row's end like any other option.
+                // opens a sixty-second penance sheet before it takes effect. Owner
+                // item 6: a Windows shortcut's true system default IS this arrow,
+                // so it (not the ⊘) lights while 系统默认 (bareLook) is active.
                 {
                   key: 'keep',
                   title: t('Dist_Keep'),
-                  selected: c.distinction === 'Keep',
+                  selected: bareLook || c.distinction === 'Keep',
                   onPick: () => {
                     if (c.distinction !== 'Keep') setArrowGateOpen(true)
                   },
                   // Try-on works here too — seeing the arrow everywhere IS the argument.
                   onHover: tryOn({ distinction: 'Keep' }),
-                  glyph: <WinArrowGlyph active={c.distinction === 'Keep'} />,
+                  glyph: <WinArrowGlyph active={bareLook || c.distinction === 'Keep'} />,
                 },
               ]}
             />
+            <Reveal show={moreMark}>
+              <SwatchPicker
+                className="pt-2"
+                options={MARKS.slice(3).map((m) => ({
+                  key: m.value,
+                  title: t(m.key),
+                  selected: !bareLook && c.distinction === 'Mark' && c.markStyle === m.value,
+                  onPick: () => mutate({ distinction: 'Mark', markStyle: m.value }),
+                  onHover: tryOn({ distinction: 'Mark', markStyle: m.value }),
+                  glyph: <MarkGlyph mark={m.value} active={!bareLook && c.distinction === 'Mark' && c.markStyle === m.value} />,
+                }))}
+              />
+            </Reveal>
             {/* The native-arrow disclosure lives ONLY in the first-beautify consent
                 dialog + Settings (owner 2026-07-11): the native arrow always goes
                 transparent on apply regardless of the mark choice, so a permanent
@@ -709,7 +832,7 @@ export function IconsPanel() {
                 type="button"
                 onClick={() => setMoreShortcutShapes((v) => !v)}
                 className={cn(
-                  'flex items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] transition-colors',
+                  '-mr-1.5 flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] transition-colors',
                   moreShortcutShapes || shortcutShapeInMore ? 'bg-wash-chip text-coral-ink' : 'text-t3 hover:text-t1',
                 )}
               >
@@ -723,10 +846,10 @@ export function IconsPanel() {
                 {
                   key: 'none',
                   title: t('Shape_None'),
-                  selected: c.shortcutShape === null,
+                  selected: bareLook || c.shortcutShape === null,
                   onPick: () => mutate({ shortcutShape: null }),
                   onHover: tryOn({ shortcutShape: null }),
-                  glyph: <NoneGlyph active={c.shortcutShape === null} />,
+                  glyph: <NoneGlyph active={bareLook || c.shortcutShape === null} />,
                 },
                 ...CURATED_SHAPES.filter((o) => o.value !== 'None').map(shortcutShapeOption),
               ]}

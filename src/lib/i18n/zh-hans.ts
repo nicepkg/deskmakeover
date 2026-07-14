@@ -171,6 +171,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Subject_Label": "主体", // PENDING-RESX (ADR-0018 两轴)
   "Plate_Label": "底板", // PENDING-RESX (ADR-0018 两轴)
   "Subject_Orig": "原彩", // PENDING-RESX (ADR-0018)
+  "Plate_None": "系统默认", // PENDING-RESX (owner item 2: plate ⊘ = 系统默认底板)
   "Plate_Auto": "随图标", // PENDING-RESX (ADR-0018)
   "Plate_Faithful": "本色", // PENDING-RESX (ADR-0018)
   "Plate_White": "白", // PENDING-RESX (ADR-0018)
@@ -538,6 +539,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Shape_Flower": "花瓣",
   "Shape_Lemon": "柠檬",
   "Shape_More": "更多", // PENDING-RESX (v3 inspector)
+  "Plate_More": "更多", // PENDING-RESX (v3 inspector)
+  "Mark_More": "更多", // PENDING-RESX (v3 inspector)
   "Shape_None": "无",
   "Shape_Pebble": "卵石",
   "Shape_Samsung": "三星",

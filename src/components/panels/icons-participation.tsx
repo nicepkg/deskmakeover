@@ -1,10 +1,10 @@
 import * as React from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PropertyRow, SwatchButton, SwatchPicker, swatchButtonClass } from '@/components/common/inspector'
-import { BwGlyph, FaithfulGlyph, KindGlyph, PairDot, QuadPlateGlyph, ShapeSwatch } from '@/components/common/chip-preview'
+import { BwGlyph, KindGlyph, NoneGlyph, PairDot, QuadPlateGlyph, ShapeSwatch } from '@/components/common/chip-preview'
 import { AutoGlyph, QUICK_SWATCHES, WheelRing } from '@/components/common/color-controls'
 import { ColorPickerPanel } from '@/components/common/color-picker'
 import { ALL_SHAPES, TYPE_PLATE_SWATCHES, paleOf } from '@/components/panels/icon-axis-options'
@@ -152,9 +152,10 @@ export function KindTypeSection() {
           <button
             type="button"
             onClick={() => resetTypeOverrides()}
-            className="whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] text-t3 transition-colors hover:text-coral-ink"
+            className="-mr-1.5 flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] text-t3 transition-colors hover:text-coral-ink"
           >
-            ↺ {t('Type_ResetAll')}
+            {t('Type_ResetAll')}
+            <RotateCcw size={11} className="shrink-0" />
           </button>
         ) : undefined
       }
@@ -168,13 +169,20 @@ export function KindTypeSection() {
           const open = openBucket === b
           const monoCustom =
             patch.subject === 'Mono' && !!patch.tint && !monoSwatches.some((m) => m.toUpperCase() === patch.tint!.toUpperCase())
+          const plateCustom =
+            !!patch.plateColor &&
+            patch.plateColor.toUpperCase() !== '#FFFFFF' &&
+            !TYPE_PLATE_SWATCHES.some((h) => h.toUpperCase() === patch.plateColor!.toUpperCase())
           return (
             <div key={b} className="py-0.5">
               {/* Header: standard list row — checkbox(参与美化) · glyph · name ·
                   status badge · chevron. Subtle ring only while open. */}
               <div
                 className={cn(
-                  'flex items-center gap-2 rounded-lg px-1.5 py-1.5',
+                  // Align the type-row content with the swatch rows above (owner 2026-07-14):
+                  // the row keeps its rounded hover/ring via a negative margin, but its CONTENT
+                  // lines up with the PropertyRow px-3 edge instead of an extra 1.5 inset.
+                  'flex items-center gap-2 rounded-lg -mx-1.5 px-1.5 py-1.5',
                   open && 'ring-1 ring-coral/35',
                 )}
               >
@@ -206,15 +214,17 @@ export function KindTypeSection() {
                   <KindGlyph bucket={b} muted={!on} size={17} className="shrink-0" />
                   <span className={cn('min-w-0 truncate text-left', on ? 'text-t1' : 'text-t3 line-through')}>{name}</span>
                   <span className="flex-1" />
-                  {custom ? (
-                    <span className="shrink-0 rounded bg-wash-chip px-1 text-[9px] leading-4 text-coral-ink">{t('Type_Custom')}</span>
-                  ) : (
-                    <span className="shrink-0 text-[10px] text-t3">{t('Type_FollowGlobal')}</span>
-                  )}
-                  <ChevronDown
-                    size={12}
-                    className={cn('shrink-0 text-t3 transition-transform duration-200', open && 'rotate-180')}
-                  />
+                  <div className="flex shrink-0 items-center gap-1">
+                    {custom ? (
+                      <span className="rounded bg-wash-chip px-1 text-[9px] leading-4 text-coral-ink">{t('Type_Custom')}</span>
+                    ) : (
+                      <span className="text-[10px] text-t3">{t('Type_FollowGlobal')}</span>
+                    )}
+                    <ChevronDown
+                      size={12}
+                      className={cn('text-t3 transition-transform duration-200', open && 'rotate-180')}
+                    />
+                  </div>
                 </button>
               </div>
               <AnimatePresence initial={false}>
@@ -255,12 +265,24 @@ export function KindTypeSection() {
                         <div>
                           <p className="mb-1.5 text-[11px] text-t2">{t('Subject_Label')}</p>
                           <div className="flex flex-wrap items-center gap-1">
+                            {/* Order (owner correction 2026-07-12): 继承 dashed-circle
+                                FIRST, then the 系统默认 ⊘, then the specific styles. */}
                             <SwatchButton
                               title={t('Type_FollowGlobal')}
                               selected={patch.subject === undefined}
                               onClick={() => patchType(b, { subject: undefined, tint: undefined })}
                             >
                               <AutoGlyph selected={patch.subject === undefined} />
+                            </SwatchButton>
+                            {/* ⊘ 系统默认 = 原彩: the type keeps its own colours
+                                regardless of the global subject (mirrors the main
+                                Subject row's ⊘). */}
+                            <SwatchButton
+                              title={t('Subject_Orig')}
+                              selected={patch.subject === 'Original'}
+                              onClick={() => patchType(b, { subject: 'Original', tint: undefined })}
+                            >
+                              <NoneGlyph active={patch.subject === 'Original'} />
                             </SwatchButton>
                             <SwatchButton
                               title={t('Color_Bw')}
@@ -302,11 +324,16 @@ export function KindTypeSection() {
                           </div>
                         </div>
                       )}
-                      {/* 底板 — AutoGlyph + six FILLED low-sat chips (no text pill). */}
+                      {/* 底板 — ⊘ 系统默认 · 继承 · derived · white · low-sat chips. */}
                       {true && (
                         <div>
                           <p className="mb-1.5 text-[11px] text-t2">{t('Type_Plate')}</p>
                           <div className="flex flex-wrap items-center gap-1">
+                            {/* Order (owner correction 2026-07-12): 继承 dashed-circle
+                                FIRST, then the 系统默认 ⊘, then the specific plates.
+                                The ⊘ = 本色 (null + white): the per-type plate model
+                                has no config distinct from 本色 for "no plate", so the
+                                ⊘ IS that state (mirrors the main Plate row's ⊘). */}
                             <SwatchButton
                               title={t('Type_FollowGlobal')}
                               selected={patch.plateColor === undefined && patch.plateFallback === undefined}
@@ -315,18 +342,18 @@ export function KindTypeSection() {
                               <AutoGlyph selected={patch.plateColor === undefined && patch.plateFallback === undefined} />
                             </SwatchButton>
                             <SwatchButton
+                              title={t('Plate_None')}
+                              selected={patch.plateColor === null && patch.plateFallback === 'white'}
+                              onClick={() => patchType(b, { plateColor: null, plateFallback: 'white' })}
+                            >
+                              <NoneGlyph active={patch.plateColor === null && patch.plateFallback === 'white'} />
+                            </SwatchButton>
+                            <SwatchButton
                               title={t('Plate_Auto')}
                               selected={patch.plateColor === null && patch.plateFallback !== 'white'}
                               onClick={() => patchType(b, { plateColor: null, plateFallback: 'derived' })}
                             >
                               <QuadPlateGlyph />
-                            </SwatchButton>
-                            <SwatchButton
-                              title={t('Plate_Faithful')}
-                              selected={patch.plateColor === null && patch.plateFallback === 'white'}
-                              onClick={() => patchType(b, { plateColor: null, plateFallback: 'white' })}
-                            >
-                              <FaithfulGlyph />
                             </SwatchButton>
                             <SwatchButton
                               title={t('Plate_White')}
@@ -345,6 +372,28 @@ export function KindTypeSection() {
                                 <span className="block size-5 rounded-md ring-1 ring-hair" style={{ background: hex }} />
                               </SwatchButton>
                             ))}
+                            {/* Custom plate colour — the free wheel, matching the main plate row
+                                and the per-type subject wheel (owner 2026-07-14). */}
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  title={t('Palette_Button')}
+                                  aria-label={t('Palette_Button')}
+                                  className={swatchButtonClass(plateCustom)}
+                                >
+                                  <WheelRing size={20} value={patch.plateColor ?? config.plateColor ?? '#FFFFFF'} active={plateCustom} />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent side="left" align="start" className="w-auto rounded-[14px] p-3">
+                                <ColorPickerPanel
+                                  value={patch.plateColor ?? config.plateColor ?? '#FFFFFF'}
+                                  onChange={(hex) => patchType(b, { plateColor: hex })}
+                                  wallpaperSwatches={palette ?? []}
+                                  quickSwatches={QUICK_SWATCHES}
+                                />
+                              </PopoverContent>
+                            </Popover>
                           </div>
                         </div>
                       )}

@@ -70,8 +70,12 @@ export function AutoGlyph({ selected }: { selected: boolean }) {
     <span
       aria-hidden="true"
       className={cn(
+        // 继承/inherit MUST stay dashed when selected (owner bug 2026-07-12:
+        // solidifying the ring made it read as a committed value, not an
+        // inheritance): selection is shown by the coral accent + the enclosing
+        // SwatchButton's coral ring — never by turning the dashes solid.
         'block size-[18px] shrink-0 rounded-full border-[1.5px] border-dashed border-t3',
-        selected && 'border-solid border-coral',
+        selected && 'border-coral',
       )}
     />
   )

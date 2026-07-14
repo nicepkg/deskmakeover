@@ -169,6 +169,7 @@ export const en = {
   "Subject_Label": "Subject",
   "Plate_Label": "Plate",
   "Subject_Orig": "Original",
+  "Plate_None": "System default",
   "Plate_Auto": "Auto",
   "Plate_Faithful": "Faithful",
   "Plate_White": "White",
@@ -536,6 +537,8 @@ export const en = {
   "Shape_Flower": "Flower",
   "Shape_Lemon": "Lemon",
   "Shape_More": "More", // PENDING-RESX (v3 inspector)
+  "Plate_More": "More", // PENDING-RESX (v3 inspector)
+  "Mark_More": "More", // PENDING-RESX (v3 inspector)
   "Shape_None": "Original",
   "Shape_Pebble": "Pebble",
   "Shape_Samsung": "Samsung",

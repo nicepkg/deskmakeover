@@ -6,9 +6,10 @@ publish.workspace = true
 
 # The single privileged binary (ADR-0019 Amendment 1): a `requireAdministrator` helper whose
 # ONLY verbs are the global shortcut-overlay apply/restore pair (ADR-0021). No arbitrary
-# commands. The requireAdministrator manifest (dm-elevated.exe.manifest) is embedded by build.rs
-# via a Windows-only linker arg — no C / no resource compiler runs, so the host msvc cross-check
-# (which does not link) stays clean.
+# commands. The requireAdministrator manifest (dm-elevated.exe.manifest) is embedded at PACKAGING
+# by scripts/stage-sidecar.mjs (mt.exe), NOT at build — so this crate has no build script and
+# `cargo test` runs the unit tests without demanding elevation (a build-time manifest makes the
+# test harness itself require admin → os error 740).
 [[bin]]
 name = "dm-elevated"
 path = "src/main.rs"

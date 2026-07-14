@@ -23,7 +23,11 @@ impl WindowsOverlayControl {
         Self { helper_path }
     }
 
-    /// Resolves `dm-elevated.exe` beside the current executable (its per-machine install location).
+    /// Resolves `dm-elevated.exe` beside the current executable — the install dir (per-user
+    /// `%LOCALAPPDATA%` under the current M8 `installMode: currentUser`). Because that dir is
+    /// user-writable and this helper is launched elevated, the helper MUST be self-contained (no
+    /// hijackable DLL loaded from its own dir); `scripts/stage-sidecar.mjs` enforces `+crt-static`
+    /// so no `VCRUNTIME140.dll` search-order hijack is possible (development.md §6.1).
     ///
     /// [WINDOWS-VERIFY] runtime.
     pub fn beside_current_exe() -> PortResult<Self> {

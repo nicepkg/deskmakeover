@@ -5,7 +5,11 @@ fn main() {
     // STATUS_ENTRYPOINT_NOT_FOUND against tao/wry's comctl32 v6-only imports.
     // Embed a Common-Controls v6 manifest into TEST targets only (the main bin
     // is already covered by tauri_build). See tests/common-controls-v6.manifest.
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+    // /MANIFEST* are link.exe options — require the MSVC env, not just Windows,
+    // so a windows-gnu build (GNU ld) does not choke on them.
+    let is_msvc_windows = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
+    if is_msvc_windows {
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests")
             .join("common-controls-v6.manifest");

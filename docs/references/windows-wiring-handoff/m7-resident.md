@@ -94,7 +94,8 @@ Each item: **action → expected → file:line verified.**
    judge-2 v1) → `deferred_busy` → PAUSED mapping `driver/mod.rs:217-221` (`absorb`); the reconciler
    re-checks between every icon (`crates/dm-resident/src/reconciler/mod.rs:165,297,413`).
    **[WV] precision layer:** judge 1 (`SetWinEventHook` DRAGDROP/CAPTURE on the desktop `SysListView32`)
-   is still a documented enhancement (`activity.rs` module doc) — verify judge 2 suffices first.
+   is now blind-written and layered ON TOP of judge 2 — see the **T2 judge-1** recipe below. Judge 2
+   remains the fallback when the hook can't install.
 
 10. **Known-folder resolution (spec 07 §3 — never hardcode) + fail-closed scope (spec 07 §14).**
     ⚠️ **`start_desktop_watch` currently uses an env-based placeholder** (`resident/mod.rs:434-441`,
@@ -141,4 +142,93 @@ Each item: **action → expected → file:line verified.**
 - **Deep-linked tray items** — 「查看最近整理记录」/「设置」/「恢复系统原始外观…」/「撤销最近一次整理」 all
   currently just open the window (`resident/mod.rs:344-349`); routing to the specific screens + the
   §13 reset-confirmation surface is frontend work.
-- **Autostart, tray bitmaps, SHGetKnownFolderPath, judge-1 hook** — items 4, 14, 10, 9 above.
+- **Autostart, tray bitmaps, SHGetKnownFolderPath** — items 4, 14, 10 above. (Judge-1 hook: now
+  blind-written — see the T2 judge-1 recipe below; still `[WV]` for live confirmation.)
+
+## T2 judge-1 — `SetWinEventHook` drag/capture precision layer (`crates/dm-windows/src/activity.rs`)
+
+Layered ON TOP of the existing judge-2 coarse poll (do not replace it): `is_desktop_busy` = (judge-1
+hook window open) OR (judge-2). Blind-written, `cargo check -p dm-windows --target
+x86_64-pc-windows-msvc` clean; the pure decision logic is `[MAC]`-unit-tested (`activity::tests` —
+`only_drag_capture_movesize_events_arm_busy`, `arm_deadline_is_now_plus_hold_and_saturates`,
+`hook_busy_is_open_only_before_the_deadline`, `a_drag_reads_busy_instantly_and_holds_at_least_1_5s_past_release`,
+`a_later_event_extends_but_never_shortens_a_live_window`, `a_non_arming_event_leaves_the_window_untouched`).
+The live `SetWinEventHook`/callback/message-pump wiring is what these items confirm.
+
+Each item: **action → expected → file:line.**
+
+1. **The hook installs against the real desktop listview.**
+   Launch a build that constructs `WindowsActivityMonitor::new()` (the resident's activity port). → a
+   background thread `dm-desktop-activity-hook` exists (Process Explorer / a log), and it resolved the
+   `Progman → SHELLDLL_DefView → SysListView32` chain (add a temporary `dbg!` in `desktop_listview`).
+   → `activity.rs` `win::HookGuard::install` + `desktop_listview` + `hook_thread_main`
+   (`SetWinEventHook(EVENT_SYSTEM_CAPTURESTART..=EVENT_SYSTEM_DRAGDROPEND, …, WINEVENT_OUTOFCONTEXT)`).
+   On a box where the walk fails (session 0), `install()` returns `None` and judge 2 carries — verify
+   nothing panics and `is_desktop_busy` still answers.
+
+2. **A real drag reads busy INSTANTLY (spec 07 §11 judge 1).**
+   With the hook installed, start dragging an icon (or rubber-band marquee) on the desktop and, mid-
+   drag, poll `is_desktop_busy()`. → returns `true` from the first `EVENT_SYSTEM_DRAGDROPSTART` /
+   `EVENT_SYSTEM_CAPTURESTART` — faster than judge 2's <2s input-recency window. → callback
+   `win::win_event_proc` (`event_arms_busy` → `BUSY_UNTIL_MS.fetch_max`), poll `win::is_desktop_busy`.
+
+3. **Busy holds ≥1.5s PAST release (spec 07 §7).**
+   Release the drag and keep polling. → `is_desktop_busy()` stays `true` until ~1.5s after the
+   `…END` event, then flips to judge-2's answer. Measure the interval ≥ `DRAG_HOLD_MS` (1500ms). →
+   `arm_deadline(now, DRAG_HOLD_MS)` on the END event; `hook_busy(now, busy_until)` in the poll.
+   (This is the runtime twin of the `a_drag_reads_busy…1_5s_past_release` host test.)
+
+4. **Teardown leaves no thread / hook.**
+   Drop the monitor (or exit). → `HookGuard::drop` posts `WM_QUIT`, the pump exits, `UnhookWinEvent`
+   runs, and the `dm-desktop-activity-hook` thread joins cleanly (no leaked hook in Spy++'s hook list,
+   no hung thread). → `impl Drop for HookGuard` + the `GetMessageW` loop exit + `UnhookWinEvent`.
+
+## System item — CLSID `DefaultIcon` read/apply/restore (`state_reader.rs` + `apply/mod.rs` + `apply/system.rs`)
+
+Already landed (commits `2663f76`/`ffb202e`/`336cc37`) and wired into `state_reader.rs`
+(`read_fingerprint`/`capture_anchor` `ItemKind::System` arms) + `apply/mod.rs`
+(`apply`/`restore` `ItemKind::System` arms + the CLSID-match restore guard). PER-USER (HKCU) only —
+the machine (HKLM/HKCR) scope is the §14 red line the resident refuses. Pure `parse_clsid`
+(CLSID→key-path) + the anchor round-trip are `[MAC]`-tested (`apply::system::tests`,
+`restore::tests::system_icon_anchor_round_trips_*`). The live registry read/write is what these items
+confirm.
+
+> **Key-location note (`[WV]`).** `apply/system.rs` writes the per-user override at
+> `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{clsid}\DefaultIcon` — the SAME
+> location the Recycle-Bin sibling (`apply/recyclebin.rs`) and the Windows "Desktop Icon Settings"
+> applet use, chosen for sibling-consistency and because that path is the proven desktop-icon
+> personalization key. The generic COM per-user override `HKCU\Software\Classes\CLSID\{clsid}\DefaultIcon`
+> is an alternative; if box testing shows Explorer does NOT honor the `Explorer\CLSID` path for a
+> given namespace icon, switch `user_key()` to `Software\Classes\CLSID\…`. Both are HKCU (§14 safe).
+
+Each item: **action → expected → file:line.**
+
+1. **This-PC icon styles via the per-user CLSID override.**
+   Apply a style to the This-PC item (CLSID `{20D04FE0-3AEA-1069-A2D8-08002B30309D}`). → the desktop
+   "This PC" icon changes; the value lands ONLY under `HKCU\…\Explorer\CLSID\{20D04FE0-…}\DefaultIcon`
+   (`reg query`), nothing under HKLM/HKCR. Explorer repaints after the central `SHChangeNotify`
+   (`refresh.rs`). → `apply/mod.rs` `ItemKind::System => system::apply(&parse_clsid(path)?, &icon)`,
+   `apply/system.rs` `apply` (`create_subkey(user_key)` + `set_value`).
+
+2. **Restore reverts cleanly (no residue) — key created vs pre-existing.**
+   Restore. → if no per-user key existed before apply, the value we wrote is deleted (the now-empty key
+   may remain, never `delete_subkey_all`); if a per-user value pre-existed, its exact raw bytes + kind
+   (`REG_SZ`/`REG_EXPAND_SZ`, unexpanded `%SystemRoot%`) are rewritten. The icon returns to the
+   original. → `apply/system.rs` `restore` (`key_existed` branch) driven by `state_reader.rs`
+   `capture_anchor` `ItemKind::System` → `RestoreAnchor::SystemIcon`.
+
+3. **Machine scope is REFUSED (spec 07 §14 red line).**
+   Confirm no code path writes HKLM/HKCR for a System item: `apply`/`restore` only ever open
+   `HKEY_CURRENT_USER`; `machine_value()` reads HKCR but never writes it. → `apply/system.rs` (grep:
+   the only `HKEY_CLASSES_ROOT` use is the read-only `machine_value`).
+
+4. **A malformed / mismatched CLSID is rejected, not mis-written.**
+   Feed a non-`::{GUID}` target or a restore whose anchor CLSID ≠ the target's. → `parse_clsid` returns
+   `Unsupported` for a non-GUID string (no key interpolation), and `apply/mod.rs` restore returns the
+   "CLSID mismatch" error rather than mutating the wrong key. → `apply/system.rs` `parse_clsid` /
+   `is_registry_guid`; `apply/mod.rs` restore CLSID re-derive + equality guard.
+
+   **Per-CLSID `Unsupported` kept:** NONE. All five real desktop-namespace icons (This PC, Network,
+   Recycle Bin, Control Panel, User's Files) accept a per-user `DefaultIcon` override, so no valid
+   desktop CLSID is genuinely unstyleable. The only `Unsupported` path is a target string that is not a
+   canonical `::{GUID}` (rejected by `parse_clsid`), which is correct — not a blanket stub.

@@ -41,6 +41,9 @@ windows = { version = "0.61", features = [
     "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
+    # Judge-1 desktop-activity precision layer (activity.rs): SetWinEventHook / UnhookWinEvent /
+    # HWINEVENTHOOK on the desktop SysListView32's drag/capture/move-size WinEvents (spec 07 §11).
+    "Win32_UI_Accessibility",
     "Win32_System_SystemInformation",
     "Win32_Storage_FileSystem",
     "Win32_Security",

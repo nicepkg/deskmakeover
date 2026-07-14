@@ -3,12 +3,14 @@
 > ⚠️ **DO NOT EXECUTE AS-IS — the STEPS below are for the RETIRED C# WebView2 host** (`legacy/`,
 > ADR-0019) and reference `DeskMakeover.App.exe` + a `v1.1.0` build that never shipped. The product
 > is now Tauri 2 + Rust; the live-run steps must be rebuilt for the Tauri stack (owner-supervised
-> icon-bake + wallpaper-apply on Mac-Tauri) and extended with the **calm W3** cert-lab matrix
-> (inspect→apply→verify→reboot→restore on a real Windows box, ADR-0023). The **live-run GATE itself
+> icon-bake + wallpaper-apply on **Windows Tauri / a real Windows box** — the real shell/COM/WIC/
+> registry writes cannot be validated on Mac-Tauri, which only exercises the fake-adapter bridge/E2E
+> path) and extended with the **calm W3** cert-lab matrix (inspect→apply→verify→reboot→restore on a
+> real Windows box, ADR-0023). The **live-run GATE itself
 > stands** (a human click bakes the real desktop — never automated); only the concrete steps are
 > stale. Authoritative state: `docs/STATE.md`; ship tracker: `docs/ship-readiness.md`.
 
-The one gate no automation may cross (ADR-0011 §7, spec 04 §5, spec 01 Safety
+The one gate no automation may cross (ADR-0019, spec 04 §5, spec 01 Safety
 Rules): the REAL desktop icon bake and the REAL wallpaper apply. This runbook is the
 owner's checklist for signing those two operations off on the real machine.
 

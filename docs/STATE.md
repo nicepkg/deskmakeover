@@ -50,7 +50,8 @@ what is in flight, and what comes next.
   W0/W1/W2 are DONE + codex-approved (→ journal). The deferred refresh / `ms-settings:` launch
   adapters ride W3.
 - **M6 kernel-speed + TS-pixel deletion** (concurrent session) — the WASM single-truth flip already
-  EXECUTED (WASM is the only production pixel path). Remaining: the byte-identical SIMD perf line
+  EXECUTED (WASM is the only foreground production pixel path; resident/background uses the
+  byte-identical native `dm-icon-core` build). Remaining: the byte-identical SIMD perf line
   (`docs/plans/2026-07-11-m6-kernel-speed.md`) + the physical deletion of the now-frozen TS pixel
   modules (`docs/plans/2026-07-11-m6-p4-cutover.md`), the deletion gated on WASM-vs-TS perf parity.
 - **M7 resident — platform bodies.** Decision core DONE + hardened on Mac (→ journal); remaining is

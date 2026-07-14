@@ -117,8 +117,8 @@ Endpoint layout (migration phases: `docs/plans/2026-07-10-tauri-migration.md`):
 
 *Transition*: the legacy .NET tree is FROZEN as an executable oracle during the
 port (BakeService invariants harvested into named Rust tests) and deleted at M8
-(`last-dotnet` tag). The frozen TS compositor is the primary pixel oracle until
-the M6 certification gate.
+(`last-dotnet` tag). The frozen TS compositor (the M6 flip is EXECUTED) remains a
+non-production parity oracle until its physical deletion at M8.
 
 **Config truth**: `bridge/types.ts` (BRIDGE_SCHEMA_VERSION = 8, two-axis
 subject×plate per ADR-0018) — ConfigDto axes: shape (11-shape catalog) × subject

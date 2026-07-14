@@ -4,7 +4,10 @@
 > and it works" list. A standing companion to `STATE.md` (which is the ~150-line pointer); this doc
 > holds the detail. Update it in place as items close — it is a living tracker, not a dated snapshot.
 >
-> **Last reconciled:** 2026-07-14 (added the 清爽/calm module: W0 web + W1 Rust decision core +
+> **Last reconciled:** 2026-07-15 (added the preset-packages round: `.dmpreset` import/export + user
+> library + bridge schema 9, Mac-green + two codex passes closed; the new Windows I/O surface has
+> run/observe recipes in §Preset packages [WINDOWS-VERIFY]. File shape + Comet mark ride existing
+> surfaces). Prior 2026-07-14 (清爽/calm module: W0 web + W1 Rust decision core +
 > bridge schema 8 + W2 Windows platform ports all Mac-green/codex-approved, W3 cert lab = the open
 > Windows gate — see the calm row in §Milestone status; plus a full doc-hygiene pass). Prior 2026-07-13: icon-bridge
 > convergence + extractor + exportCompare + M7 resident decision core + version switch — all
@@ -38,6 +41,7 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 | **M6-WIRE Wave B B10 (desktop watcher)** | ✅ DONE 2026-07-12 (`37f4b13`) | Real `notify`+`notify-debouncer-full`, Mac-live-verified (FSEvents), msvc-clean. 3 runtime semantics `[WV]` (self-write suppression / restart catch-up / overflow→rescan). |
 | **M6-WIRE Wave C (Windows handoff doc)** | **NOT STARTED** | The Windows handoff doc has not been written (its shape is sketched in `docs/plans/2026-07-12-m6-wire-host.md` §8; the planned output path does not exist yet). No systematic Windows verification recipe yet. |
 | **M7 resident auto-format** | **DECISION CORE DONE + HARDENED (Mac, 2026-07-13)** — platform bodies + tray [WV] | `dm-resident` built + full test battery: reconciler (T6), tray SM (T7), pending queue (T5), consent ladder, stability probe, privileged red-line (T12). Plus style_resolve + native_bake (T1 port), version_switch (T10, wired `icons.switchVersion`), reset toggle-coupling, resident precondition, T2 WindowsActivityMonitor (judge-2, msvc-clean). **Two codex adversarial rounds** (apply-path + policy) → 2🔴+9🟠+5🟡 ALL closed: propose→apply snapshot-CAS contract, §14 scope re-check at every write entry + shared path-ancestry, unconditional recovery, busy-abort, v1-always-proposes, atomic reset, nanosecond stability. **Remaining = [WV] platform bodies:** T8 tray+windowless residency wiring (unwritten), T11 tray bitmaps (uncreated), the watcher→reconciler→driver LOOP wiring, T2's judge-1 WinEventHook precision layer. |
+| **Preset packages (spec 09, 2026-07-15)** | ✅ **Rust + web DONE (Mac-green, two codex passes closed)** | `.dmpreset` reader/writer + user library + bridge schema 9 + `dmpreset://` protocol + `tauri-plugin-dialog` picker grants. All fs/zip is `std`/`zip`-crate cross-platform, BUT the Windows I/O surface (native pickers, WebView2 protocol + file-drop, NTFS swap/recovery, MAX_PATH) is a fresh `[WINDOWS-VERIFY]` block — see §Preset packages [WINDOWS-VERIFY]. |
 | **M8 release engineering** | **NOT STARTED** | No installer / signing / updater; version `0.0.0`. (The `legacy/` .NET tree was deleted early, 2026-07-14, ahead of M8.) See §Packaging. |
 | **M1 go/no-go spikes (Windows)** | PARTIAL | Only Spike 4 (tri-target pixel, Mac) done. Spikes 1/2/3/5 (STA+IFolderView, SysListView32 layout, elevated-helper roundtrip, kill-injected `.lnk`) are Windows-bound and **never run** — the ADR-0019 "gate for everything after" was never actually gated on a real box. |
 | **清爽 / calm-Windows module** (ADR-0023, spec 08) | **W0/W1/W2 DONE + codex-approved (Mac)** | W0 web (codex R8) · W1 Rust decision core + bridge schema 8 (codex R7) · W2 two Windows platform ports blind-written + msvc-clean (codex R5), all Mac-green. **W3 cert lab = the open ADR-0023 D2 gate** (real Windows box: inspect→apply→verify→reboot→restore ladder + allowlist + per-recipe `policy_guards` + GPP ruling). Capability-gated release: W3 green → the write slice rides v1; else v1 ships the guided-only 「教你关」 face. |
@@ -117,8 +121,65 @@ in the (unwritten) Windows handoff doc; the running checklists live in
   cross-check on Mac).
 - **dm-operations seams** — `txn/asset_store.rs`, `txn/driver.rs`, `fs_atomic.rs`, `wallpaper/decode.rs`.
 - **src-tauri composition** — `lib.rs` (whole Windows icon composition blind-wired, active-profile
-  count hardcoded to 1), `wallpaper_host.rs`, `icon_host.rs` (custom-protocol WebView2 form,
-  `SPI_GETWORKAREA` grid, real IFolderView2 positions).
+  count hardcoded to 1; the `dmpreset://` custom-protocol registration + `tauri-plugin-dialog`
+  init are new here, WebView2 form unproven), `wallpaper_host.rs`, `icon_host.rs` (custom-protocol
+  WebView2 form, `SPI_GETWORKAREA` grid, real IFolderView2 positions).
+- **preset store** — `preset_store.rs` (NTFS staging/backup swap + `recover()`, `dmpreset://`
+  thumbnail bytes) — see §Preset packages for the run/observe recipes.
+
+## Preset packages (spec 09) — `[WINDOWS-VERIFY]` recipes (2026-07-15 round)
+
+The `.dmpreset` import/export + user preset library is **Mac-green and codex-hardened**
+(two adversarial passes, FIX-6 + focused-security FIX-4, all closed — see
+`docs/reviews/2026-07-15-icon-preset-io-file-shape-arrow.md`). Every fs/zip path is
+`std` / the `zip` crate (cross-platform), so nothing here is blind-written the way
+`dm-windows` is — but the surface below has never run on WebView2 / NTFS. Each item is
+**run this → observe that** for the Windows AI. Code lives in `src-tauri/src/preset_store.rs`,
+`src-tauri/src/commands.rs` (`presets_*`), `src-tauri/src/lib.rs` (`dmpreset://` + dialog plugin),
+`src-tauri/capabilities/main.json` (dialog grants), `src/stores/preset-library.ts`,
+`src/components/panels/icons-style-library.tsx`.
+
+1. **Native file pickers (`tauri-plugin-dialog`).** Icons page → 风格库 popover → 导入 → the
+   Windows *open* dialog appears, filtered to `*.dmpreset`; pick a file → the import-preview sheet
+   lists entries. 导出当前 → name it → the Windows *save* dialog appears with a `.dmpreset` default
+   name → confirm → the file lands at the chosen path. **Observe:** both dialogs are the real
+   Win32 common dialogs, return real paths, and the capability grant (`dialog:allow-open` +
+   `dialog:allow-save` only) is not rejected by the ACL.
+2. **Export → import round-trip on NTFS.** Export the current look → import the file back. **Observe:**
+   the preview sheet renders the recipe (live minis on the user's own icons, NOT the packaged
+   thumbnail), the entry appears in 「我的」, and applying it reproduces the look. Confirms zip
+   entry names (`/` separators, UTF-8 flag) round-trip on Windows and `create_new` export never
+   silently overwrites.
+3. **`dmpreset://` thumbnails on WebView2.** Save a couple of 「我的」 presets (with thumbnails) →
+   reopen the 风格库 popover. **Observe:** the 「我的」 cards show their thumbnails, served over the
+   `dmpreset://<id>` custom protocol (mirrors the existing `dmicon://` / `dmwallpaper://` forms — if
+   those work on the box, this should, but it is a NEW scheme registration in `lib.rs`).
+4. **Window file-drop import.** Drag a `.dmpreset` file from Explorer onto the app window. **Observe:**
+   the import-preview sheet opens (Tauri `onDragDropEvent`; the `.dmpreset` path filter must match a
+   Windows backslash path — verify the `.toLowerCase().endsWith('.dmpreset')` check fires).
+5. **NTFS atomic swap + crash recovery.** Save a preset, then overwrite it (save again with the same
+   look, or re-import). **Observe:** no `.tmp-<id>` / `.bak-<id>` dirs linger in
+   `%APPDATA%\<bundle-id>\presets\`; the entry is intact. Then simulate a crash: with the app closed,
+   manually create `presets\.bak-<id>\entry.json` (valid) and delete `presets\<id>` → relaunch →
+   **observe** the entry is restored (`recover()` runs in `PresetStore::new`). Confirms the
+   dir-rename-onto-nonexistent + file-`MOVEFILE_REPLACE_EXISTING` swap behaves on NTFS (codex flagged
+   this as a Windows risk; `std::fs::rename` should handle both — this is the empirical check).
+6. **MAX_PATH.** The deepest library path is `%APPDATA%\<bundle-id>\presets\<id>\thumb.png` where
+   `<id>` is a 36-char UUID. **Observe:** save + list + thumbnail all work (roomy under 260). If a
+   future entry nests `assets\<id>\…`, re-check headroom; long-path awareness is only needed if the
+   bundle id or data dir is unusually deep.
+7. **`.dmpreset` OS file association (deferred to M8).** Double-clicking a `.dmpreset` in Explorer
+   should open the app and start import. This needs installer registration (NSIS/WiX `fileAssociations`)
+   + a single-instance argv handler — **not built**; see §Packaging. Until then, import is via the
+   picker / drag-drop only.
+
+**File shape + Comet mark ride existing surfaces — nothing NEW here.** Both are pure `dm-icon-core`
+pixel math: the foreground preview runs through the platform-independent WASM path (WebView2 runs the
+same `.wasm`), and the resident/background bake runs the byte-identical native build. The only Windows
+concern is the existing M7 `[WV]` resident-bake surface — when the resident bakes a File-shaped or
+Comet-marked icon it must match the WASM preview (byte-parity is the standing discipline). The
+`dm-operations` styleJson parser learned `"File"` / `"Comet"`, so a persisted ②③ recipe using them
+round-trips through the native resident path too.
 
 ## Packaging / release gaps (M8 — all undone)
 
@@ -130,6 +191,10 @@ in the (unwritten) Windows handoff doc; the running checklists live in
   packaging MUST build + place it (with its `requireAdministrator` manifest) next to the main binary.
 - **M7 build deps missing** — `tauri` features has no `"tray-icon"`; no `tauri-plugin-notification`,
   no autostart plugin (spec 07 §16 needs all three). No tray bitmap assets.
+- **`.dmpreset` file association not registered** — the installer needs a `fileAssociations` block
+  (NSIS/WiX) + a single-instance argv handler so double-clicking a package opens the app and imports
+  it (spec 09 §6). Until built, import is picker / drag-drop only (`tauri-plugin-dialog` IS now a
+  dependency; the `dialog:allow-open`/`allow-save` grants are in `capabilities/main.json`).
 - **No CI** — `.github/workflows/` does not exist; all gates (generated.ts drift, byte-parity cert) are local-only.
 - **Frozen TS pixel compositor not physically deleted** (tree-shaken only). (The `.NET` legacy tree was deleted 2026-07-14.)
 - **First-run/onboarding** — welcome-gate built on web; M7 first-format consent strip + resident onboarding unbuilt.

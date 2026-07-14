@@ -31,16 +31,17 @@ what is in flight, and what comes next.
   Windows cert lab (W3) turns green; else v1 ships the guided-only 「教你关」 face.
 - ADR-0013 (+ amendments) — v3 "Premium Flat": light-first OKLCH following system; bundled Inter +
   HarmonyOS Sans SC; in-app version narrative restored.
-- Specs 00–08 are the intended source of truth (00 roadmap · 01 architecture · 02 visual language ·
-  03 shell/settings · 04 wallpaper · 05 bridge · 06 icons · 07 resident · 08 calm).
+- Specs 00–09 are the intended source of truth (00 roadmap · 01 architecture · 02 visual language ·
+  03 shell/settings · 04 wallpaper · 05 bridge · 06 icons · 07 resident · 08 calm · 09 preset packages).
 - Runbook: `docs/development.md`.
 
 ## Bridge state
 
-- Contract truth = `src/bridge/types.ts` `BRIDGE_SCHEMA_VERSION` (currently **8**) + the generated
-  `src/bridge/generated.ts` (from `dm-contracts`). Wallpaper (schema 6), icons (schema 7) and calm
-  (schema 8) all route through real Rust on Mac-Tauri; the frontend assembles the rich store shapes
-  from thin bridge DTOs. Windows runtime for every native path is `[WINDOWS-VERIFY]`.
+- Contract truth = `src/bridge/types.ts` `BRIDGE_SCHEMA_VERSION` (currently **9**) + the generated
+  `src/bridge/generated.ts` (from `dm-contracts`). Wallpaper (schema 6), icons (schema 7), calm
+  (schema 8) and preset packages (schema 9, `presets.*` + `dmpreset://`) all route through real Rust
+  on Mac-Tauri; the frontend assembles the rich store shapes from thin bridge DTOs. Windows runtime
+  for every native path is `[WINDOWS-VERIFY]` (preset-packages recipes in `docs/ship-readiness.md`).
 
 ## Active work (in flight)
 

@@ -232,10 +232,16 @@ mod tests {
 
     #[test]
     fn read_capped_ico_rejects_a_directory() {
-        // A directory (e.g. reached through a junction) is not a regular file.
+        // A directory (e.g. reached through a junction) must never pass as an overlay ICO.
+        // Unix: File::open succeeds, then is_file() == false → our "regular file" reject.
+        // Windows: File::open on a directory fails outright (no FILE_FLAG_BACKUP_SEMANTICS),
+        // so the OS error IS the rejection. Either way the directory is refused.
         let dir = tempfile::tempdir().unwrap();
         let err = read_capped_ico(dir.path()).unwrap_err();
-        assert!(err.contains("regular file"));
+        #[cfg(unix)]
+        assert!(err.contains("regular file"), "unexpected error: {err}");
+        #[cfg(windows)]
+        assert!(!err.is_empty(), "a directory must be rejected, got empty error");
     }
 
     #[test]

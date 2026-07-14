@@ -232,7 +232,7 @@ mod windows_impl {
     const MAX_STATE_BYTES: u64 = 64 * 1024;
     fn read_state_capped(path: &Path) -> Result<String, String> {
         use std::io::Read;
-        let mut f = std::fs::File::open(path).map_err(io)?;
+        let f = std::fs::File::open(path).map_err(io)?;
         let mut buf = Vec::new();
         f.take(MAX_STATE_BYTES + 1).read_to_end(&mut buf).map_err(io)?;
         if buf.len() as u64 > MAX_STATE_BYTES {

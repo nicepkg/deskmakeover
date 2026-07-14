@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Common Controls v6 dependency for cargo TEST binaries only.
+
+  tao/wry statically import comctl32 v6-only exports (SetWindowSubclass,
+  RemoveWindowSubclass, DefSubclassProc, TaskDialogIndirect). The shipped app
+  binary gets an application manifest declaring Microsoft.Windows.Common-Controls
+  6.0 from `tauri_build::build()`, so the loader binds comctl32 to the WinSxS v6
+  assembly. Integration-test binaries produced by `cargo test` get no such
+  manifest, so they bind to System32\comctl32.dll (v5.82) which lacks those
+  exports and fail to start with STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139).
+
+  build.rs embeds this into test targets via `rustc-link-arg-tests`.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*" />
+    </dependentAssembly>
+  </dependency>
+</assembly>

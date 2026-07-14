@@ -1,6 +1,9 @@
 # ADR-0018 — Two-Axis Colour Model (主体 × 底板)
 
-- **Status**: Accepted (owner-approved 2026-07-10, 「批准，现在就做」)
+- **Status**: Accepted (owner-approved 2026-07-10, 「批准，现在就做」) — the two-axis 主体×底板 data
+  model stands; the **migration MECHANISM below is superseded by [ADR-0019](0019-tauri-rust-replatform.md)**:
+  "schema 3→4 before F8 (single C# port)" is void — the contract is now generated from Rust
+  `dm-contracts` via tauri-specta (current bridge schema 8), no C# port.
 - **Panel**: chief PM absent by scope; chief UX + chief UI + chief designer —
   independent verdicts, 3/3 convergence. Normative design:
   `docs/product/two-axis-colour-spec.md` (chief-designer, owner-ratified).

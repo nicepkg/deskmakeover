@@ -18,6 +18,14 @@ Rgba32 math (no Win32), so a TS port is translation, not research.
 
 ## Decisions
 
+> **⚠️ ADR-0019 amendment (read before the decisions).** The pixel truth moved to **one Rust
+> `dm-icon-core`** (WASM preview + native apply/background). So **D1** (interactive renderer "in
+> TypeScript") and **D4** (background auto-styler "renders in C# in-process") are **SUPERSEDED** —
+> the TS compositor and the C# `TileRenderer` are now both **frozen parity oracles**, not production
+> renderers; "F8" stage names are void. What **STANDS**: the 256 boundary + ICO/resample ladder
+> (ported into `dm-icon-codec`), the freeze discipline, the parity-oracle role, and the style/colour
+> capability decisions. Read the TS/C#/F8 ownership in the body below as the 2026-07-09 historical design.
+
 **D1 — One interactive renderer, in TypeScript.** A pixi.js v8 icon compositor
 renders the live preview AND the apply output. Same pipeline, two resolutions:
 display-size for editing, 256px RGBA master for apply. `mock-desktop.ts`'s styling

@@ -6,9 +6,10 @@
   cross-vendor chief architecture engineer, 2 adversarial rounds), the ChatGPT
   consultation `docs/references/gpt-refactor-suggest.md`, and repo evidence cited below.
 - **Supersedes**: ADR-0001 (the .NET/WPF half of the tech stack), ADR-0011 (WPF+WebView2
-  host). **Amends**: ADR-0015 (renderer/oracle ownership — see §Oracles). Spec 05 will be
-  rewritten for the Tauri bridge; spec 00's "F8 Windows host pass" is void, replaced by
-  the migration phases in `docs/plans/2026-07-10-tauri-migration.md`.
+  host). **Amends**: ADR-0014 (wallpaper host I/O — source decode / PNG write / `SetWallpaper` /
+  backup-restore move to Rust; the TS/Pixi compositor decision stands) + ADR-0015 (renderer/oracle
+  ownership — see §Oracles). Spec 05 rewritten for the Tauri bridge; spec 00's "F8 Windows host
+  pass" is void, replaced by the migration phases in `docs/plans/2026-07-10-tauri-migration.md`.
 
 ## Context
 

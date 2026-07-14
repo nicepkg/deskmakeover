@@ -3,8 +3,9 @@
 **Status:** accepted — with two clauses amended: the **Dark-first default theme** is superseded by
 [ADR-0010](0010-settings-page-i18n-icon-and-shape-expansion.md) / [ADR-0013](0013-v3-flat-light-redesign.md)
 (default now follows the system, light-first), and the **no-resident-process** stance is superseded
-by [ADR-0020](0020-background-resident-v1.md) (background resident ships in v1). The one-click
-product form + reset decision stands.
+by [ADR-0020](0020-background-resident-v1.md) (background resident ships in v1); and
+[ADR-0003](0003-voc-driven-product-revisions.md) superseded the arrow-removal + separate
+restore-link subclauses. The one-click product form + reset decision stands.
 **Date:** 2026-07-05
 
 ## Context

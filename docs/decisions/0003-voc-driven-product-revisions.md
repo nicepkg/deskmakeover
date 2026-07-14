@@ -4,7 +4,8 @@
 shortcut mark** was reversed to **None** (owner 2026-07-07; see [ADR-0017](0017-per-type-distinction-system.md)
 + owner decree), and the **"no resident process / real-time watcher not before v1.1"** stance is
 superseded by [ADR-0020](0020-background-resident-v1.md) / [ADR-0022](0022-m7-appearance-model-and-consent.md)
-(resident auto-format ships in v1). The VOC three-state governance stands.
+(resident auto-format ships in v1); and the **badge design** was superseded by
+[ADR-0005](0005-distinction-shape-color-system.md) (then 0007/0008). The VOC three-state governance stands.
 **Date:** 2026-07-05
 
 ## Context

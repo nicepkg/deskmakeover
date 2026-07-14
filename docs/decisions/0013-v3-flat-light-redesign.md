@@ -1,8 +1,11 @@
 # ADR-0013 — v3 "Premium Flat" redesign: light-first, bundled type, ceremony & gesture unification
 
 - **Status**: accepted (owner interview 2026-07-08, 12 decisions D1-D12) — later **amended by
-  [ADR-0021](0021-global-arrow-overlay-default.md)**: this ADR's native-arrow 60s penance gate is
-  retired (the global transparent overlay is now the default; the rest of the welcome ceremony stands).
+  [ADR-0021](0021-global-arrow-overlay-default.md)** (this ADR's native-arrow 60s penance gate is
+  retired; the global transparent overlay is now the default; the rest of the welcome ceremony
+  stands) and **[ADR-0019](0019-tauri-rust-replatform.md)** (the version-narrative / changelog
+  implementation moves from the C# host to the Tauri/Rust host; the "F8" stage name is void — the
+  design decisions below stand, only the platform changed).
 - **Supersedes / amends**: ADR-0012's dark-default and Segoe-stack typography; spec 02 v2
   chrome sections (rewritten as v3). Engine rendering law (WYSIWYG sections) untouched.
 - **Evidence**: `docs/reviews/2026-07-08-ui-v3-premium-flat-panel.md` (panel run #2 on
@@ -63,8 +66,8 @@ fallback typography, a handful of load-bearing components/feel gaps).
   no-version-narrative rule. The identity card shows a clickable version line;
   it opens the in-app changelog dialog (per-locale entries over the bridge).
   The changelog auto-opens exactly ONCE per installed update, never on first
-  install. The host's changelog data source + the real version number are
-  restored on the Windows side in F8.
+  install. The changelog data source + the real version number come from the
+  Tauri/Rust host (`app.getInfo`; F8 void, ADR-0019).
 - **2026-07-08 (owner): one axis-glyph keyline + one 无 dialect** — every
   shape/filter/mark glyph draws exactly 16px on a 20px canvas (no optical
   exceptions); every axis's 「无」 sits FIRST wearing the slash-circle
@@ -112,8 +115,8 @@ fallback typography, a handful of load-bearing components/feel gaps).
   finalized during the build's design phase and locked by the banned-color and
   contrast gates — the spec records the constraints and roles.
 - Version narrative is BACK (see Amendments): the version line + in-app changelog
-  ship; `Directory.Build.props` moves off `0.0.0` when the owner names the first
-  public version (F8).
+  ship; the version (root `package.json` + `src-tauri/tauri.conf.json`) moves off `0.0.0`
+  when the owner names the first public version (M8 release engineering).
 - The i18n string table gains ceremony/coach strings already present; stranded strings
   become referenced or get deleted at build end (no dead strings at release gate).
 - Panel protocol: this artifact has consumed its 2 full-panel runs; future UI judgment

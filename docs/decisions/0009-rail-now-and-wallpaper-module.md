@@ -3,7 +3,8 @@
 - **Status**: accepted (owner decision, 2026-07-07)
 - **Supersedes/amends**: the roadmap note "the icon rail waits for 4+ modules";
   spec 01's "Excluded from v1.0: module rail + 壁纸" (rail + wallpaper now land in
-  v1.1); ADR-0008's future-form IA stays the binding visual contract for the rail.
+  v1.1); the rail IA contract is now the v3 specs + ADR-0013 (ADR-0008's prototype was
+  superseded by ADR-0012 and is historical reference only).
 
 ## Context
 

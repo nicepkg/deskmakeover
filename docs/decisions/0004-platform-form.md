@@ -1,6 +1,8 @@
 # 0004. Platform Form: One Verb, Many Battlefields
 
-**Status:** accepted
+**Status:** accepted — amended by [ADR-0023](0023-calm-windows-module.md) (§3 HealthCheck scope
+narrowed · §5 gained a guided exception · §6 system-purification timing superseded). See the
+amendment at the end of this file.
 **Date:** 2026-07-05
 
 ## Context

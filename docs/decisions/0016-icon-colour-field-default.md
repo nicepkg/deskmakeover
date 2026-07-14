@@ -46,7 +46,8 @@ highlight, never a full desaturating wash). Icons with no extractable hue
 (photos, near-white, generic files) may take a letter/source-colour badge
 fallback — tail-only, never global.
 
-**D4 — Findability is an acceptance gate.** F8 exit adds: (a) owner-supervised
+**D4 — Findability is an acceptance gate.** The icon-native release gate adds (F8 is void,
+ADR-0019 — this binds to the current icon apply/native release exit): (a) owner-supervised
 light test — default look, 20 random targets, locate time/error rate not worse
 than the stock-desktop threshold; (b) automated neighbouring-plate ΔE
 separability check over the mock corpus in bun tests. A default that loses to

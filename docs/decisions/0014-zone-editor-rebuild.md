@@ -9,6 +9,13 @@
 - Input: 5-seat expert panel + owner dispositions —
   `docs/reviews/2026-07-09-zone-editor-expert-panel.md` (Q1–Q10 all disposed).
 
+> **⚠️ ADR-0019 amendment (read before the body).** The **wallpaper compositor decision STANDS**
+> (one TS/Pixi WebGL2 compositor, five materials, Adaptive Frost). What is **SUPERSEDED**: every
+> "C# host" ownership below (source decode, PNG write, `SetWallpaper`, backup/restore) is now **Rust**
+> (Mac-wired schema 6, Windows `[WINDOWS-VERIFY]`); the `WallpaperBakeRenderer.cs`/`WallpaperComposer.cs`
+> deletion is at **M8** (not "F8" — F8 is void), they are frozen in `legacy/`; the old `STATE.md §F8`
+> reference no longer exists. Read the C#/F8 mentions in the body as the 2026-07-09 historical design.
+
 ## D1 — One TypeScript WebGL compositor (A3)
 
 Zone/clarity composition moves from C# to the web layer: a single TS compositor
@@ -21,11 +28,10 @@ Zone/clarity composition moves from C# to the web layer: a single TS compositor
   apply → `convertToBlob('image/png')` → PNG bytes to the host, which writes the
   file and calls `IDesktopWallpaper.SetWallpaper`.
 
-`WallpaperBakeRenderer.cs` / `WallpaperComposer.cs` are to be DELETED at F8 (⚠️ status
-correction 2026-07-10: both files are STILL PRESENT in the tree — the native-host handoff
-that retires them is not done; see STATE.md §F8). Source DECODE
-stays in C# (WPF/WIC handles JPEG XR/HEIC/cover-crop; browsers do not): the host
-hands the web one cover-cropped RGBA bitmap per source change. The per-edit
+`WallpaperBakeRenderer.cs` / `WallpaperComposer.cs` are to be DELETED at M8 (see the ADR-0019
+amendment above; superseded 2026-07-10: both files are frozen in `legacy/`, deleted with the
+.NET tree at M8). Source DECODE is now Rust (WIC on Windows; the historical text below said
+C#/WPF): the host hands the web one cover-cropped RGBA bitmap per source change. The per-edit
 host→web 33MB (4K) / 133MB (8K) frame traffic disappears; the bridge carries the
 source once and a small PNG back on apply.
 

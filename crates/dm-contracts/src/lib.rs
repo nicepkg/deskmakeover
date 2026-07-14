@@ -9,6 +9,7 @@
 
 mod common;
 mod icons;
+mod presets;
 mod settings;
 mod style;
 mod tweaks;
@@ -18,6 +19,9 @@ pub use common::{SystemInfoDto, ToastDto};
 pub use icons::{
     ArrowOverlayDto, GridMetricsDto, IconChunkItemDto, IconItemDto, IconKindDto, IconOpResultDto,
     IconPersistedDto, IconScanDto, LookVersionDto,
+};
+pub use presets::{
+    PresetEntryDto, PresetMetaDto, PresetPackageReadDto, PresetReadEntryDto, PresetSaveDto,
 };
 pub use settings::{Language, SettingsDto, SettingsPatch, Theme};
 pub use tweaks::{

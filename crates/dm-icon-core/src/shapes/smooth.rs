@@ -308,6 +308,23 @@ fn smooth_def(shape: IconShape) -> SmoothDef {
             ],
             fit: false,
         },
+        // 文件 File (spec 02, owner V2 2026-07-15; corners softened per owner
+        // 2026-07-15 "别像狗啃"): a dog-eared document — top-right 45° cut of
+        // c=30 (interior below x−y=70), outer corners r12 (Folder-family
+        // weight). The two cut-edge endpoints carry a GENEROUS r16 + high
+        // smoothing (s=0.85, silkier than the body) so the fold reads as a soft
+        // rounded corner, never a sharp chamfer. Solid cut-away: the folded-page
+        // look is the Fold MARK's job (bottom-right) — distinct corner + layer.
+        IconShape::File => SmoothDef {
+            vertices: vec![
+                SmoothVertex { x: 0.0, y: 0.0, r: 12.0, s: XI },
+                SmoothVertex { x: 70.0, y: 0.0, r: 16.0, s: 0.85 },
+                SmoothVertex { x: 100.0, y: 30.0, r: 16.0, s: 0.85 },
+                SmoothVertex { x: 100.0, y: 100.0, r: 12.0, s: XI },
+                SmoothVertex { x: 0.0, y: 100.0, r: 12.0, s: XI },
+            ],
+            fit: false,
+        },
         IconShape::Diamond => SmoothDef {
             vertices: vec![
                 SmoothVertex { x: 50.0, y: 0.0, r: 20.0, s: 0.8 },

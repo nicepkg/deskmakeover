@@ -40,6 +40,9 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 # Decodes the webview-composed compare sheet (icons.exportCompare) before it lands on disk.
 base64 = "0.22"
+# .dmpreset packages (spec 09): bounded read + export writer. deflate only — no
+# extra codecs, and the bounds/zip-slip guards live in preset_store.rs.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # Desktop-only plugins. `cfg(desktop)` is a Tauri-set cfg unknown to Cargo at
 # resolution time, so these must key off the standard target_os cfgs instead.
@@ -49,6 +52,8 @@ tauri-plugin-window-state = "2"
 # Opens About/support links in the default browser and the data folder in the file
 # manager (shell.openExternal / shell.openDataFolder). Cross-platform.
 tauri-plugin-opener = "2"
+# Preset import/export file pickers (spec 09 §6) — open + save grants only.
+tauri-plugin-dialog = "2"
 
 # The Windows platform adapters — crash recovery at startup (ADR-0019) + the
 # wallpaper topology/applier ports (M6-WIRE A6). Windows-only, so the Mac host

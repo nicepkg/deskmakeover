@@ -13,6 +13,7 @@ import {
   pickActiveScreenId,
   reconcileScreens,
 } from './monitor-reconcile'
+import { migrateWallpaperZoneEnums } from './preset-migrations'
 
 // Frontend wallpaper-state ASSEMBLY (schema 6, owner ruling D1 2026-07-12). The
 // host is thin platform I/O: `wallpaper.getScreens` returns raw screens + globals
@@ -67,23 +68,12 @@ export function loadPersistedLooks(): Map<string, PersistedLook> {
   return map
 }
 
-/** Round-3 lineup migration (2026-07-15, one-way, silent): retired finishes and
- *  the retired Tab title map to their heirs. Includes the same-day owner cuts
- *  (Glaze→Fluted, Float→Brushed; Halo re-aimed at Frost — soft translucent
- *  family). Mutates in place on the freshly parsed object — persisted entries
- *  re-save in new terms on the next write. */
-const MATERIAL_MIGRATION: Record<string, string> = {
-  Luminous: 'Frost',
-  Solid: 'Paper',
-  Halo: 'Frost',
-  Glaze: 'Fluted',
-  Float: 'Brushed',
-}
+/** Round-3 lineup migration (2026-07-15, one-way, silent) — the mapping tables
+ *  live in the shared migration chain (lib/preset-migrations, spec 09 §3) so
+ *  load-from-disk and future wallpaper-preset import migrate identically. */
 function migrateLook(look: LookDto): void {
   for (const zone of look.zones) {
-    const material = MATERIAL_MIGRATION[zone.material as string]
-    if (material) zone.material = material as LookDto['zones'][number]['material']
-    if ((zone.titleStyle as string) === 'Tab') zone.titleStyle = 'Chip'
+    migrateWallpaperZoneEnums(zone as unknown as { material: string; titleStyle: string })
   }
 }
 

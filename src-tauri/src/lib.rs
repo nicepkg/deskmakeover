@@ -17,12 +17,14 @@ mod devhost;
 #[cfg(not(windows))]
 mod devhost_icons;
 mod icon_host;
+mod preset_store;
 mod resident;
 mod tweaks_host;
 mod wallpaper_host;
 
 use dm_operations::icons::scope::ScopeRoots;
 use icon_host::{IconHost, IconHostPorts};
+use preset_store::PresetStore;
 use tweaks_host::TweaksHost;
 use wallpaper_host::WallpaperHost;
 
@@ -33,6 +35,8 @@ pub struct AppState {
     pub wallpaper: WallpaperHost,
     pub icons: IconHost,
     pub tweaks: TweaksHost,
+    /// The user preset library + .dmpreset reader/writer (spec 09).
+    pub presets: PresetStore,
     /// M7 resident handle (spec 07 §1/§12): read by the windowless-residency close/exit guards.
     pub resident: resident::ResidentHandle,
 }
@@ -56,6 +60,12 @@ fn specta_builder() -> Builder<tauri::Wry> {
         commands::icons_restore_overlay,
         commands::icons_switch_version,
         commands::icons_export_compare,
+        commands::presets_read_package,
+        commands::presets_list,
+        commands::presets_save,
+        commands::presets_delete,
+        commands::presets_rename,
+        commands::presets_export,
         commands::tweaks_probe,
         commands::tweaks_apply,
         commands::tweaks_restore,
@@ -169,6 +179,9 @@ pub fn run() {
         // Opens About/support links in the default browser + the data folder in the
         // file manager (shell.openExternal / shell.openDataFolder).
         builder = builder.plugin(tauri_plugin_opener::init());
+        // Preset import/export file pickers (spec 09 §6): the webview receives
+        // PATH STRINGS only (dialog:allow-open + allow-save); fs stays in Rust.
+        builder = builder.plugin(tauri_plugin_dialog::init());
     }
 
     builder
@@ -223,6 +236,28 @@ pub fn run() {
                     .expect("static 404 cannot fail"),
             }
         })
+        // Library preset thumbnails ride this protocol as image/png (spec 09 §6,
+        // dmicon:// clone): key = entryId; bytes are PNG-sniffed on both write and read.
+        .register_uri_scheme_protocol("dmpreset", |ctx, request| {
+            let key = request.uri().path().trim_start_matches('/');
+            let png = ctx
+                .app_handle()
+                .try_state::<AppState>()
+                .and_then(|s| s.presets.thumb_for(key));
+            match png {
+                Some(bytes) => tauri::http::Response::builder()
+                    .header("Content-Type", "image/png")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .header("Cache-Control", "no-cache")
+                    .body(bytes)
+                    .expect("static headers cannot fail"),
+                None => tauri::http::Response::builder()
+                    .status(404)
+                    .header("Access-Control-Allow-Origin", "*")
+                    .body(Vec::new())
+                    .expect("static 404 cannot fail"),
+            }
+        })
         .invoke_handler(specta.invoke_handler())
         .on_window_event(|window, event| {
             // Windowless residency (spec 07 §1): while automation is enabled, closing the window
@@ -257,6 +292,7 @@ pub fn run() {
             let settings = Arc::new(SettingsStore::open(&db_path)?);
             let wallpaper = build_wallpaper_host(&data_dir)?;
             let icons = build_icon_host(&data_dir, settings.clone())?;
+            let presets = PresetStore::new(&data_dir);
             // W1: the calm host uses the in-memory devhost on every platform (the real winreg
             // backend is Wave 2). No data_dir yet — its journal is in-memory this slice.
             let tweaks = TweaksHost::new_devhost();
@@ -264,7 +300,7 @@ pub fn run() {
             // driver behind the cfg-adapter pattern (real dm-windows engine on Windows, devhost fake
             // elsewhere). Returns the handle the windowless-residency guards read.
             let resident = resident::setup(app.handle(), settings.clone(), data_dir.clone())?;
-            app.manage(AppState { settings, wallpaper, icons, tweaks, resident });
+            app.manage(AppState { settings, wallpaper, icons, tweaks, presets, resident });
             log::info!("settings store ready at {}", db_path.display());
             Ok(())
         })

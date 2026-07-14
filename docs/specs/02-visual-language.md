@@ -209,8 +209,21 @@ preview swatch, canvas tile, and bake:
 - **三星**: the official One UI adaptive-icon mask path, scaled:
   `M50,0 C10,0 0,10 0,50 C0,90 10,100 50,100 C90,100 100,90 100,50 C100,10 90,0 50,0`.
 - **扩展形状** (curated 2026-07-09): 方块 Tile · 水滴 Teardrop · 书签 Bookmark ·
-  柠檬 Lemon · 菱形 Diamond · 花瓣 Flower · 卵石 Pebble — a 「更多」 fold below the
-  curated 无/苹果/纯圆/三星/方块/水滴 row. **11 shapes total.**
+  柠檬 Lemon · 菱形 Diamond · 花瓣 Flower · 卵石 Pebble · 文件夹 Folder ·
+  文件 File — a 「更多」 fold below the curated 无/苹果/纯圆/三星/方块/水滴 row.
+  **13 shapes total (incl. 无).**
+  - **文件 File** (owner-disposed 2026-07-15, V2 — binding record
+    `docs/reviews/2026-07-15-icon-preset-io-file-shape-arrow.md` #5): a dog-eared
+    document silhouette — five-vertex smooth polygon, top-right 45° cut of
+    **c=30** units (interior = below `x−y = 70`), outer corners **r12** (Folder
+    family weight), cut-edge endpoints **r16 + smoothing s=0.85** (softened per
+    owner 2026-07-15 「别像狗啃」 — the fold reads as a silky rounded corner, not a
+    sharp chamfer), body smoothing s=0.6, `fit:false`. The SHAPE layer is a solid
+    cut-away; folded-page (双层纸) semantics belong to the Fold MARK
+    (bottom-right) — distinct corner, layer and meaning, and they compose.
+    Reads as "document" down to 32px; only grazes the 67% content box (1.4px
+    margin). Built for the File bucket in Beautified types but available on
+    every shape row.
   - **Geometry engine** (owner call 2026-07-09, replaces the coarse hand-plotted
     C# polygons): Figma-style corner rounding + `cornerSmoothing` for arbitrary
     polygons, ported from `msurguy/squircle-path-kit` (MIT; itself derived from
@@ -341,7 +354,7 @@ Swatch grammar: **concentric pair dots** — outer disc = the plate the pick pro
 Continuous drags (前景/背景 picker + hue strip + mark-colour wheel) are throttled
 (leading+trailing, 140ms) so 100+ tile recomputes never pile up.
 
-## Shortcut Marks (快捷方式标识 · six styles + classic arrow)
+## Shortcut Marks (快捷方式标识 · seven styles + classic arrow)
 
 States: **美化** / **经典箭头** (light plate `#F4F4F1`, dark ↗ `#2E3238`, bottom-left,
 size `max(14, 0.28S)`, radius 4) / **无标识** (launch default). Mark colour: **自动**
@@ -360,6 +373,7 @@ actual outline whatever the form.
 | **珐琅光弧** | in-shape radial glow at (15%,88%), `mc` mixed 78%→`#141414` (light) / 82%→white (dark), fade by 46%. |
 | **卷角** | dog-ear bottom-right, corner cut `c=S·{apple .26,samsung .28,circle .30}`; mirrored fold, warm paper gradient, dual shadow. |
 | **细描边** | same-shape ring behind; on free-form a snug band around the icon's silhouette; colour `mc`. |
+| **箭头徽章 Comet** (owner-disposed 2026-07-15) | a self-grounded floating arrow badge, fixed bottom-left: squircle seat (`applePolygon`, cornerFactor ≈0.30, side ≈0.36·S) + 1px inner ring + soft drop shadow (dy≈1.4, blur≈1.6, black 0.35) — the seat+ring+shadow form the badge's OWN visual ground, so it never hangs on pointed/round shapes (Circle/Diamond/Teardrop: the shadow lands on the composited desktop). Refined ↗ glyph (round caps/joins, thin shaft tail (−.40,.40)→(.34,−.34), bold barbs (.06,−.42)/(.44,−.44)/(.42,−.06), stroke ≈0.16·seat). Adaptive at the 0.58 threshold: light tile → charcoal `#232328` seat + `#F4F4F1` arrow; dark tile → inverted. `markColor` tints the SEAT (arrow stays white/charcoal for contrast); default is neutral — never coral unless picked. Placement `over`, no carve, un-gated. |
 
 `玻璃箭头` removed from the gallery (ADR-0010); renderer stays only as legacy test
 scaffolding. Acceptance: ADR-0005 3-second misread gate; parity — mark chips, canvas

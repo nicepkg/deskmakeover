@@ -267,6 +267,7 @@ fn parse_shape(s: &str) -> Result<IconShape> {
         "Flower" => IconShape::Flower,
         "Pebble" => IconShape::Pebble,
         "Folder" => IconShape::Folder,
+        "File" => IconShape::File,
         other => return Err(OperationError::InvalidPayload(format!("unknown shape {other:?}"))),
     })
 }
@@ -304,6 +305,7 @@ pub fn to_core_config(cfg: &ConfigDtoJson) -> Result<CoreConfig> {
         "Arc" => MarkStyle::Arc,
         "Fold" => MarkStyle::Fold,
         "Ring" => MarkStyle::Ring,
+        "Comet" => MarkStyle::Comet,
         other => return Err(OperationError::InvalidPayload(format!("unknown markStyle {other:?}"))),
     };
     let filter = match cfg.filter.as_str() {

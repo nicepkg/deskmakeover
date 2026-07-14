@@ -261,6 +261,63 @@ describe('System Default reset preset (A1)', () => {
   })
 })
 
+// Lens model (spec 06 §3.13, owner-disposed 2026-07-15): System Default is a
+// read-only preview LENS over the draft. Toward-default actions (全部重置 /
+// ↺跟随全局 / participation toggles) mutate the draft but never lift the lens;
+// only value-asserting edits lift it. The draft survives the lens losslessly.
+describe('System-Default lens (spec 06 §3.13)', () => {
+  const folderPatch = { source: 'custom' as const, patch: { shape: 'Circle' as const } }
+
+  beforeEach(() => {
+    useIcons.setState({
+      state: { ...useIcons.getState().state!, typeOverrides: { Folder: folderPatch } },
+    })
+  })
+
+  test('全部重置 empties typeOverrides but NEVER lifts the lens (the reported bug)', () => {
+    const s = useIcons.getState()
+    s.selectSystemDefault()
+    expect(useIcons.getState().bareLook).toBe(true)
+    useIcons.getState().resetTypeOverrides()
+    expect(useIcons.getState().state!.typeOverrides).toEqual({})
+    expect(useIcons.getState().bareLook).toBe(true)
+  })
+
+  test('↺回到跟随全局 (clear branch) keeps the lens', () => {
+    const s = useIcons.getState()
+    s.selectSystemDefault()
+    useIcons.getState().setTypeOverride('Folder', null)
+    expect(useIcons.getState().state!.typeOverrides).toEqual({})
+    expect(useIcons.getState().bareLook).toBe(true)
+  })
+
+  test('writing a custom type patch is value-asserting and lifts the lens', () => {
+    const s = useIcons.getState()
+    s.selectSystemDefault()
+    useIcons.getState().setTypeOverride('File', { source: 'custom', patch: { shape: 'Tile' } })
+    expect(useIcons.getState().bareLook).toBe(false)
+    expect(useIcons.getState().state!.typeOverrides.File?.patch?.shape).toBe('Tile')
+  })
+
+  test('participation toggles are orthogonal to the lens', () => {
+    const s = useIcons.getState()
+    s.selectSystemDefault()
+    useIcons.getState().setKindPolicy('Folder', false)
+    expect(useIcons.getState().state!.kindPolicy.Folder).toBe(false)
+    expect(useIcons.getState().bareLook).toBe(true)
+  })
+
+  test('the draft survives a lens round-trip losslessly', () => {
+    const s = useIcons.getState()
+    s.selectSystemDefault()
+    expect(useIcons.getState().state!.typeOverrides).toEqual({ Folder: folderPatch })
+    useIcons.getState().mutate({ shape: 'Samsung' }) // value-asserting → lens lifts
+    expect(useIcons.getState().bareLook).toBe(false)
+    expect(useIcons.getState().state!.typeOverrides).toEqual({ Folder: folderPatch })
+    expect(useIcons.getState().state!.config.shape).toBe('Samsung')
+  })
+})
+
 // A3: the resume status line maps the SAME applied/dirty signals every module
 // reads to an honest phrase — an un-applied draft never silently reads "applied".
 describe('resume status line (A3)', () => {

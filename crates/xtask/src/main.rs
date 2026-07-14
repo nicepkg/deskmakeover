@@ -210,6 +210,7 @@ fn parse_config(v: &Value) -> Config {
             "Arc" => MarkStyle::Arc,
             "Fold" => MarkStyle::Fold,
             "Ring" => MarkStyle::Ring,
+            "Comet" => MarkStyle::Comet,
             o => panic!("markStyle {o}"),
         },
         mark_color: v["markColor"].as_str().map(hex_to_int),
@@ -520,6 +521,7 @@ fn parse_shape(name: &str) -> IconShape {
         "Flower" => IconShape::Flower,
         "Pebble" => IconShape::Pebble,
         "Folder" => IconShape::Folder,
+        "File" => IconShape::File,
         other => panic!("unknown shape {other}"),
     }
 }

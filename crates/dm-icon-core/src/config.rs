@@ -45,6 +45,9 @@ pub enum MarkStyle {
     Arc,
     Fold,
     Ring,
+    /// 箭头徽章 (spec 02, owner-disposed 2026-07-15): self-grounded squircle
+    /// arrow badge, the un-gated beautiful arrow.
+    Comet,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

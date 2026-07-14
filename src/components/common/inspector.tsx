@@ -227,12 +227,16 @@ export function IconAction({
   title,
   active = false,
   children,
+  // React 19: ref rides ...rest, and Radix Slot (PopoverTrigger asChild) merges
+  // its handlers into the props it hands us — spreading rest onto the button is
+  // all IconAction needs to serve as a popover anchor.
+  ...rest
 }: {
-  onClick: () => void
+  onClick?: React.MouseEventHandler<HTMLButtonElement>
   title: string
   active?: boolean
   children: ReactNode
-}) {
+} & Omit<React.ComponentPropsWithRef<'button'>, 'onClick' | 'title' | 'children'>) {
   return (
     <button
       type="button"
@@ -240,6 +244,7 @@ export function IconAction({
       aria-label={title}
       aria-pressed={active}
       onClick={onClick}
+      {...rest}
       className={cn(
         'flex h-[22px] shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-[7px] px-1.5 text-[10px] leading-none transition-colors active:scale-95',
         active ? 'bg-wash-chip text-coral-ink' : 'bg-chip text-t2 hover:bg-raised-hov hover:text-t1',

@@ -20,7 +20,24 @@
 // behind dm-contracts (tweaks* verbs → CalmProbeRowDto / CalmApplyRowDto / CalmRestoreRowDto /
 // CalmGuidedProbeDto). The frontend CalmBackend port maps 1:1 onto these; the store never learns
 // mock vs real Rust.
-export const BRIDGE_SCHEMA_VERSION = 8
+// Schema 9 (spec 09, 2026-07-15): preset packages + the user preset library. presets.* verbs →
+// PresetPackageReadDto / PresetEntryDto / PresetSaveDto (dm-contracts); library thumbnails ride
+// the scoped dmpreset:// protocol. Rust owns structure/security; payload SEMANTICS stay with the
+// ONE TS validator (lib/icon-look), so readPackage is PURE and save is the only library writer.
+export const BRIDGE_SCHEMA_VERSION = 9
+
+// Preset package DTOs (schema 9) are consumed straight from the generated
+// contract — they carry no frontend-only fields, so a hand mirror would be
+// pure drift surface. Imported for the BridgeMethods map below AND re-exported.
+import type {
+  PresetEntryDto,
+  PresetMetaDto,
+  PresetPackageReadDto,
+  PresetReadEntryDto,
+  PresetSaveDto,
+} from './generated'
+
+export type { PresetEntryDto, PresetMetaDto, PresetPackageReadDto, PresetReadEntryDto, PresetSaveDto }
 
 export interface SettingsDto {
   theme: 'System' | 'Dark' | 'Light'
@@ -89,11 +106,15 @@ export type IconShape =
   | 'Lemon' | 'Tile' | 'Teardrop' | 'Diamond' | 'Flower' | 'Pebble'
   /** Folder-tab silhouette (ADR-0017): the Folder bucket's factory shape. */
   | 'Folder'
+  /** Dog-eared document (spec 02 V2, owner-disposed 2026-07-15): top-right 45°
+   *  cut c=30, outer corners r12, cut-edge endpoints r6 — built for the File
+   *  bucket, available everywhere. */
+  | 'File'
 /** SUBJECT axis (ADR-0018): how the artwork renders. Field is GONE as a
  *  mode — 满彩 is now the preset coordinate (Original × 随图标 plate). */
 export type Subject = 'Original' | 'BlackWhite' | 'Mono'
 export type Distinction = 'Mark' | 'Keep' | 'None'
-export type MarkStyle = 'Glass' | 'Shadow' | 'Halo' | 'Satin' | 'Arc' | 'Fold' | 'Ring'
+export type MarkStyle = 'Glass' | 'Shadow' | 'Halo' | 'Satin' | 'Arc' | 'Fold' | 'Ring' | 'Comet'
 export type IconSizeMode = 'Small' | 'Mid' | 'Big'
 export type FilterStyle = 'None' | 'Gloss' | 'Glass' | 'Pixel' | 'Sticker'
 
@@ -590,6 +611,15 @@ export interface BridgeMethods {
    *  states — oracle ComparisonImageExporter); Rust only validates + saves the finished PNG
    *  (raw base64) and toasts the saved path. */
   'icons.exportCompare': { params: { png: string }; result: IconOpResultDto }
+  // Preset packages + the user preset library (schema 9, spec 09 §6). readPackage is a PURE
+  // bounded read (nothing written); the import flow is read → validate (lib/icon-look) →
+  // preview → save-per-entry. save is the ONLY library writer; import-as-copy = mint a new id.
+  'presets.readPackage': { params: { path: string }; result: PresetPackageReadDto }
+  'presets.list': { params: void; result: PresetEntryDto[] }
+  'presets.save': { params: { entry: PresetSaveDto; overwrite: boolean }; result: PresetEntryDto }
+  'presets.delete': { params: { entryId: string }; result: null }
+  'presets.rename': { params: { entryId: string; name: string }; result: PresetEntryDto }
+  'presets.export': { params: { destPath: string; entries: PresetSaveDto[] }; result: string }
   'shell.minimize': { params: void; result: null }
   'shell.maximize': { params: void; result: null }
   'shell.restore': { params: void; result: null }

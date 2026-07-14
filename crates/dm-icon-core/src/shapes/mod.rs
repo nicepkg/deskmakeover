@@ -26,6 +26,9 @@ pub enum IconShape {
     Flower,
     Pebble,
     Folder,
+    /// Dog-eared document (spec 02 V2, owner-disposed 2026-07-15):
+    /// top-right 45° cut c=30, outer corners r12, cut-edge endpoints r6.
+    File,
 }
 
 pub(crate) type Pt = (f64, f64);
@@ -95,7 +98,8 @@ fn build_polygon(shape: IconShape, size: f64) -> Vec<Pt> {
         | IconShape::Bookmark
         | IconShape::Lemon
         | IconShape::Diamond
-        | IconShape::Folder => smooth::smooth_polygon(shape, size),
+        | IconShape::Folder
+        | IconShape::File => smooth::smooth_polygon(shape, size),
         IconShape::Samsung | IconShape::Flower | IconShape::Pebble => {
             sample_path(&curved_def(shape), size)
         }
@@ -338,6 +342,7 @@ mod tests {
             IconShape::Flower,
             IconShape::Pebble,
             IconShape::Folder,
+            IconShape::File,
         ] {
             assert!(
                 shape_contains(shape, 128.0, 128.0, 256.0),

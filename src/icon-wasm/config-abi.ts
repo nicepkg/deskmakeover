@@ -14,12 +14,12 @@ import type { ConfigDto } from '@/bridge/types'
 export const CONFIG_BYTES = 24
 
 // Tag tables — index = the on-wire u8. Order is load-bearing (shared with Rust).
-const SHAPE = ['Apple', 'Circle', 'Samsung', 'None', 'Bookmark', 'Lemon', 'Tile', 'Teardrop', 'Diamond', 'Flower', 'Pebble', 'Folder']
+const SHAPE = ['Apple', 'Circle', 'Samsung', 'None', 'Bookmark', 'Lemon', 'Tile', 'Teardrop', 'Diamond', 'Flower', 'Pebble', 'Folder', 'File']
 const SUBJECT = ['Original', 'BlackWhite', 'Mono']
 const MONO = ['Tonal', 'Flat']
 const BAND = ['Vivid', 'Quiet']
 const DISTINCTION = ['Mark', 'Keep', 'None']
-const MARK = ['Glass', 'Shadow', 'Halo', 'Satin', 'Arc', 'Fold', 'Ring']
+const MARK = ['Glass', 'Shadow', 'Halo', 'Satin', 'Arc', 'Fold', 'Ring', 'Comet']
 const FILTER = ['None', 'Gloss', 'Glass', 'Pixel', 'Sticker']
 const FALLBACK = ['derived', 'white']
 

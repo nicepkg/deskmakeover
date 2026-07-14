@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { motion, useReducedMotion } from 'motion/react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { IconAction, InspectorCard, PropertyRow, Reveal, SwatchButton, SwatchPicker, swatchButtonClass, useFooterClearance } from '@/components/common/inspector'
 import type { SwatchOption } from '@/components/common/inspector'
@@ -11,11 +11,11 @@ import { HistoryStrip } from '@/components/common/history-strip'
 import { Confetti, useCelebration } from '@/components/common/confetti'
 import { KeptBar, KindTypeSection } from '@/components/panels/icons-participation'
 import { CURATED_SHAPES, MORE_SHAPES, TYPE_PLATE_SWATCHES, paleOf } from '@/components/panels/icon-axis-options'
+import { PRESET_NAME, PresetCard, PresetMiniCanvas, PresetMinis, StyleLibraryPopover } from '@/components/panels/icons-style-library'
 import { CtaButton } from '@/components/common/cta-button'
 import { ArrowGateSheet, ConfirmSheet, ConsentSheet, DoneCard } from '@/components/common/ceremony'
 import { Segmented } from '@/components/common/segmented'
-import { activePresetIdOf, fieldRenderOpts, resumeStatusKey, useIcons } from '@/stores/icons'
-import { getIconCompositor } from '@/icon-compositor/icon-renderer'
+import { activePresetIdOf, resumeStatusKey, useIcons } from '@/stores/icons'
 import { useIconsHero } from '@/lib/hero'
 import { format, useT } from '@/lib/i18n'
 import type { StringKey } from '@/lib/i18n'
@@ -40,18 +40,10 @@ const FILTERS: { value: FilterStyle; key: StringKey }[] = [
   { value: 'Pixel', key: 'Filter_Pixel' }, { value: 'Sticker', key: 'Filter_Sticker' },
 ]
 const MARKS: { value: MarkStyle; key: StringKey }[] = [
-  { value: 'Shadow', key: 'Mark_Shadow' }, { value: 'Halo', key: 'Mark_Halo' }, { value: 'Satin', key: 'Mark_Satin' },
+  { value: 'Comet', key: 'Mark_Comet' }, { value: 'Shadow', key: 'Mark_Shadow' }, { value: 'Halo', key: 'Mark_Halo' }, { value: 'Satin', key: 'Mark_Satin' },
   { value: 'Arc', key: 'Mark_Arc' }, { value: 'Fold', key: 'Mark_Fold' }, { value: 'Ring', key: 'Mark_Ring' },
 ]
-export const PRESET_NAME: Record<string, { name: StringKey; desc: StringKey }> = {
-  spectrum: { name: 'Preset_spectrum', desc: 'Preset_spectrum_Desc' },
-  stationery: { name: 'Preset_stationery', desc: 'Preset_stationery_Desc' },
-  glass: { name: 'Preset_glass', desc: 'Preset_glass_Desc' },
-  pebble: { name: 'Preset_pebble', desc: 'Preset_pebble_Desc' },
-  ink: { name: 'Preset_ink', desc: 'Preset_ink_Desc' },
-  white: { name: 'Preset_white', desc: 'Preset_white_Desc' },
-  ascast: { name: 'Preset_ascast', desc: 'Preset_ascast_Desc' },
-}
+// PRESET_NAME moved to icons-style-library.tsx (panel → library one-way import).
 
 export function IconsPanel() {
   const t = useT()
@@ -61,25 +53,10 @@ export function IconsPanel() {
   // (`overlayRestoring`, which holds no `working` flag) — both must inert the version-jump crossings
   // (codex R4-Minor: a control that looks clickable but silently no-ops is worse than a disabled one).
   const overlayRestoring = useIcons((s) => s.overlayRestoring)
-  const { mutate, selectPreset, selectSystemDefault, apply, restore, stageVersion, hover, hoverBare } = useIcons.getState()
+  const { mutate, selectPreset, selectSystemDefault, resumeDraft, apply, restore, stageVersion, hover, hoverBare } = useIcons.getState()
   const [moreShapes, setMoreShapes] = React.useState(false)
   const [morePlate, setMorePlate] = React.useState(false)
   const [moreMark, setMoreMark] = React.useState(false)
-  const [morePresets, setMorePresets] = React.useState(false)
-  // Fold-animation hover freeze (owner diagnosis 2026-07-10: hovering a card
-  // MID-EXPANSION fires the full-desktop try-on render inside the animation
-  // frames — that was the jank). While the fold animates, preset hovers are
-  // ignored; clicks still work.
-  const foldAnimating = React.useRef(false)
-  const foldAnimTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  const armFoldFreeze = () => {
-    foldAnimating.current = true
-    if (foldAnimTimer.current) clearTimeout(foldAnimTimer.current)
-    foldAnimTimer.current = setTimeout(() => {
-      foldAnimating.current = false
-      foldAnimTimer.current = null
-    }, 450)
-  }
   const [moreShortcutShapes, setMoreShortcutShapes] = React.useState(false)
   const [historyOpen, setHistoryOpen] = React.useState(false)
   const [consentOpen, setConsentOpen] = React.useState(false)
@@ -138,8 +115,10 @@ export function IconsPanel() {
     else void runApply()
   }
   // 回到此版 = stage that version's config, then the SAME ceremonied crossing
-  // as apply — no silent desktop writes (spec 06 §3.7).
+  // as apply — no silent desktop writes (spec 06 §3.7). The history popover
+  // closes first so the ceremony sheet never stacks under it.
   const goVersion = (index: number) => {
+    setHistoryOpen(false)
     stageVersion(index)
     if (!consentOk()) setConsentOpen(true)
     else void runApply()
@@ -296,79 +275,21 @@ export function IconsPanel() {
           it rides along with the panel (owner call 2026-07-09), never floats. */}
       <div style={{ paddingBottom: clearance }} className="scrollbar-none -mt-px flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pt-px [&>*]:shrink-0">
         <p className="truncate px-0.5 text-[11px] text-t3/90" title={statusLine}>{statusLine}</p>
-        {/* 风格 presets — style-card grid (filter-deck grammar): a visual thumbnail
-            leads, the name sits on one line below, the description lives in the
-            tooltip. Two columns grow downward forever — 4 presets or 40, same UI. */}
-        {/* Preset fold (owner height complaint + designer ruling): the featured
-            four max-difference cards show by default; a counting ghost row
-            (「更多风格 +N」, never a bare More) expands IN PLACE — positions of
-            the visible cards never reflow. Auto-open when the active preset
-            hides behind the fold. */}
+        {/* Inline preset area (spec 06 §3.14, owner-disposed 2026-07-15 P-B):
+            CONSTANT height — the [系统默认][当前风格] pair + the 风格库 trigger
+            strip. The full collection (built-ins + the user library) lives in
+            the popover; collections may never grow the panel's inline height.
+            (The 4-card grid + 「更多风格」 fold is retired.) */}
         {(() => {
-          const activeHidden = state.presets.slice(3).some((p) => activePresetIdOf(state) === p.id)
-          const foldOpen = morePresets || activeHidden
-          const renderPresetCard = (p: (typeof state.presets)[number]) => {
-            const meta = PRESET_NAME[p.id]
-            // v2: derived client-side — the host no longer refreshes per edit. While
-            // the bare look is active (A1), NO style preset is selected — System
-            // Default owns the highlight even though config still matches a preset.
-            const selected = !bareLook && activePresetIdOf(state) === p.id
-            const presetHover = tryOn(p.config, p.typeOverrides)
-            return (
-              <button
-                key={p.id}
-                type="button"
-                aria-pressed={selected}
-                title={meta ? `${t(meta.name)} · ${t(meta.desc)}` : p.id}
-                onClick={() => {
-                  presetHover(false)
-                  selectPreset(p.id)
-                }}
-                onMouseEnter={() => {
-                  if (foldAnimating.current) return
-                  presetHover(true)
-                }}
-                onMouseLeave={() => presetHover(false)}
-                className={cn(
-                  // Native feel (owner): hover changes COLOUR only — never size or
-                  // position. No lift, no scale, no translate.
-                  'group relative flex w-full flex-col overflow-hidden rounded-[10px] border bg-raised text-left transition-colors duration-150',
-                  selected ? 'border-coral/50' : 'border-hair-strong hover:border-hair-strong',
-                )}
-              >
-                <span
-                  className={cn(
-                    'flex h-11 w-full items-center justify-center gap-1 transition-colors',
-                    selected ? 'bg-wash-preset' : 'bg-chip/60 group-hover:bg-chip',
-                  )}
-                >
-                  <PresetMinis config={p.config} />
-                </span>
-                <span
-                  className={cn(
-                    'w-full truncate whitespace-nowrap px-2 py-1.5 text-center text-[11px] font-medium [word-break:keep-all]',
-                    selected ? 'text-coral-ink' : 'text-t1',
-                  )}
-                >
-                  {meta ? t(meta.name) : p.id}
-                </span>
-                {selected && (
-                  <motion.span
-                    initial={reduced ? false : { scale: 0.4, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ type: 'spring', stiffness: 520, damping: 26 }}
-                    className="absolute right-1 top-1 flex size-3.5 items-center justify-center rounded-full bg-coral text-[9px] leading-none text-cta-ink"
-                  >
-                    ✓
-                  </motion.span>
-                )}
-              </button>
-            )
-          }
-          // System Default (A1) as the FIRST card in the style grid (owner: not a
-          // separate row). Same card grammar as a style preset — a reset thumbnail
-          // leads, name below — but selecting it shows the bare desktop in the preview
-          // with NO host write (the CTA restores). No hover geometry (native feel).
+          const activeId = activePresetIdOf(state)
+          const activeMeta = activeId ? PRESET_NAME[activeId] : undefined
+          const currentName = activeMeta ? t(activeMeta.name) : t('Preset_CurrentCustom')
+          // While the lens is down, hovering 当前风格 previews the preserved
+          // draft (hoverConfig paints OVER bareLook in the mirror); clicking it
+          // lifts the lens (resumeDraft) — the inverse of the System Default card.
+          const draftTryOn = tryOn({})
+          // System Default (A1): same card grammar — bare minis (original icons
+          // WITH the native arrow), no host write; the CTA becomes a restore.
           const systemDefaultCard = (
             <button
               key="system-default"
@@ -380,10 +301,7 @@ export function IconsPanel() {
                 hover(null)
                 selectSystemDefault()
               }}
-              onMouseEnter={() => {
-                if (foldAnimating.current) return
-                bareTryOn(true)
-              }}
+              onMouseEnter={() => bareTryOn(true)}
               onMouseLeave={() => bareTryOn(false)}
               className={cn(
                 'group relative flex w-full flex-col overflow-hidden rounded-[10px] border bg-raised text-left transition-colors duration-150',
@@ -396,10 +314,6 @@ export function IconsPanel() {
                   bareLook ? 'bg-wash-preset' : 'bg-chip/60 group-hover:bg-chip',
                 )}
               >
-                {/* The bare/original icons WITH the native shortcut arrow (owner):
-                    same 3-mini grammar as every style card, so System Default reads
-                    as the same category — its content is the ugly desktop the reset
-                    returns to. */}
                 <PresetMinis bare config={state.config} />
               </span>
               <span
@@ -423,61 +337,32 @@ export function IconsPanel() {
             </button>
           )
           return (
-            <div>
+            <div className="flex flex-col gap-1.5">
               <div className="grid grid-cols-2 gap-1.5">
                 {systemDefaultCard}
-                {state.presets.slice(0, 3).map(renderPresetCard)}
+                <PresetCard
+                  name={currentName}
+                  title={`${currentName} · ${t('Preset_Current_Tip')}`}
+                  config={c}
+                  selected={!bareLook}
+                  onHoverChange={(h) => {
+                    if (bareLook) draftTryOn(h)
+                  }}
+                  onPick={() => {
+                    if (bareLook) resumeDraft()
+                  }}
+                />
               </div>
-              {/* The fold EXPANDS, never pops (owner) — and stays SMOOTH
-                  (owner jank report): the hidden cards are ALWAYS MOUNTED so
-                  their live-renderer minis paint once at load, never inside
-                  the animation frames; expansion animates height while the
-                  cards ride transform+opacity (compositor-only). inert seals
-                  the collapsed cards from focus/clicks. */}
-              <motion.div
-                className="overflow-hidden"
-                initial={false}
-                animate={{ height: foldOpen ? 'auto' : 0, opacity: foldOpen ? 1 : 0 }}
-                transition={reduced ? { duration: 0 } : { duration: 0.22, ease: [0.33, 1, 0.68, 1] }}
-                aria-hidden={!foldOpen}
-                {...(foldOpen ? {} : { inert: '' as never })}
-              >
-                <div className="grid grid-cols-2 gap-1.5 pt-1.5">
-                  {state.presets.slice(3).map((p, i) => (
-                    <motion.div
-                      key={p.id}
-                      className="flex"
-                      initial={false}
-                      animate={foldOpen ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
-                      transition={
-                        reduced
-                          ? { duration: 0 }
-                          : foldOpen
-                            ? { duration: 0.24, ease: [0.33, 1, 0.68, 1], delay: 0.04 + i * 0.045 }
-                            : { duration: 0.12 }
-                      }
-                    >
-                      {renderPresetCard(p)}
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
+              <StyleLibraryPopover
+                presets={state.presets}
+                activeId={activeId}
+                bareLook={bareLook}
+                onPick={selectPreset}
+                tryOnFor={(p) => tryOn(p.config, p.typeOverrides)}
+              />
             </div>
           )
         })()}
-        {state.presets.length > 4 && !state.presets.slice(4).some((p) => activePresetIdOf(state) === p.id) && (
-          <button
-            type="button"
-            onClick={() => {
-              armFoldFreeze()
-              setMorePresets((v) => !v)
-            }}
-            className="mx-auto mt-0.5 flex items-center gap-0.5 rounded px-2 py-0.5 text-[11px] text-coral-ink transition-colors hover:text-coral"
-          >
-            {morePresets ? t('Preset_Collapse') : format(t('Preset_MoreN'), state.presets.length - 4)}
-            <ChevronDown size={12} className={cn('transition-transform duration-200', morePresets && 'rotate-180')} />
-          </button>
-        )}
 
         {/* 自定义 — one grouped card, one grammar per axis kind */}
         <InspectorCard>
@@ -866,32 +751,6 @@ export function IconsPanel() {
           <KeptBar />
         </InspectorCard>
 
-        {/* History card (on demand) */}
-        <AnimatePresence>
-          {historyOpen && state.history.length > 0 && (
-            <motion.div
-              initial={reduced ? false : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-            >
-              <HistoryStrip
-                items={[...state.history].reverse().map((h) => ({
-                  key: h.index,
-                  time: h.time,
-                  label: h.label,
-                  isCurrent: h.isCurrent,
-                  config: h.config,
-                  index: h.index,
-                }))}
-                renderThumb={(h) => <IconVersionThumb config={h.config} />}
-                onGoTo={(h) => goVersion(h.index)}
-                onBackToInitial={() => void restore()}
-                disabled={state.working || overlayRestoring}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       {/* Floating footer (owner-tuned): a frosted gradient backing — OPAQUE at the
@@ -909,15 +768,42 @@ export function IconsPanel() {
               <RotateCcw size={11} />
               {t('Link_Restore')}
             </IconAction>
+            {/* History pops ABOVE its button (spec 06 §3.14, H-A): immediately in
+                viewport, zero layout-height cost, and the canvas the user compares
+                against stays visible — the strip's non-modal contract, kept. */}
             {state.history.length > 0 && (
-              <IconAction
-                title={t('Link_History_Tip')}
-                active={historyOpen}
-                onClick={() => setHistoryOpen((v) => !v)}
-              >
-                <History size={11} />
-                {t('Link_History')} {state.history.length}
-              </IconAction>
+              <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+                <PopoverTrigger asChild>
+                  <IconAction title={t('Link_History_Tip')} active={historyOpen}>
+                    <History size={11} />
+                    {t('Link_History')} {state.history.length}
+                  </IconAction>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  align="start"
+                  sideOffset={8}
+                  className="max-h-[60vh] w-[272px] overflow-y-auto rounded-xl border-0 bg-transparent p-0 shadow-lg"
+                >
+                  <HistoryStrip
+                    items={[...state.history].reverse().map((h) => ({
+                      key: h.index,
+                      time: h.time,
+                      label: h.label,
+                      isCurrent: h.isCurrent,
+                      config: h.config,
+                      index: h.index,
+                    }))}
+                    renderThumb={(h) => <IconVersionThumb config={h.config} />}
+                    onGoTo={(h) => goVersion(h.index)}
+                    onBackToInitial={() => {
+                      setHistoryOpen(false)
+                      void restore()
+                    }}
+                    disabled={state.working || overlayRestoring}
+                  />
+                </PopoverContent>
+              </Popover>
             )}
           </div>
         )}
@@ -1001,56 +887,6 @@ export function IconsPanel() {
       />
     </aside>
   )
-}
-
-/** Preset thumbnails rendered by the LIVE compositor on the user's own icons
- *  (v2: no more host-rendered miniUrls) — badge-free by construction, since
- *  every preset ships Distinction.None (owner decree). */
-function PresetMinis({ config, bare = false }: { config: ConfigDto; bare?: boolean }) {
-  const items = useIcons((s) => s.items)
-  const renderTick = useIcons((s) => s.renderTick)
-  const samples = React.useMemo(
-    () => items.filter((i) => i.styleable && i.kind !== 'RecycleBin').slice(0, 3),
-    [items],
-  )
-  return (
-    <>
-      {samples.map((item) => (
-        <PresetMiniCanvas key={item.id} itemId={item.id} sourceUrl={item.sourceUrls[0] ?? ''} config={config} renderTick={renderTick} bare={bare} />
-      ))}
-    </>
-  )
-}
-
-function PresetMiniCanvas({
-  itemId,
-  sourceUrl,
-  config,
-  renderTick,
-  bare = false,
-}: {
-  itemId: string
-  sourceUrl: string
-  config: ConfigDto
-  renderTick: number
-  /** System Default preview: the ORIGINAL unmodified icon WITH the native Windows
-   *  shortcut arrow (is_shortcut + show_original) — the ugly bare desktop the reset
-   *  returns to. The tile renderer bakes the real arrow asset, so the mini IS the
-   *  outcome. */
-  bare?: boolean
-}) {
-  const ref = React.useRef<HTMLCanvasElement>(null)
-  React.useEffect(() => {
-    const compositor = getIconCompositor()
-    if (!sourceUrl || !compositor.hasSource(itemId, sourceUrl)) return // renderTick re-fires once loaded
-    const image = compositor.getTile(itemId, config, bare, bare, 44, fieldRenderOpts(itemId))
-    const el = ref.current
-    if (!el || !image) return // pool render dispatched — next renderTick blits
-    el.width = 44
-    el.height = 44
-    el.getContext('2d')!.drawImage(image, 0, 0)
-  }, [itemId, sourceUrl, config, renderTick])
-  return <canvas ref={ref} className="size-[22px] drop-shadow-sm" aria-hidden />
 }
 
 /** A 24px live preview of a saved version — one representative icon styled with

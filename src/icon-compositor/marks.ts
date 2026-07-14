@@ -512,6 +512,18 @@ const MARKS: Record<MarkStyle, Mark> = {
   Arc: arcMark,
   Fold: foldMark,
   Ring: ringMark,
+  // Comet (2026-07-15) POST-DATES this frozen oracle — it exists ONLY in the
+  // Rust engine (dm-icon-core marks/styles.rs CometMark); the dead TS pixel
+  // path must never claim to render it. Type-level key only; throws on use.
+  Comet: {
+    placement: 'over',
+    cardInset: () => 0,
+    carvesCard: false,
+    carveCard: () => {},
+    render: () => {
+      throw new Error('Comet is not in the frozen TS oracle — WASM-only style')
+    },
+  },
 }
 
 /** ShortcutMarkRenderer.Resolve — the designed mark for a style. */

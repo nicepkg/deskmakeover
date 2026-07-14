@@ -19,6 +19,12 @@ export const commands = {
 	iconsRestoreOverlay: () => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_restore_overlay")),
 	iconsSwitchVersion: (versionId: string) => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_switch_version", { versionId })),
 	iconsExportCompare: (pngBase64: string) => typedError<IconOpResultDto, string>(__TAURI_INVOKE("icons_export_compare", { pngBase64 })),
+	presetsReadPackage: (path: string) => typedError<PresetPackageReadDto, string>(__TAURI_INVOKE("presets_read_package", { path })),
+	presetsList: () => typedError<PresetEntryDto[], string>(__TAURI_INVOKE("presets_list")),
+	presetsSave: (entry: PresetSaveDto, overwrite: boolean) => typedError<PresetEntryDto, string>(__TAURI_INVOKE("presets_save", { entry, overwrite })),
+	presetsDelete: (entryId: string) => typedError<null, string>(__TAURI_INVOKE("presets_delete", { entryId })),
+	presetsRename: (entryId: string, name: string) => typedError<PresetEntryDto, string>(__TAURI_INVOKE("presets_rename", { entryId, name })),
+	presetsExport: (destPath: string, entries: PresetSaveDto[]) => typedError<string, string>(__TAURI_INVOKE("presets_export", { destPath, entries })),
 	tweaksProbe: () => typedError<CalmProbeRowDto[], string>(__TAURI_INVOKE("tweaks_probe")),
 	tweaksApply: (ids: string[]) => typedError<CalmApplyRowDto[], string>(__TAURI_INVOKE("tweaks_apply", { ids })),
 	tweaksRestore: () => typedError<CalmRestoreRowDto[], string>(__TAURI_INVOKE("tweaks_restore")),
@@ -236,6 +242,78 @@ export type MonitorBounds = {
 	y: number,
 	w: number,
 	h: number,
+};
+
+/**
+ *  One library entry (also the save/export input shape — library format ==
+ *  package format, spec 09 §1). `payload_json` is the serialized
+ *  IconLookPayload; thumbnails ride the `dmpreset://<id>` protocol for library
+ *  entries and inline base64 on package reads.
+ */
+export type PresetEntryDto = {
+	id: string,
+	/**  "icon" now; "wallpaper" reserved (spec 09 §2). */
+	presetType: string,
+	schemaVersion: number,
+	meta: PresetMetaDto,
+	payloadJson: string,
+	hasThumb: boolean,
+};
+
+/**
+ *  Shareable metadata for one preset entry (caps enforced on read AND save:
+ *  name ≤80 chars · author ≤80 · description ≤500; control chars stripped).
+ */
+export type PresetMetaDto = {
+	name: string,
+	author: string | null,
+	description: string | null,
+	/**  ISO-8601 UTC, informational only. */
+	createdAt: string | null,
+};
+
+/**
+ *  The result of reading a `.dmpreset` file (pure read — nothing touches the
+ *  library until `presets_save`).
+ */
+export type PresetPackageReadDto = {
+	/**
+	 *  Container format accepted (`dmpreset/1`). False = hard fail-closed
+	 *  (newer major or not a dmpreset) — `entries` is empty and `error` says why.
+	 */
+	formatOk: boolean,
+	entries: PresetReadEntryDto[],
+	error: string | null,
+};
+
+/**
+ *  One entry as read out of a package: either a structurally valid candidate
+ *  (plus its sniffed PNG thumb, if any) or a per-entry failure reason — partial
+ *  success is first-class (spec 09 §5), one bad entry never sinks the pack.
+ */
+export type PresetReadEntryDto = {
+	entry: PresetEntryDto | null,
+	/**
+	 *  Bounded, sniffed PNG (base64) for the pre-import preview; never trusted
+	 *  as proof of the recipe (the app re-renders the authoritative preview).
+	 */
+	thumbPngBase64: string | null,
+	/**  Human-readable reason when `entry` is null (i18n happens in the web). */
+	error: string | null,
+};
+
+/**
+ *  Input for `presets_save` / one export entry: the entry body plus an optional
+ *  inline PNG thumb (base64, bounded, re-encoded by the webview renderer).
+ */
+export type PresetSaveDto = {
+	/**  Caller-supplied stable id (webview crypto.randomUUID); `[A-Za-z0-9-]{8,64}`. */
+	id: string,
+	presetType: string,
+	schemaVersion: number,
+	meta: PresetMetaDto,
+	payloadJson: string,
+	thumbPngBase64: string | null,
 };
 
 /**

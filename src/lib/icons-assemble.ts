@@ -18,6 +18,7 @@ import type {
   TypeOverrides,
 } from '@/bridge/types'
 import { DEFAULT_KIND_POLICY } from '@/lib/kind-policy'
+import { parseIconLook } from '@/lib/icon-look'
 import { typeOverridesEqual } from '@/lib/type-config'
 
 /** The three global knobs a saved appearance recipe carries (store ②③, spec 07 §8.2). */
@@ -125,20 +126,13 @@ export function defaultRecipe(kindPolicy: KindPolicy): IconStyleRecipe {
   }
 }
 
-/** Parses a persisted recipe JSON (styleJson) into its three knobs, or `null` if malformed. */
+/** Parses a persisted recipe JSON (styleJson) into its three knobs, or `null` if
+ *  malformed. Delegates to the ONE parser (lib/icon-look, spec 09 §1): version
+ *  gate → migration chain → strict enum validation. A payload from a NEWER app
+ *  (unknown version/enums) parses null — callers fall back to factory default
+ *  rather than rendering garbage. */
 export function parseRecipe(styleJson: string | null): IconStyleRecipe | null {
-  if (!styleJson) return null
-  try {
-    const v = JSON.parse(styleJson) as Partial<IconStyleRecipe>
-    if (!v || typeof v.config !== 'object' || v.config === null) return null
-    return {
-      config: v.config as ConfigDto,
-      kindPolicy: (v.kindPolicy ?? {}) as KindPolicy,
-      typeOverrides: (v.typeOverrides ?? {}) as TypeOverrides,
-    }
-  } catch {
-    return null
-  }
+  return parseIconLook(styleJson)
 }
 
 /** Maps store-③ look-history entries into the `HistoryEntryDto`s the panel renders, carrying the
@@ -168,26 +162,37 @@ function formatTime(unixSeconds: number | null): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-/** Which preset (if any) the current draft coordinate matches (ADR-0018 bookmark identity). The
- *  SINGLE matching rule — the store's `activePresetIdOf(state)` delegates here so the selection
- *  highlight and the assembled `activePresetId` never drift. */
+/** The ONE preset-identity rule (ADR-0018 bookmark identity): does the draft
+ *  coordinate match this recipe? Shared by the built-in `activePresetIdOf` and
+ *  the user preset library's selection highlight (spec 09) — the two matchers
+ *  can never drift. */
+export function recipeMatchesDraft(
+  preset: ConfigDto,
+  presetOverrides: TypeOverrides | undefined,
+  config: ConfigDto,
+  typeOverrides: TypeOverrides,
+): boolean {
+  return (
+    preset.shape === config.shape &&
+    preset.subject === config.subject &&
+    preset.filter === config.filter &&
+    preset.distinction === config.distinction &&
+    typeOverridesEqual(presetOverrides, typeOverrides) &&
+    (preset.shortcutShape ?? null) === (config.shortcutShape ?? null) &&
+    (preset.plateColor ?? null) === (config.plateColor ?? null) &&
+    preset.plateFallback === config.plateFallback &&
+    (preset.plateColor !== null || preset.plateBand === config.plateBand) &&
+    (preset.subject !== 'Mono' || preset.monoStyle === config.monoStyle) &&
+    (preset.subject !== 'Mono' || preset.tint.toUpperCase() === config.tint.toUpperCase())
+  )
+}
+
+/** Which BUILT-IN preset (if any) the current draft matches. The store's
+ *  `activePresetIdOf(state)` delegates here so the selection highlight and the
+ *  assembled `activePresetId` never drift. */
 export function activePresetIdOf(config: ConfigDto, typeOverrides: TypeOverrides): string | null {
   for (const [id, preset] of Object.entries(BASE_CONFIGS)) {
-    if (
-      preset.shape === config.shape &&
-      preset.subject === config.subject &&
-      preset.filter === config.filter &&
-      preset.distinction === config.distinction &&
-      typeOverridesEqual(PRESET_TYPE_OVERRIDES[id], typeOverrides) &&
-      (preset.shortcutShape ?? null) === (config.shortcutShape ?? null) &&
-      (preset.plateColor ?? null) === (config.plateColor ?? null) &&
-      preset.plateFallback === config.plateFallback &&
-      (preset.plateColor !== null || preset.plateBand === config.plateBand) &&
-      (preset.subject !== 'Mono' || preset.monoStyle === config.monoStyle) &&
-      (preset.subject !== 'Mono' || preset.tint.toUpperCase() === config.tint.toUpperCase())
-    ) {
-      return id
-    }
+    if (recipeMatchesDraft(preset, PRESET_TYPE_OVERRIDES[id], config, typeOverrides)) return id
   }
   return null
 }

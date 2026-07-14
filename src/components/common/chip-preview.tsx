@@ -365,6 +365,21 @@ function markBody(mark: MarkStyle, uid: string): ReactNode {
       return (
         <rect x="4" y="4" width="14" height="14" rx="3.5" fill="none" stroke="currentColor" strokeWidth="2.2" />
       )
+    case 'Comet': // 箭头徽章 — a faint tile with the solid squircle badge + ↗
+      return (
+        <>
+          <rect x="3" y="3" width="16" height="16" rx="3.5" fill="currentColor" opacity="0.14" />
+          <rect x="4.5" y="9" width="8.5" height="8.5" rx="2.8" fill="currentColor" />
+          <path
+            d="M6.9 15.1 L10.3 11.7 M8.6 11.3 L10.7 11.3 L10.7 13.4"
+            fill="none"
+            stroke="var(--color-raised, #fff)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      )
     case 'Glass': // 玻璃 — a translucent frosted plate with a highlight streak
       return (
         <>

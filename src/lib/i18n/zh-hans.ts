@@ -335,6 +335,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Link_Restore_Tip": "还原到 Windows 原生桌面",
   "MarkColor_Auto": "自动",
   "MarkColor_Label": "标识配色",
+  "Mark_Comet": "箭头徽章", // PENDING-RESX (spec 02, 2026-07-15)
   "Mark_Arc": "珐琅光弧",
   "Mark_Halo": "光环",
   "Mark_Shadow": "投影",
@@ -461,8 +462,33 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Preset_ascast_Desc": "原样保真，只理齐轮廓", // PENDING-RESX
   "Preset_SystemDefault": "系统默认",
   "Preset_SystemDefault_Desc": "回到未美化的原始桌面",
-  "Preset_MoreN": "更多风格 +{0}", // PENDING-RESX
-  "Preset_Collapse": "收起", // PENDING-RESX
+  "Preset_CurrentCustom": "自定义", // PENDING-RESX
+  "Preset_Current_Tip": "当前风格 · 点按返回此草稿", // PENDING-RESX
+  "Preset_Library": "风格库", // PENDING-RESX
+  "Preset_LibraryN": "风格库 +{0}", // PENDING-RESX
+  "Library_Import": "导入风格包", // PENDING-RESX
+  "Library_ExportCurrent": "导出当前风格", // PENDING-RESX
+  "Library_SaveCurrent": "保存为我的风格", // PENDING-RESX
+  "Library_Mine": "我的", // PENDING-RESX
+  "Library_More": "更多操作", // PENDING-RESX
+  "Library_Rename": "重命名", // PENDING-RESX
+  "Library_Delete": "删除", // PENDING-RESX
+  "Library_ExportOne": "导出", // PENDING-RESX
+  "Library_ImportTitle": "导入风格包", // PENDING-RESX
+  "Library_ImportConfirmN": "导入 {0} 项", // PENDING-RESX
+  "Library_ImportedSuffix": "（导入）", // PENDING-RESX
+  "Library_IncludeKindPolicy": "包含参与美化策略", // PENDING-RESX
+  "Library_ExportTitle": "导出当前风格", // PENDING-RESX
+  "Library_ExportConfirm": "选择位置并导出", // PENDING-RESX
+  "Library_SaveTitle": "保存为我的风格", // PENDING-RESX
+  "Library_SaveConfirm": "保存", // PENDING-RESX
+  "Library_NamePlaceholder": "风格名称", // PENDING-RESX
+  "Library_AuthorPlaceholder": "作者（可选，随包分享）", // PENDING-RESX
+  "Library_NeedsDesktop": "此功能需要桌面端应用", // PENDING-RESX
+  "Library_InvalidEntry": "无法读取：包已损坏或需要更新桌面美颜", // PENDING-RESX
+  "Toast_PresetSaved": "已保存到风格库", // PENDING-RESX
+  "Toast_PresetExported": "已导出", // PENDING-RESX
+  "Toast_PresetImportedN": "已导入 {0} 个风格", // PENDING-RESX
   "Preset_field_Desc": "统一外形 · 各自品牌色", // PENDING-RESX
   "Preset_minimal": "极简白", // PENDING-RESX
   "Preset_minimal_Desc": "安静的白色瓷砖", // PENDING-RESX
@@ -535,6 +561,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Shape_Apple": "苹果",
   "Shape_Bookmark": "书签",
   "Shape_Folder": "文件夹", // PENDING-RESX (ADR-0017)
+  "Shape_File": "文件", // PENDING-RESX
   "Shape_Circle": "纯圆",
   "Shape_Diamond": "菱形",
   "Shape_Flower": "花瓣",

@@ -213,7 +213,8 @@ impl IconHost {
 }
 
 mod dto;
-mod export;
+// pub(crate): preset_store shares the civil-date stamp helpers (spec 09).
+pub(crate) mod export;
 mod mutations;
 mod scan;
 mod source_cache;

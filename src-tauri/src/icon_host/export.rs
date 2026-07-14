@@ -67,17 +67,16 @@ impl IconHost {
     }
 }
 
-pub(super) fn now_secs() -> i64 {
+pub(crate) fn now_secs() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
 }
 
-/// `YYYYMMDD-HHMMSS` (UTC) for export filenames — Howard Hinnant's civil-from-days algorithm,
-/// so the host needs no calendar dependency. UTC (not local) keeps it deterministic; the stamp
-/// is a filename, not a displayed date.
-pub(super) fn utc_stamp(secs: i64) -> String {
+/// UTC civil date-time from unix seconds — Howard Hinnant's civil-from-days
+/// algorithm, so the host needs no calendar dependency.
+fn civil(secs: i64) -> (i64, i64, i64, i64, i64, i64) {
     let days = secs.div_euclid(86_400);
     let tod = secs.rem_euclid(86_400);
     let z = days + 719_468;
@@ -90,12 +89,20 @@ pub(super) fn utc_stamp(secs: i64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
-    format!(
-        "{y:04}{m:02}{d:02}-{:02}{:02}{:02}",
-        tod / 3600,
-        (tod % 3600) / 60,
-        tod % 60
-    )
+    (y, m, d, tod / 3600, (tod % 3600) / 60, tod % 60)
+}
+
+/// `YYYYMMDD-HHMMSS` (UTC) for export filenames. UTC (not local) keeps it
+/// deterministic; the stamp is a filename, not a displayed date.
+pub(super) fn utc_stamp(secs: i64) -> String {
+    let (y, m, d, h, min, s) = civil(secs);
+    format!("{y:04}{m:02}{d:02}-{h:02}{min:02}{s:02}")
+}
+
+/// ISO-8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`) — preset manifest timestamps (spec 09 §2).
+pub(crate) fn iso_stamp(secs: i64) -> String {
+    let (y, m, d, h, min, s) = civil(secs);
+    format!("{y:04}-{m:02}-{d:02}T{h:02}:{min:02}:{s:02}Z")
 }
 
 /// Writes the export ATOMICALLY under a non-clobbering name: `DeskMakeover-<stamp>.png`,

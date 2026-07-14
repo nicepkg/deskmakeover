@@ -330,7 +330,7 @@ function flattenCorners(corners: Corner[], size: number): Pt[] {
   return pts
 }
 
-export type SmoothShape = 'Tile' | 'Teardrop' | 'Bookmark' | 'Lemon' | 'Diamond' | 'Folder'
+export type SmoothShape = 'Tile' | 'Teardrop' | 'Bookmark' | 'Lemon' | 'Diamond' | 'Folder' | 'File'
 
 /** Rect-family corner order: TL, TR, BR, BL (radii from the Progressier
  *  catalog); ξ = 0.6 ≈ the iOS smoothing feel. Corners whose radius already
@@ -367,6 +367,20 @@ const SMOOTH_SHAPES: Record<SmoothShape, SmoothDef> = {
       { x: 36, y: 6, r: 6, s: XI },
       { x: 46, y: 16, r: 4, s: XI },
       { x: 100, y: 16, r: 10, s: XI },
+      { x: 100, y: 100, r: 12, s: XI },
+      { x: 0, y: 100, r: 12, s: XI },
+    ],
+  },
+  // 文件 File (spec 02 V2, owner-disposed 2026-07-15; corners softened per owner
+  // "别像狗啃"): dog-eared document — top-right 45° cut c=30, outer corners r12
+  // (Folder-family weight). The two cut-edge endpoints carry a generous r16 +
+  // high smoothing (s=0.85) so the fold is a soft rounded corner, not a sharp
+  // chamfer. Solid cut-away; folded-page light belongs to the Fold MARK.
+  File: {
+    vertices: [
+      { x: 0, y: 0, r: 12, s: XI },
+      { x: 70, y: 0, r: 16, s: 0.85 },
+      { x: 100, y: 30, r: 16, s: 0.85 },
       { x: 100, y: 100, r: 12, s: XI },
       { x: 0, y: 100, r: 12, s: XI },
     ],

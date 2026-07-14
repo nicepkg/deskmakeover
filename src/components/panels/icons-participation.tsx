@@ -30,11 +30,14 @@ export function KeptBar() {
   // Select the STABLE items ref (a new-array selector makes zustand's
   // getSnapshot change every render → infinite loop); filter in the body.
   const items = useIcons((s) => s.items)
+  // Lens projection (spec 06 §3.13): while 系统默认 is active the whole panel
+  // reads system-default — the keep ledger is suppressed (draft preserved).
+  const bareLook = useIcons((s) => s.bareLook)
   const kept = React.useMemo(() => items.filter((i) => i.overrideMode !== null), [items])
   const { setOverride, clearOverrides } = useIcons.getState()
   const [open, setOpen] = React.useState(false)
   const reduced = useReducedMotion()
-  if (kept.length === 0) return null
+  if (kept.length === 0 || bareLook) return null
 
   return (
     <div className="rounded-[10px] bg-wash-chip px-2.5 py-2">
@@ -110,7 +113,16 @@ export function KindTypeSection() {
     [rawMonoSwatches],
   )
   const palette = useIcons((s) => s.state?.palette)
-  const typeOverrides = useIcons((s) => s.state?.typeOverrides)
+  const rawTypeOverrides = useIcons((s) => s.state?.typeOverrides)
+  // Lens projection (spec 06 §3.13, item-6 rule extended to this section):
+  // while 系统默认 (bareLook) is active, the DISPLAY projects every bucket to
+  // 跟随全局 — badges, sub-axis anchors, and the 全部重置/↺ affordances all
+  // read follow-global. The underlying draft typeOverrides are preserved and
+  // resurface losslessly when the lens lifts. The participation checkboxes are
+  // the deliberate exception: kindPolicy is orthogonal to the style lens and
+  // keeps rendering its real persisted state.
+  const bareLook = useIcons((s) => s.bareLook)
+  const typeOverrides = bareLook ? undefined : rawTypeOverrides
   const { setKindPolicy, setTypeOverride, setEditingBucket, resetTypeOverrides } = useIcons.getState()
   const [openBucket, setOpenBucket] = React.useState<IconKindBucket | null>(null)
   const reduced = useReducedMotion()
@@ -134,7 +146,10 @@ export function KindTypeSection() {
   if (!policy || !config) return null
 
   const patchType = (bucket: IconKindBucket, change: Partial<Record<keyof TypePatch, TypePatch[keyof TypePatch] | undefined>>) => {
-    const current: TypePatch = { ...(typeOverrides?.[bucket]?.patch ?? {}) }
+    // Merge onto the REAL draft patch, never the lens projection: a value-
+    // asserting edit lifts the lens and applies onto the preserved draft
+    // (spec 06 §3.13) — exactly like the main axes' mutate() onto config.
+    const current: TypePatch = { ...(rawTypeOverrides?.[bucket]?.patch ?? {}) }
     for (const [k, v] of Object.entries(change)) {
       if (v === undefined) delete current[k as keyof TypePatch]
       else (current as Record<string, unknown>)[k] = v

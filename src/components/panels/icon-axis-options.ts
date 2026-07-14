@@ -14,7 +14,7 @@ export const CURATED_SHAPES: { value: IconShape; key: StringKey }[] = [
   { value: 'Tile', key: 'Shape_Tile' }, { value: 'Teardrop', key: 'Shape_Teardrop' },
 ]
 export const MORE_SHAPES: { value: IconShape; key: StringKey }[] = [
-  { value: 'Folder', key: 'Shape_Folder' },
+  { value: 'Folder', key: 'Shape_Folder' }, { value: 'File', key: 'Shape_File' },
   { value: 'Bookmark', key: 'Shape_Bookmark' }, { value: 'Lemon', key: 'Shape_Lemon' },
   { value: 'Diamond', key: 'Shape_Diamond' }, { value: 'Flower', key: 'Shape_Flower' },
   { value: 'Pebble', key: 'Shape_Pebble' },

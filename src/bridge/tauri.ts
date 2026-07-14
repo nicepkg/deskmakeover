@@ -34,6 +34,14 @@ const HANDLED = new Set([
   'icons.restoreOverlay',
   'icons.switchVersion',
   'icons.exportCompare',
+  // Preset packages + library (schema 9, spec 09): pure bounded read; save is
+  // the only library writer; thumbnails ride dmpreset://.
+  'presets.readPackage',
+  'presets.list',
+  'presets.save',
+  'presets.delete',
+  'presets.rename',
+  'presets.export',
   'shell.openExternal',
   'shell.openDataFolder',
   // Diagnostics (audit #7): real host facts, not the browser `(mock)` stub.
@@ -127,6 +135,25 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
     case 'icons.exportCompare': {
       const p = params as { png: string }
       return unwrap(await commands.iconsExportCompare(p.png))
+    }
+    // Presets (schema 9, spec 09 §6): DTOs pass through structurally identical.
+    case 'presets.readPackage':
+      return unwrap(await commands.presetsReadPackage((params as { path: string }).path))
+    case 'presets.list':
+      return unwrap(await commands.presetsList())
+    case 'presets.save': {
+      const p = params as { entry: Parameters<typeof commands.presetsSave>[0]; overwrite: boolean }
+      return unwrap(await commands.presetsSave(p.entry, p.overwrite))
+    }
+    case 'presets.delete':
+      return unwrap(await commands.presetsDelete((params as { entryId: string }).entryId))
+    case 'presets.rename': {
+      const p = params as { entryId: string; name: string }
+      return unwrap(await commands.presetsRename(p.entryId, p.name))
+    }
+    case 'presets.export': {
+      const p = params as { destPath: string; entries: Parameters<typeof commands.presetsExport>[1] }
+      return unwrap(await commands.presetsExport(p.destPath, p.entries))
     }
     case 'shell.minimize':
       await getCurrentWindow().minimize()

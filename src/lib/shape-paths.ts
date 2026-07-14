@@ -35,6 +35,7 @@ export function clipPathFor(shape: IconShape): string {
     case 'Lemon':
     case 'Diamond':
     case 'Folder':
+    case 'File':
       return `path('${smoothShapePathD(shape, SWATCH, INK_INSET)}')`
     case 'Samsung':
     case 'Flower':

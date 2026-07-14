@@ -11,7 +11,7 @@
 //!
 //! Layout (little-endian):
 //! ```text
-//!  0  shape           u8   IconShape tag 0..=11 (Apple..Folder)
+//!  0  shape           u8   IconShape tag 0..=12 (Apple..File)
 //!  1  subject         u8   0 Original | 1 BlackWhite | 2 Mono
 //!  2  mono_style      u8   0 Tonal | 1 Flat
 //!  3  plate_band      u8   0 Vivid | 1 Quiet
@@ -50,6 +50,7 @@ fn shape_from_tag(tag: u8) -> Option<IconShape> {
         9 => IconShape::Flower,
         10 => IconShape::Pebble,
         11 => IconShape::Folder,
+        12 => IconShape::File,
         _ => return None,
     })
 }
@@ -97,6 +98,7 @@ fn mark_from_tag(tag: u8) -> Option<MarkStyle> {
         4 => MarkStyle::Arc,
         5 => MarkStyle::Fold,
         6 => MarkStyle::Ring,
+        7 => MarkStyle::Comet,
         _ => return None,
     })
 }
@@ -226,18 +228,19 @@ mod tests {
             IconShape::Flower,
             IconShape::Pebble,
             IconShape::Folder,
+            IconShape::File,
         ];
         for (i, want) in order.iter().enumerate() {
             assert_eq!(shape_from_tag(i as u8), Some(*want), "shape tag {i}");
         }
-        assert_eq!(shape_from_tag(12), None);
+        assert_eq!(shape_from_tag(13), None);
     }
 
     #[test]
     fn rejects_short_buffer_and_bad_tags() {
         assert!(parse_config(&[0u8; CONFIG_BYTES - 1]).is_none());
         let mut b = spectrum_bytes();
-        b[0] = 12; // out-of-range shape
+        b[0] = 13; // out-of-range shape
         assert!(parse_config(&b).is_none());
         let mut b2 = spectrum_bytes();
         b2[6] = 5; // out-of-range filter

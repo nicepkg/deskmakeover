@@ -44,6 +44,24 @@ what is in flight, and what comes next.
 
 ## Active work (in flight)
 
+- **Icons round — reset lens · panel P-B/H-A · preset packages · File shape · Comet mark
+  (2026-07-15).** Owner-disposed 7 decisions; binding record
+  `docs/reviews/2026-07-15-icon-preset-io-file-shape-arrow.md`; plan
+  `docs/plans/2026-07-15-icon-preset-io-file-shape-arrow.md`; specs 06 §3.10/§3.13/§3.14 +
+  02 Shape/Marks + NEW spec 09 (.dmpreset). P1–P7 BUILT (build record in the review doc):
+  lens model · panel two-card + 风格库/history popovers · icon-look single serializer +
+  versioned styleJson + migration chain · Rust preset store + presets.* (schema 9,
+  dmpreset://, dialog picker grants) · import/export UI + drag-drop · File shape (ABI 12) ·
+  Comet mark (ABI 7). Two codex adversarial passes CLOSED: FIX-6 (kindPolicy round-trip,
+  recipe-rendered import preview, per-batch dedup, thumbnail bounded-decode+re-encode,
+  archive-wide zip-slip/ratio screening, stage-first atomic swap) + focused security FIX-4
+  (crash-recovery for interrupted swaps, write mutex, selected-state policy match; the
+  Windows dir-rename flag was a non-issue — std replaces files atomically). File shape's
+  cut corners SOFTENED (r6→r16 + s0.85) per owner 「别像狗啃」. Gates green: tsc 0 · bun 633 ·
+  cargo (desktop+engine+ops) 462 · bindings ok · WASM rebuilt · playwright boards.
+  Owner-facing: refresh to judge the softened File fold + the whole icons round.
+  UNCOMMITTED (shared worktree w/ M6 — commit with literal pathspecs). NOTE: native-arrow
+  60s gate RE-AFFIRMED (ArrowGateSheet untouched).
 - **Wallpaper round 3 — material/title system + editor UX (2026-07-15).** Spec 04
   §2/§3/§4.1/§4.2 amended; binding record `docs/reviews/2026-07-15-zone-material-title-ux.md`;
   plan `docs/plans/2026-07-15-zone-material-title-ux.md`. BUILT (P1–P6, gates green:

@@ -283,6 +283,7 @@ pub fn resolve_mark(style: MarkStyle) -> &'static dyn Mark {
         MarkStyle::Arc => &styles::ARC_MARK,
         MarkStyle::Fold => &styles::FOLD_MARK,
         MarkStyle::Ring => &styles::RING_MARK,
+        MarkStyle::Comet => &styles::COMET_MARK,
     }
 }
 

@@ -101,6 +101,11 @@ now the certifying oracle for the Rust core, ADR-0019.)
   above, same ceremony as apply (§3.7).
 - `icons.restore()`, `icons.restoreOverlay()`, `icons.exportCompare(pngBase64)` (all → IconOpResultDto)
   round out the surface.
+- **Preset packages (2026-07-15, bridge schema → 9)**: `presets.list / import /
+  export / delete` + the scoped `dmpreset://` thumbnail protocol serve the user
+  preset library and `.dmpreset` import/export. Format, versioning/migrations,
+  security pipeline and import semantics are normative in **spec 09**; the icons
+  panel consumes them via the 风格库 popover (§3.14).
 - Mock: `bridge/mock.ts` implements the same v2 surface; sources come from the dev
   icon pack (§5); baked masters are held in memory and viewable via a debug hook.
 
@@ -142,11 +147,16 @@ now the certifying oracle for the Rust core, ADR-0019.)
 9. **Compare**: global hold-to-compare pill stays primary. The per-tile
    press-to-peek stays but gains a cursor affordance + tooltip on first hover
    (discoverability), and never conflicts with drag/menu gestures.
-10. **Native-arrow gate: RETIRED (ADR-0021, owner 2026-07-10).** The native
-    overlay is globally transparent by default and every shortcut is redrawn, so
-    the gate's object no longer exists. The classic-arrow mark is an ordinary
-    baked option with no ceremony. (History: the 60s penance stare was owner
-    decree 2026-07-09; superseded, not softened.)
+10. **Native-arrow gate: LIVE (owner re-affirmation 2026-07-15).** Picking the
+    classic-arrow mark (`Dist_Keep`) opens the 60s ArrowGateSheet before it takes
+    effect. History of this clause: the 60s stare was owner decree 2026-07-09;
+    ADR-0021 (2026-07-10) declared it retired, but the shipped code kept the gate
+    and the owner explicitly chose 「维持现状（60秒弹窗）」 on 2026-07-15 after
+    hearing the designer's objection (binding record
+    `docs/reviews/2026-07-15-icon-preset-io-file-shape-arrow.md` #7) — the
+    re-affirmation supersedes the ADR-0021 retirement note. The native arrow
+    keeps its current row position; the new Comet arrow mark (spec 02 §Shortcut
+    Marks) is an ordinary un-gated option.
 11. **Colour is two axes; 极致单色 is a subject/background duotone** (owner +
     chief-UI/UX 2026-07-09; formalized as the two-axis model in ADR-0018). The colour UI is a
     **two-row panel** — 主体行 (subject: 原彩/黑白/单色) × 底板行 (plate: 随图标/本色/白/bounded
@@ -179,6 +189,39 @@ now the certifying oracle for the Rust core, ADR-0019.)
     the ΔE-separability corpus test wired to the committed mock manifest (D4).
     Engine facts: memoized whole-canvas `dominantColor`, pale contrast-target
     lane, glyph box 36/256 (~72%), full-bleed 0.82.
+13. **System Default is a LENS, not a draft state (owner-disposed 2026-07-15;
+    binding record `docs/reviews/2026-07-15-icon-preset-io-file-shape-arrow.md` #3).**
+    `bareLook` is a read-only preview lens laid over the draft
+    (config/kindPolicy/typeOverrides); lowering it NEVER mutates the draft, and
+    exiting resurfaces the draft losslessly. Action classes:
+    - *Value-asserting edits* (pick a shape/subject/plate/filter/mark value, a
+      preset, a custom type patch) LIFT the lens (`bareLook → false`) and apply
+      onto the preserved draft.
+    - *Toward-default actions* (「全部重置」`resetTypeOverrides`, per-bucket
+      「↺回到跟随全局」, the participation checkboxes `setKindPolicy`) mutate the
+      draft but NEVER lift the lens. (Bug fixed 2026-07-15: 全部重置 used to clear
+      `bareLook`, snapping the desktop back to a style card.)
+    - While the lens is down, the whole panel PROJECTS system-default: every axis
+      row lights its ⊘ (the existing item-6 rule) AND the Beautified-types area
+      projects follow-global — badges read 跟随全局, sub-axis 跟随全局 anchors
+      show selected, 「全部重置」/「↺」 hidden, KeptBar suppressed. The underlying
+      typeOverrides are preserved, not cleared. EXCEPTION: the participation
+      checkboxes render their REAL persisted state (kindPolicy is orthogonal to
+      the style lens — it says who participates at the NEXT apply).
+    Testable rule: an action lifts the lens iff it can only be read as "I want a
+    beautified look".
+14. **Panel layout — inline area is constant-height; collections live in
+    popovers (owner-disposed 2026-07-15, P-B + H-A).** The inline preset area is
+    exactly two cards — [系统默认][当前风格] — plus a full-width 「风格库 +N」
+    trigger strip (the old 4-card grid + 「更多风格」 fold is retired). ALL
+    presets (built-in 7 + the user preset library, spec 09) live in the 风格库
+    popover: 2-column live-mini grid (live renderer thumbs + 90ms-rest hover
+    try-on preserved verbatim), scrollable, grouped 内置/我的; header toolbar
+    carries [导入][导出当前][保存为我的风格]; 「我的」 cards get a hover ⋯ menu
+    (重命名/删除/导出). History moves out of the scroller tail: the footer
+    「历史 N」 button anchors a popover opening ABOVE it (side top, in-viewport,
+    canvas stays visible for对照; live version thumbs + 回到此版 ceremony
+    unchanged). Neither collection may ever grow the panel's inline height.
 
 ## 4. Desktop mirror fidelity (taskbar P0 + tiles)
 

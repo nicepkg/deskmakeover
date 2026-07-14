@@ -4,6 +4,7 @@ import type { ConfigDto, GridMetricsDto, IconItemDto, IconOpResultDto, IconPersi
 import { DEFAULT_KIND_POLICY, kindBucket, kindParticipates } from '@/lib/kind-policy'
 import { appAccentSeed, resolveTypeConfig, typeHasFixedPlate } from '@/lib/type-config'
 import { activePresetIdOf as activePresetIdOfRecipe, assembleIconsState, defaultRecipe, parseHistory, parseRecipe, type IconStyleRecipe } from '@/lib/icons-assemble'
+import { serializeIconLook } from '@/lib/icon-look'
 import { useWallpaper } from '@/stores/wallpaper'
 import { getIconCompositor } from '@/icon-compositor/icon-renderer'
 import type { RenderOpts } from '@/icon-wasm/protocol'
@@ -111,9 +112,18 @@ interface IconsState {
   /** Bare-desktop hover try-on (System Default card) — repaint only, no commit. */
   hoverBare: (on: boolean) => void
   selectPreset: (presetId: string) => void
+  /** Apply an arbitrary recipe to the draft (user preset library, spec 09):
+   *  same semantics as selectPreset — one undo step, lifts the lens. An
+   *  opt-in-exported preset may also carry kindPolicy (participation); when
+   *  present it is adopted, otherwise participation is left untouched (a
+   *  style-only / community preset never rewrites which types participate). */
+  selectRecipe: (config: ConfigDto, typeOverrides: TypeOverrides, kindPolicy?: KindPolicy) => void
   /** System Default (A1): reset the working design to bare (client-only, no host
    *  write). Highlighted when active; the CTA then restores rather than applies. */
   selectSystemDefault: () => void
+  /** Lift the System-Default lens without editing (the 当前风格 card): the
+   *  preserved draft resurfaces losslessly (spec 06 §3.13). Undoable. */
+  resumeDraft: () => void
   setOverride: (id: string, mode: 'keep' | 'tint' | 'follow', tint?: string) => void
   clearOverrides: () => void
   setKindPolicy: (bucket: IconKindBucket, styled: boolean) => void
@@ -711,9 +721,25 @@ export const useIcons = create<IconsState>((set, get) => {
       const s = get()
       const preset = s.state?.presets.find((p) => p.id === presetId)
       if (!preset || !s.state) return
+      get().selectRecipe(preset.config, preset.typeOverrides)
+    },
+
+    // The user preset library's pick path (spec 09): identical semantics to a
+    // built-in pick — one undo step, marks dirty, lifts the System-Default lens.
+    // A preset that bundled participation (opt-in export) adopts it too; one
+    // that did not leaves kindPolicy untouched.
+    selectRecipe: (config, typeOverrides, kindPolicy) => {
+      if (busy()) return
+      const s = get()
+      if (!s.state) return
       pushUndo()
       set({
-        state: markDirty({ ...s.state, config: { ...preset.config }, typeOverrides: structuredClone(preset.typeOverrides) }),
+        state: markDirty({
+          ...s.state,
+          config: { ...config },
+          typeOverrides: structuredClone(typeOverrides),
+          ...(kindPolicy ? { kindPolicy: { ...s.state.kindPolicy, ...kindPolicy } } : {}),
+        }),
         hoverConfig: null,
         bareLook: false,
       })
@@ -733,6 +759,17 @@ export const useIcons = create<IconsState>((set, get) => {
       pushUndo()
       set({ bareLook: true, hoverConfig: null })
       persistBareLook(true) // resume the bare selection on the next launch (A3)
+    },
+
+    // The inverse crossing (当前风格 card while the lens is down): lift the lens,
+    // change NOTHING else — the draft was never mutated, it just becomes visible.
+    resumeDraft: () => {
+      if (busy()) return
+      const s = get()
+      if (!s.state || !s.bareLook) return
+      pushUndo()
+      set({ bareLook: false, hoverConfig: null })
+      persistBareLook(false)
     },
 
     setOverride: (id, mode, tint) => {
@@ -770,37 +807,50 @@ export const useIcons = create<IconsState>((set, get) => {
     // Type participation (spec 06 §6): ONE bucket switch governs manual apply AND
     // the future background auto-format. Persistent — survives when the desktop
     // has no icons of that kind. Per-icon overrides still win (cascade).
+    // Lens rule (spec 06 §3.13): kindPolicy is ORTHOGONAL to the System-Default
+    // style lens — toggling participation never lifts bareLook.
     setKindPolicy: (bucket, styled) => {
       if (busy()) return
       const s = get()
       if (!s.state || s.state.kindPolicy[bucket] === styled) return
       pushUndo()
-      set({ state: markDirty({ ...s.state, kindPolicy: { ...s.state.kindPolicy, [bucket]: styled } }), bareLook: false })
+      set({ state: markDirty({ ...s.state, kindPolicy: { ...s.state.kindPolicy, [bucket]: styled } }) })
       schedulePersist()
     },
 
+    // Lens rule (spec 06 §3.13): writing a CUSTOM patch is a value-asserting edit
+    // and lifts the System-Default lens; clearing back to 跟随全局 is a
+    // toward-default action and keeps it.
     setTypeOverride: (bucket, entry) => {
       if (busy()) return
       const s = get()
       if (!s.state) return
       pushUndo()
       const next: TypeOverrides = { ...s.state.typeOverrides }
-      if (!entry || entry.source === 'global' || !entry.patch || Object.keys(entry.patch).length === 0) {
+      const clearing = !entry || entry.source === 'global' || !entry.patch || Object.keys(entry.patch).length === 0
+      if (clearing) {
         delete next[bucket]
       } else {
         next[bucket] = entry
       }
-      set({ state: markDirty({ ...s.state, typeOverrides: next }), hoverConfig: null, bareLook: false })
+      set({
+        state: markDirty({ ...s.state, typeOverrides: next }),
+        hoverConfig: null,
+        ...(clearing ? {} : { bareLook: false }),
+      })
       schedulePersist()
       recomputeHueSpread()
     },
 
+    // 全部重置 is a toward-default action: it empties the draft's typeOverrides
+    // but NEVER lifts the System-Default lens (spec 06 §3.13 bug fix 2026-07-15 —
+    // clearing bareLook here snapped the desktop back to a style card).
     resetTypeOverrides: () => {
       if (busy()) return
       const s = get()
       if (!s.state || Object.keys(s.state.typeOverrides).length === 0) return
       pushUndo()
-      set({ state: markDirty({ ...s.state, typeOverrides: {} }), hoverConfig: null, bareLook: false })
+      set({ state: markDirty({ ...s.state, typeOverrides: {} }), hoverConfig: null })
       schedulePersist()
       recomputeHueSpread()
     },
@@ -889,8 +939,9 @@ export const useIcons = create<IconsState>((set, get) => {
         }
         // The full recipe rides as an opaque JSON string (Rust persists it as ②③); a tint override
         // is baked into its master. `restoreIds` carries the 「保留原样」 items so Rust reverts any
-        // that are currently styled (spec 06 §2). The styleJson is the three global knobs (spec 07 §8.2).
-        const styleJson = JSON.stringify({ config, kindPolicy: policy, typeOverrides })
+        // that are currently styled (spec 06 §2). The styleJson is the three global knobs (spec 07
+        // §8.2), serialized by the ONE versioned serializer (lib/icon-look, spec 09 §1).
+        const styleJson = serializeIconLook({ config, kindPolicy: policy, typeOverrides })
         const result = await bridge('icons.applyBakedCommit', { sessionId, styleJson, restoreIds, label: lookLabel(s.state) })
         // The attempted recipe becomes the draft; assemble against the persisted ②③ truth.
         const attempted: IconStyleRecipe = { config, kindPolicy: policy, typeOverrides }

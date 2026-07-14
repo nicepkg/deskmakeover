@@ -1,6 +1,8 @@
 import type {
   AppInfoDto,
   FontChoiceDto,
+  PresetEntryDto,
+  PresetSaveDto,
   SettingsDto,
 } from './types'
 import { BRIDGE_SCHEMA_VERSION } from './types'
@@ -71,9 +73,52 @@ const appInfo: AppInfoDto = {
   ],
 }
 
+// In-memory preset library (spec 09 in the browser loop): same verbs, same
+// copy/overwrite semantics, no fs. readPackage/export are honest stubs — the
+// browser cannot touch local .dmpreset files; those paths need the Tauri host.
+const mockPresetLibrary = new Map<string, PresetEntryDto>()
+
+function mockPresetsCall(method: string, params: unknown): unknown {
+  switch (method) {
+    case 'presets.list':
+      return [...mockPresetLibrary.values()]
+    case 'presets.save': {
+      const p = params as { entry: PresetSaveDto; overwrite: boolean }
+      if (mockPresetLibrary.has(p.entry.id) && !p.overwrite) throw new Error('exists')
+      const entry: PresetEntryDto = {
+        id: p.entry.id,
+        presetType: p.entry.presetType,
+        schemaVersion: p.entry.schemaVersion,
+        meta: { ...p.entry.meta },
+        payloadJson: p.entry.payloadJson,
+        hasThumb: false, // no dmpreset:// server in the browser loop
+      }
+      mockPresetLibrary.set(entry.id, entry)
+      return entry
+    }
+    case 'presets.delete':
+      mockPresetLibrary.delete((params as { entryId: string }).entryId)
+      return null
+    case 'presets.rename': {
+      const p = params as { entryId: string; name: string }
+      const entry = mockPresetLibrary.get(p.entryId)
+      if (!entry) throw new Error('not found')
+      entry.meta = { ...entry.meta, name: p.name }
+      return entry
+    }
+    case 'presets.readPackage':
+      return { formatOk: false, entries: [], error: 'mock bridge: package files need the desktop app' }
+    case 'presets.export':
+      throw new Error('mock bridge: export needs the desktop app')
+    default:
+      throw new Error(`[mock bridge] unhandled method: ${method}`)
+  }
+}
+
 export async function mockCall(method: string, params: unknown): Promise<unknown> {
   if (method.startsWith('icons.')) return mockIconsCall(method, params)
   if (method.startsWith('wallpaper.')) return mockWallpaperCall(method, params)
+  if (method.startsWith('presets.')) return mockPresetsCall(method, params)
   switch (method) {
     case 'app.getInfo':
       return appInfo

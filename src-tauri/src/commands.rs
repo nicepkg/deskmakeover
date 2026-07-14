@@ -5,8 +5,9 @@
 
 use dm_contracts::{
     CalmApplyRowDto, CalmGuidedProbeDto, CalmProbeRowDto, CalmRestoreRowDto, IconChunkItemDto,
-    IconOpResultDto, IconPersistedDto, IconScanDto, SettingsDto, SettingsPatch, SystemInfoDto,
-    WallpaperResultDto, WallpaperScreensDto,
+    IconOpResultDto, IconPersistedDto, IconScanDto, PresetEntryDto, PresetPackageReadDto,
+    PresetSaveDto, SettingsDto, SettingsPatch, SystemInfoDto, WallpaperResultDto,
+    WallpaperScreensDto,
 };
 use tauri::State;
 
@@ -150,6 +151,62 @@ pub fn icons_export_compare(
     use tauri::Manager;
     let pictures = app.path().picture_dir().ok();
     state.icons.export_compare(&png_base64, pictures)
+}
+
+// ---- Preset packages + the user preset library (spec 09, bridge schema 9). Rust owns
+// structure/security (bounded unzip, caps, atomic writes); payload semantics stay with the ONE
+// TS validator — so read is PURE (nothing written) and save is the only library writer.
+
+#[tauri::command]
+#[specta::specta]
+pub fn presets_read_package(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<PresetPackageReadDto, String> {
+    Ok(state.presets.read_package(&path))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn presets_list(state: State<'_, AppState>) -> Result<Vec<PresetEntryDto>, String> {
+    Ok(state.presets.list())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn presets_save(
+    state: State<'_, AppState>,
+    entry: PresetSaveDto,
+    overwrite: bool,
+) -> Result<PresetEntryDto, String> {
+    state.presets.save(entry, overwrite)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn presets_delete(state: State<'_, AppState>, entry_id: String) -> Result<(), String> {
+    state.presets.delete(&entry_id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn presets_rename(
+    state: State<'_, AppState>,
+    entry_id: String,
+    name: String,
+) -> Result<PresetEntryDto, String> {
+    state.presets.rename(&entry_id, &name)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn presets_export(
+    state: State<'_, AppState>,
+    dest_path: String,
+    entries: Vec<PresetSaveDto>,
+) -> Result<String, String> {
+    use crate::icon_host::export::{iso_stamp, now_secs};
+    state.presets.export(&dest_path, entries, iso_stamp(now_secs()))
 }
 
 // ---- 清爽 (calm-Windows) settings — the THIN calm verbs (bridge schema 8). The frontend owns

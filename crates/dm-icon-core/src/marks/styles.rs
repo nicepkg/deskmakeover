@@ -357,6 +357,125 @@ impl Mark for FoldMark {
     }
 }
 
+// ---- 箭头徽章 CometMark (spec 02, owner-disposed 2026-07-15 #6) ----
+//
+// A self-grounded floating arrow badge, fixed bottom-left: Apple-squircle seat
+// (the catalog's own corner DNA) + a 1px inner ring + a soft drop shadow —
+// seat+ring+shadow form the badge's OWN visual ground, so on pointed/round
+// shapes (Circle/Diamond/Teardrop) it reads "pinned to the corner", never
+// hovering (the shadow lands on the composited desktop). Adaptive at 0.58:
+// light tile → charcoal #232328 seat + porcelain #F4F4F1 arrow; dark tile →
+// inverted. `markColor` tints the SEAT; the glyph keeps contrast by seat
+// luminance. Distinct from Glass (frosted/ambient): Comet is solid/decisive.
+
+pub(crate) struct CometMark;
+pub(crate) static COMET_MARK: CometMark = CometMark;
+
+/// The refined ↗ glyph (designer spec): capsule shaft tail(−.40,.40)→neck(.34,−.34)
+/// + two capsule barbs (.06,−.42)→(.44,−.44)→(.42,−.06), round caps/joins by
+/// construction (distance-to-segment), half-width 0.159·R. Coordinates are in
+/// seat-half-radius units; `clip` bounds the ink to the seat.
+#[allow(clippy::too_many_arguments)]
+fn draw_comet_glyph(target: &mut Raster, size: usize, cx: f64, cy: f64, r: f64, ink: Rgba, clip: &[f64]) {
+    if r <= 0.0 {
+        return;
+    }
+    let half = 0.159;
+    let soft = 1.3 / r;
+    let reach = r * 0.62; // glyph extent ≈ .44·R + stroke — scan a tight box
+    let scan = libm::ceil(reach + half * r + 2.0) + 2.0;
+    let mut y = js_trunc(cy - scan) as i64;
+    while (y as f64) <= cy + scan {
+        if y >= 0 && (y as usize) < size {
+            let mut x = js_trunc(cx - scan) as i64;
+            while (x as f64) <= cx + scan {
+                if x >= 0 && (x as usize) < size {
+                    let i = y as usize * size + x as usize;
+                    let clip_cov = clip[i];
+                    if clip_cov > 0.0 {
+                        let u = (x as f64 + 0.5 - cx) / r;
+                        let v = (y as f64 + 0.5 - cy) / r;
+                        let d_shaft = super::dist_to_segment(u, v, -0.40, 0.40, 0.34, -0.34);
+                        let d_barb_a = super::dist_to_segment(u, v, 0.06, -0.42, 0.44, -0.44);
+                        let d_barb_b = super::dist_to_segment(u, v, 0.44, -0.44, 0.42, -0.06);
+                        let d = d_shaft.min(d_barb_a).min(d_barb_b);
+                        let cov = smooth_step01((half - d) / soft);
+                        if cov > 0.0 {
+                            paint(target, i, ink, cov * clip_cov);
+                        }
+                    }
+                }
+                x += 1;
+            }
+        }
+        y += 1;
+    }
+}
+
+/// Perceptual luminance of a seat colour (0..1) — picks the glyph ink that
+/// keeps contrast when `markColor` tints the seat.
+fn seat_luminance(c: Rgba) -> f64 {
+    (0.299 * c.r as f64 + 0.587 * c.g as f64 + 0.114 * c.b as f64) / 255.0
+}
+
+impl Mark for CometMark {
+    fn placement(&self) -> Placement {
+        Placement::Over
+    }
+    fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache, _scratch: &mut RenderScratch) {
+        let size = ctx.size;
+        let s = size as f64;
+        // Seat ≈ 0.36·tile (32px → ~12px: the barbs still read as a triangle),
+        // fixed bottom-left (the Windows-arrow muscle-memory corner).
+        let cs = (s * 0.36).max(14.0).min(s * 0.94);
+        let cs_px = 1.max(js_round(cs) as i64) as usize;
+        let sx = (s * 0.05).max(0.0).min(s - cs);
+        let sy = (s - cs - s * 0.05).max(0.0).min(s - cs);
+        let light_tile = is_light_tile(ctx);
+
+        let seat_col = if ctx.mark_color.is_some() {
+            mark_rgb(ctx)
+        } else if light_tile {
+            from_rgb_int(0x232328)
+        } else {
+            from_rgb_int(0xf4f4f1)
+        };
+        let dark_seat = seat_luminance(seat_col) <= 0.6;
+        let ink = if dark_seat { from_rgb_int(0xf4f4f1) } else { from_rgb_int(0x232328) };
+        let ring = if dark_seat { rgba_of(0xffffff, 0.55) } else { rgba_of(0x000000, 0.12) };
+
+        // The seat squircle + its own ground: a blurred, down-shifted copy as a
+        // soft drop shadow (dy ≈ 1.4%·S, blur ≈ 1.6%·S, black 0.35).
+        let seat = crate::raster::shape_mask(IconShape::Apple, size, cs_px, sx, sy);
+        let dy = 1.max(js_round(s * 0.014) as i64) as i32;
+        let blur_r = 1.max(js_round(s * 0.016) as i64) as i32;
+        let shadow = box_blur(&shift(&seat, size, 0, dy), size, blur_r);
+        let shadow_ink = Rgba { r: 8, g: 10, b: 14, a: 255 };
+        for (i, &sv) in shadow.iter().enumerate() {
+            if sv > 0.0 {
+                paint(target, i, shadow_ink, sv * 0.35);
+            }
+        }
+        for (i, &cov) in seat.iter().enumerate() {
+            if cov > 0.0 {
+                paint(target, i, seat_col, cov);
+            }
+        }
+        // 1px inner ring: the seat minus a 1.2px-inset copy of itself.
+        let inset = 1.2_f64.max(s * 0.008);
+        let inner_px = 1.max(js_round(cs - 2.0 * inset) as i64) as usize;
+        let inner = crate::raster::shape_mask(IconShape::Apple, size, inner_px, sx + inset, sy + inset);
+        for i in 0..seat.len() {
+            let ring_cov = (seat[i] - inner[i]).max(0.0);
+            if ring_cov > 0.0 {
+                paint(target, i, ring, ring_cov);
+            }
+        }
+
+        draw_comet_glyph(target, size, sx + cs / 2.0, sy + cs / 2.0, cs / 2.0, ink, &seat);
+    }
+}
+
 // ---- 玻璃箭头 GlassMark ----
 
 pub(crate) struct GlassMark;

@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-14
-version: Unreleased (Directory.Build.props + web package.json both 0.0.0; the owner names the first release number)
-branch: main — synced with origin/master (repo is PRIVATE; making it public is the owner's call at release)
+version: Unreleased (root package.json + src-tauri/tauri.conf.json both 0.0.0; the owner names the first release number)
+branch: main (repo is PRIVATE; making it public is the owner's call at release)
 ---
 
 # State
@@ -49,9 +49,10 @@ what is in flight, and what comes next.
   Real Windows box; all `[WINDOWS-VERIFY]`. Lab green → the write slice rides v1; else guided-only.
   W0/W1/W2 are DONE + codex-approved (→ journal). The deferred refresh / `ms-settings:` launch
   adapters ride W3.
-- **M6 kernel-speed + single-truth cleanup** (concurrent session) — the byte-identical SIMD perf
-  line (`docs/plans/2026-07-11-m6-kernel-speed.md`) + the P4 flip/delete of the frozen TS pixel
-  modules (`docs/plans/2026-07-11-m6-p4-cutover.md`), gated on WASM-vs-TS perf parity.
+- **M6 kernel-speed + TS-pixel deletion** (concurrent session) — the WASM single-truth flip already
+  EXECUTED (WASM is the only production pixel path). Remaining: the byte-identical SIMD perf line
+  (`docs/plans/2026-07-11-m6-kernel-speed.md`) + the physical deletion of the now-frozen TS pixel
+  modules (`docs/plans/2026-07-11-m6-p4-cutover.md`), the deletion gated on WASM-vs-TS perf parity.
 - **M7 resident — platform bodies.** Decision core DONE + hardened on Mac (→ journal); remaining is
   the [WV] platform layer: tray + windowless residency wiring, tray bitmaps, watcher→reconciler→
   driver loop, T2 judge-1 WinEventHook precision layer.
@@ -103,5 +104,3 @@ what is in flight, and what comes next.
   免费开源 chip promise it).
 - Signing entity/name for the OV certificate (release gate).
 - Distribution channel (direct download + pinned comment reply).
-- Shortcut-mark default: panel consensus = badge ON vs owner decree 2026-07-07 = presets ship None
-  (spec 07 / ADR-0017 unresolved conflict — decide before release).

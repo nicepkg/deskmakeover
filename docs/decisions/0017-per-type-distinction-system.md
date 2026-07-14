@@ -3,8 +3,9 @@
 - **Status**: Accepted (owner-disposed, 2026-07-10) — implementation responsibilities **amended by
   [ADR-0019](0019-tauri-rust-replatform.md)**: the "C# host re-port lands with F8" items in
   Consequences are now Rust contracts/native platform work (F8 is void). The factory mark-default
-  conflict (panel consensus badge-ON vs owner decree presets-None) remains open — tracked in
-  `docs/STATE.md` §Open questions.
+  conflict (panel consensus badge-ON vs owner decree presets-None) was **resolved to None** (owner
+  decree 2026-07-07 + the durable rule 「presets never carry a shortcut mark」; locked by test,
+  `d1f507d` — see `docs/ship-readiness.md`).
 - **Owner**: Jinming Yang
 - **Panel**: chief PM · chief UX · chief UI — three adversarial rounds, seat
   isolation round 1, cross-examination round 2, taxonomy battle round 3.

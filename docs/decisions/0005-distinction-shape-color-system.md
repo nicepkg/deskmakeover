@@ -6,9 +6,9 @@ Status: Accepted · 2026-07-06 · Amended by [ADR-0008](0008-prototype-v2-ui-con
 3-state, default 美化, 3-second misread gate) and the one-picker colour system stand.
 Supersedes the badge parts of [ADR-0003](0003-voc-driven-product-revisions.md).
 **Later reversal (owner 2026-07-07):** the "default = 美化 (mark ON), no default-none" governance
-clause no longer holds — the default shortcut mark is now **None** (presets ship None; see
-[ADR-0017](0017-per-type-distinction-system.md), the mark-default conflict is tracked in
-`docs/STATE.md` §Open questions).
+clause no longer holds — the default shortcut mark is now **None** (presets ship None; owner decree
+2026-07-07, resolved and locked by test in `d1f507d`; see
+[ADR-0017](0017-per-type-distinction-system.md) + `docs/ship-readiness.md`).
 Inputs: an internal VOC v1 analysis (founder position §1.1, constraint §4.3-1, comment cluster A —
 held outside this repo, not shipped with it) + a PM/UI/UX expert panel.
 

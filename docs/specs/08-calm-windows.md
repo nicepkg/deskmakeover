@@ -175,7 +175,7 @@ with the documented sign-out route. Apply/restore are user-clicked only.
 Per the research README production layout: `dm-domain/system-tweaks` (IDs, environment
 snapshot, states, anchors, ports) · `dm-operations/system-tweaks/` (catalog evaluation, WAL/
 ledger, apply/restore/recovery driver, fakes) · `dm-windows/system-tweaks/` (winreg backend,
-probes, refresh/Settings adapters) · `dm-contracts` DTOs (schema bump when wired) ·
+probes, refresh/Settings adapters) · `dm-contracts` DTOs (bridge schema 8, wired 2026-07-14 W1) ·
 `src-tauri` composition + a devhost fake for the Mac loop. Reference crates are copied by
 boundary, never runtime dependencies. Build order: `docs/plans/2026-07-13-calm-windows-module.md`.
 

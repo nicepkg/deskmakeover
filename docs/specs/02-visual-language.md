@@ -84,9 +84,9 @@ canvas mirror). Base-surface cards use **no** shadow — hairline + luminance st
 **Families:** `Inter` (Latin, variable, subset ~100 KB) + `HarmonyOS Sans SC` (CJK,
 static Regular 400 + Medium 500). *Status correction 2026-07-10: the CJK faces ship
 as FULL TTFs today (~15.7 MB the pair) — the "3-5 MB subset" target was never
-executed. Subsetting (≈ GB2312) is an open F8/pre-release task; the fallback-chain
+executed. Subsetting (≈ GB2312) is an open release-engineering (M8) task; the fallback-chain
 design below already assumes it.* About page carries the attribution line
-"Fonts: HarmonyOS Sans (Huawei) · Inter" (NOT yet rendered — F8).
+"Fonts: HarmonyOS Sans (Huawei) · Inter" (NOT yet rendered — M8 release engineering).
 
 ```css
 --font-sans: 'Inter', 'HarmonyOS Sans SC', 'Segoe UI', 'Microsoft YaHei UI',

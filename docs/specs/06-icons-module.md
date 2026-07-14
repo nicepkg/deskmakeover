@@ -67,15 +67,16 @@ now the certifying oracle for the Rust core, ADR-0019.)
 > requirements. (`icons.getState` split into `scan` + `getPersisted`; `icons.setLook` left the
 > bridge as frontend draft — see spec 05 §3.)
 
-- `icons.getState → { config, overrides, applied, dirty, history, settings }` —
-  unchanged shape minus render fields.
-- `icons.scan { } → { revision, grid, items: IconItemDto[] }` where `IconItemDto =
+- `icons.getPersisted → IconPersistedDto { ② saved-style + ③ history + applied + arrow + profiles }` —
+  the persisted ②③+native bits; the frontend assembles `IconsStateDto` (config/overrides/grid) from
+  it via `lib/icons-assemble`.
+- `icons.scan { } → IconScanDto { revision, grid, items: IconItemDto[] }` where `IconItemDto =
   { id, label, kind, styleable, statusReason?, x, y, sourceUrls: string[],
-  overrideMode, overrideTint }`. `sourceUrls` are 256px PNGs served once per scan via
-  the existing WebAssets host (Recycle Bin carries TWO sources: empty+full; the
-  contract is a list, never assume 1). 300 icons ≈ 3-6MB once, HTTP-cached.
-- Preview: NOTHING crosses the bridge per edit. `icons.setLook { config, overrides }`
-  persists only (400ms debounce, mirrors wallpaper).
+  overrideMode, overrideTint }`. `sourceUrls` are 256px PNGs served per scan over the
+  `dmicon://<id>/<slot>?rev=N` custom protocol (Recycle Bin carries TWO sources: empty+full; the
+  contract is a list, never assume 1). Content-addressed, cached.
+- Preview: NOTHING crosses the bridge per edit. **`icons.setLook` LEFT the bridge** — the config/
+  overrides draft is frontend session state (resumed from ② on relaunch), like wallpaper's setLook.
 - Apply: `icons.applyBaked` streams PNG-encoded 256 masters in chunks of ≤20 items
   (raw RGBA of 300 icons = 78.6MB and cannot ride one JSON postMessage; PNG total
   ≈5-7MB). Sequence: `applyBakedBegin{revision,count}` → N× `applyBakedChunk{items:
@@ -89,9 +90,9 @@ now the certifying oracle for the Rust core, ADR-0019.)
   active). Multi-source items bake one master per source: `sourceIndex` maps
   Recycle Bin 0=empty / 1=full. Every advertised master MUST arrive; the web
   aborts before commit if any source failed to decode.
-- `icons.applyVersion` becomes a WEB flow: load the history entry's config into the
+- `icons.switchVersion` is a WEB flow: load the history entry's config into the
   renderer → bake → applyBaked. It gets the SAME ceremony as apply (see §3.7).
-- `icons.restore`, `icons.exportCompare` unchanged.
+- `icons.restore`, `icons.restoreOverlay`, `icons.exportCompare` round out the surface.
 - Mock: `bridge/mock.ts` implements the same v2 surface; sources come from the dev
   icon pack (§5); baked masters are held in memory and viewable via a debug hook.
 
@@ -122,7 +123,7 @@ now the certifying oracle for the Rust core, ADR-0019.)
    the user sets icon size on the real desktop, not here). No panel control, no
    canvas-menu entry. `ConfigDto.size` survives as a READ-ONLY observed field;
    nothing (including history replay) may write the real desktop icon size
-   (C# guard = F8). The old "size honesty" preview contract is retired with it.
+   (guarded in the Rust host). The old "size honesty" preview contract is retired with it.
 7. **Every real-desktop crossing is ceremonied**: apply, applyVersion and restore all
    get the same confirm + DoneCard treatment. No silent desktop writes, ever.
 8. **Context menu = owned verbs only** (app-styled, our chrome): on a tile —
@@ -234,7 +235,7 @@ the icons and wallpaper canvases (one component).
 ## 6. Item taxonomy the web receives
 
 `kind ∈ {Shortcut, UrlShortcut, AppxShortcut, RecycleBin, SystemIcon, Folder,
-RegularFile, Unsupported}` with `styleable` computed by C#.
+RegularFile, Unsupported}` with `styleable` computed by the Rust host (`dm-windows`).
 **SystemIcon** = the per-user CLSID `DefaultIcon` family (This PC / Network /
 User Files / Control Panel) — the SAME HKCU registry mechanism the Recycle Bin
 writer uses, proven by the owner's original prototype (win-shell
@@ -358,4 +359,5 @@ opt-out surface — all carried over from this section's original trust contract
 - Visual acceptance (every UI slice, browser): scrub latency, hover try-on,
   exception badges, size honesty caption, taskbar realism vs spec values, label
   shadow legibility on light + dark wallpapers, mock pack variety on screen.
-- `tsc` clean; 500-line law; PENDING-RESX discipline for all new strings.
+- `tsc` clean; 500-line law; new strings go in the TS i18n dictionaries
+  (`src/lib/i18n/{en,zh-hans}.ts`), zh-Hans + English in lockstep.

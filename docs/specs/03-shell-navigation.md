@@ -109,7 +109,8 @@ summarize).*
   `Panel_PaperTitle=美化桌面壁纸/Beautify wallpaper`,
   `Panel_CalmTitle=清爽系统/Calm Windows`, `Panel_SettingsTitle=设置/Settings`.
 - `Rail_FutureSlot` is removed from product UI.
-- About/update/feedback strings live in both zh-Hans and neutral English resx.
+- About/update/feedback strings live in the TS i18n dictionaries
+  (`src/lib/i18n/{en,zh-hans}.ts`, the source) — zh-Hans + English in lockstep.
 
 ## 5. Acceptance
 
@@ -120,4 +121,5 @@ summarize).*
 - Ctrl+1/2/3/4 switch modules positionally; Esc order has no settings drawer branch.
 - Theme and language default to system on a clean settings file.
 - Zone edits survive module round-trip 壁纸 → 图标 → 壁纸.
-- The web test suite stays green (297 at HEAD 2026-07-10; count moves with the tree).
+- The web test suite (`bun test`) stays green — includes the banned-colour, copy-law, and
+  i18n-parity gates. (Run the command for the current count; totals move with the tree.)

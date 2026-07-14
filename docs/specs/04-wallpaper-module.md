@@ -58,8 +58,8 @@ your wallpaper", one-click reversal.
    global-pretending-to-be-local controls. (只描边 is no longer a toggle — Outline
    is a MATERIAL, round 2.)
 5. **壁纸导入 / 导出** (round 2): import your own image as the working source
-   (session-persisted; cross-launch persistence = F8 `wallpaper.setImportedSource`)
-   + export the composed PNG.
+   (persisted frontend-side across launches, like the per-monitor look under the schema-6
+   thin bridge) + export the composed PNG.
 6. Footer honesty line (unchanged).
 
 ### 2.3 Preset gallery (curation, not prediction — ADR-0014 D6)
@@ -105,7 +105,7 @@ history — all carried over from 1.0 §3/§3.5 with these binding changes:
 
 ## 4. Compositor (ADR-0014 D1 — the ONE renderer)
 
-`src/DeskMakeover.Web/src/compositor/` — TypeScript, pixi.js v8 / WebGL2.
+`src/compositor/` (repo root) — TypeScript, pixi.js v8 / WebGL2.
 
 - **Inputs**: source RGBA (host-decoded, cover-cropped to primary-monitor pixels;
   mock supplies its scene bitmap), grid metrics, `look`.
@@ -182,11 +182,12 @@ worker operation. No video code in v1.
 
 ## 5. Bridge & persistence
 
-- Bridge: `wallpaper.getState` (grid/fingerprint/backup flags), `wallpaper.
-  getSource` → decoded RGBA (or lossless bytes) of the cover-cropped source,
-  `wallpaper.applyBaked` (PNG bytes) → apply result, `wallpaper.restore`.
-  `fonts.list` unchanged. Mock: scene bitmap as source; applyBaked stores the
-  PNG for inspection.
+- Bridge (thin, schema 6): `wallpaper.getScreens` → `ScreenInfoDto[]` + globals
+  (grid/fingerprint/backup flags; NO looks — the frontend assembles the state),
+  the cover-cropped source served over the `dmwallpaper://` protocol,
+  `wallpaper.applyBaked` (PNG bytes) → thin result, `wallpaper.restore`. `setLook`
+  LEFT the bridge (frontend `localStorage`). Mock: scene bitmap as source; applyBaked
+  stores the PNG for inspection.
 - `zones.json`: zone semantics gain `id`, `accent`, `emoji`, `tone`, `outline`,
   per-zone `cornerRadius` + title settings; environment fingerprint + mismatch
   banner + wallpaper snapshot/restore + slideshow honesty carried over from 1.0
@@ -205,8 +206,9 @@ worker operation. No video code in v1.
   `lib/zone-presets.ts` (preset data + projection), `stores/wallpaper.ts`.
   (*The `paper-presets.tsx` file named earlier was never created — the gallery
   lives in paper-empty + the presets popover.*)
-- Host (F8): source decode/crop handoff, `wallpaper.applyBaked`, delete
-  `WallpaperBakeRenderer.cs`/`WallpaperComposer.cs` + their tests after parity.
+- Rust host: source decode/crop (WIC), `wallpaper.applyBaked`, `SetWallpaper`, backup/restore
+  (Mac-wired schema 6; Windows COM/WIC `[WINDOWS-VERIFY]`). The legacy C#
+  `WallpaperBakeRenderer.cs`/`WallpaperComposer.cs` are frozen in `legacy/`, deleted at M8.
 
 ## 7. Acceptance
 

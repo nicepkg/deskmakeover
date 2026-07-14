@@ -4,11 +4,14 @@
 > and it works" list. A standing companion to `STATE.md` (which is the ~150-line pointer); this doc
 > holds the detail. Update it in place as items close — it is a living tracker, not a dated snapshot.
 >
-> **Last reconciled:** 2026-07-13 (icon-bridge convergence + extractor + ledger-aware source +
-> exportCompare + live positions + M7 resident decision core + version switch — all Mac-green;
-> plus the owner's "这些都做" pass over §Open owner decisions: tray any-state-disable, ICON-5/9/11,
-> audit #7 + ELEV-3/APPLY-3/CORE-1, shortcut-mark None, preset-v2 guards, two-axis dispositions,
-> badge-lightness declined — all Mac-green + committed, Release identity still owner-only).
+> **Last reconciled:** 2026-07-14 (added the 清爽/calm module: W0 web + W1 Rust decision core +
+> bridge schema 8 + W2 Windows platform ports all Mac-green/codex-approved, W3 cert lab = the open
+> Windows gate — see the calm row in §Milestone status; plus a full doc-hygiene pass). Prior 2026-07-13: icon-bridge
+> convergence + extractor + exportCompare + M7 resident decision core + version switch — all
+> Mac-green; the owner's "这些都做" pass (tray any-state-disable, ICON-5/9/11, audit #7 +
+> ELEV-3/APPLY-3/CORE-1, shortcut-mark None, preset-v2 guards, two-axis, badge-lightness declined).
+> Release identity still owner-only. *(Specific test totals below are point-in-time at their
+> reconcile date; run the suites for the current count.)*
 
 ## The one fact that frames everything
 
@@ -37,6 +40,7 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 | **M7 resident auto-format** | **DECISION CORE DONE + HARDENED (Mac, 2026-07-13)** — platform bodies + tray [WV] | `dm-resident` built + 24 tests: reconciler (T6), tray SM (T7), pending queue (T5), consent ladder, stability probe, privileged red-line (T12). Plus style_resolve + native_bake (T1 port), version_switch (T10, wired `icons.switchVersion`), reset toggle-coupling, resident precondition, T2 WindowsActivityMonitor (judge-2, msvc-clean). **Two codex adversarial rounds** (apply-path + policy) → 2🔴+9🟠+5🟡 ALL closed: propose→apply snapshot-CAS contract, §14 scope re-check at every write entry + shared path-ancestry, unconditional recovery, busy-abort, v1-always-proposes, atomic reset, nanosecond stability. **Remaining = [WV] platform bodies:** T8 tray+windowless residency wiring (unwritten), T11 tray bitmaps (uncreated), the watcher→reconciler→driver LOOP wiring, T2's judge-1 WinEventHook precision layer. |
 | **M8 release engineering + .NET deletion** | **NOT STARTED** | No installer / signing / updater; version `0.0.0`; `legacy/` .NET tree still present. See §Packaging. |
 | **M1 go/no-go spikes (Windows)** | PARTIAL | Only Spike 4 (tri-target pixel, Mac) done. Spikes 1/2/3/5 (STA+IFolderView, SysListView32 layout, elevated-helper roundtrip, kill-injected `.lnk`) are Windows-bound and **never run** — the ADR-0019 "gate for everything after" was never actually gated on a real box. |
+| **清爽 / calm-Windows module** (ADR-0023, spec 08) | **W0/W1/W2 DONE + codex-approved (Mac)** | W0 web (codex R8) · W1 Rust decision core + bridge schema 8 (codex R7) · W2 two Windows platform ports blind-written + msvc-clean (codex R5), all Mac-green. **W3 cert lab = the open ADR-0023 D2 gate** (real Windows box: inspect→apply→verify→reboot→restore ladder + allowlist + per-recipe `policy_guards` + GPP ruling). Capability-gated release: W3 green → the write slice rides v1; else v1 ships the guided-only 「教你关」 face. |
 
 ## Ship-blockers — the critical path from "compiles" to "a Windows user installs it and it works"
 
@@ -212,11 +216,12 @@ built to look busy. Only **Release identity** stays owner-only (it cannot be res
 
 ## Honest summary
 
-The Mac-side product (UI, icon core, wallpaper wiring, icon bridge, storage foundation) is genuinely
-built. **Essentially nothing on the Windows ship target has been validated at runtime.** Under
-decision A, the near-term Mac work is: (1) converge the icon-bridge contract (R5 fixed, R6 verifying), (2) write the two
-Mac-buildable stubs (`source.rs` extraction, `exportCompare`), (3) finish the Mac-buildable halves of
-the `[WIN]` seams so the Windows pass is verification-only, (4) author the Windows handoff doc so the
-box work is a checklist, then (5) M7 build + M8 packaging. Steps that are irreducibly Windows-runtime
-(the §8a durability defects, the M1 spikes, the whole `[WINDOWS-VERIFY]` battery) remain the final
-integration pass on a real, logged-in Windows box.
+The Mac-side product (UI, icon core, wallpaper wiring, icon bridge, storage foundation, M7 resident
+decision core, calm W0/W1/W2) is genuinely built and codex-converged. **Essentially nothing on the
+Windows ship target has been validated at runtime.** The icon-bridge contract CONVERGED (codex R12
+Approve); the `source.rs` extractor + `exportCompare` are done; the M7 decision core is built. The
+remaining Mac-closable work is: author the Windows handoff doc (so the box work is a checklist) and
+finish the Mac-buildable halves of the resident platform wiring. Everything else is irreducibly
+Windows-runtime: the §8a durability defects, the M1 spikes, the calm **W3 cert lab** (ADR-0023 D2
+gate), the whole `[WINDOWS-VERIFY]` battery, and M8 packaging — the final integration pass on a real,
+logged-in Windows box.

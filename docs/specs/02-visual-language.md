@@ -193,7 +193,8 @@ preview and the bake share this exact math. The v3 chrome renewal does not touch
 
 ## Shape System (icon geometry)
 
-One canonical authoring (`icon-compositor/shapes.ts`), cached; identical math in
+One canonical shape authoring in the Rust `dm-icon-core` (ADR-0019; the frozen TS
+`icon-compositor/shapes.ts` mirrors it as the byte-parity oracle), cached; identical math in
 preview swatch, canvas tile, and bake:
 
 - **苹果**: the TRUE iOS continuous-corner squircle — **three cubic Béziers per
@@ -218,11 +219,11 @@ preview swatch, canvas tile, and bake:
     the iOS-class hand-feel that plain `border-radius` corners lack. Rounded-family
     proportions come from `progressier.com/maskable-icons-editor`; Flower + Pebble
     are `maskable.app`'s OEM masks (MIT, arcs → cubics, normalized to full extent).
-  - **Single source of truth**: `icon-compositor/shapes.ts` is the canonical
-    authoring; the chip clip-path (`lib/shape-paths.ts`) and the engine raster mask
-    both derive from it (preview==bake, can never drift). The C# `IconShapeGeometry`
-    now **re-ports FROM the web** (Windows batch) — the geometry oracle direction
-    flipped web-authoritative (ADR-0015 amendment 2026-07-09).
+  - **Single source of truth**: the shape authoring lives in `dm-icon-core` (ADR-0019); the
+    frozen TS `icon-compositor/shapes.ts` is its byte-parity oracle, and the chip clip-path
+    (`lib/shape-paths.ts`) + the engine raster mask both stay consistent with that authoring
+    (preview==bake, can never drift). The C# `IconShapeGeometry` is a frozen oracle too (the
+    2026-07-09 web-authoritative flip is now the Rust-authoritative port, ADR-0019).
   - **Content inscription**: pinched shapes (Diamond/Flower/Pebble) inscribe the
     artwork inside their largest centred square with per-shape breathing margins, so
     square plate icons never kiss the pinched edges.
@@ -293,8 +294,9 @@ colour. Changing any of these means changing the law — owner-only.
 
 Since 2026-07-09 the Colour row is the **foreground/subject axis**; a separate
 **background/plate colour** rides the same row's colour entry. Two axes, never a
-single tint pick (chief-UI/UX + owner). Exact channel math lives in
-`icon-compositor/color.ts` (OKLab ramp) — this is the structural contract.
+single tint pick (chief-UI/UX + owner). Exact channel math is authored in `dm-icon-core`
+(OKLab ramp; the frozen TS `icon-compositor/color.ts` mirrors it as the oracle) — this is the
+structural contract.
 
 > **ADR-0018 amendment (two-axis colour, 2026-07-10).** The word 「mode」 is retired
 > from the UI: there is no 「fourth foreground mode」. 满彩 (Field) is the DEFAULT
@@ -309,19 +311,21 @@ single tint pick (chief-UI/UX + owner). Exact channel math lives in
 - **原彩 (Original)**: keep the icon's own colour. White plates take the Auto or a
   chosen background colour.
 - **黑白 (BlackWhite)**: perceptual grayscale (luminance-preserving desaturation).
-  Its swatch is the concentric black-in-white pair. Background override inert (v2).
+  Its swatch is the concentric black-in-white pair. Under the two-axis model (ADR-0018) the
+  plate axis applies here too (a BlackWhite subject can sit on any plate).
 - **单色 (Mono)**: the subject maps to the tint's hue. Two depths (`monoStyle`):
   - **渐变 (Tonal)** — the classic single-hue tonal ramp (light end 0.965/0.22:
     white plates read near-white with a whisper of tint).
   - **纯色 (Flat) = 极致单色** — the SEGMENTED subject in ONE flat colour on ONE
-    flat plate, hard two-tone contrast, no gradient. Subject/background split =
-    `icon-compositor/segment.ts`: transparent-edge silhouette · border-flood that
+    flat plate, hard two-tone contrast, no gradient. Subject/background split (authored in
+    `dm-icon-core`; frozen TS `icon-compositor/segment.ts` is the oracle): transparent-edge silhouette · border-flood that
     follows gradient backdrops · a plate-split (distance-from-field Otsu + line-art
     polarity / coherence / fragmentation guards) for opaque plates; degenerate cases
     fall back to the whole silhouette. Mono composes LAYERED: plate colour raw,
     subject per depth.
-- **背景色 (plateColor)**: applies in Original + Mono (BW inert until v2); `null` =
-  Auto (Original: detected bg / white; Mono: the ramp's light end).
+- **背景色 (plateColor)**: the plate axis applies across all subjects under the two-axis model
+  (ADR-0018 — Original / BlackWhite / Mono); `null` = Auto (Original: detected bg / white; Mono:
+  the ramp's light end).
 
 Colour entry (⚠️ **SUPERSEDED** by the two-axis two-row panel — ADR-0018 / the amendment above;
 kept as the historical dual-tab design): the row-end wheel opened a **前景 / 背景 dual-tab** popover

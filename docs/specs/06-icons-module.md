@@ -47,9 +47,9 @@ now the certifying oracle for the Rust core, ADR-0019.)
   [256,48,32,24,20,16] + ICO assembly from C# `IconResampler`/`IcoWriter`
   (semantics byte-for-byte).
 - **The TS compositor is FROZEN** (banner comments; no new styles, no fixes except
-  oracle corrections): it is the PRIMARY parity oracle for the Rust port and is
-  deleted only after the M6 certification gate (owner order 2026-07-10: never
-  before the rewrite is written AND verified). The frozen C# `TileRenderer`
+  oracle corrections): it is the PRIMARY parity oracle for the Rust port. The M6 flip is
+  EXECUTED (WASM is the production foreground path); the TS compositor stays a non-production
+  parity oracle until its physical deletion at M8. The frozen C# `TileRenderer`
   remains an oracle only for the legacy style subset it still covers.
 - Parity gates (ADR-0019): TS↔Rust — classification/branch/plate-seed decisions
   exactly equal; pixels SSIM≥0.995 / bounded ΔE (documented regional tolerances
@@ -161,8 +161,8 @@ now the certifying oracle for the Rust core, ADR-0019.)
     per ADR-0019). Marks are silhouette-aware on free-form icons; Card→Shadow
     (neutral drop shadow), Echo→Halo (silhouette outline).
 12. **Default look = 满彩 colour field (ADR-0016 + amendment, owner
-    2026-07-10).** The colour axis gains a fourth foreground mode **满彩
-    (Field)** — the factory default; recipe v7 (designer-seat acceptance PASS)
+    2026-07-10).** **满彩 (Field)** is the factory-default COORDINATE (原彩 subject × a derived
+    plate), NOT a fourth subject mode (ADR-0018 two-axis); recipe v7 (designer-seat acceptance PASS)
     lives in spec 02 §Default Composition. **Iron law: subject pixels are never
     recoloured** (the knockout lane was built, owner-rejected, deleted);
     separation = coloured plates (one light line) + silhouette shadows/halos +

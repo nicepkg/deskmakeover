@@ -31,7 +31,7 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 |---|---|---|
 | **M3/M4 Windows platform layer (blind-write)** | Code DONE, **runtime 0% verified** | Mac tests green + msvc-clean, but the whole `[WINDOWS-VERIFY]` checklist (9 items) + 11 blind-audit follow-ups are all pending the Windows box. (`shell/layout.rs` positions + `source.rs` icon extraction bodies are now blind-written — Ship-blockers §1 — so the remaining gap is `ItemKind::System` Unsupported cases + runtime verification.) |
 | **M5 icon core** | ✅ DONE + byte-certified (real corpus) | ICON-5/9/11 dead-code questions RESOLVED (owner 2026-07-13 — see §Open owner decisions). |
-| **M6 kernel-speed + WASM cutover** | ✅ EXECUTED (WASM is the only pixel path) | Physical deletion of the frozen TS compositor (`src/icon-compositor/*.ts`, 10 files) held to M8. |
+| **M6 kernel-speed + WASM cutover** | ✅ EXECUTED (WASM is the only foreground production pixel path; resident/background uses the byte-identical native `dm-icon-core` build) | Physical deletion of the frozen TS compositor (`src/icon-compositor/*.ts`, 10 files) held to M8. |
 | **M6-WIRE Wave A (wallpaper)** | DONE **on Mac only** | All Windows COM/WIC/topology (`topology.rs`, `decode.rs`, `wallpaper.rs`) `[WV]`. |
 | **M6-WIRE Wave B foundation (B6-B9 + fs_atomic)** | ✅ DONE (Mac-green) | The four Windows durability defects in `m6-wire-host.md §8a` are **not Mac-fixable** and gate shipping. |
 | **M6-WIRE Wave B icon bridge (B1-B5)** | ✅ **CONVERGED — codex R12 = Approve (2026-07-13)** | 8 adversarial rounds R5→R12, ~50 findings fixed (4🔴→1🔴→0🔴×5→Approve); owner-informed residuals in §Icon-bridge. Windows runtime still [WV]. |

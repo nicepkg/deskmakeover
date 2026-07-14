@@ -38,9 +38,10 @@ now the certifying oracle for the Rust core, ADR-0019.)
 ## 1. Renderer ownership (ADR-0019 digest; supersedes the ADR-0015 table)
 
 - **One Rust core (`dm-icon-core`) is the single algorithm truth source in v1.0**:
-  compiled to WASM for in-window preview + manual bake, and to native for apply and
-  the resident background path (spec 07). Preview, bake, and background render the
-  SAME code — the WYSIWYG law becomes structural.
+  compiled to WASM for in-window preview + foreground/manual bake, and to native for the
+  resident/background path (spec 07). Foreground apply writes WASM-baked masters via the host;
+  the native build re-renders for the resident projection. Preview, bake, and background render
+  the SAME code — the WYSIWYG law becomes structural.
 - The core is authoritative for everything the user SEES and for the 256px RGBA
   master. Sub-256 sizes: `dm-icon-codec` ports the linear-light resample ladder
   [256,48,32,24,20,16] + ICO assembly from C# `IconResampler`/`IcoWriter`
@@ -70,9 +71,11 @@ now the certifying oracle for the Rust core, ADR-0019.)
 - `icons.getPersisted → IconPersistedDto { ② saved-style + ③ history + applied + arrow + profiles }` —
   the persisted ②③+native bits; the frontend assembles `IconsStateDto` (config/overrides/grid) from
   it via `lib/icons-assemble`.
-- `icons.scan { } → IconScanDto { revision, grid, items: IconItemDto[] }` where `IconItemDto =
-  { id, label, kind, styleable, statusReason?, x, y, sourceUrls: string[],
-  overrideMode, overrideTint }`. `sourceUrls` are 256px PNGs served per scan over the
+- `icons.scan { } → IconScanDto { revision, grid, items: IconItemDto[] }` where the real
+  `IconItemDto` (see `src/bridge/generated.ts`) is `{ id, label, kind, styleable, statusReason?,
+  x, y, sourceUrls: string[] }` — the bridge item carries NO override fields; per-icon overrides
+  are frontend-owned draft state that `lib/icons-assemble` overlays onto the rich `IconsStateDto`.
+  `sourceUrls` are 256px PNGs served per scan over the
   `dmicon://<id>/<slot>?rev=N` custom protocol (Recycle Bin carries TWO sources: empty+full; the
   contract is a list, never assume 1). Content-addressed, cached.
 - Preview: NOTHING crosses the bridge per edit. **`icons.setLook` LEFT the bridge** — the config/

@@ -3,6 +3,9 @@
 - **Status**: Accepted (owner, 2026-07-10)
 - **Relates to**: ADR-0019 (replatform — the resident process is native Rust, no
   WebView), spec 06 §7 (superseded), **spec 07** (the normative behaviour spec).
+- **Supersedes**: the "no resident process / real-time watcher not before v1.1" stance of
+  [ADR-0002](0002-one-click-product-form.md) + [ADR-0003](0003-voc-driven-product-revisions.md)
+  (background resident auto-format now ships in v1.0).
 
 ## Context
 

@@ -32,7 +32,8 @@ English; language defaults to the Windows UI culture (fallback English).
 
 ## Product Scope (v3)
 
-Two beautify modules + settings, in one window (module rail, spec 03):
+Three product modules (图标 · 壁纸 · 清爽) + settings — four rail destinations in one window
+(module rail, spec 03):
 
 1. **图标 (icons, spec 06)** — scan → live styled preview on a desktop-mirror
    canvas → 一键美化 (snapshot → journaled bake) → tweak → update → restore
@@ -107,7 +108,7 @@ Endpoint layout (migration phases: `docs/plans/2026-07-10-tauri-migration.md`):
 |---|---|
 | `src` (+ `index.html`, root configs) | The visible UI (React 19 + Tailwind 4 + Motion, Bun-only): Zustand state, undo/redo, i18n (TS dictionaries = source of truth); Worker pool hosting the WASM icon core; Pixi wallpaper compositor (stays web-only) |
 | `src-tauri` | Thin composition root: window/tray/single-instance lifecycle (window close destroys the WebView; resident mode is windowless), commands, capabilities/CSP |
-| `crates/dm-icon-core` | THE single pixel truth (ADR-0019): analysis/segmentation/colour/shapes/marks/filters/compose + planner + RenderSession; compiled to WASM (preview/bake) AND native (apply/background) |
+| `crates/dm-icon-core` | THE single pixel truth (ADR-0019): analysis/segmentation/colour/shapes/marks/filters/compose + planner + RenderSession; compiled to WASM (preview + foreground bake) AND native (resident/background) — foreground apply writes WASM-baked masters via the host |
 | `crates/dm-icon-codec` + `dm-contracts` + `dm-domain` | Resample ladder + ICO assembly; generated TS bindings (tauri-specta — hand-mirrored schemas banned); pure domain types |
 | `crates/dm-windows` | ALL windows-rs/COM/unsafe: STA actor, desktop scan/layout, icon extraction, .lnk/.url/desktop.ini/system-icon writers, IDesktopWallpaper, watcher, Explorer refresh |
 | `crates/dm-operations` | Durable transaction ledger (rusqlite), snapshots, CAS restore, history |

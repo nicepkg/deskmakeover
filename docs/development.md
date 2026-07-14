@@ -11,7 +11,8 @@ bridge), **spec 02 v3** (visual language). The old `references/prototype/*.html`
 historical reference only — the specs are the source of truth.
 
 > **Pixel-production model (current, ADR-0019).** Icon pixels come from the Rust `dm-icon-core`
-> (WASM for the web preview/bake, native for apply/background); the frozen TS `icon-compositor/`
+> (WASM for the web preview + foreground bake; native for the resident/background path — foreground
+> apply writes WASM-baked masters via the host); the frozen TS `icon-compositor/`
 > is the byte-parity oracle. Wallpaper compositing is Pixi in the web. The Rust host decodes
 > source images, packages ICO ladders, writes to the shell, and backs up/restores. The bridge
 > contract is `dm-contracts` → tauri-specta → `src/bridge/generated.ts`, `BRIDGE_SCHEMA_VERSION = 8`
@@ -381,8 +382,8 @@ Notes:
 |------|------|
 | What's in flight / next / blockers | `docs/STATE.md` (**start here**) |
 | Completed-work archive (swept from STATE) | `docs/journal/` |
-| Architecture decisions | `docs/decisions/` (ADR-0011 replatform · ADR-0013 v3 redesign are current) |
-| Capability specs | `docs/specs/` (02 visual language · 03 shell+settings · 04 wallpaper · 05 web-shell) |
+| Architecture decisions | `docs/decisions/` (ADR-0019 Tauri/Rust replatform · ADR-0013 Premium Flat · 0016-0023 govern; 0001/0011/0012 superseded) |
+| Capability specs | `docs/specs/` (00 roadmap · 01 architecture · 02 visual · 03 shell+settings · 04 wallpaper · 05 bridge · 06 icons · 07 resident · 08 calm) |
 | Point-in-time plans | `docs/plans/` |
 | Design-panel reviews | `docs/reviews/` |
 | Live owner-gated runs | `docs/verification/owner-supervised-live-runs.md` |

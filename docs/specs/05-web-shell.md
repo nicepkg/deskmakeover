@@ -28,8 +28,10 @@ React 19 SPA (src/, built by Vite/Bun) — hosted in the Tauri webview (WebView2
 **Renderer ownership (ADR-0019 single-truth):**
 
 - **Icons**: the Rust `dm-icon-core` renders every preview tile AND the bake master — compiled to
-  **WASM** for the web preview/bake and to **native** for apply/background. The frozen TS
-  `src/icon-compositor/` is the byte-parity ORACLE only (tree-shaken out of the bundle).
+  **WASM** for the web preview + foreground/manual bake, and to **native** for the resident/background
+  path (incl. native version-switch). Foreground apply = WASM bakes the masters, then the Rust host
+  packages + writes them (no native re-render). The frozen TS `src/icon-compositor/` is the
+  byte-parity ORACLE only (tree-shaken out of the bundle).
 - **Wallpaper**: a Pixi v8 compositor (`src/compositor/`) renders the live zone preview and bakes
   the final PNG in the web; the Rust host supplies one cover-cropped source bitmap per source change
   over `dmwallpaper://`.

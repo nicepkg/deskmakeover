@@ -3,7 +3,8 @@
 **Status:** accepted
 **Date:** 2026-07-07
 Supersedes/amends: ADR-0008's glass-arrow default, ADR-0009's transient settings
-drawer and dashed future slot, spec 02's three-shape-only icon shape set.
+drawer and dashed future slot, spec 02's three-shape-only icon shape set, and
+[ADR-0002](0002-one-click-product-form.md)'s dark-first default theme (default now follows the system).
 
 ## Context
 

@@ -3,7 +3,8 @@
 - **Status**: Accepted (owner, 2026-07-12)
 - **Relates to**: ADR-0019 (Tauri/Rust replatform, native renderer), ADR-0020
   (background resident v1.0, incremental ledger), ADR-0021 (global arrow overlay
-  default). Normative behaviour: **spec 07** (this ADR's decisions are integrated
+  default); further supersedes [ADR-0003](0003-voc-driven-product-revisions.md)'s resident
+  trust/timing stance. Normative behaviour: **spec 07** (this ADR's decisions are integrated
   into spec 07 §2, §8–§14).
 
 ## Context

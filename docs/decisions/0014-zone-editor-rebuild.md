@@ -16,6 +16,14 @@
 > deletion is at **M8** (not "F8" — F8 is void), they are frozen in `legacy/`; the old `STATE.md §F8`
 > reference no longer exists. Read the C#/F8 mentions in the body as the 2026-07-09 historical design.
 
+## Context
+
+The wallpaper zone editor needed a rebuild: the old single-C#-renderer path (spec 04 §4) could not
+support the five-material / four-title-style catalogue at interactive latency. A 5-seat expert panel
+(above) disposed Q1–Q10; the decisions D1–D6 below are the outcome, with Consequences at the end.
+
+## Decisions
+
 ## D1 — One TypeScript WebGL compositor (A3)
 
 Zone/clarity composition moves from C# to the web layer: a single TS compositor

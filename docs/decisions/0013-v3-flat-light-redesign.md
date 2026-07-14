@@ -6,7 +6,7 @@
   stands) and **[ADR-0019](0019-tauri-rust-replatform.md)** (the version-narrative / changelog
   implementation moves from the C# host to the Tauri/Rust host; the "F8" stage name is void — the
   design decisions below stand, only the platform changed).
-- **Supersedes / amends**: ADR-0012's dark-default and Segoe-stack typography; spec 02 v2
+- **Supersedes / amends**: ADR-0012's dark-default and Segoe-stack typography, [ADR-0002](0002-one-click-product-form.md)'s dark-first default theme; spec 02 v2
   chrome sections (rewritten as v3). Engine rendering law (WYSIWYG sections) untouched.
 - **Evidence**: `docs/reviews/2026-07-08-ui-v3-premium-flat-panel.md` (panel run #2 on
   real screenshots — the final full-panel run for this artifact).

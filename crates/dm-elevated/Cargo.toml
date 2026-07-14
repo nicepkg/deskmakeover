@@ -6,9 +6,9 @@ publish.workspace = true
 
 # The single privileged binary (ADR-0019 Amendment 1): a `requireAdministrator` helper whose
 # ONLY verbs are the global shortcut-overlay apply/restore pair (ADR-0021). No arbitrary
-# commands. Blind-written on Mac; the requireAdministrator manifest is applied at packaging (M8)
-# via an external `.exe.manifest`, so this crate carries no resource-compiling build script and
-# stays msvc-check-clean on the host.
+# commands. The requireAdministrator manifest (dm-elevated.exe.manifest) is embedded by build.rs
+# via a Windows-only linker arg — no C / no resource compiler runs, so the host msvc cross-check
+# (which does not link) stays clean.
 [[bin]]
 name = "dm-elevated"
 path = "src/main.rs"

@@ -17,6 +17,8 @@ public/icon-kernel-bench.html
 
 # ── Tauri (build-time generated ACL schemas, regenerated every build) ──
 src-tauri/gen/
+# dm-elevated sidecar staged by scripts/stage-sidecar.mjs (externalBin), rebuilt every ship build
+src-tauri/binaries/
 
 # ── Legacy .NET tree (frozen oracle under legacy/, deleted at M8) ──
 # bin/ and obj/ are scoped to legacy/ ON PURPOSE: bare `bin/` / `obj/`

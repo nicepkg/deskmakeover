@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  DeskMakeover elevated helper (ADR-0019 Amendment 1 / ADR-0021 §4).
+
+  requireAdministrator: this binary's ONLY verbs are the global shortcut-overlay
+  apply/restore pair, which write HKLM. Embedding the elevation request means a
+  direct launch (or the app's ShellExecuteExW "runas") always triggers UAC — the
+  helper never runs unprivileged. It is a standalone self-contained exe (loads no
+  code from the user-writable app folder) so elevating it is not a DLL-hijack LPE
+  vector (development.md §6.1).
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+</assembly>

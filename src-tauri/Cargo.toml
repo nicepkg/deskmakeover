@@ -12,7 +12,18 @@ default-run = "deskmakeover-desktop"
 name = "deskmakeover_desktop_lib"
 crate-type = ["lib"]
 
-# The `gen-bindings` binary is auto-discovered from `src/bin/gen-bindings.rs`.
+# The `gen-bindings` dev tool is gated behind an off-by-default feature so a release
+# `cargo build` (what `tauri build` runs) never compiles it — otherwise Tauri bundles
+# every package binary and the 8 MB dev tool ships inside the installer. `bun run
+# gen:bindings` enables the feature; `check:bindings` uses the lib, not this bin.
+[[bin]]
+name = "gen-bindings"
+path = "src/bin/gen-bindings.rs"
+required-features = ["bindgen"]
+
+[features]
+# Enables the gen-bindings dev binary (see [[bin]] above). Off in release/ship builds.
+bindgen = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

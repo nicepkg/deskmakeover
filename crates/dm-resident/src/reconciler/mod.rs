@@ -18,8 +18,7 @@ use dm_domain::{
     ItemId, ItemStateReader, OwnedFields, PortError,
 };
 use dm_domain::DesktopScanner;
-use dm_icon_core::render_session::RenderSession;
-use dm_operations::icons::native_bake::bake_master_png;
+use dm_operations::icons::native_bake::{bake_masters_par, BakeJob};
 use dm_operations::icons::package_masters;
 use dm_operations::icons::scope::ScopeRoots;
 use dm_operations::icons::style_resolve::StyleRecipe;
@@ -102,10 +101,10 @@ pub struct ReconcileOutcome {
     pub errors: Vec<String>,
 }
 
-/// The long-lived reconciler: settle-probe memory + the pending-privileged queue. (The bake
-/// RenderSession is created per `apply_batch` call, not held here — an aborted batch must not
-/// leave registered-but-uncommitted sources in a shared session, codex r1-🟠3; a one-shot batch
-/// gains little from a cross-call warm cache.)
+/// The long-lived reconciler: settle-probe memory + the pending-privileged queue. (Baking holds
+/// no render state across `apply_batch` calls — the batch renders through the stateless
+/// `bake_masters_par`, so an aborted batch can never leave registered-but-uncommitted sources
+/// behind, codex r1-🟠3; a one-shot batch gains little from a cross-call warm cache anyway.)
 pub struct Reconciler {
     settle: SettleProbe,
     pub pending_privileged: PendingPrivilegedQueue,
@@ -276,14 +275,25 @@ impl Reconciler {
             out.deferred_recovery = true;
             return Ok(out);
         }
-        // A FRESH RenderSession per batch (codex r1-🟠3): an aborted batch never leaves
-        // registered-but-uncommitted sources in a shared session.
-        let mut session = RenderSession::new();
-        let mut masters: Vec<BufferedMaster> = Vec::new();
-        let mut anchors: Vec<VettedCandidate> = Vec::new();
+        // One vetted candidate carried from PHASE A (vet) into PHASE B (batch bake): its anchor +
+        // resolved config + extracted sources, holding the owned sources/config alive for the
+        // borrowing `BakeJob`s. `field_seed` stays None (the pinned-seed feed is a tracked follow-up,
+        // spec 07 §5 — v1 lets the kernel derive per source).
+        struct Prepared {
+            candidate: VettedCandidate,
+            cfg: dm_icon_core::config::Config,
+            is_shortcut: bool,
+            sources: Vec<dm_domain::DecodedImage>,
+        }
+
+        // ── Phase A: vet every candidate (scope / stale / config / extract) — pure reads ──────────
+        // The per-candidate busy check is a FAIL-FAST: a busy desktop aborts BEFORE we bake anything.
+        // The DEFINITIVE gate is still the final `is_desktop_busy` immediately before `apply` below,
+        // so nothing is ever written while busy regardless of when the busy began (§11).
+        let mut prepared: Vec<Prepared> = Vec::new();
         for candidate in candidates {
             let item = &candidate.item;
-            // Busy → ABORT the whole batch: discard everything baked so far, apply NOTHING (§11).
+            // Busy → ABORT the whole batch: bake nothing, apply nothing (§11).
             if ports.activity.is_desktop_busy().unwrap_or(true) {
                 out.deferred_busy = true;
                 return Ok(out);
@@ -323,40 +333,51 @@ impl Reconciler {
                     continue;
                 }
             };
+            let is_shortcut = item.kind.is_shortcut();
+            prepared.push(Prepared { candidate, cfg, is_shortcut, sources });
+        }
+
+        // ── Phase B: bake every (candidate, slot) in ONE parallel batch (M6 Phase 3), distribute ──
+        // Byte-identical to a serial `bake_master_png` per slot (native_bake tests). The `jobs`
+        // borrow of `prepared` ends with the inner scope, so `prepared` can then be consumed to move
+        // each `VettedCandidate` anchor out.
+        let baked = {
+            let jobs: Vec<BakeJob> = prepared
+                .iter()
+                .flat_map(|p| {
+                    p.sources
+                        .iter()
+                        .map(move |src| BakeJob { source_png: &src.png, config: &p.cfg, is_shortcut: p.is_shortcut })
+                })
+                .collect();
+            bake_masters_par(&jobs)
+        };
+        let mut masters: Vec<BufferedMaster> = Vec::new();
+        let mut anchors: Vec<VettedCandidate> = Vec::new();
+        let mut k = 0usize;
+        for p in prepared {
+            let mut item_masters = Vec::with_capacity(p.sources.len());
             let mut ok = true;
-            let mut item_masters = Vec::with_capacity(sources.len());
-            for (slot, src) in sources.iter().enumerate() {
-                let bake_id = if slot == 0 {
-                    item.id.as_str().to_string()
-                } else {
-                    format!("{}#{slot}", item.id.as_str())
-                };
-                match bake_master_png(
-                    &mut session,
-                    &bake_id,
-                    &src.png,
-                    &cfg,
-                    item.kind.is_shortcut(),
-                    // Hue continuity: new icons should allocate against pinned existing seeds
-                    // (spec 07 §5). v1 lets the kernel derive per source; the pinned-seed feed
-                    // is a tracked follow-up, not silently dropped — see the plan's residuals.
-                    None,
-                ) {
+            for slot in 0..p.sources.len() {
+                match &baked[k] {
                     Ok(png) => item_masters.push(BufferedMaster {
-                        item_id: item.id.as_str().to_string(),
+                        item_id: p.candidate.item.id.as_str().to_string(),
                         source_index: slot as u32,
-                        png_base64: png,
+                        png_base64: png.clone(),
                     }),
+                    // Record only the FIRST fault per item (mirrors the old break) and skip it whole.
                     Err(e) => {
-                        out.errors.push(format!("bake {}: {e}", item.id.as_str()));
+                        if ok {
+                            out.errors.push(format!("bake {}: {e}", p.candidate.item.id.as_str()));
+                        }
                         ok = false;
-                        break;
                     }
                 }
+                k += 1;
             }
             if ok {
                 masters.extend(item_masters);
-                anchors.push(candidate);
+                anchors.push(p.candidate);
             }
         }
         out.pending_privileged = self.pending_privileged.len();

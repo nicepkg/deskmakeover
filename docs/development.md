@@ -65,12 +65,14 @@ bun  scripts\publish-win.mjs        # DEV/local folder (uncompressed) — see §
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| **Bun** | ≥ 1.3 | The ONLY JS toolchain — install/build/test/bundle. **No Node, no npm** (owner rule, ADR-0011). |
-| **.NET SDK** | **10.0.1xx+** (repo-local) | See the SDK gotcha below — this is the #1 trap. |
-| **PowerShell 7** (`pwsh`) | any | The release script is `.ps1`. |
-| **WebView2 Runtime** | Evergreen | Preinstalled on Win11, auto-updated on Win10. **Not bundled** — do not ship it. |
+| **Bun** | ≥ 1.3 | The ONLY JS toolchain — install/build/test/bundle. **No Node, no npm** (owner rule). |
+| **Rust toolchain** (`rustc`/`cargo`) | per `rust-toolchain.toml` | The engine + the Tauri host. `cargo` on PATH (`~/.cargo/bin`). |
+| **Tauri 2 prerequisites** | per platform | macOS: Xcode CLT + a WebKit webview (built-in). Windows: MSVC build tools + the `x86_64-pc-windows-msvc` target + WebView2. |
+| **WebView2 Runtime** (Windows) | Evergreen | Preinstalled on Win11, auto-updated on Win10. **Not bundled** — do not ship it. |
+| .NET SDK (legacy oracle ONLY) | 10.0.1xx+ (repo-local `legacy/.dotnet`) | Needed ONLY to build the frozen `legacy/` C# oracle on Windows — NOT the product. See the gotcha below. |
+| PowerShell 7 (`pwsh`) | any | Only for the legacy oracle's `.ps1` publish scripts. |
 
-### ⚠️ The .NET SDK gotcha (read this or lose an hour)
+### ⚠️ The .NET SDK gotcha (legacy oracle only — read this or lose an hour)
 
 The whole .NET tree now lives under `legacy/` (ADR-0019 Amendment 1) — run every `dotnet`
 command from `legacy/`. `legacy/global.json` pins **`10.0.100` with `rollForward:
@@ -151,9 +153,10 @@ bun run dev     # http://localhost:5173 (auto-increments) — from the repo root
 Uses the **mock bridge** (`src/bridge/mock.ts` + `src/bridge/mock-desktop.ts`) — NO C#
 host needed. **The mock renders the FULL app** (since v3): a fake desktop (wallpaper +
 the REAL icon pack from `public/real-icons/`, config-reactive restyles, per-style
-mark previews), both mirrors, all panels, settings, the welcome gate. The web now
-renders the real preview + bake pixels itself (CPU TS icons, Pixi wallpaper) — the mock
-only supplies the DATA (grid/items/source URLs); every interaction, layout, and motion
+mark previews), both mirrors, all panels, settings, the welcome gate. The web
+renders the real preview + bake pixels via the **WASM `dm-icon-core`** (icons) + Pixi
+(wallpaper) — the mock only supplies the DATA (grid/items/source URLs); every interaction,
+layout, and motion
 is exercisable.
 
 - `?debug=components` — the component gallery (primitives in dark + light).
@@ -297,7 +300,7 @@ not restated here.)
 | `legacy/scripts/publish-win.mjs` | `legacy/artifacts/win-x64/DeskMakeover/` | uncompressed folder | DEV/local smoke. **Not** the shipping size. Also publishes the ElevatedHelper as a separate self-contained single-file. |
 
 ```powershell
-# ship (run from legacy/):
+# legacy oracle build only — run from the REPO ROOT (paths are repo-root-relative):
 pwsh legacy\scripts\dev\publish.ps1
 #   -> legacy\publish\DeskMakeover-v0.0.0-win-x64\DeskMakeover.App.exe  (~64 MB, no .NET install)
 
@@ -340,9 +343,10 @@ Notes:
      `ElevatedHelper.exe`); the release must deliver/embed the helper before shipping or the
      one-click bake path fails for end users. Nothing has shipped yet — this is unproven, verify on a real host.
 
-3. **WYSIWYG law** (spec 05 §3, ADR-0011): preview pixels **==** baked pixels. Web CSS
-   scaling is viewport-fit only; never paint UI state the bake cannot reproduce. Zone-title
-   rasterisation stays host-side so baked text keeps the same pen.
+3. **WYSIWYG law** (spec 05 §3, ADR-0019): preview pixels **==** baked pixels. For icons this is
+   structural (the WASM preview and the native bake are the same `dm-icon-core`); for wallpaper the
+   Pixi compositor bakes the same canvas it previews. Web CSS scaling is viewport-fit only; never
+   paint UI state the bake cannot reproduce.
 
 4. **Owner-supervised gates — NEVER auto-trigger** the real desktop icon-bake or the
    wallpaper-apply. They are human-click-only by design (spec 01 Safety, ADR-0011 §7).

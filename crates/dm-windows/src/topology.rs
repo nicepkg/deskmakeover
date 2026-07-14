@@ -19,7 +19,7 @@ use dm_domain::{
     WallpaperTopology,
 };
 use windows::core::{HSTRING, PCWSTR};
-use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPROC_SERVER};
+use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_ALL};
 use windows::Win32::UI::Shell::{
     DesktopWallpaper, IDesktopWallpaper, DSS_SLIDESHOW, DWPOS_CENTER, DWPOS_FIT, DWPOS_SPAN,
     DWPOS_STRETCH, DWPOS_TILE,
@@ -48,8 +48,13 @@ fn enumerate_blocking() -> PortResult<WallpaperTopology> {
     // SAFETY: coclass activation + all calls confined to this STA thread; every PWSTR
     // is freed with CoTaskMemFree (same discipline as wallpaper.rs).
     unsafe {
+        // CLSCTX_ALL, not CLSCTX_INPROC_SERVER: CLSID_DesktopWallpaper has no
+        // InprocServer32 — it is registered as a local-server surrogate (AppId
+        // {8B30085D-…}), so an inproc-only activation returns REGDB_E_CLASSNOTREG
+        // (0x80040154). Verified on a real Windows box; matches Microsoft's own
+        // IDesktopWallpaper sample and layout.rs's IShellWindows activation.
         let dw: IDesktopWallpaper =
-            CoCreateInstance(&DesktopWallpaper, None, CLSCTX_INPROC_SERVER).map_err(com)?;
+            CoCreateInstance(&DesktopWallpaper, None, CLSCTX_ALL).map_err(com)?;
 
         let position = map_position(dw.GetPosition().map_err(com)?.0);
         // A running slideshow reports DSS_SLIDESHOW; any other/failed status = not-a-slideshow.

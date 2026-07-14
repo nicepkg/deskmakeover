@@ -20,7 +20,7 @@ use dm_domain::{
 };
 use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::COLORREF;
-use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPROC_SERVER};
+use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_ALL};
 use windows::Win32::UI::Shell::{
     DesktopWallpaper, IDesktopWallpaper, DESKTOP_WALLPAPER_POSITION, DSS_SLIDESHOW,
 };
@@ -63,7 +63,10 @@ impl WallpaperApplier for WindowsWallpaper {
 
 fn create() -> PortResult<IDesktopWallpaper> {
     // SAFETY: coclass activation on the STA thread.
-    unsafe { CoCreateInstance(&DesktopWallpaper, None, CLSCTX_INPROC_SERVER) }.map_err(com)
+    // CLSCTX_ALL, not CLSCTX_INPROC_SERVER: CLSID_DesktopWallpaper is a local-server
+    // surrogate (AppId {8B30085D-…}) with no InprocServer32, so inproc-only activation
+    // returns REGDB_E_CLASSNOTREG (0x80040154). Verified on a real Windows box.
+    unsafe { CoCreateInstance(&DesktopWallpaper, None, CLSCTX_ALL) }.map_err(com)
 }
 
 fn capture_blocking() -> PortResult<WallpaperSnapshot> {

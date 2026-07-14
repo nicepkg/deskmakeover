@@ -99,7 +99,8 @@ boundary — `docs/development.md` §6).
 
 ## System Architecture (Tauri 2 + Rust, ADR-0019)
 
-**Rust owns every pixel and every system hand; the web is the interactive face.**
+**Rust owns every ICON pixel and every system hand; Pixi owns wallpaper preview/bake in the web;
+the web is the interactive face.**
 Endpoint layout (migration phases: `docs/plans/2026-07-10-tauri-migration.md`):
 
 | Piece | Role |
@@ -139,8 +140,11 @@ C#-oracle parity fixtures, never between the preview and the bake.
 
 No snapshot, no apply · no silent wrapping · no destructive deletion · no silent
 Explorer kill · OneDrive warnings · uncertain restore → stop and show recovery ·
-skipped items visible with reasons · bake/apply are owner/user-clicked only,
-never auto-triggered.
+skipped items visible with reasons · the first global apply, foreground bulk bake/apply, and
+live-verification runs are owner/user-clicked, never auto-triggered. The ONLY exception is the
+opt-in **background resident auto-format** (spec 07 · ADR-0020/0022): after the user enables it
+(requires one successful global Apply first), it silently formats NEW icons only, via batched
+propose + timeout-auto-apply with a native Toast, CAS-protected and always undoable.
 
 **Network**: no account, no telemetry, no cloud. Outbound network = user-clicked
 links only: GitHub (repo/releases/issues), the author's homepage (xiaominglab.com),

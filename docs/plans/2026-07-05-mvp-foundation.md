@@ -1,5 +1,8 @@
 # DeskMakeover MVP Foundation Implementation Plan
 
+> **Status:** ✅ EXECUTED — historical build record (the early .NET/WPF foundation; the whole stack
+> was later replatformed to Tauri 2 + Rust, ADR-0019). See `docs/journal/2026-07.md`.
+
 **Goal:** Build the first runnable DeskMakeover foundation: local git repo, .NET solution, tested domain and rendering core, read-only desktop scanning, WPF preview shell, and snapshot/restore scaffolding.
 **Architecture:** Keep Windows Shell side effects behind adapters and keep the WPF UI non-admin. Implement core logic first with tests, then wire a read-only preview UI before privileged apply behavior.
 **Tech stack:** .NET 10 LTS, WPF, xUnit, System.Drawing/Common-compatible image rendering, Windows Shell adapters.

@@ -1,5 +1,9 @@
 # Plan — M3/M4 Windows platform layer, blind-written on Mac
 
+> **Status:** ✅ CODE EXECUTED (blind-written on Mac, msvc-clean) — runtime is `[WINDOWS-VERIFY]`
+> (never run on a real box). Historical build record + the live Windows-verification checklist. See
+> `docs/ship-readiness.md`.
+
 Decision basis: ADR-0019 (+ Amendment 1 Mac-first + COM STA actor discipline), ADR-0020
 (resident incremental ledger), ADR-0021 (global arrow overlay), spec 07. Master sequencing:
 `docs/plans/2026-07-10-tauri-migration.md` (M3 + M4). This plan is the bite-sized task list

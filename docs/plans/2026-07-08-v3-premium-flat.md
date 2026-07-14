@@ -1,5 +1,9 @@
 # Build plan — v3 "Premium Flat" redesign
 
+> **Status:** ✅ EXECUTED — historical build record. The C# host / "F8 Windows pass" items below are
+> VOID (ADR-0019 replatformed to Tauri/Rust; F8 is gone); the remaining work is the Tauri/Rust
+> Windows verification (M8 + `[WINDOWS-VERIFY]`). See `docs/STATE.md` + `docs/journal/2026-07.md`.
+
 Governing: **ADR-0013**, **spec 02 v3**, review
 `docs/reviews/2026-07-08-ui-v3-premium-flat-panel.md` (32 dispositions, D1-D12),
 `docs/references/webview2-pitfalls.md` (F6 input). Owner standing orders: motion

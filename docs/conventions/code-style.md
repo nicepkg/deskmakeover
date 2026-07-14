@@ -21,7 +21,9 @@ adapters). The `legacy/` .NET/C# tree is a frozen parity oracle only — no feat
 - Core logic, rendering decisions, transaction journals, and restore behavior require
   tests; **a bug fix ships a regression test** reproducing the failure.
 - Dangerous operations must be explicit, reversible, and represented in the operation
-  plan before execution; bake/apply/calm-writes are user-clicked only, never auto-triggered.
+  plan before execution; foreground bake/apply/calm-writes are user-clicked, never auto-triggered
+  (the one exception is the opt-in resident auto-format on NEW icons — spec 07 — which is consented,
+  batched-propose + timeout, and always undoable).
 - Prefer clear names over comments. Comment only where behavior is non-obvious
   (Windows Shell/COM quirks, motion/projection traps, algorithm rationale) — and when a
   hard-won lesson is reverted-prone, leave a ⛔ comment PLUS a regression test.

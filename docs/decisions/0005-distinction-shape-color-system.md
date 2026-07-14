@@ -3,7 +3,8 @@
 Status: Accepted · 2026-07-06 · Amended by [ADR-0008](0008-prototype-v2-ui-contract.md):
 三星 shape = the official One UI mask path (not superellipse r=0.40/n=4); the mark form
 = the seven-style gallery (the 珐琅/缎带/票根 candidates are dead). Governance (VOC
-3-state, default 美化, 3-second misread gate) and the one-picker colour system stand.
+3-state, 3-second misread gate) and the one-picker colour system stand — but the original
+`default 美化 (mark ON)` clause was later reversed to `None` (see the reversal note below).
 Supersedes the badge parts of [ADR-0003](0003-voc-driven-product-revisions.md).
 **Later reversal (owner 2026-07-07):** the "default = 美化 (mark ON), no default-none" governance
 clause no longer holds — the default shortcut mark is now **None** (presets ship None; owner decree

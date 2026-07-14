@@ -1,5 +1,8 @@
 # Plan — Zone editor rebuild (spec 04 v2.0, ADR-0014)
 
+> **Status:** ✅ EXECUTED — historical build record (the Pixi zone-editor rebuild; host I/O later
+> moved to Rust per ADR-0019). See `docs/journal/2026-07.md`.
+
 Mac/mock loop builds everything except host handoff (F8). Vertical slices; each
 lands green (`bun test` + tsc) before the next. No backward compat (pre-release).
 

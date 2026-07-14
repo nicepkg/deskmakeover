@@ -1,5 +1,9 @@
 # Plan — WebView2 + React UI migration (ADR-0011, spec 05)
 
+> **Status:** ✅ EXECUTED then SUPERSEDED — historical build record. The React UI carries forward,
+> but the C# WebView2 HOST this plan built was retired by ADR-0019 (Tauri 2 + Rust). See
+> `docs/journal/2026-07.md`.
+
 Owner directive 2026-07-08: replatform the UI to WebView2 + React 19 +
 Tailwind 4 + shadcn/ui + Motion. Bun-only (no Node). Latest package versions
 from the live registry, never from memory. Restore the current layout

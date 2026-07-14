@@ -332,19 +332,19 @@ Notes:
    `legacy/` always use `.\.dotnet\dotnet.exe` or the scripts. Never conclude "the machine
    has no SDK" from the PATH muxer.
 
-2. **The ElevatedHelper is a SECURITY boundary — never "share the runtime to save space".**
-   It runs `requireAdministrator`, and the app runs from user-writable `%LOCALAPPDATA%\
-   DeskMakeover`. An elevated process loading its runtime from a user-writable folder is a
-   DLL-hijack **privilege-escalation** vector. That is exactly why the helper is a
-   *standalone self-contained single-file* exe (it does not load code from the shared app
-   folder). The ~70 MB is buying that boundary — do not collapse it. Safe slimming is
-   single-file compression, not runtime-sharing.
-   - **Open item (release blocker)**: `legacy/scripts/dev/publish.ps1`'s output is app-only (no
-     `ElevatedHelper.exe`); the release must deliver/embed the helper before shipping or the
-     one-click bake path fails for end users. Nothing has shipped yet — this is unproven, verify on a real host.
+2. **The elevated helper (`dm-elevated.exe`, Rust) is a SECURITY boundary — never "share the
+   runtime to save space".** It runs `requireAdministrator`, and the app runs from user-writable
+   `%LOCALAPPDATA%\DeskMakeover`. An elevated process loading code from a user-writable folder is a
+   DLL-hijack **privilege-escalation** vector — the helper must be a *standalone self-contained* exe
+   that loads no code from the shared app folder. Do not collapse that boundary to save disk.
+   - **Open item (M8 release)**: the Tauri build must ship `dm-elevated.exe` as a bundled sidecar
+     (`externalBin`); if the release omits it, the one-click bake path fails for end users. Nothing
+     has shipped yet — unproven, verify on a real Windows box. (The legacy `legacy/scripts/dev/publish.ps1`
+     described in §5 is oracle-only and does not ship the helper.)
 
 3. **WYSIWYG law** (spec 05 §3, ADR-0019): preview pixels **==** baked pixels. For icons this is
-   structural (the WASM preview and the native bake are the same `dm-icon-core`); for wallpaper the
+   structural (the web preview and manual bake both run the WASM `dm-icon-core`; the native
+   background renderer is the same core's native build, WASM↔native byte-parity); for wallpaper the
    Pixi compositor bakes the same canvas it previews. Web CSS scaling is viewport-fit only; never
    paint UI state the bake cannot reproduce.
 

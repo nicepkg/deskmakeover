@@ -16,7 +16,7 @@ is **historical reference only** — the specs are the intended source of truth.
 - [STATE](STATE.md) — current work, next steps, blockers, open questions. **Start here.**
 - [development.md](development.md) — **dev & build runbook**: how to develop, test, and package on
   the Tauri 2 + Rust stack (Bun web loop + Cargo + `bun run tauri:dev`), plus the gotchas
-  (bindings drift guard, the ElevatedHelper security boundary, i18n source-of-truth in `src/lib/i18n`,
+  (bindings drift guard, the `dm-elevated` helper security boundary, i18n source-of-truth in `src/lib/i18n`,
   owner-supervised gates). The `legacy/` .NET tree is oracle-only and does not ship.
 - [decisions/](decisions/) — ADRs. Current governing: **0013** (v3 Premium Flat — supersedes 0012),
   **0016** (icon colour-field), **0017** (per-type distinction), **0018** (two-axis colour),

@@ -1,5 +1,9 @@
 # Plan — Icon Colour-Field Default (ADR-0016)
 
+> **Status:** ✅ EXECUTED — historical build record. Any "C# TileRenderer sync / F8" items below are
+> VOID (F8 is gone, ADR-0019); the colour-field capability lives on in the Rust `dm-icon-core`
+> (M5/M6). See `docs/journal/2026-07.md`.
+
 Scope: implement the 满彩 Field colour mode + preset lineup rework, web side (Mac
 mock loop). C# TileRenderer sync moves to F8 (see Global constraints). Panel:
 `docs/reviews/2026-07-10-icon-findability-panel.md`.

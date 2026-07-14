@@ -1,5 +1,9 @@
 # Plan: v1.0 Prototype-Parity Rebuild
 
+> **Status:** ✅ EXECUTED then SUPERSEDED — historical build record. Prototype parity was built, then
+> replatformed (ADR-0011) + redesigned (ADR-0012→0013) before anything shipped; it is no longer a
+> release gate (spec 00). See `docs/journal/2026-07.md`.
+
 **Date:** 2026-07-06 · **Governing ADR:** [0008](../decisions/0008-prototype-v2-ui-contract.md)
 **Audience:** the executing AI (a fresh session with no prior context). Read this
 plan top-to-bottom, then work the phases in order. Do not skim.

@@ -32,8 +32,9 @@ Icon pixels are produced by the Rust **`dm-icon-core`** — compiled to **WASM**
 preview/bake and to **native** for apply/background; the frozen TS `src/icon-compositor/` is the
 byte-parity ORACLE only (tree-shaken out of the bundle). **Wallpaper** compositing is Pixi in the
 web (`src/compositor/`). The Rust host also decodes source images, packages ICO ladders, writes to
-the shell, and backs up/restores. WYSIWYG holds because the WASM preview and the native bake are
-the *same Rust core*.
+the shell, and backs up/restores. WYSIWYG holds because the web preview and manual bake both run the
+WASM `dm-icon-core`; the native background/resident renderer is the same core's native build
+(WASM↔native byte-parity).
 
 ## Bridge
 

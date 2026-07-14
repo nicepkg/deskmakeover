@@ -38,8 +38,9 @@ React 19 SPA (src/, built by Vite/Bun) — hosted in the Tauri webview (WebView2
   ledger, settings/changelog/diagnostics, calm registry writes, the elevated-helper boundary.
 - **No continuous host→web pixel stream.** Source bitmaps cross once per source change (host→web via
   custom protocol); baked PNG/ICO bytes cross once per apply (web→host).
-- **WYSIWYG holds by construction**: the WASM preview and the native bake are the *same Rust core*,
-  not two renderers to keep in parity.
+- **WYSIWYG holds by construction**: the web preview AND the manual bake both run the WASM
+  `dm-icon-core`; the native apply/background renderer is the *same Rust core's native build*, held
+  to WASM↔native byte-parity — not two renderers to keep in sync.
 
 **Hosting:**
 

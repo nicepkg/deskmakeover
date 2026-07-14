@@ -1,5 +1,8 @@
 # Plan — v1.1: Module Rail + 美化桌面壁纸 1.0
 
+> **Status:** ✅ EXECUTED — historical build record (the rail + wallpaper 1.0; the wallpaper module
+> was later rebuilt per ADR-0014). See `docs/journal/2026-07.md`.
+
 Executes ADR-0009 / spec 03 / spec 04. Phases are gated; each ends with fresh
 verification evidence (build 0/0, suite green, live screenshots via
 `scripts/dev/capture-window.ps1` + UIA where interaction is claimed). Prototype

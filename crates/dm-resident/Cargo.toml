@@ -15,6 +15,11 @@ publish.workspace = true
 dm-contracts = { path = "../dm-contracts" }
 dm-domain = { path = "../dm-domain" }
 dm-operations = { path = "../dm-operations" }
+# The B10 desktop watcher lives here; the resident driver consumes its `WatchEvent` hint stream
+# (spec 07 §3, plan T4). dm-windows is cross-platform-buildable (its COM bodies are cfg(windows);
+# the watcher + WatchEvent are notify-backed and compile on the Mac host), so this dependency does
+# NOT pull any Windows-only C/COM code into the Mac build — only the pure hint type + entry point.
+dm-windows = { path = "../dm-windows" }
 # The native render kernel: the reconciler holds one RenderSession so profile analysis stays
 # warm across cycles (spec 07 §5/§15).
 dm-icon-core = { path = "../dm-icon-core" }

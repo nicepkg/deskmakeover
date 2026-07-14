@@ -22,13 +22,17 @@ dm-contracts = { path = "../crates/dm-contracts" }
 dm-domain = { path = "../crates/dm-domain" }
 dm-icon-codec = { path = "../crates/dm-icon-codec" }
 dm-operations = { path = "../crates/dm-operations" }
+# The resident auto-format decision core + reconcile-loop driver (spec 07, M7). Cross-platform: its
+# Windows adapter deps are cfg(windows), so the Mac build carries only the pure driver + reconciler.
+dm-resident = { path = "../crates/dm-resident" }
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # specta/tauri-specta pinned to the same rc line as dm-contracts.
 specta = { version = "=2.0.0-rc.25", features = ["function"] }
 specta-typescript = "0.0.12"
-tauri = { version = "2", features = [] }
+# `tray-icon` powers the M7 resident tray surface (spec 07 §12/§16).
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-log = "2"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 # Synthesizes the dev-host's stand-in 256px icon sources at runtime (icon source extraction has

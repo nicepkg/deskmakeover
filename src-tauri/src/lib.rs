@@ -17,6 +17,7 @@ mod devhost;
 #[cfg(not(windows))]
 mod devhost_icons;
 mod icon_host;
+mod resident;
 mod tweaks_host;
 mod wallpaper_host;
 
@@ -32,6 +33,8 @@ pub struct AppState {
     pub wallpaper: WallpaperHost,
     pub icons: IconHost,
     pub tweaks: TweaksHost,
+    /// M7 resident handle (spec 07 §1/§12): read by the windowless-residency close/exit guards.
+    pub resident: resident::ResidentHandle,
 }
 
 /// The single command surface — used both to wire `invoke` at runtime and to
@@ -221,6 +224,20 @@ pub fn run() {
             }
         })
         .invoke_handler(specta.invoke_handler())
+        .on_window_event(|window, event| {
+            // Windowless residency (spec 07 §1): while automation is enabled, closing the window
+            // keeps the process resident (hide the WebView, do not exit) — reopening via the tray
+            // works. When disabled, the close falls through to the normal exit.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if let Some(state) = window.try_state::<AppState>() {
+                    if resident::on_close_requested(&state.resident, || {
+                        let _ = window.hide();
+                    }) {
+                        api.prevent_close();
+                    }
+                }
+            }
+        })
         .setup(move |app| {
             #[cfg(desktop)]
             app.handle()
@@ -243,12 +260,32 @@ pub fn run() {
             // W1: the calm host uses the in-memory devhost on every platform (the real winreg
             // backend is Wave 2). No data_dir yet — its journal is in-memory this slice.
             let tweaks = TweaksHost::new_devhost();
-            app.manage(AppState { settings, wallpaper, icons, tweaks });
+            // M7 (spec 07 §1/§12): register the resident tray + menu and spawn the reconcile-loop
+            // driver behind the cfg-adapter pattern (real dm-windows engine on Windows, devhost fake
+            // elsewhere). Returns the handle the windowless-residency guards read.
+            let resident = resident::setup(app.handle(), settings.clone(), data_dir.clone())?;
+            app.manage(AppState { settings, wallpaper, icons, tweaks, resident });
             log::info!("settings store ready at {}", db_path.display());
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running DeskMakeover");
+        .build(tauri::generate_context!())
+        .expect("error while running DeskMakeover")
+        .run(|app, event| {
+            // Windowless residency (spec 07 §1): an implicit exit (window-close, code.is_none())
+            // never terminates the process while automation is enabled; an explicit "退出"
+            // (app.exit → code.is_some()) always exits.
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                if code.is_none() {
+                    let enabled = app
+                        .try_state::<AppState>()
+                        .map(|s| s.resident.is_enabled())
+                        .unwrap_or(false);
+                    if enabled {
+                        api.prevent_exit();
+                    }
+                }
+            }
+        });
 }
 
 /// The settings database file name under the OS app-data dir.

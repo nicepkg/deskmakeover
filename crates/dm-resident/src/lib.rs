@@ -15,13 +15,21 @@
 //!   (never ② saved-style, never ③ look-history — spec 07 §5/§8).
 
 pub mod consent;
+pub mod driver;
 pub mod pending_privileged;
 pub mod reconciler;
 pub mod stability;
 pub mod tray_state;
 
 pub use consent::{FreshnessInputs, TrustState, PROPOSAL_TIMEOUT_SECS};
+pub use driver::{
+    DriverClock, DriverConfig, MonotonicClock, Proposal, ReconcileEngine, ResidentDriver,
+    ResidentHost, TickReport, WatchEventSource,
+};
 pub use pending_privileged::{PendingPrivilegedQueue, PendingReason};
-pub use reconciler::{ReconcileContext, ReconcileOutcome, Reconciler, ReconcilerPorts};
+pub use reconciler::{ReconcileContext, ReconcileOutcome, Reconciler, ReconcilerPorts, VettedCandidate};
 pub use stability::{FsStabilityReader, SettleProbe, StabilityReader, StabilitySnapshot};
 pub use tray_state::{transition, TrayEvent, TrayState};
+// Re-export the watcher hint type the driver consumes so composition roots (src-tauri) need no
+// direct dm-windows dependency on non-Windows hosts (spec 07 §3, plan T4).
+pub use dm_windows::watcher::WatchEvent;

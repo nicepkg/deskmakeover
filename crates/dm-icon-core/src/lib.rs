@@ -42,5 +42,6 @@ pub mod render_scratch;
 pub mod render_session;
 pub mod sampling;
 pub mod segment;
+pub mod shape_facts;
 pub mod source_facts;
 pub mod shapes;

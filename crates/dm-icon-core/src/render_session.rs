@@ -14,6 +14,7 @@ use crate::mask_cache::MaskCache;
 use crate::profile::IconProfile;
 use crate::raster::Raster;
 use crate::render_scratch::RenderScratch;
+use crate::shape_facts::ShapeFactsCache;
 use crate::source_facts::{build_analysis_bundle, AnalysisBundle, SOURCE_FACTS_SCHEMA_VERSION};
 
 /// Bumped whenever the analysis/profile algorithm changes — invalidates cached
@@ -67,6 +68,9 @@ pub struct RenderSession {
     /// `try_detect_background` twice. The bundle is a pure function of the pixels, so a
     /// cached entry is byte-identical to a fresh `icon_profile` + `SourceFacts::compute`.
     analyses: HashMap<SourceKey, CachedAnalysis>,
+    /// Per-`(source, shape)` silhouette facts (`matches_shape` + `max_scale_auto`), shape-
+    /// dependent so outside the `analyses` bundle; reused across sizes, pure ⇒ byte-identical.
+    shape_facts: ShapeFactsCache<SourceKey>,
     look: Option<Config>,
     /// Session-owned geometry mask cache — reused across every `render`, so the
     /// dominant `shape_mask` recompute collapses to a warm hit (M6 Phase 1). Under
@@ -163,16 +167,18 @@ impl RenderSession {
         // Do NO analysis when its result would be discarded (codex R2 C-5): a no-look render returns
         // None, and `show_original` resamples the source only (render_tile_cached ignores profile +
         // facts on that lane). Analysis is needed ONLY for a styled render. Byte-identical output.
-        self.look.as_ref()?; // None until set_look — bail before any analysis
+        let shape = self.look.as_ref()?.shape; // None until set_look — bail before any analysis
         if !show_original {
             self.ensure_analysis(id, key)?; // ONE shared compute → profile + source facts
         }
         let config = self.look.as_ref()?; // re-borrow for the render (still Some past the guard above)
-        let raster = &self.sources.get(id)?.raster;
         let entry = self.analyses.get(&key);
         let profile = entry.map(|c| &c.bundle.profile);
         let facts = entry.map(|c| &c.bundle.facts);
-        Some(render_tile_cached(raster, config, is_shortcut, show_original, size, opts, diag, profile, &mut self.mask_cache, &mut self.render_scratch, facts))
+        let raster = &self.sources.get(id)?.raster;
+        // (source, shape) silhouette facts — reused across sizes; `show_original` ignores them.
+        let shape_facts = (!show_original).then(|| self.shape_facts.get_or_compute(key, shape, raster));
+        Some(render_tile_cached(raster, config, is_shortcut, show_original, size, opts, diag, profile, &mut self.mask_cache, &mut self.render_scratch, facts, shape_facts))
     }
 
     #[cfg(test)]

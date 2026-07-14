@@ -144,6 +144,7 @@ fn derived_plate_field_lane_via_the_render_session_profile_seam() {
         &mut mask_cache,
         &mut render_scratch,
         None,
+        None,
     );
     assert_eq!(diag.lane, ComposeLane::DerivedField);
     assert_eq!(diag.field_lane, Some(ComposeFieldLane::DerivedPlate));

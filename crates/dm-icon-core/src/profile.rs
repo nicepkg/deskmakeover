@@ -73,13 +73,19 @@ fn subject_rim(c: &Raster) -> (Option<Rgba>, f64) {
     let depth =
         RIM_BAND_MIN_DEPTH.max(js_round(ww.min(hh) as f64 / RIM_BAND_DEPTH_DIVISOR as f64) as usize);
     let mut band = vec![0u8; n];
+    // Reuse the two erosion buffers across every depth pass AND both alpha passes instead
+    // of `clone()`-ing per pass. `cur` is fully re-seeded from `d` at the top of each alpha
+    // pass; `next` is `copy_from_slice(&cur)`-restored to the exact clone-starting state
+    // before every erosion pass, then the two are swapped — byte-identical to the old
+    // `let mut next = cur.clone(); …; cur = next`, pure allocation removal.
+    let mut cur = vec![0u8; n];
+    let mut next = vec![0u8; n];
     for min_alpha in [RIM_SOLID_MIN_ALPHA, 128u8] {
-        let mut cur = vec![0u8; n];
         for i in 0..n {
             cur[i] = if d[i * 4 + 3] >= min_alpha { 1 } else { 0 };
         }
         for _pass in 0..depth {
-            let mut next = cur.clone();
+            next.copy_from_slice(&cur);
             for y in 0..hh {
                 for x in 0..ww {
                     let i = y * ww + x;
@@ -100,7 +106,7 @@ fn subject_rim(c: &Raster) -> (Option<Rgba>, f64) {
                     }
                 }
             }
-            cur = next;
+            std::mem::swap(&mut cur, &mut next);
         }
         let mut sum_l = 0.0f64;
         let mut cnt = 0u32;
@@ -216,5 +222,131 @@ fn subject_profile(
             subject_rim_colour: rim_colour,
             subject_rim_lightness: rim_lightness,
         },
+    }
+}
+
+#[cfg(test)]
+mod rim_erosion_reuse_cert {
+    use super::*;
+
+    /// The exact erosion accumulation `subject_rim` runs, done the OLD way (a fresh
+    /// `cur.clone()` per pass) — the byte-identity reference for the buffer-reuse form.
+    fn band_via_clone(c: &Raster, depth: usize) -> Vec<u8> {
+        let d = &c.data;
+        let (ww, hh) = (c.width, c.height);
+        let n = ww * hh;
+        let mut band = vec![0u8; n];
+        for min_alpha in [RIM_SOLID_MIN_ALPHA, 128u8] {
+            let mut cur = vec![0u8; n];
+            for i in 0..n {
+                cur[i] = if d[i * 4 + 3] >= min_alpha { 1 } else { 0 };
+            }
+            for _pass in 0..depth {
+                let mut next = cur.clone();
+                for y in 0..hh {
+                    for x in 0..ww {
+                        let i = y * ww + x;
+                        if cur[i] == 0 {
+                            continue;
+                        }
+                        let interior = x > 0
+                            && cur[i - 1] != 0
+                            && x < ww - 1
+                            && cur[i + 1] != 0
+                            && y > 0
+                            && cur[i - ww] != 0
+                            && y < hh - 1
+                            && cur[i + ww] != 0;
+                        if !interior {
+                            band[i] = 1;
+                            next[i] = 0;
+                        }
+                    }
+                }
+                cur = next;
+            }
+        }
+        band
+    }
+
+    /// The buffer-reuse form (allocate `cur`/`next` once, `copy_from_slice` + swap) — the
+    /// SHAPE of the production `subject_rim` inner loop after Win 3.
+    fn band_via_reuse(c: &Raster, depth: usize) -> Vec<u8> {
+        let d = &c.data;
+        let (ww, hh) = (c.width, c.height);
+        let n = ww * hh;
+        let mut band = vec![0u8; n];
+        let mut cur = vec![0u8; n];
+        let mut next = vec![0u8; n];
+        for min_alpha in [RIM_SOLID_MIN_ALPHA, 128u8] {
+            for i in 0..n {
+                cur[i] = if d[i * 4 + 3] >= min_alpha { 1 } else { 0 };
+            }
+            for _pass in 0..depth {
+                next.copy_from_slice(&cur);
+                for y in 0..hh {
+                    for x in 0..ww {
+                        let i = y * ww + x;
+                        if cur[i] == 0 {
+                            continue;
+                        }
+                        let interior = x > 0
+                            && cur[i - 1] != 0
+                            && x < ww - 1
+                            && cur[i + 1] != 0
+                            && y > 0
+                            && cur[i - ww] != 0
+                            && y < hh - 1
+                            && cur[i + ww] != 0;
+                        if !interior {
+                            band[i] = 1;
+                            next[i] = 0;
+                        }
+                    }
+                }
+                std::mem::swap(&mut cur, &mut next);
+            }
+        }
+        band
+    }
+
+    fn alpha_fixture(n: usize, lo: usize, hi: usize, hole: bool) -> Raster {
+        let mut r = Raster::new(n, n);
+        for y in lo..hi {
+            for x in lo..hi {
+                r.data[(y * n + x) * 4 + 3] = 255;
+            }
+        }
+        if hole {
+            // Punch a transparent hole so both alpha passes AND the interior test exercise
+            // non-trivial erosion fronts.
+            for y in (lo + 3)..(hi - 3) {
+                for x in (lo + 3)..(hi - 3) {
+                    r.data[(y * n + x) * 4 + 3] = 0;
+                }
+            }
+        }
+        r
+    }
+
+    /// Buffer-reuse erosion must produce the BYTE-IDENTICAL `band` the per-pass clone does,
+    /// for several alpha shapes and depths — the pure-allocation-removal proof for Win 3.
+    #[test]
+    fn reuse_band_is_byte_identical_to_clone_band() {
+        let fixtures = [
+            alpha_fixture(16, 0, 16, false),
+            alpha_fixture(24, 4, 20, false),
+            alpha_fixture(32, 6, 26, true),
+            alpha_fixture(20, 2, 18, true),
+        ];
+        for c in &fixtures {
+            for depth in [1usize, 2, 3, 5] {
+                assert_eq!(
+                    band_via_reuse(c, depth),
+                    band_via_clone(c, depth),
+                    "reuse erosion diverged from clone erosion (depth {depth})"
+                );
+            }
+        }
     }
 }

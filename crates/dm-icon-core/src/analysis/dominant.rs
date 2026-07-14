@@ -4,9 +4,29 @@
 //! INSERTION ORDER of the TS oracle (peak, then −1 steps, then +1 steps) — f64
 //! addition is not associative, so the order is load-bearing for byte parity.
 
+use std::collections::HashMap;
+
 use crate::color::to_ok_lab;
 use crate::js_math::{clamp_u8_int, js_round};
 use crate::raster::{Raster, Rgba};
+
+/// A bit-exact per-call memo of [`to_ok_lab`] keyed by the 24-bit RGB triple. `to_ok_lab`
+/// is a deterministic pure function of `(r, g, b)`, so a hit returns the SAME three f64
+/// bits a fresh call would — the memo only replaces the recompute (3× `libm::cbrt`), never
+/// the value. Dropped at `dominant_color` return; nothing crosses render/thread boundaries.
+struct OkLabMemo(HashMap<u32, (f64, f64, f64)>);
+
+impl OkLabMemo {
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    #[inline]
+    fn get(&mut self, r: u8, g: u8, b: u8) -> (f64, f64, f64) {
+        let key = (r as u32) << 16 | (g as u32) << 8 | b as u32;
+        *self.0.entry(key).or_insert_with(|| to_ok_lab(r, g, b))
+    }
+}
 
 const DOMINANT_MIN_ALPHA: u8 = 128;
 const DOMINANT_MIN_CHROMA: f64 = 0.03;
@@ -37,6 +57,7 @@ pub fn dominant_color(c: &Raster, mask: Option<&[u8]>) -> Option<DominantColour>
     let mut voters = 0u32;
     let mut visible = 0u32;
     let pi = std::f64::consts::PI;
+    let mut lab_memo = OkLabMemo::new();
     for i in 0..n {
         let i4 = i * 4;
         if d[i4 + 3] < DOMINANT_MIN_ALPHA {
@@ -48,7 +69,7 @@ pub fn dominant_color(c: &Raster, mask: Option<&[u8]>) -> Option<DominantColour>
             }
         }
         visible += 1;
-        let (_l, a, b) = to_ok_lab(d[i4], d[i4 + 1], d[i4 + 2]);
+        let (_l, a, b) = lab_memo.get(d[i4], d[i4 + 1], d[i4 + 2]);
         let chroma = libm::sqrt(a * a + b * b);
         if chroma < DOMINANT_MIN_CHROMA {
             continue;
@@ -123,4 +144,63 @@ pub fn dominant_color(c: &Raster, mask: Option<&[u8]>) -> Option<DominantColour>
         },
         dispersion,
     })
+}
+
+#[cfg(test)]
+mod ok_lab_memo_cert {
+    use super::*;
+
+    /// The `to_ok_lab` memo must be BYTE-EXACT: for every RGB key — first sight AND
+    /// repeat — a memo `get` returns the identical three f64 bits `to_ok_lab` produces
+    /// directly. This pins Win 1's invariant (memo replaces the recompute, never the
+    /// value) independently of the corpus cert. Every channel compared via `to_bits`.
+    #[test]
+    fn memo_get_is_bit_identical_to_direct_to_ok_lab() {
+        // Duplicates interleaved so the SAME key is served both as a miss and a hit.
+        let samples: [(u8, u8, u8); 12] = [
+            (0, 0, 0),
+            (255, 255, 255),
+            (200, 60, 40),
+            (200, 60, 40), // repeat → memo hit
+            (1, 2, 3),
+            (128, 128, 128),
+            (17, 233, 91),
+            (17, 233, 91), // repeat → memo hit
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+            (0, 0, 0), // repeat of the very first → memo hit
+        ];
+        let mut memo = OkLabMemo::new();
+        for &(r, g, b) in &samples {
+            let (ml, ma, mb) = memo.get(r, g, b);
+            let (dl, da, db) = to_ok_lab(r, g, b);
+            assert_eq!(ml.to_bits(), dl.to_bits(), "L bits diverge at {r},{g},{b}");
+            assert_eq!(ma.to_bits(), da.to_bits(), "a bits diverge at {r},{g},{b}");
+            assert_eq!(mb.to_bits(), db.to_bits(), "b bits diverge at {r},{g},{b}");
+        }
+    }
+
+    /// A denser sweep across the channel corners + interior, each key visited twice,
+    /// proving stability of the hit path over many entries.
+    #[test]
+    fn memo_hits_are_stable_across_a_channel_sweep() {
+        let mut memo = OkLabMemo::new();
+        for r in (0u16..=255).step_by(51) {
+            for g in (0u16..=255).step_by(51) {
+                for b in (0u16..=255).step_by(51) {
+                    let (r, g, b) = (r as u8, g as u8, b as u8);
+                    let first = memo.get(r, g, b);
+                    let second = memo.get(r, g, b); // hit
+                    let direct = to_ok_lab(r, g, b);
+                    assert_eq!(first.0.to_bits(), direct.0.to_bits());
+                    assert_eq!(first.1.to_bits(), direct.1.to_bits());
+                    assert_eq!(first.2.to_bits(), direct.2.to_bits());
+                    assert_eq!(second.0.to_bits(), direct.0.to_bits());
+                    assert_eq!(second.1.to_bits(), direct.1.to_bits());
+                    assert_eq!(second.2.to_bits(), direct.2.to_bits());
+                }
+            }
+        }
+    }
 }

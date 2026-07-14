@@ -200,7 +200,7 @@ mod reuse_cert {
     fn render_with(scratch: &mut RenderScratch, src: &Raster, cfg: &Config, is_shortcut: bool, size: usize) -> Vec<u8> {
         let mut mask = MaskCache::new();
         let mut diag = ComposeDiagnostics::default();
-        render_tile_cached(src, cfg, is_shortcut, false, size, &RenderOpts::default(), &mut diag, None, &mut mask, scratch, None).data
+        render_tile_cached(src, cfg, is_shortcut, false, size, &RenderOpts::default(), &mut diag, None, &mut mask, scratch, None, None).data
     }
 
     fn free(src: &Raster, cfg: &Config, is_shortcut: bool, size: usize) -> Vec<u8> {

@@ -43,9 +43,9 @@ pub struct IconJob<'a> {
 
 impl IconJob<'_> {
     /// Render this icon with a caller-owned scratch cache. Uncached analysis
-    /// (`profile` / `source_facts` = `None`) — a batch is distinct sources, so there
-    /// is nothing to reuse across icons; the per-worker `MaskCache` still collapses the
-    /// shared shape-mask geometry.
+    /// (`profile` / `source_facts` / `shape_facts` = `None`) — a batch is distinct sources,
+    /// so there is nothing to reuse across icons; the per-worker `MaskCache` still collapses
+    /// the shared shape-mask geometry.
     fn render(&self, mask_cache: &mut MaskCache, render_scratch: &mut RenderScratch) -> Raster {
         let mut diag = ComposeDiagnostics::default();
         render_tile_cached(
@@ -59,6 +59,7 @@ impl IconJob<'_> {
             None,
             mask_cache,
             render_scratch,
+            None,
             None,
         )
     }

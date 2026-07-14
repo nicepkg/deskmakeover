@@ -15,6 +15,7 @@ use crate::profile::{icon_profile, IconProfile, IconProfileKind};
 use crate::raster::{from_rgb_int, over_at, Raster, Rgba};
 use crate::render_scratch::RenderScratch;
 use crate::sampling::draw_scaled;
+use crate::shape_facts::ShapeFacts;
 use crate::source_facts::{content_bounds, segmentation, SourceFacts};
 
 /// Shadow modes (compose.ts `SHADOW_MODES`). `Halo` mirrors the frozen oracle's
@@ -53,6 +54,7 @@ pub(crate) fn compose_field(
     diag: &mut ComposeDiagnostics,
     profile_override: Option<&IconProfile>,
     source_facts: Option<&SourceFacts>,
+    shape_facts: Option<&ShapeFacts>,
     scratch: &mut RenderScratch,
 ) {
     let band = config.plate_band;
@@ -81,7 +83,7 @@ pub(crate) fn compose_field(
     if let Some(user_plate) = user_plate {
         if profile.kind == IconProfileKind::OwnBoard || !profile.transparent_edges {
             diag.field_lane = Some(ComposeFieldLane::UserPlateBoard);
-            compose_from_plate(artwork, content, size, pad, card_size, shape, user_plate, Some(box_), source_facts);
+            compose_from_plate(artwork, content, size, pad, card_size, shape, user_plate, Some(box_), source_facts, shape_facts);
             return;
         }
         diag.field_lane = Some(ComposeFieldLane::UserPlateBare);
@@ -94,7 +96,7 @@ pub(crate) fn compose_field(
     if profile.kind == IconProfileKind::OwnBoard {
         if let Some(bg) = profile.background {
             diag.field_lane = Some(ComposeFieldLane::OwnBoard);
-            compose_from_plate(artwork, content, size, pad, card_size, shape, bg, Some(box_), source_facts);
+            compose_from_plate(artwork, content, size, pad, card_size, shape, bg, Some(box_), source_facts, shape_facts);
             return;
         }
     }
@@ -116,7 +118,7 @@ pub(crate) fn compose_field(
         return;
     }
     diag.field_lane = Some(ComposeFieldLane::DerivedPlate);
-    compose_from_plate(artwork, content, size, pad, card_size, shape, plate, Some(box_), source_facts);
+    compose_from_plate(artwork, content, size, pad, card_size, shape, plate, Some(box_), source_facts, shape_facts);
 }
 
 /// The artwork drawn ORIGINAL over a soft silhouette shadow (compose.ts

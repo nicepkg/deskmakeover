@@ -2,7 +2,8 @@
 //! `mod.rs` to hold the 500-line cap. Pure layout/draw primitives consumed by
 //! both `compose_tile` and the Field lane.
 
-use crate::analysis::{bounds_h, bounds_w, color_distance, find_content_bounds, max_scale_auto, ContentBounds};
+use crate::analysis::{bounds_h, bounds_w, color_distance, find_content_bounds, ContentBounds};
+use crate::shape_facts::{max_scale_auto_of, ShapeFacts};
 use crate::source_facts::{content_bounds, detected_background, foreground, SourceFacts};
 use crate::config::IconShape;
 use crate::js_math::js_round;
@@ -93,6 +94,7 @@ pub(crate) fn compose_from_plate(
     bg: Rgba,
     box_cap: Option<usize>,
     source_facts: Option<&SourceFacts>,
+    shape_facts: Option<&ShapeFacts>,
 ) {
     fill_region(content, size, pad, card_size, bg.r, bg.g, bg.b);
     let plate = content_bounds(source_facts, artwork);
@@ -119,7 +121,10 @@ pub(crate) fn compose_from_plate(
         }
     }
     if inscribe_shapes(shape) {
-        inscribe_content(source, content, size, pad, card_size, shape);
+        // `source` may be the RGB-only `backdrop_swapped` raster; `max_scale_auto` reads
+        // only alpha (unchanged by the swap), so the source-keyed `shape_facts` value is
+        // bit-identical to a recompute on `source` (see `shape_facts` module docs).
+        inscribe_content(source, content, size, pad, card_size, shape, shape_facts);
         return;
     }
     let cap = box_cap.unwrap_or_else(|| content_box(shape, card_size));
@@ -155,9 +160,10 @@ pub(crate) fn inscribe_content(
     pad: usize,
     card_size: usize,
     shape: IconShape,
+    shape_facts: Option<&ShapeFacts>,
 ) {
     let bounds = find_content_bounds(artwork);
-    let scale = max_scale_auto(artwork, shape) * inscribe_margin(shape);
+    let scale = max_scale_auto_of(shape_facts, artwork, shape) * inscribe_margin(shape);
     let box_ = 8.max(js_round(card_size as f64 * scale) as usize);
     draw_centred(artwork, bounds, content, size, pad, card_size, box_);
 }

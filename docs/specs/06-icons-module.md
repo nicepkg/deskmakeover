@@ -27,9 +27,10 @@ direction, sequenced separately).
 Vite + mock bridge; all Windows-gated verification batches into the Windows integration /
 `[WINDOWS-VERIFY]` phase (the old "F8" is void per ADR-0019).
 
-**Dependencies**: production pixels come from Rust `dm-icon-core` (WASM in the web, native in the
-host); output is deterministic (libm-routed transcendentals, no FMA/SIMD in core v1 → WASM↔native
-byte-equality). The frozen TS compositor (`src/icon-compositor/`, a mechanical port of the C#
+**Dependencies**: production pixels come from Rust `dm-icon-core` — WASM in the web for preview +
+foreground/manual bake (the host packages + writes those WASM-baked masters, no native re-render);
+native only for the resident/background path; output is deterministic (libm-routed transcendentals,
+no FMA/SIMD in core v1 → WASM↔native byte-equality). The frozen TS compositor (`src/icon-compositor/`, a mechanical port of the C#
 pipeline) is the PRIMARY parity oracle, not a live path; the legacy C# `TileRenderer` is a secondary
 oracle for the style subset it still covers. pixi v8 stays wallpaper-only. (Historical rationale for
 the mechanical CPU-TS port: it maximized oracle parity and runs headless in bun tests — that port is

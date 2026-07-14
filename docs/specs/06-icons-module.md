@@ -147,9 +147,11 @@ now the certifying oracle for the Rust core, ADR-0019.)
     baked option with no ceremony. (History: the 60s penance stare was owner
     decree 2026-07-09; superseded, not softened.)
 11. **Colour is two axes; 极致单色 is a subject/background duotone** (owner +
-    chief-UI/UX 2026-07-09). The Colour row is the FOREGROUND axis; a 背景色
-    (plate) rides the row's colour entry (前景/背景 dual-tab; Original + Mono, BW
-    inert until v2). 单色 gains a 渐变/纯色 depth (`monoStyle`): 纯色 = 极致单色, the
+    chief-UI/UX 2026-07-09; formalized as the two-axis model in ADR-0018). The colour UI is a
+    **two-row panel** — 主体行 (subject: 原彩/黑白/单色) × 底板行 (plate: 随图标/本色/白/bounded
+    swatches). *(The earlier 前景/背景 dual-tab popover + "BW inert until v2" model was superseded —
+    see spec 02 §two-axis + `docs/product/two-axis-colour-spec.md`.)* 单色 gains a 渐变/纯色 depth
+    (`monoStyle`): 纯色 = 极致单色, the
     SEGMENTED subject in one flat colour on one flat plate. Subject/background
     segmentation (`icon-compositor/segment.ts`), layered Mono composition, the
     concentric-pair swatch grammar and the full catalog (shapes/colours/marks/
@@ -166,9 +168,9 @@ now the certifying oracle for the Rust core, ADR-0019.)
     separation = coloured plates (one light line) + silhouette shadows/halos +
     the cross-icon hue-spread pass (worker-reported seeds → deterministic
     main-thread relaxation → `RenderOpts.fieldSeed` on renders AND bakes).
-    Preset lineup: 默认(满彩) · 极简白 · 安静(柔彩, per-icon hue — replaces the
-    single-hue wallpaper-tone) · 原彩保真 (the only home of the white
-    fallback); Candy left the preset row; 玻璃 rim rework SHIPPED (T7). The
+    Preset lineup: **Preset Collection v2 — seven** (spectrum default · stationery · glass · pebble ·
+    ink · white · as-cast), superseding the earlier 默认/极简白/安静/原彩保真 four (see
+    `docs/product/preset-collection-v2.md` + spec 02); 玻璃 rim rework SHIPPED (T7). The
     kindShapes boolean toggle was built (T5) and then SUPERSEDED by the
     per-type distinction system (§6.5, ADR-0017); kind colour families and
     the letter badge were built and owner-rejected (deleted). Still owed:

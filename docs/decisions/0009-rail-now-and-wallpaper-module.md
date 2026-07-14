@@ -1,6 +1,8 @@
 # ADR-0009: Unlock the module rail now; wallpaper module ships before 净化
 
-- **Status**: accepted (owner decision, 2026-07-07)
+- **Status**: accepted — the wallpaper preview==bake pipeline (the shared `WallpaperBakeRenderer`
+  in the body) is **superseded by [ADR-0014](0014-zone-editor-rebuild.md)** (TS/Pixi compositor;
+  host I/O later amended to Rust by ADR-0019). The rail-unlock decision stands. (owner, 2026-07-07)
 - **Supersedes/amends**: the roadmap note "the icon rail waits for 4+ modules";
   spec 01's "Excluded from v1.0: module rail + 壁纸" (rail + wallpaper now land in
   v1.1); the rail IA contract is now the v3 specs + ADR-0013 (ADR-0008's prototype was

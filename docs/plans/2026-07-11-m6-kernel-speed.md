@@ -24,13 +24,14 @@ reductions, fast-math/relaxed) stays permanently red-lined — those are cross-s
 | 2 source-fact cache | `source_facts.rs` | ✅ done — **C-5 shared analysis bundle** (`fe0aaf8`) collapsed the double `segment_subject`/background/bounds into one compute; **P2-SCRATCH** (`4ecbc06`) reuses the shadow/blur/seat scratch instead of allocating per render (helps warm renders) |
 | 3 rayon batch | `batch.rs` | ✅ **wired** into version-switch (`5347bb5`, C-7) via `native_bake::bake_masters_par`; resident wiring deferred (its per-item `is_desktop_busy` abort granularity is a design decision, and the resident is still unwired) |
 | 4 output cache | `output_cache.rs` | 🔨 built + tested, unwired — needs cross-operation ownership from IconHost; the real ROI is the frequent resident path (unwired), not the occasional version-switch, so wire it with the resident |
-| 5 sRGB pow LUT | `color.rs` | ⏳ deferred — NEEDS a reprofile confirming `libm::pow` is still material AND a cell-enclosure verifier (any cell touching a byte transition / branch join falls back to scalar) |
-| 6 SIMD | — | ⏳ deferred — RED-to-ship; needs opcode disassembly proving lane-wise add/sub/mul/div only (no FMA / horizontal reduction / reassociation) across native+wasm before the cert can even judge it |
+| 5 sRGB pow LUT | `color.rs`, `srgb_lut.rs` | ✅ DONE (`1d9821d`) — guarded byte LUT (N=2^16, ~255 transition cells fall back to scalar pow). Provably byte-safe: srgb_encode returns the terminal byte + is monotone, and N=2^16 makes `v*N` exact so a cell's pre-image endpoints are exact f64 → equal endpoints ⇒ uniform cell. **Measured ≈2.2× render / 55% wall-clock on the fast kernel** (srgb_encode 90 ns → 3.9 ns) — the biggest single win, because after phases 1-4 the per-pixel pow dominated. Fast-only; scalar keeps exact pow (the reference) |
+| 6 SIMD | — | ⛔ DECLINED by the profile gate (the plan's own precondition). Post-#7 profile: every ≥5% consumer is a FORBIDDEN reduction (`draw_scaled`/`downscale`/`sample_bilinear` accumulation sums, `box_blur` running sum, `chamfer` propagation), a LUT lookup (srgb_encode, already #5), branchy geometry, or a libm transcendental (`pow`/`cbrt`). The only clean independent-pixel arithmetic (`clip_to_mask`, the final divides) is ~1% each, under the 5% gate. Two hard blockers besides: `lib.rs` is `#![forbid(unsafe_code)]` and portable `std::simd` is nightly-only (toolchain is stable 1.97.0) — explicit f64x2 would need `unsafe` intrinsics. So #7's LUT captured the last material byte-safe per-pixel win; there is no vectorizable arithmetic surface left to make SIMD worth the safety-posture cost. |
 
-Remaining PROVEN-byte-safe wins still queued (codex R2 focused perf pass, each cert-gated): exact Glass-distance
-`(size,int-dist)` cache, `matches_shape`+`max_scale_auto` config/shape memo, `subject_rim` erosion-buffer reuse,
-RGB→OKLab 24-bit memo (cold-only). Full ranking + exact changes: `/private/tmp/dm-r2-review/out-perf2.json` +
-the R2 review ledger `docs/reviews/2026-07-14-rust-audit-round2.md`.
+**Perf line complete (Phases 0-5).** All PROVEN-byte-safe wins landed + cert-verified (10 commits, unpushed):
+C-7 rayon (version-switch `5347bb5` + reconciler `75d22a8`), C-5 shared analysis `fe0aaf8`, sizes-fix `614dcd5`,
+P2-SCRATCH `4ecbc06`, 4 memos `1b1cfba` (RGB→OKLab / Glass-dist / rim / config-shape), C-6 output cache `18413c5`,
+#7 sRGB LUT `1d9821d`. codex R2 full ranking: `/private/tmp/dm-r2-review/out-perf2.json`; disposition ledger:
+`docs/reviews/2026-07-14-rust-audit-round2.md`.
 
 ## Why this exists (the load-bearing finding)
 

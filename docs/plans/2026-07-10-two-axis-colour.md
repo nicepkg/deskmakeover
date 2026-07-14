@@ -1,5 +1,7 @@
 # Plan — Two-Axis Colour Reshape (ADR-0018)
 
+> **Status:** ✅ EXECUTED + owner-accepted — historical build record (see `docs/journal/2026-07.md`).
+
 Normative: docs/product/two-axis-colour-spec.md + ADR-0018 engine mapping.
 Every task: tsc -b + bun test green; end with designer pixel acceptance.
 

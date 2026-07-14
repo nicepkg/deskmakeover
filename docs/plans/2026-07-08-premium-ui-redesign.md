@@ -1,5 +1,8 @@
 # Plan — Premium UI redesign (2026-07-08)
 
+> **Status:** ✅ EXECUTED — historical build record; the ADR-0012 visual language was itself later
+> superseded by ADR-0013 (v3 Premium Flat). See `docs/journal/2026-07.md`.
+
 Governing docs: **ADR-0012**, **spec 02 v2** (visual language), **spec 03 §3/§3.1**
 (settings + IA), **spec 04 §2/§3.5** (wallpaper interaction). Panel evidence:
 `docs/reviews/2026-07-08-ui-premium-panel.md`.

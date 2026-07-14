@@ -1,7 +1,10 @@
 # Windows hardening — wave 2 (apply/txn/CAS surface)
 
+> **Status:** ✅ EXECUTED / CLOSED — historical build record (see `docs/journal/2026-07.md`). The
+> tail `[WINDOWS-VERIFY]` checklist remains the open runtime gate.
+
 **Date:** 2026-07-11
-**Milestone gate:** must land **before** the apply/restore commands are wired at M5/M6 cutover.
+**Milestone gate:** (historical) landed before the apply/restore commands were wired at M5/M6 cutover.
 **Source:** independent Codex full-review of snapshot `7dc82c1` → 26 findings → triaged against
 current `main` HEAD (`30081b1`) by an independent reviewer + lead re-verification.
 

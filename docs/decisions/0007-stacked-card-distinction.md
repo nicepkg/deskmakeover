@@ -1,6 +1,6 @@
 # ADR-0007 · Shortcut distinction v3 — stacked cards
 
-Status: Partially superseded by [ADR-0008](0008-prototype-v2-ui-contract.md) · 2026-07-06 —
+Status: superseded by [ADR-0008](0008-prototype-v2-ui-contract.md) · 2026-07-06 — (partial)
 stacked cards survive as 双层卡片, one of seven mark styles in the v2-prototype gallery;
 the "single automatic mark, no glyph/colour options" decision is reversed.
 Supersedes the arrow/arc/sash/notch marks of [ADR-0006](0006-badge-v2-adaptive-arrow.md).

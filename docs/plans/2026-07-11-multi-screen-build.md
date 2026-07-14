@@ -1,5 +1,8 @@
 # Multi-Screen Wallpaper — Implementation Plan
 
+> **Status:** ✅ EXECUTED — historical build record (shipped: multi-monitor data layer + switcher UI;
+> Windows runtime `[WINDOWS-VERIFY]`). See `docs/product/multi-screen-wallpaper.md` + `docs/journal/2026-07.md`.
+
 **Date:** 2026-07-11 · **Spec:** `docs/product/multi-screen-wallpaper.md` (owner-approved) · **Mode:** dev-cycle iterate.
 **Acceptance:** all tasks built + lead-verified (build + dev-app E2E on mock multi-monitor) → **Codex end-to-end acceptance** (owner directive: build all, then Codex accepts).
 

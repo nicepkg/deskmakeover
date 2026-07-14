@@ -111,7 +111,7 @@ Endpoint layout (migration phases: `docs/plans/2026-07-10-tauri-migration.md`):
 | `crates/dm-windows` | ALL windows-rs/COM/unsafe: STA actor, desktop scan/layout, icon extraction, .lnk/.url/desktop.ini/system-icon writers, IDesktopWallpaper, watcher, Explorer refresh |
 | `crates/dm-operations` | Durable transaction ledger (rusqlite), snapshots, CAS restore, history |
 | `crates/dm-resident` | Background reconciler/jobs/privileged queue (spec 07) |
-| `apps/elevated-helper` | Whitelisted privileged verbs (overlay pair), one-UAC batching, Program Files install |
+| `crates/dm-elevated` | Whitelisted privileged verbs (overlay pair), one-UAC batching; built + packaged as a standalone `dm-elevated.exe` sidecar at M8, Program Files install |
 
 *Transition*: the legacy .NET tree is FROZEN as an executable oracle during the
 port (BakeService invariants harvested into named Rust tests) and deleted at M8

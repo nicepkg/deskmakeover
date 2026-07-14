@@ -29,15 +29,15 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 
 | Milestone | Status | Remaining |
 |---|---|---|
-| **M3/M4 Windows platform layer (blind-write)** | Code DONE, **runtime 0% verified** | 55 Mac tests + msvc-clean, but the whole `[WINDOWS-VERIFY]` checklist (9 items) + 11 blind-audit follow-ups are all pending the Windows box. Two never-finished stubs: `shell/layout.rs` (positions), and `source.rs` icon extraction (see Ship-blockers §1). |
-| **M5 icon core** | ✅ DONE + byte-certified (1,487-cell real corpus) | Only the held ICON-5/9/11 dead-code questions (§Owner decisions). |
+| **M3/M4 Windows platform layer (blind-write)** | Code DONE, **runtime 0% verified** | Mac tests green + msvc-clean, but the whole `[WINDOWS-VERIFY]` checklist (9 items) + 11 blind-audit follow-ups are all pending the Windows box. (`shell/layout.rs` positions + `source.rs` icon extraction bodies are now blind-written — Ship-blockers §1 — so the remaining gap is `ItemKind::System` Unsupported cases + runtime verification.) |
+| **M5 icon core** | ✅ DONE + byte-certified (real corpus) | ICON-5/9/11 dead-code questions RESOLVED (owner 2026-07-13 — see §Open owner decisions). |
 | **M6 kernel-speed + WASM cutover** | ✅ EXECUTED (WASM is the only pixel path) | Physical deletion of the frozen TS compositor (`src/icon-compositor/*.ts`, 10 files) held to M8. |
 | **M6-WIRE Wave A (wallpaper)** | DONE **on Mac only** | All Windows COM/WIC/topology (`topology.rs`, `decode.rs`, `wallpaper.rs`) `[WV]`. |
 | **M6-WIRE Wave B foundation (B6-B9 + fs_atomic)** | ✅ DONE (Mac-green) | The four Windows durability defects in `m6-wire-host.md §8a` are **not Mac-fixable** and gate shipping. |
 | **M6-WIRE Wave B icon bridge (B1-B5)** | ✅ **CONVERGED — codex R12 = Approve (2026-07-13)** | 8 adversarial rounds R5→R12, ~50 findings fixed (4🔴→1🔴→0🔴×5→Approve); owner-informed residuals in §Icon-bridge. Windows runtime still [WV]. |
 | **M6-WIRE Wave B B10 (desktop watcher)** | ✅ DONE 2026-07-12 (`37f4b13`) | Real `notify`+`notify-debouncer-full`, Mac-live-verified (FSEvents), msvc-clean. 3 runtime semantics `[WV]` (self-write suppression / restart catch-up / overflow→rescan). |
 | **M6-WIRE Wave C (Windows handoff doc)** | **NOT STARTED** | Spec'd at `docs/references/windows-wiring-handoff/README.md` (m6-wire-host §8); directory does not exist. No systematic Windows verification recipe yet. |
-| **M7 resident auto-format** | **DECISION CORE DONE + HARDENED (Mac, 2026-07-13)** — platform bodies + tray [WV] | `dm-resident` built + 24 tests: reconciler (T6), tray SM (T7), pending queue (T5), consent ladder, stability probe, privileged red-line (T12). Plus style_resolve + native_bake (T1 port), version_switch (T10, wired `icons.switchVersion`), reset toggle-coupling, resident precondition, T2 WindowsActivityMonitor (judge-2, msvc-clean). **Two codex adversarial rounds** (apply-path + policy) → 2🔴+9🟠+5🟡 ALL closed: propose→apply snapshot-CAS contract, §14 scope re-check at every write entry + shared path-ancestry, unconditional recovery, busy-abort, v1-always-proposes, atomic reset, nanosecond stability. **Remaining = [WV] platform bodies:** T8 tray+windowless residency wiring (unwritten), T11 tray bitmaps (uncreated), the watcher→reconciler→driver LOOP wiring, T2's judge-1 WinEventHook precision layer. |
+| **M7 resident auto-format** | **DECISION CORE DONE + HARDENED (Mac, 2026-07-13)** — platform bodies + tray [WV] | `dm-resident` built + full test battery: reconciler (T6), tray SM (T7), pending queue (T5), consent ladder, stability probe, privileged red-line (T12). Plus style_resolve + native_bake (T1 port), version_switch (T10, wired `icons.switchVersion`), reset toggle-coupling, resident precondition, T2 WindowsActivityMonitor (judge-2, msvc-clean). **Two codex adversarial rounds** (apply-path + policy) → 2🔴+9🟠+5🟡 ALL closed: propose→apply snapshot-CAS contract, §14 scope re-check at every write entry + shared path-ancestry, unconditional recovery, busy-abort, v1-always-proposes, atomic reset, nanosecond stability. **Remaining = [WV] platform bodies:** T8 tray+windowless residency wiring (unwritten), T11 tray bitmaps (uncreated), the watcher→reconciler→driver LOOP wiring, T2's judge-1 WinEventHook precision layer. |
 | **M8 release engineering + .NET deletion** | **NOT STARTED** | No installer / signing / updater; version `0.0.0`; `legacy/` .NET tree still present. See §Packaging. |
 | **M1 go/no-go spikes (Windows)** | PARTIAL | Only Spike 4 (tri-target pixel, Mac) done. Spikes 1/2/3/5 (STA+IFolderView, SysListView32 layout, elevated-helper roundtrip, kill-injected `.lnk`) are Windows-bound and **never run** — the ADR-0019 "gate for everything after" was never actually gated on a real box. |
 | **清爽 / calm-Windows module** (ADR-0023, spec 08) | **W0/W1/W2 DONE + codex-approved (Mac)** | W0 web (codex R8) · W1 Rust decision core + bridge schema 8 (codex R7) · W2 two Windows platform ports blind-written + msvc-clean (codex R5), all Mac-green. **W3 cert lab = the open ADR-0023 D2 gate** (real Windows box: inspect→apply→verify→reboot→restore ladder + allowlist + per-recipe `policy_guards` + GPP ruling). Capability-gated release: W3 green → the write slice rides v1; else v1 ships the guided-only 「教你关」 face. |
@@ -98,7 +98,7 @@ Ordered by dependency. Tagged **[MAC]** (closable + verifiable here) or **[WIN]*
 | ~~`shell/layout.rs`~~ | ✅ DONE — technique A positions + geometry behind `DesktopGeometryReader`, runtime `[WV]` | dm-windows |
 | `state_reader.rs:120,138` + `apply/mod.rs:63` | `ItemKind::System` read/anchor/apply (return `Unsupported`) — STILL a stub | dm-windows |
 | ~~`icon_host.rs` exportCompare~~ | ✅ DONE — webview composes, Rust validates + saves | src-tauri + web |
-| ~~`crates/dm-resident`~~ | ✅ DECISION CORE DONE + codex-hardened (24 tests) — reconciler/queue/tray-SM/consent/stability/version-switch. Remaining = T8 tray/residency wiring + the reconcile-loop driver, `[WV]` | dm-resident |
+| ~~`crates/dm-resident`~~ | ✅ DECISION CORE DONE + codex-hardened — reconciler/queue/tray-SM/consent/stability/version-switch. Remaining = T8 tray/residency wiring + the reconcile-loop driver, `[WV]` | dm-resident |
 | ~~`WindowsActivityMonitor` (T2)~~ | ✅ judge-2 synchronous poll written + msvc-clean; judge-1 WinEventHook precision layer `[WV]` | dm-windows |
 | `src-tauri` tray (T8/T11) | tray-icon feature, §12 menu, windowless close handler, autostart, tray bitmaps — NOT WIRED | src-tauri |
 
@@ -142,7 +142,7 @@ R6 6 · R7 6 · R8 4 · R9 2 · R10 2 · R11 2 — ~50 findings, every one 二�
 regression test; trajectory R5 4🔴 → R6 1🔴 → R7–R11 0🔴 → **R12 Approve**). Final verdict: the
 Mac-verifiable Rust transaction kernel, CAS/recovery, host fencing, error contract, and TS
 single-flight bridge are "高质量、fail-closed、可恢复的收敛状态". Gates at convergence: cargo
-workspace 524 · dm-operations 167 · deskmakeover-desktop 26 · tsc · bun 516 · vite · bindings.
+workspace · dm-operations · deskmakeover-desktop · tsc · bun · vite · bindings — all green.
 Structural highlights: single-flight replaced the generation guard (R4); `desktop_mutated` /
 `repair_pending` / `intent_persisted` / `requires_rescan` outcome contract (R5–R9); the scan-revision
 FENCE + explicit `scan_valid` (R9–R11) closing the poison/manual-restore ABA.

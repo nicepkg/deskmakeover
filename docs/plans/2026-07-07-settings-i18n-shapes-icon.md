@@ -1,5 +1,7 @@
 # Plan — v1.1 Interaction Cleanup: Settings Page, i18n, Icon, Marks, Shapes
 
+> **Status:** ✅ EXECUTED — historical build record (ADR-0010 interaction cleanup). See `docs/journal/2026-07.md`.
+
 **Goal:** Execute ADR-0010: remove dead rail affordances, turn settings into a
 normal rail page, default theme/language to system, replace the app icon with a
 hand-authored SVG, remove the selectable glass arrow, and expand shape masks.

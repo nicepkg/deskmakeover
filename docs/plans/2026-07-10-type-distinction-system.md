@@ -1,5 +1,8 @@
 # Plan — Per-Type Distinction System (ADR-0017)
 
+> **Status:** ✅ EXECUTED + owner-accepted — historical build record (see `docs/journal/2026-07.md`).
+> "C# host items tagged F8" below are historical — F8 is void (ADR-0019); those became Rust work.
+
 Owner-approved 2026-07-10 (panel disposed; docs: ADR-0017, spec 06 §6.5).
 Web mock first; C# host items tagged F8. Global constraints: subject pixels
 never recoloured; filter/Original stay global; all changes `tsc -b` + full

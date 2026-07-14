@@ -86,7 +86,7 @@ resumed from ② on relaunch). Calm: the `tweaks*` verbs return thin `CalmProbeR
 | `shell.*` | window controls · open external (http(s)/mailto whitelist) · open data folder |
 | `app.getInfo` / `diagnostics.getInfo` | version/product/changelog/links · OS/webview2/arch + host log tail |
 | `settings.get` / `settings.set` | persisted in rusqlite; `settings-changed` echoes |
-| `wallpaper.*` | `getScreens` (thin) · `getSource` (via `dmwallpaper://`) · `applyBaked` · `restore` (setLook is frontend) |
+| `wallpaper.*` | `getScreens` (thin `WallpaperScreensDto` + source URLs) · `applyBaked(monitorId, png)` · `restore(monitorId)` — source pixels are fetched over the `dmwallpaper://` protocol, NOT an invoke verb (setLook is frontend) |
 | `icons.*` | `scan` · `getPersisted` · `applyBakedBegin`/`applyBakedChunk`/`applyBakedCommit` (chunked bake, gated user-click only) · `restore` · `restoreOverlay` · `switchVersion` · `exportCompare` (setLook is frontend) |
 | `tweaks.*` (calm) | probe rows · apply rows · restore rows · guided probe — fail-closed until the Windows cert lab (ADR-0023 W3) turns green |
 

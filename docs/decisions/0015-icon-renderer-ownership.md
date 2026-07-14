@@ -134,4 +134,4 @@ Detail: spec 02 §Shape System/§Colour Treatments/§Shortcut Marks, spec 06 §3
   the mock styling approximation (the web mock is now data-only). ⚠️ **status correction
   2026-07-10:** `IconStyler.cs` + `IconStylerTests` are NOT yet deleted — they are still in
   the tree; retiring them (after patching `ComparisonImageExporterTests` off IconStyler) is
-  F8 work, not done. The earlier "IconStyler chain deleted" wording overreached.
+  M8 legacy-deletion work, not done (F8 is void, ADR-0019). The earlier "IconStyler chain deleted" wording overreached.

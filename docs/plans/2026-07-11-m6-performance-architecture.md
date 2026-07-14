@@ -1,5 +1,10 @@
 # M6 Performance Architecture — how the Rust icon pipeline goes fast without moving a byte
 
+> **This is a DESIGN NOTE (reference material), not an executable plan.** It records the perf
+> architecture rationale; the executable M6 plans are `2026-07-11-m6-kernel-speed.md` +
+> `2026-07-11-m6-p4-cutover.md`. (Belongs under `docs/reference/` by dev-cycle structure — kept here
+> for now to avoid churning links while the M6 perf line is active.)
+
 Design input for the M6 dual-target cutover (and the M7 resident). Synthesized from two
 independent performance reviews that **converged on the same architecture** — a senior systems
 engineer (with live micro-benchmarks) and a cross-vendor Codex architect. Where they agree the

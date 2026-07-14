@@ -1,5 +1,8 @@
 # Plan — Icon Frontend Migration (spec 06, ADR-0015)
 
+> **Status:** ✅ EXECUTED — historical build record (the web-side icon migration; later superseded
+> on the pixel-truth axis by the ADR-0019 Rust `dm-icon-core`). See `docs/journal/2026-07.md`.
+
 Date: 2026-07-09 · Mode: iterate · Overnight owner-approved run (docs → build →
 codex review with verification → visual acceptance). No legacy compat (pre-release).
 

@@ -125,8 +125,10 @@ the compositor. Guided post-apply 整理模式 is deferred to v1.x.
   from `.60/.52` to about **`.74/.76`** (`src/compositor/material.ts`). The
   ownership decision (compositor in the web, host shrinks) stands; only the
   material/title catalogue widened. Formal record here supersedes the "one material"
-  wording in D3 above; Spec 04's body still needs the same widening (pending sync).
+  wording in D3 above; Spec 04's body carries the same widening (synced — five materials,
+  four title styles, import/export).
 - **2026-07-10 (status correction).** Bake runs on the MAIN thread via Pixi
   `canvas.toBlob`, not an OffscreenCanvas worker as some passages imply. The
   equal-gap ticks in D5 remain DEFERRED (not accepted). `WallpaperBakeRenderer.cs` /
-  `WallpaperComposer.cs` are still in the tree (F8 deletion — see the D1 note).
+  `WallpaperComposer.cs` are frozen in `legacy/`, deleted with the .NET tree at M8 (see the
+  ADR-0019 amendment above — "F8" is void).

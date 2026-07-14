@@ -1,9 +1,8 @@
 # ADR-0006 · Shortcut badge v2 — the refined adaptive arrow
 
-Status: Mark design superseded by [ADR-0007](0007-stacked-card-distinction.md) then
-[ADR-0008](0008-prototype-v2-ui-contract.md); the adaptive native-arrow **semantics** are further
-superseded by [ADR-0021](0021-global-arrow-overlay-default.md) (the global transparent overlay is
-now the default; the 60s penance gate retired). The remaining **engineering facts stay binding**
+Status: superseded by [ADR-0007](0007-stacked-card-distinction.md) / [ADR-0008](0008-prototype-v2-ui-contract.md)
+(mark design) then [ADR-0021](0021-global-arrow-overlay-default.md) (the adaptive native-arrow
+**semantics** — the global transparent overlay is now the default; the 60s penance gate retired). The remaining **engineering facts stay binding**
 (per-icon `.ico` bake, transparent global overlay, 16–256 size ladder, alpha-edge adaptive ink —
 the latter lives on inside the 玻璃箭头 style and the 自动 mark colour). · 2026-07-06
 Supersedes the distinction-mark design of [ADR-0005](0005-distinction-shape-color-system.md)

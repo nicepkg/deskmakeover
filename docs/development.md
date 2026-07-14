@@ -317,7 +317,7 @@ Notes:
   The in-app version narrative is RESTORED (ADR-0013 amendment): the About identity
   card shows the version and opens the changelog; the changelog auto-opens exactly
   once per UPDATE (never on first install — `shouldAutoShowChangelog`). Move off
-  `0.0.0` when the owner names the first release (F8).
+  `0.0.0` when the owner names the first release (M8 / owner release decision).
 - **Self-contained WPF floor ≈ 60–150 MB.** WPF is **not trimmable**, so you cannot go
   lower and keep "no .NET install". The single-file+compressed release (~64 MB) is near
   the floor; the uncompressed dev folder (214 MB) is the same bits, just not packed.
@@ -368,7 +368,7 @@ Notes:
    `src/lib/webview-hardening.ts` (web-side: drop-navigation guard,
    Ctrl+wheel page-zoom guard, host-only context-menu/accelerator suppression — also
    protects the browser dev loop) and the host settings audited against
-   `docs/references/webview2-pitfalls.md` §补丁清单 (F8).
+   `docs/references/webview2-pitfalls.md` §补丁清单 (`[WINDOWS-VERIFY]`).
 
 8. **File ≤ 500 lines · squircle controls for all visible corners · localized strings for
    all user-facing copy · no system-cleaner/fear language** (`docs/conventions/code-style.md`).

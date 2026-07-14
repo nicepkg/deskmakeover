@@ -79,7 +79,7 @@ Zero-config resolution of both historical complaints:
 | Folder | Bookmark | Field |
 | File | Tile | Field |
 | System | Circle | **BlackWhite — demoted to quiet grayscale** (Mono is a tinted ramp; grayscale is what recedes) |
-| shortcut modifier | — | mark badge ON (replaces native arrow) |
+| shortcut modifier | — | mark badge **None** by default (owner decree 2026-07-07 — resolved; the distinction badge is a user choice, presets ship None) |
 
 Shape carries the type split (no colour noise); System demotion mutes the
 background layer; Field keeps per-icon identity everywhere else.

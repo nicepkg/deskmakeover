@@ -77,22 +77,26 @@ now the certifying oracle for the Rust core, ADR-0019.)
   contract is a list, never assume 1). Content-addressed, cached.
 - Preview: NOTHING crosses the bridge per edit. **`icons.setLook` LEFT the bridge** — the config/
   overrides draft is frontend session state (resumed from ② on relaunch), like wallpaper's setLook.
-- Apply: `icons.applyBaked` streams PNG-encoded 256 masters in chunks of ≤20 items
-  (raw RGBA of 300 icons = 78.6MB and cannot ride one JSON postMessage; PNG total
-  ≈5-7MB). Sequence: `applyBakedBegin{revision,count}` → N× `applyBakedChunk{items:
-  [{id, sourceIndex, masterPng}]}` → `applyBakedCommit{config,overrides} → {ok,
-  applied}`. The host decodes → generated-icon store → shell writers.
-  Apply is INCREMENTAL per item (ADR-0019; the old C# restore-entire-desktop-first
-  semantics are NOT ported): owned fields update via compare-and-swap against the
-  ledger fingerprint; externally-modified items surface as conflicts.
-  「保留原样」overrides ship NO master — they revert to their recorded originals
-  (+ the baked classic arrow per ADR-0021 while an overlay-hiding makeover is
-  active). Multi-source items bake one master per source: `sourceIndex` maps
-  Recycle Bin 0=empty / 1=full. Every advertised master MUST arrive; the web
+- Apply: a three-part chunked bake (exact signatures in `src/bridge/generated.ts`) —
+  `applyBakedBegin(revision, count) → sessionId` opens a fenced session; N×
+  `applyBakedChunk(sessionId, items: IconChunkItemDto[])` stream the PNG-encoded 256 masters
+  (≤20/chunk — raw RGBA of 300 icons = 78.6MB and cannot ride one message; PNG total ≈5-7MB);
+  `applyBakedCommit(sessionId, styleJson, restoreIds, label) → IconOpResultDto` finalizes.
+  **`restoreIds` is load-bearing**: not sending a master ≠ restoring — 「保留原样」 of an
+  already-styled icon reverts only via `restoreIds` (Rust CAS-reverts that tracked subset).
+  The host decodes → generated-icon store → shell writers. Apply is INCREMENTAL per item
+  (ADR-0019; the old restore-entire-desktop-first semantics are NOT ported): owned fields
+  update via compare-and-swap against the ledger fingerprint; externally-modified items surface
+  as conflicts. Kept-original overrides ship NO master (+ the baked classic arrow per ADR-0021
+  while an overlay-hiding makeover is active). Multi-source items bake one master per source:
+  `sourceIndex` maps Recycle Bin 0=empty / 1=full. Every advertised master MUST arrive; the web
   aborts before commit if any source failed to decode.
-- `icons.switchVersion` is a WEB flow: load the history entry's config into the
-  renderer → bake → applyBaked. It gets the SAME ceremony as apply (see §3.7).
-- `icons.restore`, `icons.restoreOverlay`, `icons.exportCompare` round out the surface.
+- `icons.switchVersion(versionId) → IconOpResultDto` is a REAL native command (the resident/tray
+  projection path bakes native from a history recipe, spec 07 §9). The FOREGROUND version-apply is
+  a web flow instead: load the history entry's config into the renderer → bake → the chunked apply
+  above, same ceremony as apply (§3.7).
+- `icons.restore()`, `icons.restoreOverlay()`, `icons.exportCompare(pngBase64)` (all → IconOpResultDto)
+  round out the surface.
 - Mock: `bridge/mock.ts` implements the same v2 surface; sources come from the dev
   icon pack (§5); baked masters are held in memory and viewable via a debug hook.
 

@@ -7,9 +7,12 @@
   consultation `docs/references/gpt-refactor-suggest.md`, and repo evidence cited below.
 - **Supersedes**: ADR-0001 (the .NET/WPF half of the tech stack), ADR-0011 (WPF+WebView2
   host). **Amends**: ADR-0014 (wallpaper host I/O — source decode / PNG write / `SetWallpaper` /
-  backup-restore move to Rust; the TS/Pixi compositor decision stands) + ADR-0015 (renderer/oracle
-  ownership — see §Oracles). Spec 05 rewritten for the Tauri bridge; spec 00's "F8 Windows host
-  pass" is void, replaced by the migration phases in `docs/plans/2026-07-10-tauri-migration.md`.
+  backup-restore move to Rust; the TS/Pixi compositor decision stands), ADR-0015 (renderer/oracle
+  ownership — see §Oracles), ADR-0013 (version-narrative / changelog implementation moves to the
+  Tauri/Rust host), ADR-0017 (the "C# host re-port at F8" Consequences become Rust contracts/native
+  work), ADR-0018 (the schema 3→4 C# migration mechanism → generated Rust `dm-contracts`). Spec 05
+  rewritten for the Tauri bridge; spec 00's "F8 Windows host pass" is void, replaced by the migration
+  phases in `docs/plans/2026-07-10-tauri-migration.md`.
 
 ## Context
 

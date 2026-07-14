@@ -115,10 +115,10 @@ Endpoint layout (migration phases: `docs/plans/2026-07-10-tauri-migration.md`):
 | `crates/dm-resident` | Background reconciler/jobs/privileged queue (spec 07) |
 | `crates/dm-elevated` | Whitelisted privileged verbs (overlay pair), one-UAC batching; built + packaged as a standalone `dm-elevated.exe` sidecar at M8, Program Files install |
 
-*Transition*: the legacy .NET tree is FROZEN as an executable oracle during the
-port (BakeService invariants harvested into named Rust tests) and deleted at M8
-(`last-dotnet` tag). The frozen TS compositor (the M6 flip is EXECUTED) remains a
-non-production parity oracle until its physical deletion at M8.
+*Transition*: the .NET tree served as an executable oracle during the port
+(BakeService invariants harvested into named Rust tests) and was **removed from the repo on
+2026-07-14** (`last-dotnet` tag, ahead of M8). The frozen TS compositor (the M6 flip is EXECUTED)
+remains a non-production parity oracle until its physical deletion at M8.
 
 **Config truth**: `bridge/types.ts` (BRIDGE_SCHEMA_VERSION = 8, two-axis
 subject×plate per ADR-0018) — ConfigDto axes: shape (11-shape catalog) × subject
@@ -156,8 +156,7 @@ links" undercounted; this list is the truth.)
 ## Verification Strategy
 
 - Web: `bun test` (compositor fixtures, stores, zone math, i18n parity,
-  banned-colour + copy gates) + `tsc -b` + browser visual evidence
-  (`docs/plans/evidence/`).
+  banned-colour + copy gates) + `tsc -b` + browser visual verification.
 - Rust: `cargo test` + the ADR-0019 parity gates — TS↔Rust corpus (classification
   exact, SSIM≥0.995/bounded ΔE, stage-level differential dumps) and
   wasm↔native byte-equality in CI; kill-point recovery battery around every

@@ -207,12 +207,13 @@ worker operation. No video code in v1.
   (*The `paper-presets.tsx` file named earlier was never created — the gallery
   lives in paper-empty + the presets popover.*)
 - Rust host: source decode/crop (WIC), `wallpaper.applyBaked`, `SetWallpaper`, backup/restore
-  (Mac-wired schema 6; Windows COM/WIC `[WINDOWS-VERIFY]`). The legacy C#
-  `WallpaperBakeRenderer.cs`/`WallpaperComposer.cs` are frozen in `legacy/`, deleted at M8.
+  (Mac-wired schema 6; Windows COM/WIC `[WINDOWS-VERIFY]`). The C#
+  `WallpaperBakeRenderer.cs`/`WallpaperComposer.cs` served as the bake oracle and were removed from
+  the repo on 2026-07-14 (ADR-0019, ahead of M8).
 
 ## 7. Acceptance
 
-- **Parity (migration gate)**: 5 fixture looks, TS bake vs legacy C# bake,
+- **Parity (migration gate, historical)**: 5 fixture looks, TS bake vs the C# bake (now removed),
   ΔE<2 / SSIM>0.99; thereafter TS fixtures pin the compositor.
 - **Latency**: during move/resize/create the material's rect equals the outline's
   rect on the SAME frame (integration test on the render state; manual 120Hz
@@ -231,4 +232,4 @@ worker operation. No video code in v1.
 - Copy: **壁纸压暗 / Dim wallpaper** naming everywhere (§1 — the old 图标清晰度
   name is banned: it implied the control edits icons); no 破折号 in user-facing
   strings; zh + en.
-- Suite green, 0 warnings; evidence to `docs/plans/evidence/2026-07-v3/`.
+- Suite green, 0 warnings.

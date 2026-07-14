@@ -7,7 +7,7 @@ UI is **React** in the Tauri webview (WebView2 on Windows) in the v3 **"Premium 
 language (ADR-0013, light-first — supersedes ADR-0012). **One Rust icon core** (`dm-icon-core`,
 WASM preview/bake + native resident/background) is the single pixel truth; wallpaper compositing is Pixi in
 the web; the bridge contract is generated from `dm-contracts` via tauri-specta. The old .NET/C# host
-is **retired** — quarantined under `legacy/` as the frozen parity oracle only. The in-app version
+is **retired and removed from the repo** (2026-07-14, ahead of the ADR-0019 M8 deletion). The in-app version
 narrative is restored (ADR-0013 amendment). The interactive prototype under `references/prototype/`
 is **historical reference only** — the specs are the intended source of truth.
 
@@ -17,7 +17,7 @@ is **historical reference only** — the specs are the intended source of truth.
 - [development.md](development.md) — **dev & build runbook**: how to develop, test, and package on
   the Tauri 2 + Rust stack (Bun web loop + Cargo + `bun run tauri:dev`), plus the gotchas
   (bindings drift guard, the `dm-elevated` helper security boundary, i18n source-of-truth in `src/lib/i18n`,
-  owner-supervised gates). The `legacy/` .NET tree is oracle-only and does not ship.
+  owner-supervised gates).
 - [decisions/](decisions/) — ADRs. Current governing: **0013** (v3 Premium Flat — supersedes 0012),
   **0016** (icon colour-field), **0017** (per-type distinction), **0018** (two-axis colour),
   **0019** (Tauri + Rust replatform — supersedes 0001/0011, amends 0014/0015), **0020** (background

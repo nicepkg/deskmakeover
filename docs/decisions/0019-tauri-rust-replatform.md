@@ -89,8 +89,8 @@ deskmakeover/                    # AMENDED by Amendment 1 (2026-07-10): app un-n
 ├─ tests/                      # bun unit tests + icon-parity · recovery-killpoints ·
 │                              #   windows-shell · webview2-smoke · installer
 ├─ testdata/icons/             # parity corpus: inputs / expected / profiles / manifest
-├─ xtask/                      # binding/golden generation, package verification
-└─ legacy/                     # FROZEN .NET oracle (Amendment 1): quarantined, deleted at M8
+└─ xtask/                      # binding/golden generation, package verification
+# (legacy/ .NET oracle removed 2026-07-14 — Amendment 2; git history before `last-dotnet` retains it)
 ```
 
 ## Engineering discipline (binding)
@@ -157,7 +157,7 @@ child-process exit); resident mode runs windowless.
 - STATE.md §F8 and spec 00's release train are replaced by migration phases M0–M8
   (`docs/plans/2026-07-10-tauri-migration.md`).
 - ADR-0015's oracle table shifts: the FROZEN TS compositor becomes the primary visual
-  oracle; the frozen C# TileRenderer remains an oracle only for the legacy style subset.
+  oracle; the frozen C# TileRenderer (removed 2026-07-14, Amendment 2) was an oracle only for the legacy style subset.
 - Spec 06 §1/§2/§7, spec 01 §System Architecture, and spec 05 are updated/rewritten.
 - Background-resident v1 scope: ADR-0020 + spec 07. Arrow semantics: ADR-0021.
 - Panel record with owner dispositions:
@@ -190,3 +190,23 @@ Supersedes §3's "No `legacy/` graveyard" wording and §4's `apps/desktop/**` ne
    `check` needs no linker). ALL Windows runtime verification batches until the owner is at
    his Windows box; the M1 spikes 1/2/5 remain the entry gate for that batch, and M2's
    "runs on Windows" exit folds into it.
+
+## Amendment 2 (2026-07-14, owner) — .NET oracle deleted early (ahead of M8)
+
+The `last-dotnet` deletion this ADR scheduled for M8 was **executed early on 2026-07-14**: the
+entire C# tree (`legacy/` — the 6 C# projects + their test projects + the .NET publish/capture/resx
+scripts) was **removed from the repo and purged from git history** (together with ~70 MB of stale
+`docs/**/evidence` screenshots). Rationale: a 100+ MB clone was deterring maintenance; the Rust port
+has been the sole production engine since the M6 flip, so the C# oracle no longer earned its weight in
+every clone.
+
+- **What this changes vs the plan**: only the *timing* (M8 → 2026-07-14) and the *archive*. Because
+  history was rewritten, the C# code is **not** recoverable from `git log` after the rewrite. If a
+  future parity re-check ever needs the original C# behaviour, retrieve it from a pre-rewrite clone /
+  the `last-dotnet` tag captured before the purge.
+- **Still standing**: the frozen **TS** `icon-compositor/` (in `src/`) remains the byte-parity oracle
+  for the Rust core; it is unaffected and still awaits its own tree-shake deletion. The M8 milestone
+  now covers release engineering only (installer / signing / updater), not .NET deletion.
+- Docs that described `legacy/` as a present, frozen, awaiting-M8 oracle were updated to past tense on
+  2026-07-14. "legacy" as an adjective (legacy icon format, schema-1 legacy data, legacy preset names,
+  legacy test coverage) is unrelated to the removed folder and was left intact.

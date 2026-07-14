@@ -3,7 +3,7 @@
 The visible UI of DeskMakeover — a React 19 + TypeScript + Tailwind 4 + Motion SPA. It is hosted by
 the **Tauri 2 shell** (ADR-0019; WebView2 on Windows) and also runs in a plain browser with a mock
 bridge on any OS for development. (It previously ran inside a standalone WebView2 window driven by a
-C# host; that host is now frozen under `legacy/`.)
+C# host; that host was retired and removed from the repo on 2026-07-14.)
 
 > The web app lives at the repo root (ADR-0019 Amendment 1: `src/`, `public/`, `index.html`,
 > one root `package.json`). The authoritative docs are **`docs/STATE.md`** (what is true / in

@@ -132,6 +132,6 @@ Detail: spec 02 §Shape System/§Colour Treatments/§Shortcut Marks, spec 06 §3
 - The parity corpus becomes a permanent regression net for the TS renderer.
 - Deleted: the v0.9 `MakeoverService` / `PreviewItemFactory` path (grep-verified gone) and
   the mock styling approximation (the web mock is now data-only). ⚠️ **status correction
-  2026-07-10:** `IconStyler.cs` + `IconStylerTests` are NOT yet deleted — they are still in
-  the tree; retiring them (after patching `ComparisonImageExporterTests` off IconStyler) is
-  M8 legacy-deletion work, not done (F8 is void, ADR-0019). The earlier "IconStyler chain deleted" wording overreached.
+  2026-07-10:** `IconStyler.cs` + `IconStylerTests` were still in the tree at that point; they were
+  removed with the entire .NET tree on 2026-07-14 (the `last-dotnet` deletion planned for M8,
+  executed early — ADR-0019 Amendment 2). The earlier "IconStyler chain deleted" wording predated that.

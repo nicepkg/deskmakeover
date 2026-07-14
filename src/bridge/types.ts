@@ -1,5 +1,5 @@
-// Bridge DTOs — mirrors the host contracts (Rust dm-contracts on Tauri; the dead
-// C# tree in legacy/). Bump together with the host (BridgeSchema.Version) so drift
+// Bridge DTOs — mirrors the host contracts (Rust dm-contracts on Tauri; the old
+// C# tree was removed 2026-07-14). Bump together with the host (BridgeSchema.Version) so drift
 // fails loudly at startup.
 // Schema 6 (owner ruling D1, 2026-07-12): the wallpaper bridge contract SHRINKS to
 // thin platform I/O. Rust does ONLY screen enumeration + get/set wallpaper +

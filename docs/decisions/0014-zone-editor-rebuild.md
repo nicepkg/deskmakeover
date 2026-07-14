@@ -13,7 +13,8 @@
 > (one TS/Pixi WebGL2 compositor, five materials, Adaptive Frost). What is **SUPERSEDED**: every
 > "C# host" ownership below (source decode, PNG write, `SetWallpaper`, backup/restore) is now **Rust**
 > (Mac-wired schema 6, Windows `[WINDOWS-VERIFY]`); the `WallpaperBakeRenderer.cs`/`WallpaperComposer.cs`
-> deletion is at **M8** (not "F8" — F8 is void), they are frozen in `legacy/`; the old `STATE.md §F8`
+> deletion (the `last-dotnet` removal planned for M8) was executed early on 2026-07-14 — both files
+> removed with the .NET tree (ADR-0019 Amendment 2); the old `STATE.md §F8`
 > reference no longer exists. Read the C#/F8 mentions in the body as the 2026-07-09 historical design.
 
 ## Context
@@ -36,9 +37,9 @@ Zone/clarity composition moves from C# to the web layer: a single TS compositor
   apply → `convertToBlob('image/png')` → PNG bytes to the host, which writes the
   file and calls `IDesktopWallpaper.SetWallpaper`.
 
-`WallpaperBakeRenderer.cs` / `WallpaperComposer.cs` are to be DELETED at M8 (see the ADR-0019
-amendment above; superseded 2026-07-10: both files are frozen in `legacy/`, deleted with the
-.NET tree at M8). Source DECODE is now Rust (WIC on Windows; the historical text below said
+`WallpaperBakeRenderer.cs` / `WallpaperComposer.cs` were DELETED with the .NET tree on 2026-07-14
+(see the ADR-0019 amendment above; the `last-dotnet` removal planned for M8 was executed early —
+Amendment 2). Source DECODE is now Rust (WIC on Windows; the historical text below said
 C#/WPF): the host hands the web one cover-cropped RGBA bitmap per source change. The per-edit
 host→web 33MB (4K) / 133MB (8K) frame traffic disappears; the bridge carries the
 source once and a small PNG back on apply.
@@ -138,5 +139,5 @@ the compositor. Guided post-apply 整理模式 is deferred to v1.x.
 - **2026-07-10 (status correction).** Bake runs on the MAIN thread via Pixi
   `canvas.toBlob`, not an OffscreenCanvas worker as some passages imply. The
   equal-gap ticks in D5 remain DEFERRED (not accepted). `WallpaperBakeRenderer.cs` /
-  `WallpaperComposer.cs` are frozen in `legacy/`, deleted with the .NET tree at M8 (see the
+  `WallpaperComposer.cs` were removed with the .NET tree on 2026-07-14 (see the
   ADR-0019 amendment above — "F8" is void).

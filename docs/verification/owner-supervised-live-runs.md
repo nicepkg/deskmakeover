@@ -1,7 +1,7 @@
 # Owner-supervised live runs — verification runbook
 
-> ⚠️ **DO NOT EXECUTE AS-IS — the STEPS below are for the RETIRED C# WebView2 host** (`legacy/`,
-> ADR-0019) and reference `DeskMakeover.App.exe` + a `v1.1.0` build that never shipped. The product
+> ⚠️ **DO NOT EXECUTE AS-IS — the STEPS below are for the RETIRED C# WebView2 host** (removed from
+> the repo 2026-07-14, ADR-0019) and reference `DeskMakeover.App.exe` + a `v1.1.0` build that never shipped. The product
 > is now Tauri 2 + Rust; the live-run steps must be rebuilt for the Tauri stack (owner-supervised
 > icon-bake + wallpaper-apply on **Windows Tauri / a real Windows box** — the real shell/COM/WIC/
 > registry writes cannot be validated on Mac-Tauri, which only exercises the fake-adapter bridge/E2E

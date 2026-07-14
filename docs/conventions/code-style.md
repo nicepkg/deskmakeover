@@ -3,7 +3,8 @@
 DeskMakeover follows the owner's cross-project engineering standards with project-local
 emphasis. Two stacks live here: the **web UI** (React 19 + TypeScript + Tailwind 4 +
 Motion, Bun-only) and the **Rust engine/host** (Tauri 2 shell + `dm-*` crates + Win32/COM
-adapters). The `legacy/` .NET/C# tree is a frozen parity oracle only — no feature work.
+adapters). The .NET/C# tree that served as the port's parity oracle was removed from the repo on
+2026-07-14 (ADR-0019).
 
 ## Both stacks
 
@@ -66,6 +67,6 @@ adapters). The `legacy/` .NET/C# tree is a frozen parity oracle only — no feat
   COM/WIC/registry/shell call is `[WINDOWS-VERIFY]` until it runs on a real box.
 - The ElevatedHelper (`dm-elevated`) stays a standalone self-contained exe (privilege boundary —
   never share the runtime to save space).
-- Frozen oracles carry banner comments — the TS `icon-compositor/` and the whole `legacy/` C# tree
-  are byte-parity references; no new styles or features land in them (they exist to certify the
-  Rust port, ADR-0015/0019).
+- The frozen TS `icon-compositor/` carries banner comments — it is a byte-parity reference; no new
+  styles or features land in it (it exists to certify the Rust port, ADR-0015/0019). The C# oracle
+  tree was removed from the repo on 2026-07-14.

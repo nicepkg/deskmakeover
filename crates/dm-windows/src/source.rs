@@ -1,7 +1,7 @@
 //! Windows icon source extraction ([WINDOWS-VERIFY] runtime).
 //!
-//! Extracts an item's 256px source(s) for the compositor, oracle:
-//! `legacy/src/DeskMakeover.App/Preview/ShellIconCanvasSource.cs`:
+//! Extracts an item's 256px source(s) for the compositor. Ported from the retired C#
+//! `ShellIconCanvasSource.cs` (removed from the repo 2026-07-14, ADR-0019):
 //! - Shortcut kinds carrying an explicit icon resource honour its `(location, index)` FIRST via
 //!   `PrivateExtractIconsW` (the only API that picks the best frame for 256px; `ExtractIconExW` is
 //!   the classic 32px fallback), then fall back to the shell image.

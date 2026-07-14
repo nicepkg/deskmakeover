@@ -14,8 +14,8 @@ manual bake, native for the resident/background path) at two resolutions (displa
 interactive preview + 256px bake master); the thin bridge contract (**schema 8**; scan sources in,
 thin data out, frontend assembles state — see §2); editing UX contract (live scrubbing, hover
 try-on, undo, exception visibility, owned-verb context menu); desktop-mirror fidelity (taskbar,
-labels, selection states); dev mock icon pack; frozen-oracle discipline (the TS compositor + legacy
-C# `TileRenderer`); background auto-format (spec 07).
+labels, selection states); dev mock icon pack; frozen-oracle discipline (the TS compositor is the
+parity oracle; the C# `TileRenderer` was removed 2026-07-14); background auto-format (spec 07).
 
 **Non-scope**: ICO assembly + sub-256 resampling (owned by Rust `dm-icon-codec`, a byte-for-byte
 port of the frozen C# `IcoWriter`/`IconResampler`), UWP PACKAGE-asset editing (the package logo is
@@ -31,8 +31,8 @@ Vite + mock bridge; all Windows-gated verification batches into the Windows inte
 foreground/manual bake (the host packages + writes those WASM-baked masters, no native re-render);
 native only for the resident/background path; output is deterministic (libm-routed transcendentals,
 no FMA/SIMD in core v1 → WASM↔native byte-equality). The frozen TS compositor (`src/icon-compositor/`, a mechanical port of the C#
-pipeline) is the PRIMARY parity oracle, not a live path; the legacy C# `TileRenderer` is a secondary
-oracle for the style subset it still covers. pixi v8 stays wallpaper-only. (Historical rationale for
+pipeline) is the parity oracle, not a live path. (The C# `TileRenderer`, formerly a secondary oracle,
+was removed from the repo on 2026-07-14.) pixi v8 stays wallpaper-only. (Historical rationale for
 the mechanical CPU-TS port: it maximized oracle parity and runs headless in bun tests — that port is
 now the certifying oracle for the Rust core, ADR-0019.)
 
@@ -50,8 +50,8 @@ now the certifying oracle for the Rust core, ADR-0019.)
 - **The TS compositor is FROZEN** (banner comments; no new styles, no fixes except
   oracle corrections): it is the PRIMARY parity oracle for the Rust port. The M6 flip is
   EXECUTED (WASM is the production foreground path); the TS compositor stays a non-production
-  parity oracle until its physical deletion at M8. The frozen C# `TileRenderer`
-  remains an oracle only for the legacy style subset it still covers.
+  parity oracle until its physical deletion at M8. (The frozen C# `TileRenderer`, formerly a
+  secondary oracle, was removed from the repo on 2026-07-14.)
 - Parity gates (ADR-0019): TS↔Rust — classification/branch/plate-seed decisions
   exactly equal; pixels SSIM≥0.995 / bounded ΔE (documented regional tolerances
   for blur/filters). Rust-WASM↔Rust-native — **byte-equal** (libm-routed

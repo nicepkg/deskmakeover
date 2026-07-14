@@ -11,8 +11,8 @@ A POINTER, not a journal (dev-cycle ~150-line budget). Completed work is swept t
 the detailed ship tracker is `docs/ship-readiness.md`; this file says only what is TRUE now,
 what is in flight, and what comes next.
 
-> **Architecture (current, ADR-0019):** Tauri 2 + Rust. The .NET/C# host is RETIRED (quarantined
-> under `legacy/`, kept only as the frozen parity oracle). One Rust icon core (`dm-icon-core`,
+> **Architecture (current, ADR-0019):** Tauri 2 + Rust. The .NET/C# host is RETIRED and
+> **removed from the repo** (2026-07-14, ahead of the ADR-0019 M8 deletion). One Rust icon core (`dm-icon-core`,
 > WASM preview/bake + native resident/background) is the single pixel truth; the TS compositor is frozen
 > (tree-shaken out; physical deletion held to M8). UI = React in the Tauri webview (WebView2 on
 > Windows). Bridge contract is GENERATED from `dm-contracts` via tauri-specta.
@@ -57,8 +57,9 @@ what is in flight, and what comes next.
 - **M7 resident — platform bodies.** Decision core DONE + hardened on Mac (→ journal); remaining is
   the [WV] platform layer: tray + windowless residency wiring, tray bitmaps, watcher→reconciler→
   driver loop, T2 judge-1 WinEventHook precision layer.
-- **M8 release engineering + .NET deletion — NOT STARTED.** No installer / signing / updater;
-  version `0.0.0`; the `legacy/` .NET tree + the frozen TS compositor still await physical deletion.
+- **M8 release engineering — NOT STARTED.** No installer / signing / updater;
+  version `0.0.0`. (The `legacy/` .NET tree was deleted early, 2026-07-14, ahead of M8; the frozen TS
+  compositor still awaits physical deletion.)
 - **The Windows-runtime gate** — the whole `dm-windows`/`dm-elevated` surface was blind-written on
   Mac (msvc-check clean, Mac-fake-tested). M1 spikes 1/2/3/5 + the M3/M4 `[WINDOWS-VERIFY]`
   checklist + calm W3 all need a real box; none has run. This is the dominant ship risk.

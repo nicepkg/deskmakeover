@@ -1,8 +1,8 @@
 # 0001. Technology Stack And Support Baseline
 
 **Status:** superseded by [ADR-0019](0019-tauri-rust-replatform.md) — the .NET 10 / WPF stack
-below is retired to `legacy/`; the product is now Tauri 2 + Rust. Kept as the record of the
-original baseline.
+below is retired and was **removed from the repo on 2026-07-14** (ADR-0019 Amendment 2); the product
+is now Tauri 2 + Rust. Kept as the record of the original baseline.
 **Date:** 2026-07-05
 
 ## Context

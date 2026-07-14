@@ -10,7 +10,7 @@ evidence screenshots are historical only — the specs + `docs/STATE.md` are the
 > + the generated `src/bridge/generated.ts`). Wallpaper (schema 6), icons (schema 7) and calm
 > (schema 8) route through real Rust on **Mac-Tauri**; the browser + mock loop also runs on any OS.
 > Every real Windows shell/COM/registry/WIC call is `[WINDOWS-VERIFY]` — the platform bodies are
-> blind-written and unproven on a real box. The retired C# WebView2 host is `legacy/`-only (ADR-0019).
+> blind-written and unproven on a real box. The old C# WebView2 host was removed from the repo on 2026-07-14 (ADR-0019).
 
 ## 1. Process architecture
 
@@ -153,5 +153,5 @@ wallpaper apply, calm writes, resident audit) stay owner-supervised, never auto-
 - `bun run build` (tsc -b + Vite) → `dist/`; the Tauri build bundles it.
 - The shipping artifact is `bun run tauri build` (NSIS on Windows) bundling the Rust host + web +
   the `dm-elevated` helper — **M8, NOT STARTED**; signing/updater are open; version `0.0.0` until
-  the owner names the first release. The `legacy/` .NET publish scripts are oracle-only, never ship.
+  the owner names the first release. (The old .NET publish scripts were removed with the C# tree on 2026-07-14.)
 - WebView2 Evergreen is assumed present on Windows (never bundled).

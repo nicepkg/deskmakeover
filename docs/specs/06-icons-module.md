@@ -2,7 +2,7 @@
 
 Status: ACTIVE. Supersedes the icon-editing details of spec 01 §Canvas Behaviour / §Control Panel
 where they disagree; spec 01 remains the product-identity and safety source. Decisions: **ADR-0019**
-(renderer ownership — one Rust `dm-icon-core`, WASM preview + native apply/background; amends the
+(renderer ownership — one Rust `dm-icon-core`, WASM preview/bake + native resident/background; amends the
 ADR-0015 web-render table). The pixel-production digest is §1; the pre-inversion CPU-TS framing that
 survives in §Scope/§Dependencies below is HISTORICAL rationale (the TS compositor is now the frozen
 parity oracle, not the production renderer). Panel record: `docs/reviews/2026-07-09-icon-frontend-panel.md`.
@@ -10,7 +10,7 @@ parity oracle, not the production renderer). Panel record: `docs/reviews/2026-07
 ## Scope / Non-scope / Assumptions / Dependencies
 
 **Scope**: icon styling rendered by ONE **Rust `dm-icon-core`** (WASM for the in-window preview +
-manual bake, native for apply + the resident background path) at two resolutions (display-size
+manual bake, native for the resident/background path) at two resolutions (display-size
 interactive preview + 256px bake master); the thin bridge contract (**schema 8**; scan sources in,
 thin data out, frontend assembles state — see §2); editing UX contract (live scrubbing, hover
 try-on, undo, exception visibility, owned-verb context menu); desktop-mirror fidelity (taskbar,

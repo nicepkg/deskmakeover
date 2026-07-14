@@ -133,7 +133,7 @@ size, incl. history replay (guard lands with the Rust host, M3).
 restore; version history (cap 10) persists across restore.
 
 **WYSIWYG law**: preview pixels == bake pixels because they are the SAME Rust
-`dm-icon-core` — WASM for the preview/bake, native for apply/background — not two
+`dm-icon-core` — WASM for the preview/bake, native for the resident/background path — not two
 renderers to keep in parity (ADR-0019). Tolerance bands exist only for TS↔Rust and
 C#-oracle parity fixtures, never between the preview and the bake.
 

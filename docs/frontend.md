@@ -29,7 +29,7 @@ devhost/mock desktop). Both are working dev loops today.
 ## Where the pixels come from
 
 Icon pixels are produced by the Rust **`dm-icon-core`** — compiled to **WASM** for the web
-preview/bake and to **native** for apply/background; the frozen TS `src/icon-compositor/` is the
+preview/bake and to **native** for the resident/background path; the frozen TS `src/icon-compositor/` is the
 byte-parity ORACLE only (tree-shaken out of the bundle). **Wallpaper** compositing is Pixi in the
 web (`src/compositor/`). The Rust host also decodes source images, packages ICO ladders, writes to
 the shell, and backs up/restores. WYSIWYG holds because the web preview and manual bake both run the

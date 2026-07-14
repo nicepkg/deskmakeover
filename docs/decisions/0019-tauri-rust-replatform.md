@@ -45,7 +45,8 @@
    compositor stays web-only. .NET is absent from the released product.
 2. **Single algorithm truth source ships in v1.0** (owner order 2026-07-10): the icon
    pixel pipeline is rewritten in Rust as ONE core compiled twice — WASM for the
-   in-window preview/manual bake, native for apply and the resident background path.
+   in-window preview + foreground/manual bake, native for the resident/background path (foreground
+   apply writes the WASM-baked masters via the host; no native re-render).
    The TypeScript compositor is **FROZEN** (no new styles, no fixes except oracle
    corrections) and serves as the primary parity oracle; it is deleted only after the
    Rust core passes the parity gates. The rewrite may freely re-architect internals

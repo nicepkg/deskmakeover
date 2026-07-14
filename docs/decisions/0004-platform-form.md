@@ -1,7 +1,10 @@
 # 0004. Platform Form: One Verb, Many Battlefields
 
 **Status:** accepted — amended by [ADR-0023](0023-calm-windows-module.md) (§3 HealthCheck scope
-narrowed · §5 gained a guided exception · §6 system-purification timing superseded). See the
+narrowed · §5 gained a guided exception · §6 system-purification timing superseded) and
+[ADR-0019](0019-tauri-rust-replatform.md) (the module BEHAVIOUR contract — Probe/Preview/Snapshot/
+Apply/Restore/HealthCheck — stands, but its C# implementation types `IBeautifyModule` /
+`Operations.Engine` / the C# helper are superseded by Rust crates + `dm-elevated`). See the
 amendment at the end of this file.
 **Date:** 2026-07-05
 

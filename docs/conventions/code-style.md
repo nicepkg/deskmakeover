@@ -41,7 +41,7 @@ adapters). The `legacy/` .NET/C# tree is a frozen parity oracle only — no feat
   Tailwind blue-family and stock cool-gray utilities are TEST-BANNED
   (`tests/banned-colors.test.ts`; reviewed exemptions live inside the test).
 - Rendering truth: **icon pixels are produced by the Rust `dm-icon-core`** (compiled to WASM for
-  the web preview/bake, native for apply/background) — the frozen TS `icon-compositor/` is the
+  the web preview/bake, native for the resident/background path) — the frozen TS `icon-compositor/` is the
   parity ORACLE, not a live path (never fork "close enough" engine math into a component). The
   Pixi wallpaper `compositor/` is the live web wallpaper engine; preview and bake share the same
   functions, and the chip swatch clips with the same authoring (`lib/shape-paths.ts`).

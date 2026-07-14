@@ -2,7 +2,7 @@
 
 Date: 2026-07-09 · Status: accepted — renderer ownership **amended by
 [ADR-0019](0019-tauri-rust-replatform.md)**: the single pixel truth is now one Rust `dm-icon-core`
-(WASM preview + native apply/background); the TS compositor + the C# `TileRenderer` are demoted to
+(WASM preview + foreground bake, native for resident/background); the TS compositor + the C# `TileRenderer` are demoted to
 frozen parity oracles. The freeze discipline + the ICO/resample port decisions carry forward. ·
 Record: `docs/reviews/2026-07-09-icon-frontend-panel.md` (4 recon agents + 4 isolated seats)
 
@@ -19,7 +19,7 @@ Rgba32 math (no Win32), so a TS port is translation, not research.
 ## Decisions
 
 > **⚠️ ADR-0019 amendment (read before the decisions).** The pixel truth moved to **one Rust
-> `dm-icon-core`** (WASM preview + native apply/background). So **D1** (interactive renderer "in
+> `dm-icon-core`** (WASM preview + foreground bake, native for resident/background). So **D1** (interactive renderer "in
 > TypeScript") and **D4** (background auto-styler "renders in C# in-process") are **SUPERSEDED** —
 > the TS compositor and the C# `TileRenderer` are now both **frozen parity oracles**, not production
 > renderers; "F8" stage names are void. What **STANDS**: the 256 boundary + ICO/resample ladder

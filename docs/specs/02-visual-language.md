@@ -323,10 +323,12 @@ single tint pick (chief-UI/UX + owner). Exact channel math lives in
 - **背景色 (plateColor)**: applies in Original + Mono (BW inert until v2); `null` =
   Auto (Original: detected bg / white; Mono: the ramp's light end).
 
-Colour entry: the row-end wheel opens a **前景 / 背景 dual-tab** popover — 前景 picks
-the subject colour (selecting flips to 单色); 背景 = Auto + swatches + full picker.
-Mono reveals a 渐变/纯色 depth segmented below the row. The standalone plate ring was
-removed (owner: it read inverted — appeared only when NO colour was chosen).
+Colour entry (⚠️ **SUPERSEDED** by the two-axis two-row panel — ADR-0018 / the amendment above;
+kept as the historical dual-tab design): the row-end wheel opened a **前景 / 背景 dual-tab** popover
+— 前景 picked the subject colour (selecting flipped to 单色); 背景 = Auto + swatches + full picker.
+Mono revealed a 渐变/纯色 depth segmented below the row. The standalone plate ring was removed
+(owner: it read inverted — appeared only when NO colour was chosen). Current contract: the 主体行 +
+底板行 two-row panel (spec 06 §two-axis; `docs/product/two-axis-colour-spec.md`).
 
 Swatch grammar: **concentric pair dots** — outer disc = the plate the pick produces
 (Auto = ramp light end), inner dot = the subject tint. Row: 无(原彩) · 黑白 pair ·
@@ -360,11 +362,11 @@ tiles, and baked `.ico` render the same math.
 
 ## Window Chrome & Platform
 
-- Frameless WebView2 shell (ADR-0011): custom title bar (logo + name + caption
-  buttons; **no version chip**, no ⚙/⋯); titlebar follows theme; Mica disabled
-  (solid `--bg`).
-- `app.manifest`: PerMonitorV2 DPI, Win10/11, longPathAware, UTF-8, asInvoker
-  (helper requireAdministrator). Re-render previews on `DpiChanged`.
+- Frameless **Tauri 2 window** (ADR-0019; WebView2 is the webview on Windows): custom title bar
+  (logo + name + caption buttons; **no version chip**, no ⚙/⋯); titlebar follows theme; Mica
+  disabled (solid `--bg`).
+- Windows integration `[WINDOWS-VERIFY]`: PerMonitorV2 DPI, Win10/11, longPathAware, UTF-8,
+  asInvoker (the `dm-elevated` helper is requireAdministrator). Re-render previews on DPI change.
 - Win10 degradation: bundled fonts remove the Segoe-Variable gap; standard corners;
   frosted surfaces fall back to translucent fills where blur-behind is unavailable.
 - High contrast: drop the custom skin for system colours.

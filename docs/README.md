@@ -5,7 +5,7 @@ beautifier: one window, a left module rail (**图标 / 壁纸 / 清爽 / 设置*
 canvas + right inspector, fully reversible. It is a **Tauri 2 + Rust** desktop app (ADR-0019); the
 UI is **React** in the Tauri webview (WebView2 on Windows) in the v3 **"Premium Flat"** visual
 language (ADR-0013, light-first — supersedes ADR-0012). **One Rust icon core** (`dm-icon-core`,
-WASM preview + native apply/background) is the single pixel truth; wallpaper compositing is Pixi in
+WASM preview/bake + native resident/background) is the single pixel truth; wallpaper compositing is Pixi in
 the web; the bridge contract is generated from `dm-contracts` via tauri-specta. The old .NET/C# host
 is **retired** — quarantined under `legacy/` as the frozen parity oracle only. The in-app version
 narrative is restored (ADR-0013 amendment). The interactive prototype under `references/prototype/`

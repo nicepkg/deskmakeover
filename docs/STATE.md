@@ -13,7 +13,7 @@ what is in flight, and what comes next.
 
 > **Architecture (current, ADR-0019):** Tauri 2 + Rust. The .NET/C# host is RETIRED (quarantined
 > under `legacy/`, kept only as the frozen parity oracle). One Rust icon core (`dm-icon-core`,
-> WASM preview + native apply/background) is the single pixel truth; the TS compositor is frozen
+> WASM preview/bake + native resident/background) is the single pixel truth; the TS compositor is frozen
 > (tree-shaken out; physical deletion held to M8). UI = React in the Tauri webview (WebView2 on
 > Windows). Bridge contract is GENERATED from `dm-contracts` via tauri-specta.
 

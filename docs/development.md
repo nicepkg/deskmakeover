@@ -350,7 +350,7 @@ Notes:
    paint UI state the bake cannot reproduce.
 
 4. **Owner-supervised gates — NEVER auto-trigger** the real desktop icon-bake or the
-   wallpaper-apply. They are human-click-only by design (spec 01 Safety, ADR-0011 §7).
+   wallpaper-apply. They are human-click-only by design (spec 01 Safety, ADR-0019).
    Automation/E2E must stub them (`DESKMAKEOVER_FAKE_APPLY=1`). The live-run checklist is
    `docs/verification/owner-supervised-live-runs.md`.
 
@@ -365,7 +365,7 @@ Notes:
 
 7. **WebView2 is Evergreen** — do not bundle the browser runtime (that would add ~150 MB).
    Win11 has it; Win10 auto-updates. A bootstrapper note for edge cases is deferred to
-   release (ADR-0011). Consumer-machine hardening lives in TWO layers:
+   release (M8). Consumer-machine hardening lives in TWO layers:
    `src/lib/webview-hardening.ts` (web-side: drop-navigation guard,
    Ctrl+wheel page-zoom guard, host-only context-menu/accelerator suppression — also
    protects the browser dev loop) and the host settings audited against

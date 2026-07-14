@@ -14,6 +14,9 @@ use dm_domain::{
     AssetStore, DesktopItem, DesktopScanner, IconApplier, IconSourceExtractor, ItemStateReader,
     OwnedFields,
 };
+// Re-exported so the host (which owns the cache and drives the switch) can name the type without a
+// direct `dm-icon-core` dependency — `dm_operations::icons::version_switch::OutputCache`.
+pub use dm_icon_core::output_cache::OutputCache;
 
 use crate::error::{OperationError, Result};
 use crate::icons::native_bake::{bake_masters_par, BakeJob};
@@ -63,6 +66,10 @@ pub fn switch_to_version(
     txn: &mut TxnIdAllocator,
     journal: &mut dyn JournalSink,
     ledger: &mut dyn LedgerStore,
+    // The host-owned content-addressed output cache (M6 Phase 4): a repeat switch to an
+    // already-rendered look clones the stored master instead of recomputing it. `None` disables it
+    // (unchanged behavior); inert on the scalar build regardless. Threaded to `bake_and_apply`.
+    cache: Option<&mut OutputCache>,
 ) -> Result<SwitchOutcome> {
     let version = history
         .all()
@@ -85,7 +92,7 @@ pub fn switch_to_version(
     settings.set_saved_style(Some(&style))?;
     let mut errors: Vec<String> = Vec::new();
     let outcome =
-        match bake_and_apply(&items, &recipe, ports, txn, journal, ledger, &mut errors) {
+        match bake_and_apply(&items, &recipe, ports, txn, journal, ledger, cache, &mut errors) {
             Ok(o) => o,
             // A projection fault AFTER ② moved: surface it structured, never a bare Err (the
             // caller would otherwise see "failed" while ② is already the new style).
@@ -122,6 +129,7 @@ fn bake_and_apply(
     txn: &mut TxnIdAllocator,
     journal: &mut dyn JournalSink,
     ledger: &mut dyn LedgerStore,
+    cache: Option<&mut OutputCache>,
     errors: &mut Vec<String>,
 ) -> Result<ApplyOutcome> {
     // One prepared item: its CAS anchor + resolved config + extracted sources, ready to bake. Collected
@@ -196,7 +204,10 @@ fn bake_and_apply(
                 .map(move |src| BakeJob { source_png: &src.png, config: &p.cfg, is_shortcut: p.is_shortcut })
         })
         .collect();
-    let baked = bake_masters_par(&jobs); // byte-identical to a serial session bake (native_bake tests)
+    // Cache-aware batch bake (M6 Phase 4): `Some(cache)` on a fast build clones an already-rendered
+    // master (a hit) instead of recomputing it; `None`/scalar is byte-identical to a serial session
+    // bake (native_bake tests). The cache never changes an OUTPUT byte — a hit is a prior render_tile.
+    let baked = bake_masters_par(&jobs, cache);
 
     let mut masters: Vec<BufferedMaster> = Vec::new();
     let mut anchors: Vec<(DesktopItem, dm_domain::Fingerprint)> = Vec::new();
@@ -427,7 +438,7 @@ mod tests {
         let mut ledger = MemLedgerStore::default();
 
         let out = switch_to_version(
-            "look-1", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger,
+            "look-1", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger, None,
         )
         .unwrap();
         assert!(!out.deferred);
@@ -451,7 +462,7 @@ mod tests {
             })
             .unwrap();
         let out2 = switch_to_version(
-            "look-2", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger,
+            "look-2", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger, None,
         )
         .unwrap();
         assert!(out2.outcome.conflicts.contains(&ItemId::from_raw("a")), "hand-edited item is skipped");
@@ -505,7 +516,7 @@ mod tests {
         let mut journal = VecJournal::default();
         let mut ledger = MemLedgerStore::default();
 
-        let out = switch_to_version("v", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger).unwrap();
+        let out = switch_to_version("v", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger, None).unwrap();
         assert_eq!(out.outcome.committed, vec![ItemId::from_raw("mine")], "only the user's own item");
         assert!(!desk.surfaces.borrow()[&public.path].starts_with(b"styled:"), "public item untouched");
     }
@@ -532,7 +543,7 @@ mod tests {
         let mut journal = VecJournal::default();
         let mut ledger = MemLedgerStore::default();
         assert!(switch_to_version(
-            "nope", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger
+            "nope", &ports, &settings, &history, &mut txn, &mut journal, &mut ledger, None
         )
         .is_err());
     }

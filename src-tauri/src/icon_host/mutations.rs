@@ -370,9 +370,9 @@ impl IconHost {
             // §14 privileged-scope roots — `Unresolved` on an unwired Windows host fails CLOSED here.
             scope: &self.scope_roots,
         };
-        let IconMutState { ledger, journal, history, txn, op_epoch, .. } = &mut *st;
+        let IconMutState { ledger, journal, history, txn, op_epoch, output_cache, .. } = &mut *st;
         let outcome = switch_to_version(
-            version_id, &ports, &self.settings, history, txn, journal, ledger,
+            version_id, &ports, &self.settings, history, txn, journal, ledger, Some(output_cache),
         )
         .map_err(|e| e.to_string())?;
         // A switch is a desktop mutation: bump the epoch (an in-flight apply rejects) and FENCE the

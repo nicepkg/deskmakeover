@@ -125,6 +125,22 @@ fn content_key(
     *blake3::hash(&content_key_material(source, config, is_shortcut, show_original, size, opts)).as_bytes()
 }
 
+/// The `pub` key a batch caller (`dm-operations::icons::native_bake`) computes to probe the cache
+/// before rendering. A thin wrapper over the private `content_key` — the SAME key
+/// `render_tile_addressed` builds, so a tile the batch inserts is served on a repeat exactly as an
+/// inline hit. Fast-only: the scalar build never builds a key (it always recomputes, the reference).
+#[cfg(feature = "fast")]
+pub fn output_content_key(
+    source: &Raster,
+    config: &Config,
+    is_shortcut: bool,
+    show_original: bool,
+    size: usize,
+    opts: &RenderOpts,
+) -> [u8; 32] {
+    content_key(source, config, is_shortcut, show_original, size, opts)
+}
+
 // ── the cache: real LRU under `fast`, a no-op passthrough under scalar ──────────────
 
 #[cfg(feature = "fast")]

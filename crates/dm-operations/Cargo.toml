@@ -27,6 +27,15 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 
+[features]
+# `fast` forwards to the byte-safe optimized core (M6 kernel-speed). It gates the
+# content-addressed OUTPUT cache in the native version-switch bake: only a `fast` build
+# has `OutputCache::{get,insert}`, so a repeat switch to an already-rendered look clones
+# the master instead of recomputing it. The DEFAULT (scalar) build ignores the cache and
+# renders every tile — the determinism reference the four-way parity cert diffs against.
+default = []
+fast = ["dm-icon-core/fast"]
+
 [dev-dependencies]
 serde_json = "1"
 tempfile = "3"

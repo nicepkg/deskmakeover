@@ -350,7 +350,9 @@ impl Reconciler {
                         .map(move |src| BakeJob { source_png: &src.png, config: &p.cfg, is_shortcut: p.is_shortcut })
                 })
                 .collect();
-            bake_masters_par(&jobs)
+            // `None` cache (M6 Phase 4): reconciler candidates are NEW items — near-always misses — so
+            // the content-addressed output cache adds no value here; the cache is wired to version-switch only.
+            bake_masters_par(&jobs, None)
         };
         let mut masters: Vec<BufferedMaster> = Vec::new();
         let mut anchors: Vec<VettedCandidate> = Vec::new();

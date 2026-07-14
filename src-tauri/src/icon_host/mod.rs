@@ -18,6 +18,7 @@ use dm_domain::{
     ItemStateReader, OverlayControl,
 };
 use dm_operations::icons::scope::ScopeRoots;
+use dm_operations::icons::version_switch::OutputCache;
 use dm_operations::txn::FileJournal;
 use dm_operations::{
     FsAssetStore, IconApplySession, IconOps, IconPlatform, JsonLedgerStore, LookHistoryStore,
@@ -59,6 +60,12 @@ struct IconMutState {
     /// Monotonic epoch bumped by EVERY user mutation (a committed Apply, a full Reset, AND a
     /// restoreOverlay) so an in-flight apply that began before any of them rejects at commit.
     op_epoch: u64,
+    /// The content-addressed OUTPUT cache (M6 Phase 4). A repeat `switchVersion` to an
+    /// already-rendered look clones its stored master instead of recomputing it — a pure memo of
+    /// `render_tile` (a hit is byte-identical to a fresh render). Lives under `mut_state` so the
+    /// switch's `&mut` access is already serialized; 64 MiB byte-budget LRU. Inert on the scalar
+    /// build (no get/insert), so it can never change an output byte off the fast path.
+    output_cache: OutputCache,
 }
 
 /// The platform ports the host drives, bundled for construction.
@@ -158,6 +165,7 @@ impl IconHost {
                 scan_revision: 0,
                 scan_valid: false,
                 op_epoch: 0,
+                output_cache: OutputCache::new(),
             }),
             sources: Mutex::new(SourceCache::new(SOURCE_CACHE_CAP)),
             revision: AtomicU32::new(0),

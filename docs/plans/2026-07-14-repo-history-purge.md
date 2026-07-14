@@ -3,8 +3,10 @@
 **Goal**: a fresh `git clone` of this repo transfers a small pack, not the 123 MB it grew to,
 so maintainers are not deterred by a slow clone.
 
-**Status**: Track 1 DONE (forward removal, commit `32951c5`). **Track 2 PENDING** — the git-history
-rewrite that actually shrinks the clone has NOT run; it is gated (see Preconditions).
+**Status**: ✅ **DONE 2026-07-14.** Track 1 (forward removal) + Track 2 (history rewrite) both
+executed. `git filter-repo` purged the 19 path prefixes below from all history; `main` was
+force-pushed to origin. **Verified by a fresh GitHub clone: `.git` 146 MB → 54 MB** (pack
+123 MB → 52 MB). A full pre-purge backup bundle was kept off-repo (see Recoverability).
 
 ## Why
 
@@ -13,22 +15,23 @@ A fresh clone pulled the ~123 MB pack. Root cause (measured 2026-07-14): ~70 MB 
 nested paths) still living in history. The Rust port has been the sole production engine since the
 M6 flip, and no living spec/ADR depends on the evidence pixels, so both are dead weight in every clone.
 
-## Track 1 — forward removal (DONE, commit `32951c5`)
+## Track 1 — forward removal (DONE)
 
 Removed from the working tree + reconciled all referencing docs (grep-verified: zero dangling
 `legacy/` folder refs in living docs; adjective "legacy" preserved). See ADR-0019 Amendment 2 and
-the journal "Repo slim-down 2026-07-14" entry. This frees disk but does NOT shrink the clone — the
-bytes are still in history up to `32951c5^`.
+the journal "Repo slim-down 2026-07-14" entry. (Original SHA `32951c5`, rewritten to `0126c20` by
+Track 2.) Track 1 alone freed disk but did NOT shrink the clone; Track 2 (below) did.
 
 ## Track 2 — history rewrite (PENDING — the actual clone shrink)
 
-### Preconditions (ALL must hold before running)
+### Preconditions (ALL held before running — verified 2026-07-14)
 
-1. **The neighbor icon session is DONE** and has committed + pushed everything. (At Track-1 time it
-   had uncommitted work in `crates/dm-resident/` + `src-tauri/`.)
-2. **Every worktree/clone is clean** (`git status` shows nothing uncommitted anywhere).
-3. **Owner has explicitly OK'd the force-push.** History rewrite changes every commit SHA from the
-   first C#/evidence commit onward → force-push → all clones must re-clone or `git reset --hard`.
+1. ✅ **The neighbor icon session was DONE** — its M7 work committed + pushed (commits survived the
+   rewrite with new SHAs).
+2. ✅ **Working tree clean**; the stale `.worktrees/review-*` review worktree was removed first
+   (linked worktrees confuse filter-repo).
+3. ✅ **Owner OK'd the force-push.** History rewrite changed every commit SHA from the first
+   C#/evidence commit onward; any other clone must re-clone or `git fetch && git reset --hard origin/main`.
 
 ### Purge paths (fed to `git filter-repo --invert-paths --paths-from-file`)
 
@@ -56,39 +59,49 @@ tests/DeskMakeover.Operations.Tests/
 tests/DeskMakeover.Shell.Tests/
 ```
 
-### Procedure
+### Procedure (as executed 2026-07-14)
 
 ```bash
 cd <repo>
-# 0. Safety net — full backup + tag the last full-C# commit BEFORE the rewrite.
+# 0. Safety net — full backup of ALL pre-rewrite history (the sole archive; no remote tag, see Recoverability).
 git bundle create ../deskmakeover-pre-purge-$(git rev-parse --short HEAD).bundle --all
-git tag -f last-dotnet 32951c5^          # final .NET state, retrievable from the bundle
 
-# 1. Purge from ALL history (write the list above to purge-paths.txt first).
+# 0b. Remove the stale review worktree (linked worktrees confuse filter-repo).
+git worktree remove .worktrees/review-* --force
+
+# 1. Purge from ALL history (purge-paths.txt = the list above).
 git filter-repo --invert-paths --paths-from-file purge-paths.txt --force
 
 # 2. Reclaim.
 git reflog expire --expire=now --all && git gc --prune=now --aggressive
 
-# 3. Verify (expect pack ~35-40 MB, down from ~123 MB).
-git count-objects -vH | grep -E 'size-pack|count' ; du -sh .git
+# 3. Verify.
+git count-objects -vH | grep -E 'size-pack|in-pack' ; du -sh .git
 
-# 4. filter-repo drops 'origin' by design. Re-add + force-push.
+# 4. filter-repo drops 'origin' by design. Re-add + force-push main ONLY (no --all, no --tags —
+#    the local backup branch stays local; a remote tag would drag the C# back into clones).
 git remote add origin <URL>
-git push --force --all origin
-git push --force --tags origin           # includes last-dotnet
+git push --force origin main
 
 # 5. Every other clone: re-clone, or `git fetch && git reset --hard origin/main`
 #    (local commits must be re-applied — parent SHAs changed).
 ```
 
-### Expected result
+### Result (actual)
 
-Pack **~123 MB → ~35-40 MB** (evidence ~70 MB + C# ~23 MB reclaimed; fonts 17 MB + testdata/icons
-30 MB + normal code churn remain). Fonts stay as-is — the owner decided NOT to subset them (they are
-runtime assets and 17 MB is acceptable).
+Pack **123 MB → 52 MB** (fresh-clone `.git` **146 MB → 54 MB**). Evidence PNGs (incompressible)
+were the bulk of the reclaim; C# source compresses well, so it packed to only a few MB. The residual
+~52 MB is dominated by **testdata/icons (~34 MB, the neighbor's parity corpus — untouched)** and
+**fonts (~17 MB — owner kept, no subset)**. Those two are the current floor; nothing else is worth
+purging without touching decisions the owner has made.
 
 ### Recoverability
 
-The rewrite makes the removed bytes unretrievable from `git log`. The `last-dotnet` tag + the
-pre-purge bundle hold the final C# state if a future parity re-check ever needs the original.
+The rewrite makes the removed bytes unretrievable from `git log`. The complete pre-rewrite history
+(all refs, all C# + evidence) is preserved in a **backup bundle kept off-repo**:
+`~/Documents/codes/deskmakeover-pre-purge-b632d4c.bundle` (~125 MB). Recover with
+`git clone deskmakeover-pre-purge-b632d4c.bundle` if a future parity re-check ever needs the original.
+
+No `last-dotnet` tag was pushed to origin **by design**: a tag on the remote pointing at the old C#
+commits would keep those objects reachable, so every clone would pull them back — defeating the shrink.
+The bundle is the archive; the owner can delete it once confident the C# is never needed again.

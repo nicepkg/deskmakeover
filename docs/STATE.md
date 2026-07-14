@@ -98,10 +98,9 @@ what is in flight, and what comes next.
 - None for Mac web/core development (M0/M2/M5 run on Mac). The Windows box (SSH/Tailscale, logged-in
   interactive session) blocks: M1 spikes 1/2/3/5, the M3/M4 `[WINDOWS-VERIFY]` checklist, calm W3
   cert lab, and all M7 platform bodies.
-- **Repo history purge — Track 2 PENDING.** `legacy/` C# + stale evidence were removed from HEAD
-  (commit `32951c5`, 2026-07-14); the git-history rewrite that shrinks the clone (~123 MB → ~35-40 MB)
-  is gated on the neighbor session finishing + all worktrees clean + owner OK on the force-push.
-  Runbook: `docs/plans/2026-07-14-repo-history-purge.md`.
+- **Repo history purge — ✅ DONE 2026-07-14.** `legacy/` C# + stale evidence purged from all history
+  (filter-repo, force-pushed); fresh clone `.git` 146 MB → 54 MB. Pre-purge backup bundle kept
+  off-repo. Record: `docs/plans/2026-07-14-repo-history-purge.md`.
 
 ## Open questions (owner)
 

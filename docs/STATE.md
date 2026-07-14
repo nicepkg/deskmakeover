@@ -86,15 +86,21 @@ what is in flight, and what comes next.
 - **M7 resident — platform bodies.** Decision core DONE + hardened on Mac (→ journal); remaining is
   the [WV] platform layer: tray + windowless residency wiring, tray bitmaps, watcher→reconciler→
   driver loop, T2 judge-1 WinEventHook precision layer.
-- **M8 release engineering — NOT STARTED.** No installer / signing / updater;
-  version `0.0.0`. (The `legacy/` .NET tree was deleted early, 2026-07-14, ahead of M8; the frozen TS
-  compositor still awaits physical deletion.)
-- **The Windows-runtime gate** — the whole `dm-windows`/`dm-elevated` surface was blind-written on
-  Mac (msvc-check clean, Mac-fake-tested). M1 spikes 1/2/3/5 + the M3/M4 `[WINDOWS-VERIFY]`
-  checklist + calm W3 all need a real box; none has run. This is the dominant ship risk.
+- **M8 release engineering — INSTALLER BUILDS (2026-07-15).** `bun run tauri:build` produces a
+  working per-user NSIS installer (app + `dm-elevated` sidecar w/ requireAdministrator manifest +
+  WebView2 downloadBootstrapper; gen-bindings excluded). Remaining: owner names the version (still
+  `0.0.0`), Authenticode signing, updater, per-machine-vs-per-user call, `.dmpreset` file
+  association, CI. (The frozen TS compositor still awaits physical deletion.)
+- **The Windows-runtime gate** — READ half now CLOSED (2026-07-15): the app boots on a real Win11
+  box, the WebView2 bridge routes, startup recovery + STA COM run, and the read-only `[WINDOWS-VERIFY]`
+  surface (scan/topology/geometry/extraction/fingerprint/known-folders) passes (`verify_readonly`).
+  WRITE half still PENDING + owner-supervised: icon-bake apply/restore, elevated overlay HKLM+UAC,
+  wallpaper apply/restore, kill-point battery, resident auto-format loop, calm W3, M1 spikes 1/2/3/5.
+  This write surface is now the dominant ship risk.
 
 ## Recently shipped (one line each — detail in journal/CHANGELOG)
 
+- 2026-07-15 **FIRST WINDOWS-RUNTIME SESSION**: built + tested (683) + booted on a real Win11 box; read-only [WV] surface verified (`verify_readonly`); 2 Windows-only bugs fixed (comctl32 v6 test manifest, IDesktopWallpaper CLSCTX_ALL); M8 NSIS installer builds (app + dm-elevated sidecar). See `ship-readiness.md` §Windows-runtime session.
 - 2026-07-14 清爽 W2: two Windows platform ports (WinregBackend + WindowsSystemProfileProbe), codex R5 Approve → journal.
 - 2026-07-14 清爽 W1: Rust decision core + bridge schema 8, codex R7 Approve → journal.
 - 2026-07-13 清爽 W0 + polish + schematics: web skeleton + rail 4th tile, codex R8 Approve → journal.

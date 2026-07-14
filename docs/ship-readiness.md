@@ -4,10 +4,16 @@
 > and it works" list. A standing companion to `STATE.md` (which is the ~150-line pointer); this doc
 > holds the detail. Update it in place as items close — it is a living tracker, not a dated snapshot.
 >
-> **Last reconciled:** 2026-07-15 (added the preset-packages round: `.dmpreset` import/export + user
+> **Last reconciled:** 2026-07-15 (**FIRST WINDOWS-RUNTIME SESSION** — the codebase built, tested,
+> and RAN on a real Windows 11 box for the first time. `cargo check`/`cargo test --workspace` (683
+> tests) green natively; the app boots (WebView2 bridge + startup recovery + STA COM); the read-only
+> `[WINDOWS-VERIFY]` surface passes on the live desktop; and `tauri build` produces a working NSIS
+> installer (M8). Two real Windows-only bugs fixed. See §Windows-runtime session (2026-07-15) below +
+> the corrected framing in §The one fact. The WRITE/mutation surface stays owner-supervised +
+> unverified.) Prior same-day: the preset-packages round: `.dmpreset` import/export + user
 > library + bridge schema 9, Mac-green + two codex passes closed; the new Windows I/O surface has
 > run/observe recipes in §Preset packages [WINDOWS-VERIFY]. File shape + Comet mark ride existing
-> surfaces). Prior 2026-07-14 (清爽/calm module: W0 web + W1 Rust decision core +
+> surfaces. Prior 2026-07-14 (清爽/calm module: W0 web + W1 Rust decision core +
 > bridge schema 8 + W2 Windows platform ports all Mac-green/codex-approved, W3 cert lab = the open
 > Windows gate — see the calm row in §Milestone status; plus a full doc-hygiene pass). Prior 2026-07-13: icon-bridge
 > convergence + extractor + exportCompare + M7 resident decision core + version switch — all
@@ -18,21 +24,63 @@
 
 ## The one fact that frames everything
 
-**Not one line of the Windows platform layer has ever run on Windows.** The entire
-`dm-windows` / `dm-elevated` surface was blind-written on Mac, kept compiling via
-`cargo check --target x86_64-pc-windows-msvc`, and unit-tested only through Mac fakes. Every real
-COM / WIC / registry / shell call is `[WINDOWS-VERIFY]` and unproven at runtime. This is the
-dominant ship risk and it colours every section below.
+**The Windows platform layer now BOOTS and its READ surface is verified — but no MUTATION has ever
+run on Windows.** As of 2026-07-15 the app builds, tests (683), and launches on a real Windows 11
+box: the WebView2 bridge routes, startup crash-recovery runs, the STA COM apartment comes up, and
+the whole read-only `[WINDOWS-VERIFY]` surface (scan/classify, `IDesktopWallpaper` topology +
+capture, known folders, desktop geometry + positions, icon source extraction, fingerprint) passes
+against the live desktop — reproduce with `cargo run -p dm-windows --example verify_readonly`. What
+is STILL unproven is every **mutating** path, because those are owner-supervised gates no automation
+may trigger (STATE.md): the icon-bake apply/restore, the elevated overlay (`dm-elevated` HKLM
+write + UAC roundtrip), the wallpaper apply/restore, the kill-point recovery battery on a real
+desktop, the resident auto-format loop, and the calm W3 write ladder. That write surface is now the
+dominant ship risk (was: "not one line has run").
 
-**Working model (owner decision 2026-07-12):** polish EVERYTHING that can be done + verified on this
-Mac to near-perfection first; Windows is then only final integration + the `[WINDOWS-VERIFY]` runtime
-pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime-only**.
+**Working model (owner decision 2026-07-12, updated 2026-07-15):** the Mac-polish phase is done and
+the read/boot half of the Windows-runtime pass is now closed; what remains is the owner-supervised
+WRITE verification (a human clicking bake/apply/restore on the real box) + M8 release identity
+(version, signing). So this doc splits each gap into **Mac-closable** vs **Windows-read (now
+verified)** vs **Windows-write (owner-supervised, pending)**.
+
+## Windows-runtime session (2026-07-15) — what actually ran on the box
+
+First time the tree left the Mac. Toolchain confirmed: rustc/cargo 1.97 (msvc), bun 1.3, VS 2022 +
+Win SDK 10.0.26100, WebView2 150. Results:
+
+**Green natively on Windows:** `cargo check --workspace`; `cargo test --workspace` (683 tests, 0
+fail); `bun test` (632); `bun run lint`; `bun run check:bindings` (no drift); `bun run build`;
+`bun run tauri:dev` (app boots) and `bun run tauri:build` (NSIS installer).
+
+**Two real Windows-only bugs fixed** (both invisible to the Mac cross-check):
+1. `cargo test`/`check:bindings` crashed at load with `STATUS_ENTRYPOINT_NOT_FOUND` — tao/wry
+   import comctl32 v6-only symbols but test binaries carry no manifest → bound System32's v5.82.
+   Fix: embed a Common-Controls v6 manifest into test targets (`src-tauri/build.rs`).
+2. `wallpaper.getScreens` failed with `REGDB_E_CLASSNOTREG` — `CLSID_DesktopWallpaper` is a
+   local-server surrogate (no InprocServer32), so `CLSCTX_INPROC_SERVER` is refused. Fix:
+   `CLSCTX_ALL` in `topology.rs` + `wallpaper.rs` (commit `7f56a20`).
+
+**Read-only `[WINDOWS-VERIFY]` surface — VERIFIED on the live desktop** (`verify_readonly` example,
+all PASS): STA actor (#1) · known folders (#2, user + public desktop) · scan+classify (#3, 28 real
+items, Shortcut/UrlShortcut/RecycleBin) · `IDesktopWallpaper` topology + wallpaper capture (#8 read)
+· desktop geometry 2560×1440 + 28 live positions (#9) · icon source extraction (`source.rs` → real
+256px PNG) · fingerprint read. Startup crash-recovery (#20) runs the real `dm-windows` adapters.
+The `.lnk` read path (IShellLinkW / ShellLink `CLSCTX_INPROC_SERVER`) is runtime-confirmed correct.
+
+**M8 packaging — now produces an installer:** `tauri build` → `DeskMakeover_<ver>_x64-setup.exe`
+(NSIS, per-user, 14.4 MB) bundling the app + `dm-elevated.exe` sidecar (requireAdministrator
+manifest embedded) + WebView2 `downloadBootstrapper`. gen-bindings dev tool excluded from the
+bundle. See §Packaging for what remains (version, signing).
+
+**Still UNVERIFIED — owner-supervised WRITE gates** (no automation may trigger): icon-bake
+apply/restore (#4/#5) · elevated overlay HKLM + UAC (#7) · wallpaper apply/restore (#19) ·
+kill-point battery on a real desktop (#6) · resident auto-format loop · calm W3 · `ItemKind::System`
+apply. These need a human clicking bake/apply/restore on the box.
 
 ## Milestone status
 
 | Milestone | Status | Remaining |
 |---|---|---|
-| **M3/M4 Windows platform layer (blind-write)** | Code DONE, **runtime 0% verified** | Mac tests green + msvc-clean, but the whole `[WINDOWS-VERIFY]` checklist (9 items) + 11 blind-audit follow-ups are all pending the Windows box. (`shell/layout.rs` positions + `source.rs` icon extraction bodies are now blind-written — Ship-blockers §1 — so the remaining gap is `ItemKind::System` Unsupported cases + runtime verification.) |
+| **M3/M4 Windows platform layer (blind-write)** | Code DONE, **READ surface runtime-verified (2026-07-15), WRITE surface pending** | The read-only `[WINDOWS-VERIFY]` items (STA #1, known folders #2, scan #3, topology #8-read, geometry/positions #9, `source.rs` extraction, fingerprint) now PASS on a real box (`verify_readonly` example); startup recovery #20 runs. Fixed the `IDesktopWallpaper` CLSCTX bug found here. Remaining: the mutating items (#4 `.lnk` apply, #5 url/folder/wrapper/bin apply, #6 kill-point, #7 overlay/elevated, #19 wallpaper apply) are owner-supervised + unrun; `ItemKind::System` still `Unsupported`. |
 | **M5 icon core** | ✅ DONE + byte-certified (real corpus) | ICON-5/9/11 dead-code questions RESOLVED (owner 2026-07-13 — see §Open owner decisions). |
 | **M6 kernel-speed + WASM cutover** | ✅ EXECUTED (WASM is the only foreground production pixel path; resident/background uses the byte-identical native `dm-icon-core` build) | Physical deletion of the frozen TS compositor (`src/icon-compositor/*.ts`, 10 files) held to M8. |
 | **M6-WIRE Wave A (wallpaper)** | DONE **on Mac only** | All Windows COM/WIC/topology (`topology.rs`, `decode.rs`, `wallpaper.rs`) `[WV]`. |
@@ -42,7 +90,7 @@ pass. So this doc splits each gap into **Mac-closable now** vs **Windows-runtime
 | **M6-WIRE Wave C (Windows handoff doc)** | **NOT STARTED** | The Windows handoff doc has not been written (its shape is sketched in `docs/plans/2026-07-12-m6-wire-host.md` §8; the planned output path does not exist yet). No systematic Windows verification recipe yet. |
 | **M7 resident auto-format** | **DECISION CORE DONE + HARDENED (Mac, 2026-07-13)** — platform bodies + tray [WV] | `dm-resident` built + full test battery: reconciler (T6), tray SM (T7), pending queue (T5), consent ladder, stability probe, privileged red-line (T12). Plus style_resolve + native_bake (T1 port), version_switch (T10, wired `icons.switchVersion`), reset toggle-coupling, resident precondition, T2 WindowsActivityMonitor (judge-2, msvc-clean). **Two codex adversarial rounds** (apply-path + policy) → 2🔴+9🟠+5🟡 ALL closed: propose→apply snapshot-CAS contract, §14 scope re-check at every write entry + shared path-ancestry, unconditional recovery, busy-abort, v1-always-proposes, atomic reset, nanosecond stability. **Remaining = [WV] platform bodies:** T8 tray+windowless residency wiring (unwritten), T11 tray bitmaps (uncreated), the watcher→reconciler→driver LOOP wiring, T2's judge-1 WinEventHook precision layer. |
 | **Preset packages (spec 09, 2026-07-15)** | ✅ **Rust + web DONE (Mac-green, two codex passes closed)** | `.dmpreset` reader/writer + user library + bridge schema 9 + `dmpreset://` protocol + `tauri-plugin-dialog` picker grants. All fs/zip is `std`/`zip`-crate cross-platform, BUT the Windows I/O surface (native pickers, WebView2 protocol + file-drop, NTFS swap/recovery, MAX_PATH) is a fresh `[WINDOWS-VERIFY]` block — see §Preset packages [WINDOWS-VERIFY]. |
-| **M8 release engineering** | **NOT STARTED** | No installer / signing / updater; version `0.0.0`. (The `legacy/` .NET tree was deleted early, 2026-07-14, ahead of M8.) See §Packaging. |
+| **M8 release engineering** | **INSTALLER BUILDS (2026-07-15)** — signing/version owner-gated | `tauri build` produces a working per-user NSIS installer (app + `dm-elevated` sidecar w/ requireAdministrator manifest + WebView2 downloadBootstrapper; gen-bindings excluded). Remaining: owner names the version (still `0.0.0`), Authenticode signing, updater, per-machine-vs-per-user final call. See §Packaging. |
 | **M1 go/no-go spikes (Windows)** | PARTIAL | Only Spike 4 (tri-target pixel, Mac) done. Spikes 1/2/3/5 (STA+IFolderView, SysListView32 layout, elevated-helper roundtrip, kill-injected `.lnk`) are Windows-bound and **never run** — the ADR-0019 "gate for everything after" was never actually gated on a real box. |
 | **清爽 / calm-Windows module** (ADR-0023, spec 08) | **W0/W1/W2 DONE + codex-approved (Mac)** | W0 web (codex R8) · W1 Rust decision core + bridge schema 8 (codex R7) · W2 two Windows platform ports blind-written + msvc-clean (codex R5), all Mac-green. **W3 cert lab = the open ADR-0023 D2 gate** (real Windows box: inspect→apply→verify→reboot→restore ladder + allowlist + per-recipe `policy_guards` + GPP ruling). Capability-gated release: W3 green → the write slice rides v1; else v1 ships the guided-only 「教你关」 face. |
 
@@ -74,9 +122,11 @@ Ordered by dependency. Tagged **[MAC]** (closable + verifiable here) or **[WIN]*
    🟠12 unpredictable atomic scratch files; 🟡10 degraded tile clears; 🟡11 mock DOM-gate. All the
    original OPEN items (ledger-aware extraction, Recycle Bin injection, per-item degradation, mono
    HICON, long-path fallback) are DONE.
-2. **[WIN] WebView2 bridge-transport** — the `a339196` fix (route via `isTauri()`, not
-   `window.chrome.webview`) is itself `[WV]`. If wrong, the app never boots on Windows. #1 thing to
-   confirm on the box.
+2. ~~**[WIN] WebView2 bridge-transport**~~ → ✅ **VERIFIED (2026-07-15).** The `a339196` fix (route
+   via `isTauri()`, not `window.chrome.webview`) is correct: `bun run tauri:dev` on a real box boots,
+   the frontend routes commands over the bridge (settings/wallpaper/icons all invoke real Rust), and
+   the three custom protocols (`dmwallpaper://`/`dmicon://`/`dmpreset://`) are registered. The app no
+   longer never-boots — it boots.
 3. **[WIN] `secure_dir` SDDL owner** (`de1617e`, `O:BA`) — without it every apply/restore after the
    first permanently fails on stock Windows. `[WV]`.
 4. **[MAC→WIN] Pre-first-apply snapshot** must fire + persist durably BEFORE the first apply, or the
@@ -106,7 +156,14 @@ Ordered by dependency. Tagged **[MAC]** (closable + verifiable here) or **[WIN]*
 | ~~`WindowsActivityMonitor` (T2)~~ | ✅ judge-2 synchronous poll written + msvc-clean; judge-1 WinEventHook precision layer `[WV]` | dm-windows |
 | `src-tauri` tray (T8/T11) | tray-icon feature, §12 menu, windowless close handler, autostart, tray bitmaps — NOT WIRED | src-tauri |
 
-## `[WINDOWS-VERIFY]` surface (blind-written, msvc-clean, never run)
+## `[WINDOWS-VERIFY]` surface (blind-written, msvc-clean)
+
+> **2026-07-15 update:** the READ paths below now RAN and passed on a real box (see §Windows-runtime
+> session): `shell/{layout,known_folders,scan}`, `state_reader.rs` (fingerprint), `source.rs`
+> (extraction), `topology.rs`, `wallpaper.rs` (capture), `com/{sta_actor,apartment}`, and the
+> `src-tauri` boot composition + recovery. What is still "never run" is the **write** half — the
+> `apply/*` writers, the elevated helper, `overlay.rs`, `durable.rs`, wallpaper set/restore — because
+> those are owner-supervised. Reproduce the read pass with `verify_readonly`.
 
 Grouped; each hides a real Win32/COM/WIC/registry seam. Full "run this / observe that" recipes owed
 in the (unwritten) Windows handoff doc; the running checklists live in
@@ -181,16 +238,22 @@ Comet-marked icon it must match the WASM preview (byte-parity is the standing di
 `dm-operations` styleJson parser learned `"File"` / `"Comet"`, so a persisted ②③ recipe using them
 round-trips through the native resident path too.
 
-## Packaging / release gaps (M8 — all undone)
+## Packaging / release gaps (M8 — installer now builds; residuals below)
 
+- ✅ **Installer config DONE (2026-07-15)** — `tauri.conf.json` bundle: `targets:[nsis]`,
+  `externalBin:[binaries/dm-elevated]`, `webviewInstallMode:downloadBootstrapper`,
+  `nsis.installMode:currentUser`. `bun run tauri:build` → `DeskMakeover_<ver>_x64-setup.exe` (14.4 MB).
+- ✅ **`dm-elevated.exe` NOW packaged** — `externalBin` staged by `scripts/stage-sidecar.mjs`
+  (built into `build:ship`); the requireAdministrator manifest is embedded by the new
+  `crates/dm-elevated/build.rs` (linker `/MANIFEST:EMBED` + `/MANIFESTUAC:NO` + `/MANIFESTINPUT`).
+  7z-confirmed inside the installer; Tauri strips the triple suffix so it lands as `dm-elevated.exe`
+  next to the main binary (where `lib.rs` resolves it). Self-contained (dumpbin: no app-folder DLLs).
 - **Version `0.0.0`** in `src-tauri/tauri.conf.json` + root `package.json`. Owner names the first release number.
-- **No installer config** — no NSIS/WiX block, no `webviewInstallMode` (WebView2 bootstrapper), no per-machine/per-user choice.
-- **No code signing** — no Authenticode / RFC-3161 timestamping.
-- **`dm-elevated.exe` not packaged** — `src-tauri` has no `externalBin`/sidecar/resources entry; the
-  overlay path resolves the helper at runtime from `current_exe().parent()/dm-elevated.exe`, so
-  packaging MUST build + place it (with its `requireAdministrator` manifest) next to the main binary.
-- **M7 build deps missing** — `tauri` features has no `"tray-icon"`; no `tauri-plugin-notification`,
-  no autostart plugin (spec 07 §16 needs all three). No tray bitmap assets.
+- **No code signing** — no Authenticode / RFC-3161 timestamping. Installer ships UNSIGNED until the owner supplies the cert.
+- **Install-mode decision** — defaulted to `currentUser` (no-admin, matches the main-UI-runs-unprivileged design). Owner may want per-machine or a both-choice installer.
+- ~~**M7 build deps missing — no `tray-icon`**~~ → already present (`tauri` features `["tray-icon"]`,
+  commit `f69935b`); tray registers on boot. Still missing: `tauri-plugin-notification`, an autostart
+  plugin, tray bitmap assets (spec 07 §16).
 - **`.dmpreset` file association not registered** — the installer needs a `fileAssociations` block
   (NSIS/WiX) + a single-instance argv handler so double-clicking a package opens the app and imports
   it (spec 09 §6). Until built, import is picker / drag-drop only (`tauri-plugin-dialog` IS now a
@@ -282,11 +345,13 @@ built to look busy. Only **Release identity** stays owner-only (it cannot be res
 ## Honest summary
 
 The Mac-side product (UI, icon core, wallpaper wiring, icon bridge, storage foundation, M7 resident
-decision core, calm W0/W1/W2) is genuinely built and codex-converged. **Essentially nothing on the
-Windows ship target has been validated at runtime.** The icon-bridge contract CONVERGED (codex R12
-Approve); the `source.rs` extractor + `exportCompare` are done; the M7 decision core is built. The
-remaining Mac-closable work is: author the Windows handoff doc (so the box work is a checklist) and
-finish the Mac-buildable halves of the resident platform wiring. Everything else is irreducibly
-Windows-runtime: the §8a durability defects, the M1 spikes, the calm **W3 cert lab** (ADR-0023 D2
-gate), the whole `[WINDOWS-VERIFY]` battery, and M8 packaging — the final integration pass on a real,
-logged-in Windows box.
+decision core, calm W0/W1/W2) is genuinely built and codex-converged. **As of 2026-07-15 the code
+also builds, tests (683), boots, and runs its READ surface on a real Windows box** — the app is no
+longer unproven on the ship target; it launches, the WebView2 bridge works, and the whole read-only
+`[WINDOWS-VERIFY]` surface passes (`verify_readonly` example). `tauri build` produces a working NSIS
+installer (M8). What remains is genuinely Windows-**write**-runtime, and it is owner-supervised — no
+automation may click bake/apply: the icon-bake apply/restore, the elevated overlay HKLM + UAC
+roundtrip, the wallpaper apply/restore, the §8a durability defects, the kill-point battery on a real
+desktop, the M1 spikes, the calm **W3 cert lab** (ADR-0023 D2 gate), and M8 release identity
+(version + signing). The final integration pass is now a human clicking the supervised gates on the
+logged-in box, plus the owner-only release identity.

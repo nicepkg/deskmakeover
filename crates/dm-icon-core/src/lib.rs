@@ -24,6 +24,10 @@ pub mod analysis;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod batch;
 pub mod color;
+// Guarded sRGB-encode byte LUT (M6 kernel-speed Phase 5) — `fast` build only; the
+// scalar reference keeps the exact `libm::pow` in `color::srgb_encode`.
+#[cfg(feature = "fast")]
+pub mod srgb_lut;
 pub mod compose;
 pub mod config;
 pub mod filters;

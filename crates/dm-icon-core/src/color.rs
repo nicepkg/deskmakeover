@@ -51,7 +51,42 @@ pub fn srgb_decode(value: u8) -> f64 {
 }
 
 /// Linear-light [0,1] → sRGB byte (color.ts `srgbEncode`; exact transfer curve).
+///
+/// The DEFAULT (scalar) build runs the exact `libm::pow` body ([`srgb_encode_scalar`])
+/// — the determinism reference the four-way cert diffs `fast` against. The `fast`
+/// build serves it through the guarded byte LUT (`srgb_lut`), the biggest remaining
+/// per-pixel transcendental (called 3× per output pixel in `sampling.rs`). Both share
+/// `srgb_encode_scalar`, so the LUT is built FROM the exact bytes it must equal and
+/// can only diverge via an index-enclosure bug the cert catches. See `srgb_lut` for
+/// the byte-safety proof.
+#[cfg(not(feature = "fast"))]
 pub fn srgb_encode(linear: f64) -> u8 {
+    srgb_encode_scalar(linear)
+}
+
+/// `fast`: quantize `clamp01(linear)` to a LUT cell and return its proven byte, or —
+/// for a cell straddling a byte transition — run the exact scalar body. Byte-identical
+/// to the scalar `srgb_encode` for EVERY input (incl. out-of-range and NaN: both clamp
+/// then map to a byte, and `NaN as usize == 0` lands the byte-0 cell that scalar also
+/// yields). The `.min(N-1)` folds the `v == 1.0` index `N` into the top cell.
+#[cfg(feature = "fast")]
+pub fn srgb_encode(linear: f64) -> u8 {
+    let v = clamp01(linear);
+    let idx = ((v * crate::srgb_lut::N_F64) as usize).min(crate::srgb_lut::N - 1);
+    let cell = crate::srgb_lut::table()[idx];
+    if cell <= u8::MAX as u16 {
+        cell as u8
+    } else {
+        srgb_encode_scalar(v)
+    }
+}
+
+/// The exact scalar sRGB-encode body — the frozen `color.ts srgbEncode` transfer
+/// curve, UNCHANGED. Shared by the scalar `srgb_encode`, the `fast` fallback path,
+/// and the `srgb_lut` table builder, so a cached cell can only disagree via an
+/// index-enclosure bug, never a formula drift. `clamp01` is idempotent, so the
+/// `fast` fallback (already-clamped `v`) stays byte-identical to the scalar entry.
+pub(crate) fn srgb_encode_scalar(linear: f64) -> u8 {
     let v = clamp01(linear);
     let srgb = if v <= 0.0031308 {
         v * 12.92
@@ -414,5 +449,40 @@ mod tests {
         let (l, a, b) = to_ok_lab(255, 255, 255);
         assert!((l - 1.0).abs() < 1e-6);
         assert!(a.abs() < 1e-7 && b.abs() < 1e-7);
+    }
+
+    /// The guarded-LUT `srgb_encode` (fast) must equal the exact scalar `pow` body
+    /// for EVERY input: a dense `n/65535` sweep, all `N` cell endpoints (where a
+    /// straddle/enclosure bug bites), the branch point `0.0031308` and its f64
+    /// neighbours, the endpoints, and clamped out-of-range. Exact `u8` equality — a
+    /// single mismatch is an enclosure bug, not a rounding excuse.
+    #[cfg(feature = "fast")]
+    #[test]
+    fn fast_lut_srgb_encode_equals_scalar_over_dense_sweep() {
+        for n in 0..=65_535u32 {
+            let v = n as f64 / 65_535.0;
+            assert_eq!(srgb_encode(v), srgb_encode_scalar(v), "grid mismatch at v={v} (n={n})");
+        }
+        for i in 0..crate::srgb_lut::N {
+            let v_lo = i as f64 / crate::srgb_lut::N_F64;
+            assert_eq!(srgb_encode(v_lo), srgb_encode_scalar(v_lo), "cell-lo mismatch at i={i}");
+        }
+        let branch = 0.0031308_f64;
+        for v in [
+            0.0,
+            1.0,
+            branch,
+            f64::from_bits(branch.to_bits() - 1),
+            f64::from_bits(branch.to_bits() + 1),
+            -0.5,
+            2.0,
+            -1e9,
+            1e9,
+            f64::MIN_POSITIVE,
+        ] {
+            assert_eq!(srgb_encode(v), srgb_encode_scalar(v), "edge mismatch at v={v}");
+        }
+        // NaN: both paths must resolve identically (scalar → 0, LUT → byte-0 cell).
+        assert_eq!(srgb_encode(f64::NAN), srgb_encode_scalar(f64::NAN));
     }
 }

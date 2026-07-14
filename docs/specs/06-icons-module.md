@@ -153,7 +153,8 @@ now the certifying oracle for the Rust core, ADR-0019.)
     see spec 02 §two-axis + `docs/product/two-axis-colour-spec.md`.)* 单色 gains a 渐变/纯色 depth
     (`monoStyle`): 纯色 = 极致单色, the
     SEGMENTED subject in one flat colour on one flat plate. Subject/background
-    segmentation (`icon-compositor/segment.ts`), layered Mono composition, the
+    segmentation (authored in `dm-icon-core`; frozen TS `icon-compositor/segment.ts` = oracle),
+    layered Mono composition, the
     concentric-pair swatch grammar and the full catalog (shapes/colours/marks/
     filters) live in **spec 02 §Shape System / §Colour Treatments / §Shortcut
     Marks**. `ConfigDto` grew `monoStyle: Tonal|Flat` + `plateColor: string|null`

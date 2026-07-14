@@ -140,8 +140,8 @@ hairline dividers) at macOS density — no empty slabs, no duplicated identity b
   the slash-circle law, see Addenda); 「更多形状」fold reveals the other 5 (书签 ·
   柠檬 · 菱形 · 花瓣 · 卵石). **11 options total.** All chip names Chinese-first.
 - **Filter axis**: all five (无/光泽/玻璃/像素/贴纸) stay visible (owner D6; 光泽/Gloss
-  went live 2026-07-09 — an aqua specular sweep over the upper third, engine in
-  `icon-compositor/filters.ts`).
+  went live 2026-07-09 — an aqua specular sweep over the upper third; authored in
+  `dm-icon-core` (ADR-0019), the frozen TS `icon-compositor/filters.ts` is its parity oracle).
 - **Wallpaper hero**: clarity-first narrative; **blank left-drag on the canvas
   CREATES a zone directly** (ADR-0013 amendment 2026-07-10 — the explicit-tool
   model was reversed; pan is middle-drag / compare-hold). Zone list never leaks
@@ -235,10 +235,11 @@ The app logo always wears the 苹果 clip (title bar 24, coach 26, about 56).
 ## Default Composition — Colour Field (ADR-0016; FINAL = the owner's five-step law, 2026-07-10)
 
 **Iron laws:** subject pixels are NEVER recoloured; an icon's OWN background is
-never altered; every derived decision flows from ONE per-icon metadata
-extraction (`icon-compositor/profile.ts` — classification, own background
-colour/lightness, subject theme colour/lightness, subject mask; WeakMap-memoized,
-consumed by plates, shadows, the seed pipeline and any future stage).
+never altered; every derived decision flows from ONE per-icon metadata extraction
+(authored in `dm-icon-core::profile`, ADR-0019; the frozen TS `icon-compositor/profile.ts` is
+its 1:1 parity oracle — classification, own background colour/lightness, subject theme
+colour/lightness, subject mask; memoized, consumed by plates, shadows, the seed pipeline and
+any future stage).
 
 The five steps (each icon takes the FIRST matching step):
 

@@ -1,13 +1,16 @@
 import { X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import type { ZoneDto } from '@/bridge/types'
+import { EmojiPicker } from '@/components/panels/wallpaper-panel-popovers'
 import { resolveAccent } from '@/compositor/material'
 import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 // Zone rows in layer-list grammar (Figma/Finder): quiet transparent rows that
 // wash on hover, wash+ink when selected. The leading swatch wears the zone's
-// ACCENT (the categorization signal, spec 04 v2.0); emoji rides the title text.
+// ACCENT (the categorization signal, spec 04 v2.0); the emoji slot BESIDE the
+// title text IS the emoji editor (round 3 — a label is ONE concept: emoji +
+// text edit in one place; the picker no longer hides in the style section).
 // Titles are visible-editable; ✕ shows on hover only. Grid units never shown.
 
 // Every row settles to this height (enter/exit animate from 0). It is the SINGLE
@@ -36,12 +39,14 @@ export function ZoneList({
   selected,
   onSelect,
   onRename,
+  onEmoji,
   onDelete,
 }: {
   zones: ZoneDto[]
   selected: string | null
   onSelect: (id: string) => void
   onRename: (id: string, title: string) => void
+  onEmoji: (id: string, emoji: string | null) => void
   onDelete: (id: string) => void
 }) {
   const t = useT()
@@ -94,7 +99,19 @@ export function ZoneList({
           )}
         >
           <AccentSwatch accent={resolveAccent(z, i)} outline={z.material === 'Outline'} />
-          {z.emoji && <span className="shrink-0 text-[13px] leading-none">{z.emoji}</span>}
+          {/* The emoji slot IS the editor (one label, one place). Emoji-less
+              rows reveal the slot on hover/selection so it stays discoverable
+              without cluttering every row. */}
+          <span
+            onClick={(e) => e.stopPropagation()}
+            className={cn('shrink-0', !z.emoji && selected !== z.id && 'hidden group-hover:block')}
+          >
+            <EmojiPicker
+              value={z.emoji}
+              noneLabel={t('Zone_EmojiNone')}
+              onPick={(emoji) => onEmoji(z.id, emoji)}
+            />
+          </span>
           <input
             value={z.title}
             onChange={(e) => onRename(z.id, e.currentTarget.value)}

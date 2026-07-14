@@ -360,11 +360,19 @@ export type ScrimTone = 'Dark' | 'Light' | 'Tint' | 'Custom'
 export type TitleSize = 'S' | 'M' | 'L'
 /** Adaptive tone: Auto samples the wallpaper under the zone. */
 export type ZoneTone = 'Auto' | 'Light' | 'Dark'
-/** Material finishes (spec 04 §4.1, designer set 2026-07-09). All keep the
- *  adaptive tone sampling; they differ in how the sample becomes paint. */
-export type ZoneMaterial = 'Frost' | 'Luminous' | 'Solid' | 'Halo' | 'Outline'
-/** Title styles (spec 04 §4.2): pill chip / bare label / folder tab / header bar. */
-export type ZoneTitleStyle = 'Chip' | 'Bare' | 'Tab' | 'Bar'
+/** Material finishes (spec 04 §4.1 round 3, 2026-07-15) — six finishes, one
+ *  named axis each: Outline 描边 (contour) · Frost 磨砂 (blurred glass) ·
+ *  LiquidGlass 流体玻璃 (physical refraction, compositor/liquid-glass-filter.ts)
+ *  · Fluted 棱纹玻璃 (vertical fluted glass) · Paper 素笺 (warm matte paper)
+ *  · Brushed 拉丝金属 (anisotropic brushed metal). All keep the adaptive tone
+ *  sampling. Retired: Luminous→Frost, Solid→Paper, Halo→Frost, and the
+ *  owner-cut Glaze→Fluted / Float→Brushed (migrated on load —
+ *  lib/wallpaper-assemble.ts). Front-end-only — the zone/look model never
+ *  crosses the Rust bridge, so this is not in generated.ts. */
+export type ZoneMaterial = 'Frost' | 'LiquidGlass' | 'Fluted' | 'Paper' | 'Brushed' | 'Outline'
+/** Title styles (spec 04 §4.2 round 3): hidden / etched glass lozenge / pill
+ *  chip / bare label / header bar. Retired: Tab→Chip (migrated on load). */
+export type ZoneTitleStyle = 'None' | 'Etched' | 'Chip' | 'Bare' | 'Bar'
 
 export interface ZoneDto {
   /** Stable identity — selection, reconciliation and exit animations key on this. */
@@ -381,11 +389,13 @@ export interface ZoneDto {
   tone: ZoneTone
   material: ZoneMaterial
   titleStyle: ZoneTitleStyle
-  /** Baked outer drop shadow (投影 finish; ignored by Halo/Outline). */
+  /** Baked outer drop shadow (投影 finish; ignored by Outline, always-on for
+   *  Float, drives the shader shadow ring for LiquidGlass). */
   shadow: boolean
-  /** Fill alpha override; null = the material's tone default. */
+  /** Fill alpha override; null = the material's tone default. LiquidGlass maps
+   *  this to the refraction shader's Tint (0 = pure refraction). */
   fillOpacity: number | null
-  /** Per-zone corner radius, 8–28 px (desktop pixels). */
+  /** Per-zone corner radius, 0–60 px (desktop pixels; render caps ≤ shortestSide/2). */
   cornerRadius: number
   titleSize: TitleSize
   /** null = bundled default sans (HarmonyOS Sans SC / Inter). */

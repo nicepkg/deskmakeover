@@ -53,7 +53,10 @@ export function loadPersistedLooks(): Map<string, PersistedLook> {
       if (!raw) continue
       try {
         const parsed = JSON.parse(raw) as PersistedLook
-        if (parsed?.look && parsed?.bounds) map.set(key.slice(LOOK_KEY_PREFIX.length), parsed)
+        if (parsed?.look && parsed?.bounds) {
+          migrateLook(parsed.look)
+          map.set(key.slice(LOOK_KEY_PREFIX.length), parsed)
+        }
       } catch {
         // Corrupt entry: skip it, keep the rest of the persistence readable.
       }
@@ -62,6 +65,26 @@ export function loadPersistedLooks(): Map<string, PersistedLook> {
     // Storage unavailable (SSR / privacy mode): reconcile against an empty map.
   }
   return map
+}
+
+/** Round-3 lineup migration (2026-07-15, one-way, silent): retired finishes and
+ *  the retired Tab title map to their heirs. Includes the same-day owner cuts
+ *  (Glaze→Fluted, Float→Brushed; Halo re-aimed at Frost — soft translucent
+ *  family). Mutates in place on the freshly parsed object — persisted entries
+ *  re-save in new terms on the next write. */
+const MATERIAL_MIGRATION: Record<string, string> = {
+  Luminous: 'Frost',
+  Solid: 'Paper',
+  Halo: 'Frost',
+  Glaze: 'Fluted',
+  Float: 'Brushed',
+}
+function migrateLook(look: LookDto): void {
+  for (const zone of look.zones) {
+    const material = MATERIAL_MIGRATION[zone.material as string]
+    if (material) zone.material = material as LookDto['zones'][number]['material']
+    if ((zone.titleStyle as string) === 'Tab') zone.titleStyle = 'Chip'
+  }
 }
 
 /** Persist one monitor's draft look, keyed by device path (the seam that replaced the

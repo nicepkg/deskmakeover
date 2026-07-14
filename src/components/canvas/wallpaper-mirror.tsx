@@ -8,6 +8,9 @@ import { useCanvasView } from '@/lib/canvas-view'
 import { cellOf, createFromDrag, magnetizeMove, moveZone, nudgeZone, overlapRegions, resizeZone } from '@/lib/zone-math'
 import type { HandleId, MagnetGuide, ZoneRect } from '@/lib/zone-math'
 import type { WallpaperCompositor } from '@/compositor/renderer'
+import { MATERIAL_TITLE_DEFAULT } from '@/compositor/material'
+import { EMOJI_PAGES, EmojiPicker } from '@/components/panels/wallpaper-panel-popovers'
+import { MenuRow } from './canvas-menu'
 import { TaskbarStrip } from './taskbar-strip'
 import type { ZoneMeta } from '@/compositor/renderer'
 import { useWallpaperCompositor } from './use-wallpaper-compositor'
@@ -44,7 +47,7 @@ export function WallpaperMirror() {
   const canUndo = useWallpaper((s) => s.canUndo)
   const canRedo = useWallpaper((s) => s.canRedo)
   const reduced = useReducedMotion()
-  const { mutateZone, addZone, duplicateZone, select, setComparing, beginInteraction, endInteraction, undo, redo } =
+  const { mutateZone, addZone, duplicateZone, removeZone, applyToAllZones, select, setComparing, beginInteraction, endInteraction, undo, redo } =
     useWallpaper.getState()
 
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
@@ -57,6 +60,7 @@ export function WallpaperMirror() {
   const [ready, setReady] = React.useState(false)
   const [rubber, setRubber] = React.useState<{ sx: number; sy: number; ex: number; ey: number } | null>(null)
   const [rename, setRename] = React.useState<{ id: string; value: string } | null>(null)
+  const [zoneMenu, setZoneMenu] = React.useState<{ id: string; x: number; y: number } | null>(null)
   const [guides, setGuides] = React.useState<MagnetGuide[]>([])
   const [overlaps, setOverlaps] = React.useState<ZoneRect[]>([])
   const [zoneMeta, setZoneMeta] = React.useState<Record<string, ZoneMeta>>({})
@@ -193,8 +197,23 @@ export function WallpaperMirror() {
     setRename({ id, value: zones.find((z) => z.id === id)?.title ?? '' })
   }
 
+  /** Right-click a zone (verified prior no-op) → select it + open the context
+   *  menu at the cursor, host coords, clamped inside the viewport. Suppressed
+   *  mid-gesture (spec 04 §3 round 3). */
+  const openZoneMenu = (e: React.MouseEvent, id: string) => {
+    if (interaction.current) return
+    select(id)
+    const host = hostRef.current!.getBoundingClientRect()
+    setZoneMenu({
+      id,
+      x: Math.min(e.clientX - host.left, Math.max(8, host.width - 200)),
+      y: Math.min(e.clientY - host.top, Math.max(8, host.height - 250)),
+    })
+  }
+
   const startZoneGesture = (e: React.PointerEvent, id: string, kind: 'move' | 'resize', handle?: HandleId) => {
     e.stopPropagation()
+    setZoneMenu(null)
     if (e.button !== 0) return
     if (rename && rename.id !== id) commitRename()
     const { cx, cy } = toCell(e)
@@ -217,6 +236,11 @@ export function WallpaperMirror() {
   }
 
   const onHostPointerDown = (e: React.PointerEvent) => {
+    // An open context menu absorbs the first click-away (no accidental rubber band).
+    if (zoneMenu) {
+      setZoneMenu(null)
+      return
+    }
     if ((e.target as HTMLElement).closest('[data-zone]')) return
     const host = e.currentTarget as HTMLElement
     if (e.button === 1 || (e.button === 0 && comparing)) {
@@ -339,6 +363,7 @@ export function WallpaperMirror() {
         onPointerUp={onHostPointerUp}
         onPointerCancel={resetGesture}
         onLostPointerCapture={resetGesture}
+        onContextMenu={(e) => e.preventDefault()} // parity with the icons canvas — never the OS menu
         {...dropHandlers}
       >
         {/* Desktop space */}
@@ -400,6 +425,7 @@ export function WallpaperMirror() {
                   renameValue={rename?.id === z.id ? rename.value : ''}
                   onMoveDown={(ev, id) => startZoneGesture(ev, id, 'move')}
                   onResizeDown={(ev, id, h) => startZoneGesture(ev, id, 'resize', h)}
+                  onMenu={openZoneMenu}
                   onTitleDoubleClick={startRename}
                   onRenameChange={(value) => setRename((r) => (r ? { ...r, value } : r))}
                   onRenameCommit={commitRename}
@@ -421,6 +447,118 @@ export function WallpaperMirror() {
             <TaskbarStrip height={grid.taskbarHeight} />
           </div>
         </div>
+
+        {/* Zone context menu (spec 04 §3 round 3) — host coords, icons-canvas
+            menu dialect. Delete is red with NO confirm: removeZone already
+            ships the 已删除·撤销 toast. */}
+        {zoneMenu && (() => {
+          const mz = look.zones.find((z) => z.id === zoneMenu.id)
+          if (!mz) return null
+          const hidden = mz.titleStyle === 'None'
+          return (
+            <div
+              className="absolute z-20 w-[188px] rounded-xl border border-hair bg-popover p-1.5 shadow-2xl"
+              style={{ left: zoneMenu.x, top: zoneMenu.y }}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              <p className="truncate px-2 py-1 text-[11px] font-semibold text-t1">
+                {mz.emoji ? `${mz.emoji} ${mz.title}` : mz.title}
+              </p>
+              <MenuRow
+                onClick={() => {
+                  setZoneMenu(null)
+                  startRename(mz.id)
+                }}
+              >
+                {t('Zone_MenuRename')}
+              </MenuRow>
+              {/* Quick emoji strip (icons menu's inline-swatch grammar) + the
+                  FULL shared EmojiPicker at the end — every emoji, custom
+                  input and 无 stay reachable from the menu (codex r3 P3). */}
+              <div className="flex items-center gap-0.5 px-1.5 pb-1 pt-0.5">
+                {EMOJI_PAGES[0].emojis.slice(0, 5).map((em) => (
+                  <button
+                    key={em}
+                    type="button"
+                    onClick={() => {
+                      mutateZone(mz.id, (z) => ({ ...z, emoji: z.emoji === em ? null : em }))
+                      setZoneMenu(null)
+                    }}
+                    className={cn(
+                      'flex h-6 w-6 items-center justify-center rounded-[6px] text-[13px] hover:bg-raised-hov',
+                      mz.emoji === em && 'bg-wash-chip',
+                    )}
+                  >
+                    {em}
+                  </button>
+                ))}
+                <EmojiPicker
+                  value={mz.emoji}
+                  noneLabel={t('Zone_EmojiNone')}
+                  onPick={(emoji) => {
+                    mutateZone(mz.id, (z) => ({ ...z, emoji }))
+                    setZoneMenu(null)
+                  }}
+                />
+              </div>
+              <MenuRow
+                onClick={() => {
+                  mutateZone(mz.id, (z) => ({
+                    ...z,
+                    titleStyle: hidden ? MATERIAL_TITLE_DEFAULT[z.material] : 'None',
+                  }))
+                  setZoneMenu(null)
+                }}
+              >
+                {t(hidden ? 'Zone_MenuShowTitle' : 'Zone_MenuHideTitle')}
+              </MenuRow>
+              <MenuRow
+                onClick={() => {
+                  // Offset the copy one cell down-right (clamped) so it lands visible.
+                  const copyId = duplicateZone(mz.id, {
+                    cellX: Math.max(0, Math.min(mz.cellX + 1, grid.columns - mz.cellsWide)),
+                    cellY: Math.max(0, Math.min(mz.cellY + 1, grid.rows - mz.cellsTall)),
+                  })
+                  if (copyId) select(copyId)
+                  setZoneMenu(null)
+                }}
+              >
+                {t('Zone_MenuDuplicate')}
+              </MenuRow>
+              {look.zones.length > 1 && (
+                <MenuRow
+                  onClick={() => {
+                    applyToAllZones({
+                      tone: mz.tone,
+                      material: mz.material,
+                      titleStyle: mz.titleStyle,
+                      shadow: mz.shadow,
+                      fillOpacity: mz.fillOpacity,
+                      cornerRadius: mz.cornerRadius,
+                      titleSize: mz.titleSize,
+                      fontFamily: mz.fontFamily,
+                    })
+                    setZoneMenu(null)
+                  }}
+                >
+                  {t('Zone_ApplyAll')}
+                </MenuRow>
+              )}
+              <div className="my-1 border-t border-hair" />
+              <MenuRow
+                danger
+                onClick={() => {
+                  setZoneMenu(null)
+                  removeZone(mz.id)
+                }}
+              >
+                {t('Zone_MenuDelete')}
+              </MenuRow>
+            </div>
+          )
+        })()}
 
         {/* Empty state = the preset gallery on YOUR wallpaper, bound to the
             wallpaper's screen rect and NEVER before the first composed frame

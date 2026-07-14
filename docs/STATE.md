@@ -44,6 +44,16 @@ what is in flight, and what comes next.
 
 ## Active work (in flight)
 
+- **Wallpaper round 3 — material/title system + editor UX (2026-07-15).** Spec 04
+  §2/§3/§4.1/§4.2 amended; binding record `docs/reviews/2026-07-15-zone-material-title-ux.md`;
+  plan `docs/plans/2026-07-15-zone-material-title-ux.md`. BUILT (P1–P6, gates green:
+  tsc 0 · 603 pass · bindings ok · playwright six-material/title/menu boards verified):
+  six one-axis finishes (retired Luminous/Solid/Halo → Frost/Paper/Float migration on
+  load), titles None/Etched/Chip/Bare/Bar (Tab→Chip), opacity 0–100 (glass tint, default 0),
+  corner 0–60 (glass default 44, render guard shortestSide/2), touched-model material
+  switching, WYSIWYG wallpaper-crop material tiles + caption, emoji beside the title in
+  the zone list, zone context menu (icons dialect). PENDING: codex cross-review verdict,
+  then owner look-approval; uncommitted.
 - **清爽 W3 — cert lab (the ADR-0023 D2 gate).** VM ladder inspect→apply→verify→reboot→restore,
   populate the write allowlist, enumerate per-recipe `policy_guards`, rule on GPP limitations.
   Real Windows box; all `[WINDOWS-VERIFY]`. Lab green → the write slice rides v1; else guided-only.

@@ -39,12 +39,24 @@ export function FontPopover({
       type="button"
       onClick={() => onPick(f.family)}
       className={cn(
-        'flex h-7 w-full items-center truncate rounded-[7px] px-2 text-left text-[12px] hover:bg-raised-hov',
+        'flex h-7 w-full items-center gap-2 rounded-[7px] px-2 text-left text-[12px] hover:bg-raised-hov',
         current === f.family ? 'text-coral-ink' : 'text-t1',
       )}
-      style={f.family ? { fontFamily: f.family } : undefined}
     >
-      {f.display === '__bundled__' ? t('TitleFont_Default') : f.display}
+      {/* The NAME always renders in the UI font — never in the face itself, or
+          symbol / decorative / CJK-less system fonts turn their own name into 乱码
+          (queryLocalFonts returns the whole installed set). */}
+      <span className="min-w-0 flex-1 truncate">
+        {f.display === '__bundled__' ? t('TitleFont_Default') : f.display}
+      </span>
+      {/* A compact right-aligned specimen in the actual face — 'Ag' renders in
+          virtually every font (Latin lives even in CJK faces), so it previews the
+          shape without risking the name's legibility. */}
+      {f.family && (
+        <span aria-hidden className="shrink-0 text-[13px] leading-none text-t3" style={{ fontFamily: f.family }}>
+          Ag
+        </span>
+      )}
     </button>
   )
   return (
@@ -71,7 +83,7 @@ export function FontPopover({
  *  thing) + one FACES page (categorize by mood — owner call 2026-07-09); the
  *  custom input row hosts the SYSTEM emoji panel (Win + .) for everything
  *  else — never a bundled third-party picker. */
-const EMOJI_PAGES = [
+export const EMOJI_PAGES = [
   {
     key: 'Zone_EmojiTabObjects' as const,
     emojis: [
@@ -108,44 +120,81 @@ function firstGrapheme(value: string): string | null {
   return null
 }
 
-export const MATERIALS: ZoneMaterial[] = ['Frost', 'Luminous', 'Solid', 'Halo', 'Outline']
+export const MATERIALS: ZoneMaterial[] = ['Frost', 'LiquidGlass', 'Fluted', 'Paper', 'Brushed', 'Outline']
 export const MATERIAL_KEYS: Record<ZoneMaterial, StringKey> = {
   Frost: 'Material_Frost',
-  Luminous: 'Material_Luminous',
-  Solid: 'Material_Solid',
-  Halo: 'Material_Halo',
+  LiquidGlass: 'Material_LiquidGlass',
+  Fluted: 'Material_Fluted',
+  Paper: 'Material_Paper',
+  Brushed: 'Material_Brushed',
   Outline: 'Material_Outline',
 }
 export const TITLE_STYLE_KEYS: Record<ZoneTitleStyle, StringKey> = {
+  None: 'TitleStyle_None',
+  Etched: 'TitleStyle_Etched',
   Chip: 'TitleStyle_Chip',
   Bare: 'TitleStyle_Bare',
-  Tab: 'TitleStyle_Tab',
   Bar: 'TitleStyle_Bar',
 }
 
-/** Mini previews of the five finishes (DOM approximations of the recipes —
- *  the compositor stays the pixel truth; these only need to be evocative). */
+/** Per-finish panel approximation drawn OVER the live wallpaper crop (the
+ *  compositor stays the pixel truth; backdrop-filter gives Frost/Glaze a REAL
+ *  blur of the wallpaper behind — 所见即所得, round 3 WYSIWYG pickers). */
+function materialFace(material: ZoneMaterial): React.CSSProperties {
+  switch (material) {
+    case 'Frost':
+      return {
+        background: 'rgba(255,255,255,0.55)',
+        backdropFilter: 'blur(3px)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), inset 0 0 0 1px rgba(0,0,0,0.08)',
+      }
+    case 'LiquidGlass':
+      return {
+        background:
+          'linear-gradient(135deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0.02) 62%, rgba(255,255,255,0.22) 100%)',
+        backdropFilter: 'blur(0.5px)',
+        boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.9), inset 0 -1px 1px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.35)',
+      }
+    case 'Fluted':
+      return {
+        // Vertical ribs sliced into the blur — repeating light bands.
+        background:
+          'repeating-linear-gradient(90deg, rgba(255,255,255,0.32) 0 1px, rgba(255,255,255,0.62) 2px 3px, rgba(0,0,0,0.05) 4.5px 5px, rgba(255,255,255,0.32) 6px)',
+        backdropFilter: 'blur(3px)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.75), inset 0 0 0 1px rgba(0,0,0,0.07)',
+      }
+    case 'Paper':
+      return {
+        background: '#F4EFE4',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.16), inset 0 0 0 1px rgba(0,0,0,0.06)',
+      }
+    case 'Brushed':
+      return {
+        // Warm-graphite plate: fine horizontal streaks + one diagonal sheen.
+        background:
+          'linear-gradient(110deg, rgba(255,255,255,0) 25%, rgba(255,255,255,0.34) 45%, rgba(255,255,255,0) 65%), repeating-linear-gradient(0deg, #C9C4BC 0 1px, #BFBAB2 1px 2px)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), inset 0 -1px 0 rgba(0,0,0,0.18), inset 0 0 0 1px rgba(0,0,0,0.08)',
+      }
+    default: // Outline
+      return { boxShadow: 'inset 0 0 0 1.5px rgba(70,60,50,0.85)' }
+  }
+}
+
+/** WYSIWYG material tile: the finish rendered over a crop of the USER'S
+ *  wallpaper (preset-popover on-wallpaper pattern), not a swatch in a vacuum. */
 export function MaterialSwatch({
   material,
   title,
   selected,
+  wallpaperUrl,
   onClick,
 }: {
   material: ZoneMaterial
   title: string
   selected: boolean
+  wallpaperUrl: string | null
   onClick: () => void
 }) {
-  const face: React.CSSProperties =
-    material === 'Frost'
-      ? { background: 'rgba(255,255,255,0.62)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), inset 0 0 0 1px rgba(0,0,0,0.10)' }
-      : material === 'Luminous'
-        ? { background: 'linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.55))', boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.95), inset 0 0 0 1px rgba(0,0,0,0.08)' }
-        : material === 'Solid'
-          ? { background: 'rgba(252,251,249,0.97)', boxShadow: 'inset 0 1px 0 #FFFFFF, inset 0 0 0 1px rgba(0,0,0,0.10)' }
-          : material === 'Halo'
-            ? { background: 'radial-gradient(circle at 50% 45%, rgba(255,255,255,0.85) 20%, rgba(255,255,255,0.0) 75%)' }
-            : { boxShadow: 'inset 0 0 0 1.5px rgba(90,80,70,0.75)' }
   return (
     <button
       type="button"
@@ -154,11 +203,14 @@ export function MaterialSwatch({
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        'flex size-7 items-center justify-center rounded-[8px] ring-1 transition-shadow',
-        selected ? 'ring-coral bg-wash-chip' : 'ring-hair hover:ring-t3/50',
+        'relative size-10 shrink-0 overflow-hidden rounded-[9px] bg-canvas-stage transition-shadow',
+        selected ? 'ring-2 ring-coral' : 'ring-1 ring-hair hover:ring-t3/50',
       )}
     >
-      <span className="block size-4 rounded-[5px]" style={face} />
+      {wallpaperUrl && (
+        <img src={wallpaperUrl} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
+      )}
+      <span className="absolute inset-[5px] rounded-[6px]" style={materialFace(material)} />
     </button>
   )
 }
@@ -183,24 +235,44 @@ export function TitleStyleSwatch({
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        'flex size-6 items-center justify-center rounded-[7px] transition-colors',
-        selected ? 'bg-wash-chip text-coral-ink' : 'text-t3 hover:bg-raised-hov hover:text-t1',
+        'flex size-10 items-center justify-center rounded-[9px] transition-colors',
+        selected ? 'bg-wash-chip text-coral-ink ring-1 ring-coral/50' : 'text-t3 ring-1 ring-hair hover:bg-raised-hov hover:text-t1',
       )}
     >
-      <svg width={16} height={16} viewBox="0 0 16 16" aria-hidden>
-        <rect x={1.5} y={4.5} width={13} height={10} rx={2.5} fill="none" stroke="currentColor" strokeOpacity={0.55} />
-        {style === 'Chip' && <rect x={3} y={2.5} width={7} height={4} rx={2} fill="currentColor" />}
-        {style === 'Bare' && (
+      <svg width={18} height={18} viewBox="0 0 16 16" aria-hidden>
+        {style === 'None' ? (
+          /* 无 wears the app-wide slash-circle dialect — hiding the title is a
+             first-class answer to "how is this zone labeled" (round 3). */
           <>
-            <circle cx={4.4} cy={4.5} r={1.5} fill="currentColor" />
-            <rect x={6.8} y={3.6} width={6} height={1.8} rx={0.9} fill="currentColor" />
+            <circle cx={8} cy={8} r={5.4} stroke="currentColor" strokeWidth={1.3} fill="none" />
+            <line x1={4.2} y1={4.2} x2={11.8} y2={11.8} stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
           </>
-        )}
-        {style === 'Tab' && <path d="M3 4.5 v-1.5 a1.5 1.5 0 0 1 1.5 -1.5 h4 a1.5 1.5 0 0 1 1.5 1.5 v1.5 z" fill="currentColor" />}
-        {style === 'Bar' && (
+        ) : (
           <>
-            <path d="M1.5 7.5 h13" stroke="currentColor" strokeWidth={1.2} />
-            <rect x={3} y={5.4} width={5.5} height={1.4} rx={0.7} fill="currentColor" />
+            <rect x={1.5} y={4.5} width={13} height={10} rx={2.5} fill="none" stroke="currentColor" strokeOpacity={0.55} />
+            {style === 'Etched' && (
+              /* Frosted lozenge ETCHED into the panel: outline body + a light
+                 top edge (no filled accent block — glass language). */
+              <>
+                <rect x={3} y={2.5} width={7} height={4} rx={2} fill="none" stroke="currentColor" strokeWidth={1.1} />
+                <path d="M4.6 3.4 h3.8" stroke="currentColor" strokeWidth={0.9} strokeOpacity={0.6} strokeLinecap="round" />
+              </>
+            )}
+            {style === 'Chip' && <rect x={3} y={2.5} width={7} height={4} rx={2} fill="currentColor" />}
+            {style === 'Bare' && (
+              <>
+                <circle cx={4.4} cy={4.5} r={1.5} fill="currentColor" />
+                <rect x={6.8} y={3.6} width={6} height={1.8} rx={0.9} fill="currentColor" />
+              </>
+            )}
+            {style === 'Bar' && (
+              <>
+                {/* Editorial header: a header-weight title + a full-width hairline
+                    seam (title-bar baseline). No colour band, no dot. */}
+                <rect x={3.5} y={5.7} width={7} height={2} rx={1} fill="currentColor" />
+                <path d="M1.5 9.5 h13" stroke="currentColor" strokeWidth={0.8} strokeOpacity={0.5} />
+              </>
+            )}
           </>
         )}
       </svg>

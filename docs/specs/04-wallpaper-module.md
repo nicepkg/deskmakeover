@@ -50,13 +50,20 @@ your wallpaper", one-click reversal.
    rows (never a per-row layoutId — regression-tested). Header verbs: [预设] [＋添加].
 4. **正在编辑：<名称>** (selection-gated, §3.5 law unchanged; the block stays
    MOUNTED across zone switches — controls morph, nothing remounts). **Style axes
-   surface first: 材质 (five finishes, §4.1) · 强调色 swatches (auto-assigned,
-   overridable) · 标题样式 (four styles, §4.2)**; the granular dials fold into ONE
-   高级 reveal — 不透明度 slider · 色调 Auto/浅/深 · 圆角 slider 8–28 (default 20)
-   · 投影 toggle · 标题行: emoji picker + 字号 S/M/L + 字体 (默认 HarmonyOS Sans
-   SC; 手写体为可选项). ALL per-zone; one explicit 应用到全部分区 button. No
+   surface first: 材质 (six finishes, §4.1) · 强调色 swatches (auto-assigned,
+   overridable) · 标题样式 (four styles + 无, §4.2)**; the granular dials fold
+   into ONE 高级 reveal — 不透明度 slider 0–100% · 色调 Auto/浅/深 · 圆角 slider
+   0–60 · 投影 toggle · 标题行: 字号 S/M/L + 字体 (默认 HarmonyOS Sans SC;
+   手写体为可选项). ALL per-zone; one explicit 应用到全部分区 button. No
    global-pretending-to-be-local controls. (只描边 is no longer a toggle — Outline
-   is a MATERIAL, round 2.)
+   is a MATERIAL, round 2.) **Round-3 WYSIWYG pickers**: every material swatch
+   renders the REAL finish on a crop of the user's current wallpaper (≥40px,
+   preset-popover on-wallpaper pattern) with a persistent selected-name caption;
+   material/title swatches share one selected-state token and ≥40px hit areas.
+   **Emoji lives beside the title text** (round 3): the zone-list row's emoji is
+   the EmojiPicker trigger — the picker no longer lives in the title-style row
+   (target state: one shared TitleField `[emoji][text]` reused by the canvas
+   rename band).
 5. **壁纸导入 / 导出** (round 2): import your own image as the working source
    (persisted frontend-side across launches, like the per-monitor look under the schema-6
    thin bridge) + export the composed PNG.
@@ -95,6 +102,14 @@ history — all carried over from 1.0 §3/§3.5 with these binding changes:
   (scale→0.94 + fade, 140ms) via AnimatePresence; visible undo/redo in the canvas
   toolbar + 「已删除·撤销」 toast.
 - **Alt-drag** duplicates the zone (copy suffix on the title).
+- **Context menu** (round 3): right-click a zone (verified prior no-op — safe
+  claim) selects it and opens the icons-layer TileMenu dialect at the cursor:
+  重命名 (reuses `startRename`) · 改 emoji · 隐藏标题/显示标题 (toggles titleStyle
+  None) · 复制分区 (`duplicateZone`) · 应用样式到全部 ┊ 删除分区 (red, NO
+  confirm — removeZone ships toast+undo). The wallpaper canvas host gains
+  `onContextMenu preventDefault` (parity with the icons canvas). 置顶/置底
+  rejected — overlap stays an anti-pattern. Menu suppressed while a
+  drag/resize gesture is active.
 - Ghost icons: full first row + half second row, 3–4 neutral material tones with a
   micro top highlight — reads as "your icons will line up here".
 - Edit chrome: selection = inner 1.5px coral + outer 0.5px white halo, radius
@@ -124,47 +139,82 @@ history — all carried over from 1.0 §3/§3.5 with these binding changes:
 - Degradation: probe MAX_TEXTURE_SIZE + SwiftShader at startup; software-GL drops
   preview resolution, never blocks bake.
 
-### 4.1 Material system (D3 as amended — FIVE finishes, round 2)
+### 4.1 Material system (D3 as amended — SIX finishes, one axis each, round 3)
 
-*Round-2 amendment (ADR-0014 Amendments): the single Adaptive Frost became a
-five-finish material axis. `src/compositor/material.ts` +
-`docs/reviews/2026-07-09-style-sets-import-export.md` are the binding recipes;
+*Round-3 amendment (2026-07-15): the lineup was re-aimed so every finish owns a
+NAMEABLE axis — the round-2 set had four finishes on one "light translucent
+rectangle" brightness axis (fills all L 0.92–0.96), which users read as "差异
+不大". `src/compositor/material.ts` +
+`docs/reviews/2026-07-15-zone-material-title-ux.md` are the binding recipes;
 the structural laws below hold for every finish.*
 
-- **Finishes** (`ZoneMaterial`): **Frost** (blurred adaptive glass, the default)
-  · **Luminous** (gradient glow) · **Solid** (near-opaque panel) · **Halo**
-  (soft-edged wash) · **Outline** (fill α≈.05 + deep-tone contour; forces the
-  title). Default fill alphas per finish × tone live in `OPACITY_DEFAULTS`
-  (Frost .74/.76 — raised from the original .60/.52 after high-contrast
-  wallpapers bled through; Solid .94/.92; Halo .55/.55), all overridable by the
-  per-zone 不透明度 slider.
+- **Finishes** (`ZoneMaterial`), each named by its axis:
+  **Outline 描边** (minimal contour: fill α≈.05 + deep-tone ring; forces the title)
+  · **Frost 磨砂** (blurred adaptive glass, the default)
+  · **LiquidGlass 流体玻璃** (physical refraction: complete archisvaze/liquid-glass
+  WebGL port — rounded-rect SDF + Snell bezel refraction + specular rim + shader-
+  owned outer shadow; bevel widths are FIXED px like a real pane; fillOpacity maps
+  to shader Tint, default 0 = pure refraction)
+  · **Fluted 棱纹玻璃** (vertical fluted glass: near-neutral chroma ≤0.018 —
+  never a color mix — semi-translucent α≈.5 over frost blur, sliced into light
+  bands by a 12px soft-cosine rib tile [panel-textures 'flute'])
+  · **Paper 素笺** (warm matte paper, the anti-glass: opaque warm off-white /
+  off-charcoal, NO blur, fine noise dither, letterpress 1px top-light +
+  1px bottom-dark)
+  · **Brushed 拉丝金属** (anisotropic brushed metal: near-opaque α≈.88 warm
+  graphite, dense 2px horizontal streak tile ['brush'], ONE soft ~20° diagonal
+  sheen band [baked canvas gradient, textureSpace local], metal bevel top +
+  plate-thickness bottom edge).
+  Retired round 3: Luminous / Solid / Halo, then the owner cut Glaze (muddy
+  accent×wallpaper mix) and Float (invisible) at first sight — texture beats
+  translucency games. Migration on load: Luminous→Frost, Solid→Paper,
+  Halo→Frost, Glaze→Fluted, Float→Brushed (TS-side — the enums are not in the
+  Rust contract).
+- Default fill alphas per finish × tone live in `OPACITY_DEFAULTS`, all
+  overridable by the per-zone 不透明度 slider — range **0–100%** (round 3; was
+  3–95). 0 on LiquidGlass = pure refraction; 0 on Paper/others may render the
+  panel invisible — an explicit user act, allowed.
 - **Adaptive tone** (all finishes): per-panel OKLCH sample of the covered
   wallpaper (L̄,C̄,H̄); auto light/dark at L̄ 0.55 (hysteresis .05; override
-  Auto/浅/深); fills derive hue from H̄ with chroma clamped low.
+  Auto/浅/深); fills derive hue from H̄ with chroma clamped low (Glaze exempt —
+  it derives from the ACCENT at unlocked chroma).
 - Frost σ = cellHeight/6; blur-less tier = denser fill + bottom inner shadow
   (video/weak GPU). Depth = 1px top inner highlight + 1px outer contour
-  (untinted). **An optional baked drop SHADOW is a per-zone toggle** (round 2 —
-  the original "NO baked drop shadow" rule was reversed).
-- Radius per-zone 8–28 default 20 (clamp ≤ cellHeight×0.45). Per-zone accent from
-  a curated harmonious palette (auto-assigned round-robin, overridable) — the
-  zone-to-zone categorization signal.
+  (untinted; LiquidGlass draws neither — its shader owns the rim). **An optional
+  baked drop SHADOW is a per-zone toggle** (Float: always on — it IS the
+  material; LiquidGlass: the toggle drives the shader's own gaussian ring).
+- Radius per-zone **0–60 step 2** (round 3; was 8–28), defaults 20–28 per finish,
+  **LiquidGlass default 44**; render-side invariant `min(radius, shortestSide/2)`
+  (the old hard clamp(…,8,28) is removed). Per-zone accent from a curated
+  harmonious palette (auto-assigned round-robin, overridable) — the zone-to-zone
+  categorization signal, and Glaze's body color.
+- **Material-switch semantics** (round 3): per axis (titleStyle / cornerRadius /
+  fillOpacity) — value == outgoing material's default ⇒ untouched ⇒ adopt the
+  new material's tuned default; else keep the user's value. titleStyle falls back
+  to a legal style when the kept value is illegal for the new material.
 
-### 4.2 Title system (D4 as amended — FOUR styles, round 2)
+### 4.2 Title system (D4 as amended — FOUR styles + 无, round 3)
 
-*Round-2 amendment: the single label chip became a four-style title axis
-(`ZoneTitleStyle`): **Chip** (the D4 label chip, default) · **Bare** (inkless
-text directly on the material) · **Tab** (a tab notched into the panel edge) ·
-**Bar** (a full-width header band). Recipes: compositor `title` module + the
-round-2 review doc.*
+*Round-3 amendment: **Tab retired** (folder skeuomorph; migration Tab→Chip);
+**Etched 冰签 added** — the glass-native title: a translucent frosted lozenge
+(white α≈.16) + 1px top-light / 1px bottom-dark bevel that reads as "etched into
+the glass", adaptive ink, NO accent block; it is LiquidGlass's default title.
+**「无」(hidden) is a first-class member of the title-style axis** — the FIRST
+swatch of the row (hiding is a legitimate answer to "how is this zone
+labeled"); selecting it hides the title entirely and collapses the size
+controls. The axis (`ZoneTitleStyle`): **None 无 · Etched 冰签 · Chip 胶囊
+(default) · Bare 净色 · Bar 顶栏**. Recipes: compositor `title-chip.ts` + the
+round-3 review doc.*
 
-Shared laws (all styles): title anchors top-left; the preferred lane OVERHANGS
-the panel top ~0.4 cell into the gutter (reclaims icon row 1); fallback to an
-in-panel lane when flush to screen top or a stacked neighbour (ghost slots then
-reserve the zone's first row). Ink auto-inverts against the resolved material
-tone. Font HarmonyOS Sans SC + Inter 600; size clamp(cell×0.20, 15, 22)px; S/M/L
-= cell×0.17/0.20/0.24; optional emoji prefix at ink size. Handwritten = optional
-font choice, never default. Chip recipe (Chip style): material one step denser,
-pill or r10, padding 10×5; ink OKLCH(0.25)/OKLCH(0.97) α.96.
+Shared laws (all visible styles): title anchors top-left; the preferred lane
+OVERHANGS the panel top ~0.4 cell into the gutter (reclaims icon row 1);
+fallback to an in-panel lane when flush to screen top or a stacked neighbour
+(ghost slots then reserve the zone's first row). Ink auto-inverts against the
+resolved material tone. Font HarmonyOS Sans SC + Inter 600; size
+clamp(cell×0.20, 15, 22)px; S/M/L = cell×0.17/0.20/0.24; optional emoji prefix
+at ink size. Handwritten = optional font choice, never default. Chip recipe
+(Chip style): material one step denser, pill or r10, padding 10×5; ink
+OKLCH(0.25)/OKLCH(0.97) α.96.
 
 ### 4.3 Apply — 「分区落版」 wave (D5)
 

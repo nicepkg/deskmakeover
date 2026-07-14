@@ -4,6 +4,7 @@ import { zonePaint } from './material'
 import { buildSampleBuffer, resolveTone, sampleRegion } from './sampling'
 import type { SampleBuffer } from './sampling'
 import { clarityCanvas } from './clarity'
+import { coverFit } from './cover-fit'
 import { ZoneNode } from './zone-node'
 
 // The ONE wallpaper compositor (spec 04 §4, ADR-0014 D1). Renders source +
@@ -36,28 +37,6 @@ export interface ZoneMeta {
   reserveFirstRow: boolean
 }
 
-/** Cover-fit a sprite over the screen: fill it while PRESERVING the source's
- *  aspect ratio, centred, letting the stage clip the overflow (Windows "Fill"
- *  position). Replaces the old stretch-to-fit that squashed a landscape wallpaper
- *  vertically onto a portrait monitor. `srcW/srcH` are the REAL source image dims. */
-function coverFit(sprite: Sprite, srcW: number, srcH: number, scrW: number, scrH: number): void {
-  const texA = srcW > 0 && srcH > 0 ? srcW / srcH : scrW / scrH
-  const scrA = scrW / scrH
-  if (texA >= scrA) {
-    // source is wider than the screen → match height, overflow + centre width
-    sprite.height = scrH
-    sprite.width = scrH * texA
-    sprite.x = (scrW - sprite.width) / 2
-    sprite.y = 0
-  } else {
-    // source is taller → match width, overflow + centre height
-    sprite.width = scrW
-    sprite.height = scrW / texA
-    sprite.x = 0
-    sprite.y = (scrH - sprite.height) / 2
-  }
-}
-
 export class WallpaperCompositor {
   private app!: Application
   private grid!: WallpaperGridInfoDto
@@ -65,6 +44,10 @@ export class WallpaperCompositor {
   private sourceBitmap: ImageBitmap | null = null
   private samples!: SampleBuffer
   private wallTint = '#888888'
+  /** REAL source image dims — the Liquid-Glass backdrop cover-fits to the SAME
+   *  pixels as the displayed wallpaper so its refracted rim lines up. */
+  private sourceW = 0
+  private sourceH = 0
 
   private sourceSprite!: Sprite
   private claritySprite!: Sprite
@@ -74,7 +57,23 @@ export class WallpaperCompositor {
    *  chrome's AnimatePresence exit (spec 04 §3 delete exit — the two layers
    *  must leave together or the frost pops while the shell lingers). */
   private dying = new Map<string, { node: ZoneNode; at: number }>()
+  // Frost backdrop blur — applied ONCE to the full-screen wallpaper (frostSource →
+  // frostRT), not per zone. Every frost zone then samples the pre-blurred frostRT
+  // through its rounded mask as a plain textured fill: no per-zone filter, no
+  // rectangular filterArea, so the old "hard square leaking past the mask over a
+  // clarity gradient" is geometrically impossible. `repeatEdgePixels` clamps the
+  // screen-edge samples instead of fading them to transparent.
   private blur = new BlurFilter({ strength: 8, quality: 6 })
+  // Pre-blurred full-screen backdrop (wallpaper + dim scrim): the ONE frost pass
+  // shared by every zone. Includes the dim so a frost zone reads as the DIMMED
+  // wallpaper instead of glowing bright over a dimmed desktop (owner 2026-07-14).
+  private frostRT: RenderTexture | null = null
+  // SHARP full-screen backdrop (wallpaper + dim, no blur): what Liquid Glass
+  // refracts — the exact pixels the desktop shows, dim included.
+  private backdropRT: RenderTexture | null = null
+  private frostWall!: Sprite
+  private backdropWall!: Sprite
+  private frostDim!: Sprite
 
   private look: LookDto | null = null
   private renderScale = 1
@@ -94,6 +93,7 @@ export class WallpaperCompositor {
     wallTint: string,
   ): Promise<WallpaperCompositor> {
     const c = new WallpaperCompositor()
+    c.blur.repeatEdgePixels = true // set once so a first-action bake is safe; re-asserted per live render for HMR
     c.grid = grid
     c.wallTint = wallTint
     c.app = new Application()
@@ -114,6 +114,13 @@ export class WallpaperCompositor {
     c.claritySprite = new Sprite(Texture.EMPTY)
     c.zonesLayer = new Container()
     c.app.stage.addChild(c.sourceSprite, c.claritySprite, c.zonesLayer)
+    // Offscreen frost backdrop, composited into frostRT each frame (NOT on the
+    // stage): the BLURRED wallpaper with the SHARP dim scrim overlaid, so a frost
+    // zone carries the full local dim and matches the dimmed desktop.
+    c.frostWall = new Sprite(c.sourceTexture)
+    c.frostWall.filters = [c.blur] // blur the wallpaper; the dim scrim stays sharp
+    c.backdropWall = new Sprite(c.sourceTexture) // sharp twin for backdropRT
+    c.frostDim = new Sprite(Texture.EMPTY)
     return c
   }
 
@@ -123,6 +130,8 @@ export class WallpaperCompositor {
     // decoded backing store lives until context loss (codex review M3).
     this.sourceBitmap?.close()
     this.sourceBitmap = source.bitmap
+    this.sourceW = source.width
+    this.sourceH = source.height
     this.sourceTexture = Texture.from(source.bitmap)
     // Sampling buffer for the adaptive material (small, rebuilt per source).
     const sc = document.createElement('canvas')
@@ -262,7 +271,8 @@ export class WallpaperCompositor {
     const deps = {
       grid: g,
       sourceTexture: this.sourceTexture,
-      sharedBlur: this.blur,
+      frostTexture: this.frostRT!, // pre-blurred backdrop (rendered in renderNow/bake)
+      backdropTexture: this.backdropRT!, // sharp backdrop for Liquid Glass
       renderScale: this.renderScale,
     }
 
@@ -320,9 +330,55 @@ export class WallpaperCompositor {
     }
   }
 
+  /** (Re)allocate the backdrop RTs to the current screen dims × render scale.
+   *  Cheap no-op when nothing changed; recreated on a scale/dims change. */
+  private ensureFrostRT(): void {
+    const g = this.grid
+    const res = this.renderScale
+    if (
+      this.frostRT &&
+      this.frostRT.width === g.screenWidth &&
+      this.frostRT.height === g.screenHeight &&
+      Math.abs(this.frostRT.source.resolution - res) < 0.001
+    ) {
+      return
+    }
+    this.frostRT?.destroy(true)
+    this.frostRT = RenderTexture.create({ width: g.screenWidth, height: g.screenHeight, resolution: res })
+    this.backdropRT?.destroy(true)
+    this.backdropRT = RenderTexture.create({ width: g.screenWidth, height: g.screenHeight, resolution: res })
+  }
+
+  /** Composite the frost backdrop into frostRT — one pass every frost zone samples,
+   *  replacing N per-zone blur filters (and the square they could leak). Two draws:
+   *  (1) the BLURRED wallpaper, then (2) the SHARP (unblurred) dim scrim over it, so
+   *  a frost zone carries the FULL local dim at its position — not a blur-averaged
+   *  one — and reads as the dimmed desktop instead of glowing bright over it. */
+  private renderFrostRT(): void {
+    const g = this.grid
+    this.frostWall.texture = this.sourceTexture
+    coverFit(this.frostWall, this.sourceW, this.sourceH, g.screenWidth, g.screenHeight)
+    this.app.renderer.render({ container: this.frostWall, target: this.frostRT!, clear: true })
+    this.backdropWall.texture = this.sourceTexture
+    coverFit(this.backdropWall, this.sourceW, this.sourceH, g.screenWidth, g.screenHeight)
+    this.app.renderer.render({ container: this.backdropWall, target: this.backdropRT!, clear: true })
+    if (this.claritySprite.visible) {
+      this.frostDim.texture = this.claritySprite.texture
+      this.frostDim.width = g.screenWidth
+      this.frostDim.height = g.screenHeight
+      this.app.renderer.render({ container: this.frostDim, target: this.frostRT!, clear: false })
+      this.app.renderer.render({ container: this.frostDim, target: this.backdropRT!, clear: false })
+    }
+  }
+
   private renderNow(): void {
     if (this.disposed || !this.look) return
-    this.syncScene()
+    // Blur the whole wallpaper into frostRT BEFORE the zones sample it (one pass).
+    this.blur.strength = Math.max(0.5, this.grid.cellHeight * (1 / 6) * SIGMA_TO_STRENGTH * this.renderScale)
+    this.blur.repeatEdgePixels = true // clamp the screen-edge samples (see field note)
+    this.ensureFrostRT()
+    this.syncScene() // updates the clarity scrim texture BEFORE frostRT mirrors it
+    this.renderFrostRT()
     // Exit lane: fade dying zones' material alpha in step with the DOM exit.
     const now = performance.now()
     for (const [id, d] of this.dying) {
@@ -334,7 +390,6 @@ export class WallpaperCompositor {
         d.node.root.alpha = 1 - t
       }
     }
-    this.blur.strength = Math.max(0.5, this.grid.cellHeight * (1 / 6) * SIGMA_TO_STRENGTH * this.renderScale)
     this.app.stage.setFromMatrix(new Matrix().scale(this.renderScale, this.renderScale))
     this.app.render()
     if (this.dying.size > 0) this.invalidate() // keep ticking until the exit lane drains
@@ -347,9 +402,12 @@ export class WallpaperCompositor {
     // Bake at scale 1: per-node filters (feather/shadow/glow) read renderScale.
     this.renderScale = 1
     this.blur.strength = Math.max(0.5, this.grid.cellHeight * (1 / 6) * SIGMA_TO_STRENGTH)
+    this.blur.repeatEdgePixels = true
     for (const d of this.dying.values()) d.node.destroy()
     this.dying.clear() // a bake is a committed look — no mid-exit ghosts in it
-    this.syncScene()
+    this.ensureFrostRT() // frostRT at scale 1 for the native-res bake
+    this.syncScene() // clarity scrim current before frostRT mirrors it
+    this.renderFrostRT()
     const g = this.grid
     const rt = RenderTexture.create({ width: g.screenWidth, height: g.screenHeight, resolution: 1 })
     try {
@@ -373,8 +431,20 @@ export class WallpaperCompositor {
     for (const d of this.dying.values()) d.node.destroy()
     this.dying.clear()
     this.nodes.clear()
+    this.frostRT?.destroy(true)
+    this.backdropRT?.destroy(true)
+    this.frostWall?.destroy()
+    this.backdropWall?.destroy()
+    this.frostDim?.destroy()
     this.app.destroy(undefined, { children: true, texture: true })
     this.sourceBitmap?.close()
     this.sourceBitmap = null
   }
 }
+
+// Vite/React Fast Refresh preserves the compositor instance across an HMR edit
+// (the create-effect's deps are the screen dims — stable), so a compositor-code
+// change would keep stale ZoneNode instances and silently not take — the source of
+// the "already fixed but still shows" square/glass confusion. Force a full reload
+// on any edit to a compositor module so the whole scene rebuilds. Dev only.
+if (import.meta.hot) import.meta.hot.accept(() => location.reload())

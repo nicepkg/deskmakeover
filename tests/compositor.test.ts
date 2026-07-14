@@ -100,9 +100,11 @@ describe('Adaptive Frost material (spec 04 §4.1)', () => {
     }
   })
 
-  test('corner radius clamps to 8..28', () => {
-    const z = makeZone({ cellX: 0, cellY: 0, cellsWide: 4, cellsTall: 4, title: 't', cornerRadius: 99 })
-    expect(zonePaint({ zone: z, index: 0, sample, tone: 'Light', cellHeight: CELL }).cornerRadius).toBe(28)
+  test('corner radius clamps to 0..60 (round 3; render side caps at shortestSide/2)', () => {
+    const over = makeZone({ cellX: 0, cellY: 0, cellsWide: 4, cellsTall: 4, title: 't', cornerRadius: 99 })
+    expect(zonePaint({ zone: over, index: 0, sample, tone: 'Light', cellHeight: CELL }).cornerRadius).toBe(60)
+    const square = makeZone({ cellX: 0, cellY: 0, cellsWide: 4, cellsTall: 4, title: 't', cornerRadius: -3 })
+    expect(zonePaint({ zone: square, index: 0, sample, tone: 'Light', cellHeight: CELL }).cornerRadius).toBe(0)
   })
 })
 
@@ -136,23 +138,32 @@ describe('title layout (spec 04 §4.2, four styles)', () => {
     expect(l.width).toBeLessThanOrEqual(rect.width - 16)
   })
 
-  test('Tab: rides the top edge with clearance; reserves row 1 when flush', () => {
-    const up = titleLayout({ ...base, style: 'Tab', clearanceAbove: CELL })
-    expect(up.overhang).toBe(true)
-    expect(up.y + up.height).toBeCloseTo(rect.top, 5) // tab bottom ON the edge
-    expect(up.reserveFirstRow).toBe(false)
-    const flush = titleLayout({ ...base, style: 'Tab', clearanceAbove: 2 })
-    expect(flush.overhang).toBe(false)
-    expect(flush.reserveFirstRow).toBe(true)
-    expect(flush.y).toBe(rect.top)
+  test('None: zero footprint — no lane, no reserved row (round 3)', () => {
+    const l = titleLayout({ ...base, style: 'None', clearanceAbove: CELL })
+    expect(l.width).toBe(0)
+    expect(l.height).toBe(0)
+    expect(l.overhang).toBe(false)
+    expect(l.reserveFirstRow).toBe(false)
   })
 
-  test('Bar: full width, in panel, ALWAYS reserves row 1', () => {
+  test('Etched shares the chip lanes (overhang with clearance)', () => {
+    const up = titleLayout({ ...base, style: 'Etched', clearanceAbove: CELL })
+    expect(up.overhang).toBe(true)
+    const flush = titleLayout({ ...base, style: 'Etched', clearanceAbove: 4 })
+    expect(flush.overhang).toBe(false)
+    expect(flush.reserveFirstRow).toBe(true)
+  })
+
+  test('Bar: full width, in panel, ALWAYS reserves row 1; header type owns the band', () => {
     const l = titleLayout({ ...base, style: 'Bar', clearanceAbove: CELL })
     expect(l.width).toBe(rect.width)
     expect(l.overhang).toBe(false)
     expect(l.reserveFirstRow).toBe(true)
     expect(l.x).toBe(rect.left)
+    // Header reads clearly larger than the base title so it reads as a header…
+    expect(l.fontPx).toBeGreaterThan(titleFontPx('M', CELL))
+    // …and its height clears the seam (additive rhythm) and the panel corner.
+    expect(l.height).toBe(l.fontPx + 16)
   })
 })
 
@@ -160,34 +171,45 @@ describe('material set (designer 2026-07-09)', () => {
   const sample = { l: 0.7, c: 0.05, h: 70 }
   const mk = (material) => makeZone({ cellX: 0, cellY: 0, cellsWide: 4, cellsTall: 4, title: 't', material })
 
-  test('Luminous: gradient + inner glow + frost', () => {
-    const p = zonePaint({ zone: mk('Luminous'), index: 0, sample, tone: 'Light', cellHeight: CELL })
-    expect(p.gradient).not.toBeNull()
-    expect(p.innerGlow).not.toBeNull()
+  test('Fluted: translucent ribbed glass — frost on, flute tile, near-neutral chroma', () => {
+    const p = zonePaint({ zone: mk('Fluted'), index: 0, sample, tone: 'Light', cellHeight: CELL })
     expect(p.blurSigma).toBeGreaterThan(0)
+    expect(p.texture?.kind).toBe('flute')
+    expect(p.fill.alpha).toBeLessThanOrEqual(0.6) // translucent: the light bands need the wallpaper
+    const fill = hexToOklch(p.fill.color)
+    expect(fill.c).toBeLessThanOrEqual(0.02) // ≈0.018 cap + hex round-trip: never a color mix (the Glaze death)
   })
 
-  test('Solid: opaque-ish, no frost, crisper highlight', () => {
-    const p = zonePaint({ zone: mk('Solid'), index: 0, sample, tone: 'Light', cellHeight: CELL })
+  test('Paper: opaque warm matte — no frost, letterpress + grain', () => {
+    const p = zonePaint({ zone: mk('Paper'), index: 0, sample, tone: 'Light', cellHeight: CELL })
     expect(p.fill.alpha).toBeGreaterThanOrEqual(0.9)
     expect(p.blurSigma).toBe(0)
-    expect(p.gradient).toBeNull()
+    expect(p.letterpressBottom).not.toBeNull()
+    expect(p.texture?.kind).toBe('noise')
+    const fill = hexToOklch(p.fill.color)
+    expect(fill.h).toBeGreaterThan(55) // warm paper identity, not wallpaper-hue glass
+    expect(fill.h).toBeLessThan(95)
   })
 
-  test('Halo: feathered, no contour/highlight, accent-leaning hue', () => {
-    const p = zonePaint({ zone: mk('Halo'), index: 0, sample, tone: 'Light', cellHeight: CELL })
-    expect(p.featherSigma).toBeCloseTo(CELL * 0.45, 5)
-    expect(p.contour.alpha).toBe(0)
-    expect(p.highlight.alpha).toBe(0)
+  test('Brushed: near-opaque metal — brush tile + sheen + plate edges, no frost', () => {
+    const p = zonePaint({ zone: mk('Brushed'), index: 0, sample, tone: 'Light', cellHeight: CELL })
+    expect(p.fill.alpha).toBeGreaterThanOrEqual(0.85) // presence (the Float death was α0.18)
+    expect(p.blurSigma).toBe(0)
+    expect(p.texture?.kind).toBe('brush')
+    expect(p.sheen).not.toBeNull()
+    expect(p.letterpressBottom).not.toBeNull()
+    const fill = hexToOklch(p.fill.color)
+    expect(fill.c).toBeLessThanOrEqual(0.02) // warm-graphite neutral, never muddy
   })
 
-  test('投影 finish only on real bodies (never Halo/Outline)', () => {
-    const on = zonePaint({ zone: { ...mk('Solid'), shadow: true }, index: 0, sample, tone: 'Light', cellHeight: CELL })
+  test('投影 finish gates: toggle drives real bodies, never Outline; glass rides its shader', () => {
+    const on = zonePaint({ zone: { ...mk('Brushed'), shadow: true }, index: 0, sample, tone: 'Light', cellHeight: CELL })
     expect(on.shadow).not.toBeNull()
-    const halo = zonePaint({ zone: { ...mk('Halo'), shadow: true }, index: 0, sample, tone: 'Light', cellHeight: CELL })
-    expect(halo.shadow).toBeNull()
     const outline = zonePaint({ zone: { ...mk('Outline'), shadow: true }, index: 0, sample, tone: 'Light', cellHeight: CELL })
     expect(outline.shadow).toBeNull()
+    const glass = zonePaint({ zone: { ...mk('LiquidGlass'), shadow: true }, index: 0, sample, tone: 'Light', cellHeight: CELL })
+    expect(glass.shadow).toBeNull() // shader-owned gaussian ring instead
+    expect(glass.liquidGlass?.shadow).toBeGreaterThan(0)
   })
 })
 

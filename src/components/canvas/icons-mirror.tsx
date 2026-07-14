@@ -8,6 +8,7 @@ import { BUCKET_NAME_KEY, kindBucket } from '@/lib/kind-policy'
 import { cn } from '@/lib/utils'
 import { TaskbarStrip } from './taskbar-strip'
 import { CanvasProgress, CanvasToolbar } from './canvas-toolbar'
+import { MenuRow } from './canvas-menu'
 import { IconTile } from './icons-tile'
 
 // The desktop mirror (spec 06): an equal-scale replica of the real screen —
@@ -323,23 +324,3 @@ function TileMenu({
   )
 }
 
-function MenuRow({
-  checked = false,
-  onClick,
-  children,
-}: {
-  checked?: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center justify-between rounded-lg px-2 py-[7px] text-left text-xs text-t1 hover:bg-raised-hov"
-    >
-      {children}
-      {checked && <span className="text-coral-ink">✓</span>}
-    </button>
-  )
-}

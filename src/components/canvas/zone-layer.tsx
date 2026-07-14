@@ -104,6 +104,8 @@ interface ZoneViewProps {
   onRenameChange: (value: string) => void
   onRenameCommit: () => void
   onRenameCancel: () => void
+  /** Right-click → the zone context menu (spec 04 §3 round 3). */
+  onMenu: (e: React.MouseEvent, id: string) => void
 }
 
 /**
@@ -208,6 +210,7 @@ export const ZoneView = React.memo(function ZoneView({
   onRenameChange,
   onRenameCommit,
   onRenameCancel,
+  onMenu,
 }: ZoneViewProps) {
   const reduced = useReducedMotion() ?? false
   const r = {
@@ -242,6 +245,11 @@ export const ZoneView = React.memo(function ZoneView({
           : { opacity: 0, scale: 0.94, transition: { duration: 0.14, ease: [0.4, 0, 1, 1] } }
       }
       onPointerDown={(e) => onMoveDown(e, zone.id)}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onMenu(e, zone.id)
+      }}
     >
       {/* Ghost landing SLOTS (editor-only, never baked): keyed by INDEX so a
           drag repositions without remounting (no animation replay mid-gesture);

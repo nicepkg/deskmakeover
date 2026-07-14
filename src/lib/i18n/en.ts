@@ -339,11 +339,12 @@ export const en = {
   "Mark_Fold": "Dog-ear",
   "Mark_Ring": "Thin ring",
   "Mark_Satin": "Satin corner",
+  "Material_Brushed": "Brushed metal", // PENDING-RESX
+  "Material_Fluted": "Fluted glass", // PENDING-RESX
   "Material_Frost": "Frosted glass", // PENDING-RESX
-  "Material_Halo": "Soft halo", // PENDING-RESX
-  "Material_Luminous": "Luminous glass", // PENDING-RESX
+  "Material_LiquidGlass": "Liquid glass", // PENDING-RESX
   "Material_Outline": "Outline card", // PENDING-RESX
-  "Material_Solid": "Solid card", // PENDING-RESX
+  "Material_Paper": "Matte paper", // PENDING-RESX
   "Menu_Follow": "Follow global style",
   "Menu_FollowToast": "「{0}」 now follows the global style",
   "Menu_Keep": "Keep original",
@@ -575,7 +576,8 @@ export const en = {
   "TitleStyle_Bar": "Header bar", // PENDING-RESX
   "TitleStyle_Bare": "Bare label", // PENDING-RESX
   "TitleStyle_Chip": "Pill chip", // PENDING-RESX
-  "TitleStyle_Tab": "Folder tab", // PENDING-RESX
+  "TitleStyle_Etched": "Etched glass", // PENDING-RESX
+  "TitleStyle_None": "Hidden", // PENDING-RESX
   "ToastApplied": "Makeover done: {0} icons styled",
   "ToastCaughtUp": "Styled {0} newly added icons",
   "ToastRestored": "Restored to defaults, nothing left behind",
@@ -642,6 +644,11 @@ export const en = {
   "Welcome_TypeHere": "Type it here", // PENDING-RESX
   "Zone_Accent": "Accent", // PENDING-RESX
   "Zone_ApplyAll": "Apply to all zones",
+  "Zone_MenuDelete": "Delete zone",
+  "Zone_MenuDuplicate": "Duplicate zone",
+  "Zone_MenuHideTitle": "Hide title",
+  "Zone_MenuRename": "Rename",
+  "Zone_MenuShowTitle": "Show title",
   "Zone_CopySuffix": "copy", // PENDING-RESX
   "Zone_DefaultTitle": "New zone",
   "Zone_DeletedToast": "Deleted {0}", // PENDING-RESX

@@ -7,7 +7,7 @@ import { IconAction, InspectorCard, PropertyRow, Reveal } from '@/components/com
 import { Segmented } from '@/components/common/segmented'
 import { ToggleSwitch } from '@/components/common/toggle-switch'
 import { ZoneList } from '@/components/panels/wallpaper-zone-list'
-import { EmojiPicker, FontPopover, MATERIALS, MATERIAL_KEYS, MaterialSwatch, PresetPopover, TITLE_STYLE_KEYS, TitleStyleSwatch } from '@/components/panels/wallpaper-panel-popovers'
+import { FontPopover, MATERIALS, MATERIAL_KEYS, MaterialSwatch, PresetPopover, TITLE_STYLE_KEYS, TitleStyleSwatch } from '@/components/panels/wallpaper-panel-popovers'
 import { ColorSwatchDot, PalettePopover } from '@/components/common/color-controls'
 import { useWallpaper, makeZone } from '@/stores/wallpaper'
 import {
@@ -16,6 +16,7 @@ import {
   CORNER_MIN,
   MATERIAL_RADIUS_DEFAULT,
   MATERIAL_TITLE_DEFAULT,
+  OPACITY_DEFAULTS,
   allowedTitleStyles,
   resolveAccent,
 } from '@/compositor/material'
@@ -52,7 +53,11 @@ export function WallpaperZoneInspector() {
 
   const zone = selected !== null ? look.zones.find((z) => z.id === selected) : undefined
   const zoneIndex = zone ? look.zones.findIndex((z) => z.id === zone.id) : -1
-  const opacityPercent = Math.round((zone?.fillOpacity ?? (zone?.material === 'Outline' ? 0.05 : 0.6)) * 100)
+  // Display truth for the null (untouched) sentinel = the material's real
+  // default, not a hardcoded 60% (glass defaults to 0 = pure refraction).
+  const opacityPercent = zone
+    ? Math.round((zone.fillOpacity ?? OPACITY_DEFAULTS[zone.material][zone.tone === 'Dark' ? 'Dark' : 'Light']) * 100)
+    : 0
 
   const addDefaultZone = () => {
     const rect = firstFreeArea(state.grid, look.zones, 6, 4)
@@ -117,6 +122,7 @@ export function WallpaperZoneInspector() {
               selected={selected}
               onSelect={select}
               onRename={(id, value) => mutateZone(id, (z) => ({ ...z, title: value }), 'title')}
+              onEmoji={(id, emoji) => mutateZone(id, (z) => ({ ...z, emoji }))}
               onDelete={removeZone}
             />
           )}
@@ -160,25 +166,44 @@ export function WallpaperZoneInspector() {
                 </AnimatePresence>
               }
             >
-              <div className="flex items-center gap-1">
+              <div className="flex flex-col gap-1.5">
+              {/* gap-0.5: six ≥40px hit areas must fit the 280px inspector. */}
+              <div className="flex items-center gap-0.5">
                 {MATERIALS.map((m) => (
                   <MaterialSwatch
                     key={m}
                     material={m}
                     title={t(MATERIAL_KEYS[m])}
                     selected={zone.material === m}
+                    wallpaperUrl={sourceUrl ?? state.originalUrl}
                     onClick={() =>
-                      // Designer pairing: each material lands with its tuned
-                      // title style + radius; both stay user-overridable after.
-                      mutateZone(zone.id, (z) => ({
-                        ...z,
-                        material: m,
-                        titleStyle: MATERIAL_TITLE_DEFAULT[m],
-                        cornerRadius: MATERIAL_RADIUS_DEFAULT[m],
-                      }))
+                      // Switch semantics (round 3, owner 2026-07-15): an axis the
+                      // user never touched (still at the OUTGOING material's
+                      // default; fillOpacity's untouched sentinel is null) adopts
+                      // the new material's tuned default; a touched axis keeps
+                      // the user's value — except an illegal titleStyle, which
+                      // falls back to the new material's default.
+                      mutateZone(zone.id, (z) => {
+                        const keptTitle =
+                          z.titleStyle !== MATERIAL_TITLE_DEFAULT[z.material] &&
+                          allowedTitleStyles(m).includes(z.titleStyle)
+                        return {
+                          ...z,
+                          material: m,
+                          titleStyle: keptTitle ? z.titleStyle : MATERIAL_TITLE_DEFAULT[m],
+                          cornerRadius:
+                            z.cornerRadius === MATERIAL_RADIUS_DEFAULT[z.material]
+                              ? MATERIAL_RADIUS_DEFAULT[m]
+                              : z.cornerRadius,
+                        }
+                      })
                     }
                   />
                 ))}
+              </div>
+              {/* Persistent name caption — the tile shows the LOOK, this names
+                  it (识别优于回忆; hover tooltips alone hid the vocabulary). */}
+              <p className="text-caption leading-none text-t3">{t(MATERIAL_KEYS[zone.material])}</p>
               </div>
             </PropertyRow>
 
@@ -204,25 +229,25 @@ export function WallpaperZoneInspector() {
             <PropertyRow
               label={t('Zone_TitleStyle')}
               sub={
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <EmojiPicker
-                    value={zone.emoji}
-                    noneLabel={t('Zone_EmojiNone')}
-                    onPick={(emoji) => mutateZone(zone.id, (z) => ({ ...z, emoji }))}
-                  />
-                  <Segmented
-                    size="sm"
-                    value={zone.titleSize}
-                    options={(
-                      [
-                        ['Size_Small', 'S'],
-                        ['Size_Mid', 'M'],
-                        ['Size_Big', 'L'],
-                      ] as [StringKey, TitleSize][]
-                    ).map(([key, value]) => ({ value, label: t(key) }))}
-                    onChange={(titleSize) => mutateZone(zone.id, (z) => ({ ...z, titleSize }))}
-                  />
-                </div>
+                /* Size only applies to a VISIBLE title — selecting 无 collapses
+                   it (clear cause and effect). Emoji moved beside the title
+                   text in the zone list (round 3 — one label, one place). */
+                zone.titleStyle !== 'None' ? (
+                  <div className="mt-2 flex items-center justify-end gap-2">
+                    <Segmented
+                      size="sm"
+                      value={zone.titleSize}
+                      options={(
+                        [
+                          ['Size_Small', 'S'],
+                          ['Size_Mid', 'M'],
+                          ['Size_Big', 'L'],
+                        ] as [StringKey, TitleSize][]
+                      ).map(([key, value]) => ({ value, label: t(key) }))}
+                      onChange={(titleSize) => mutateZone(zone.id, (z) => ({ ...z, titleSize }))}
+                    />
+                  </div>
+                ) : undefined
               }
             >
               <div className="flex items-center gap-1">
@@ -277,8 +302,8 @@ export function WallpaperZoneInspector() {
                       <p className="mb-1 text-caption text-t3">{`${t('Paper_FillOpacity')} · ${opacityPercent}%`}</p>
                       <DmSlider
                         value={opacityPercent}
-                        min={3}
-                        max={95}
+                        min={0}
+                        max={100}
                         onChange={(v) => mutateZone(zone.id, (z) => ({ ...z, fillOpacity: v / 100 }), 'opacity')}
                         aria-label={t('Paper_FillOpacity')}
                       />
@@ -289,11 +314,12 @@ export function WallpaperZoneInspector() {
                         value={Math.round(zone.cornerRadius)}
                         min={CORNER_MIN}
                         max={CORNER_MAX}
+                        step={2}
                         onChange={(v) => mutateZone(zone.id, (z) => ({ ...z, cornerRadius: v }), 'corner')}
                         aria-label={t('Paper_Corner')}
                       />
                     </div>
-                    {(zone.material === 'Frost' || zone.material === 'Luminous' || zone.material === 'Solid') && (
+                    {(zone.material === 'Frost' || zone.material === 'Fluted' || zone.material === 'Paper' || zone.material === 'Brushed' || zone.material === 'LiquidGlass') && (
                       <div className="flex items-center justify-between">
                         <span className="text-caption text-t3">{t('Zone_Shadow')}</span>
                         <ToggleSwitch

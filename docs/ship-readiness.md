@@ -243,14 +243,20 @@ round-trips through the native resident path too.
 - ✅ **Installer config DONE (2026-07-15)** — `tauri.conf.json` bundle: `targets:[nsis]`,
   `externalBin:[binaries/dm-elevated]`, `webviewInstallMode:downloadBootstrapper`,
   `nsis.installMode:currentUser`. `bun run tauri:build` → `DeskMakeover_<ver>_x64-setup.exe` (14.4 MB).
-- ✅ **`dm-elevated.exe` NOW packaged** — `externalBin` staged by `scripts/stage-sidecar.mjs`
-  (built into `build:ship`); the requireAdministrator manifest is embedded by the new
-  `crates/dm-elevated/build.rs` (linker `/MANIFEST:EMBED` + `/MANIFESTUAC:NO` + `/MANIFESTINPUT`).
-  7z-confirmed inside the installer; Tauri strips the triple suffix so it lands as `dm-elevated.exe`
-  next to the main binary (where `lib.rs` resolves it). Self-contained (dumpbin: no app-folder DLLs).
-- **Version `0.0.0`** in `src-tauri/tauri.conf.json` + root `package.json`. Owner names the first release number.
-- **No code signing** — no Authenticode / RFC-3161 timestamping. Installer ships UNSIGNED until the owner supplies the cert.
-- **Install-mode decision** — defaulted to `currentUser` (no-admin, matches the main-UI-runs-unprivileged design). Owner may want per-machine or a both-choice installer.
+- ✅ **`dm-elevated.exe` NOW packaged + hardened** — `externalBin` staged by
+  `scripts/stage-sidecar.mjs` (built into `build:ship`), which (a) builds the helper with a STATIC
+  CRT (`+crt-static`) so it imports no hijackable `VCRUNTIME140.dll` — closing a real DLL-hijack LPE
+  the security review caught (a per-user install dir + elevated launch made a dynamic-CRT helper
+  exploitable), and (b) embeds the requireAdministrator manifest with `mt.exe` at packaging (NOT via
+  a build.rs linker arg — that also marked the unit-test harness requireAdministrator and broke
+  `cargo test -p dm-elevated` with os error 740). 7z-confirmed inside the installer; dumpbin confirms
+  only KnownDLLs + `api-ms-win-*` remain. Tauri strips the triple suffix so it lands as
+  `dm-elevated.exe` next to the main binary (where `lib.rs` resolves it).
+- ✅ **Version = `0.1.0`** (owner-named 2026-07-15) in `tauri.conf.json` + `package.json`. Stays 0.x
+  until the owner-supervised Windows WRITE surface is human-verified, then 1.0.
+- ✅ **Install mode = `currentUser`** (owner-confirmed) — no-admin, matches the main-UI-runs-unprivileged design.
+- **Code signing — deferred (owner: unsigned for internal test).** No Authenticode / RFC-3161 yet;
+  the installer triggers SmartScreen. A release BLOCKER before public distribution.
 - ~~**M7 build deps missing — no `tray-icon`**~~ → already present (`tauri` features `["tray-icon"]`,
   commit `f69935b`); tray registers on boot. Still missing: `tauri-plugin-notification`, an autostart
   plugin, tray bitmap assets (spec 07 §16).

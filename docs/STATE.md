@@ -103,6 +103,17 @@ what is in flight, and what comes next.
 
 ## Recently shipped (one line each — detail in journal/CHANGELOG)
 
+- 2026-07-16 **Clean-system + links + grid/polish ship round (owner "欺骗性纯 UI/点了没反应")** →
+  journal 2026-07 for the full record. Headlines: 清爽 backend was the devhost fake on ALL platforms
+  → Windows now runs the real WinregBackend/profile ports under a FAIL-CLOSED manifest (no write pre-W3,
+  ADR-0023 D2) + 「带我去关」 launches the real ms-settings: route (verified on-box) + honest guided-only
+  hero face. Opener capability had EMPTY scope → all Settings links dead → granted allow-default-urls +
+  $APPDATA-scoped open-path. app.getInfo → host getVersion (About was 0.0.0). Desktop grid reads the TRUE
+  cell pitch (IFolderView GetSpacing/GetViewModeAndIconSize) → icons preview + wallpaper lattice no longer
+  22px-drifted. Polish: slider cursor, required-field gating, ring-inset highlight, zone outline offset,
+  lang sync, 10 dead ui/ deleted. **Font blur DIAGNOSED** (fractional DPR from the sqrt auto-zoom) — the
+  DPR-snap fix carries a sharpness-vs-density tradeoff, left as an OWNER DECISION (see Open questions).
+  codex: no P1; 3 P2 + 1 P3 fixed. Commits 6b5c2b9 + 14ab7ad.
 - 2026-07-16 **Tray surface ship-wired (owner "菜单没反应" report)**: every §12 menu item now responds — deep-links (history/settings/reset via `resident://navigate` + app-store routing), 撤销最近一次整理 = `Reconciler::restore_batch` (snapshot-CAS, keeps the ledger row, 4 tests incl. superseded-restyle regression), toggle precondition feedback both tray+Settings, settings-poll enablement convergence; **§14 scope RESOLVED** (SHGetKnownFolderPath → foreground host + resident engine; watcher on real roots) — reset/version-switch/auto-format un-dormant on Windows; Settings gains the §13.2 恢复系统原始外观 row + auto-format switch un-hidden. Owner-box E2E via UIA tray clicks + CDP. codex: P1+P2 fixed, 2 documented.
 - 2026-07-16 **Icons owner round**: System bucket merged into App (taxonomy + presets + Rust resolve, legacy keys tolerated); per-type accordion hover try-on (WYSIWYG with global axes, CDP-verified); File kind glyph folds top-right (matches the File shape); Comet badge = native arrow footprint (0.28); `{true&&}` dead wrappers cleaned. Codex pass: 1 finding, judged by-design (bareLook reset semantics).
 - 2026-07-15/16 **Signing CI validated end-to-end**: Certum SimplySign + self-hosted runner; signed `DeskMakeover_0.1.0_x64-setup.exe`, Authenticode Valid + RFC-3161 timestamp, headless no-PIN. Runbook `docs/signing-setup.md`.
@@ -146,6 +157,12 @@ what is in flight, and what comes next.
 
 ## Open questions (owner)
 
+- **Font-blur fix direction (2026-07-16).** Blur is diagnosed as fractional devicePixelRatio from the
+  sqrt auto-zoom (`apply_ui_zoom` quantizes ZoomFactor to 5% steps → 1.10/1.15/1.30 → glyphs off the
+  pixel grid), worst on 125%/150% laptops. The fix = snap the EFFECTIVE DPR (scale×zoom) to the nearest
+  integer (fallback 0.5) instead of the raw zoom, but that trades away smooth zoom density on 100%
+  monitors — A1 "优先锐利" vs A2 "优先放大密度". Owner picks; a pure-win CJK weight-500 bump at 12–13px
+  is available regardless. Nothing changed unilaterally (North Star §9).
 - Release version number + name (release time).
 - Repo visibility: `nicepkg/deskmakeover` is PRIVATE — make public at release (the About card +
   免费开源 chip promise it).

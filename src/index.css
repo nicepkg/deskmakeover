@@ -263,6 +263,23 @@
     letter-spacing: 0;
   }
 
+  /* CJK small-text weight mitigation (owner 2026-07-16, direction A2). HarmonyOS Sans SC's
+     thin strokes at 11–13px read as "floaty" under Chromium grayscale AA + the fractional DPR
+     the density-first auto-zoom produces. In Chinese ONLY, nudge just the SMALL steps to 500 so
+     strokes land solid; sizes >= 14px keep their weight so the heading hierarchy survives, and
+     the English UI (Inter, which hints crisply) is untouched. Weight 400 that is deliberate
+     (e.g. a `font-normal` on a 12px caption) is exactly what looked floaty, so overriding it is
+     the intended fix. Root <html lang> is kept truthful by i18n syncDocumentLang. */
+  :root:lang(zh) :is(
+      .text-caption,
+      .text-body,
+      [class*='text-[11'],
+      [class*='text-[12'],
+      [class*='text-[13']
+    ) {
+    font-weight: 500;
+  }
+
   input,
   textarea,
   [contenteditable='true'] {

@@ -157,12 +157,13 @@ what is in flight, and what comes next.
 
 ## Open questions (owner)
 
-- **Font-blur fix direction (2026-07-16).** Blur is diagnosed as fractional devicePixelRatio from the
-  sqrt auto-zoom (`apply_ui_zoom` quantizes ZoomFactor to 5% steps → 1.10/1.15/1.30 → glyphs off the
-  pixel grid), worst on 125%/150% laptops. The fix = snap the EFFECTIVE DPR (scale×zoom) to the nearest
-  integer (fallback 0.5) instead of the raw zoom, but that trades away smooth zoom density on 100%
-  monitors — A1 "优先锐利" vs A2 "优先放大密度". Owner picks; a pure-win CJK weight-500 bump at 12–13px
-  is available regardless. Nothing changed unilaterally (North Star §9).
+- **Font blur — RESOLVED to A2 (owner 2026-07-16).** Diagnosed as fractional devicePixelRatio from the
+  sqrt auto-zoom; owner chose A2 「密度优先」: KEEP the smooth auto-zoom (max density), and mitigate the
+  softness with a CJK-only weight-500 bump at the small text steps (11–13px, `:lang(zh)` scoped, headings
+  ≥14px + English/Inter untouched, desktop-mirror labels self-excluded → stay 400 WYSIWYG). Shipped in
+  `src/index.css`. The DPR-snap (A1 sharpness) is deliberately NOT done — it would coarsen zoom density,
+  which the owner prioritized keeping. If the mitigation proves insufficient on a specific laptop, A1
+  remains the escalation.
 - Release version number + name (release time).
 - Repo visibility: `nicepkg/deskmakeover` is PRIVATE — make public at release (the About card +
   免费开源 chip promise it).

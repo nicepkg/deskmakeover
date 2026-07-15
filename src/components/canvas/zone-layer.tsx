@@ -304,7 +304,20 @@ export const ZoneView = React.memo(function ZoneView({
             onPointerDown={(e) => e.stopPropagation()}
             onFocus={(e) => e.currentTarget.select()}
             onBlur={onRenameCommit}
+            // WebView2 spellcheck has no host-side disable and keys off the OS
+            // environment language — pinyin/mixed titles get red squiggles without
+            // this (wv2-input audit 2026-07-15 §9).
+            spellCheck={false}
+            autoComplete="off"
             onKeyDown={(e) => {
+              // IME composition owns Enter/Escape: Enter picks the candidate
+              // (选字), Escape cancels the pinyin string. Committing/closing here
+              // would destroy the composition (wv2-input audit §1). keyCode 229
+              // covers engines that report composition without isComposing.
+              if (e.nativeEvent.isComposing || e.keyCode === 229) {
+                e.stopPropagation()
+                return
+              }
               if (e.key === 'Enter') {
                 e.preventDefault()
                 onRenameCommit()

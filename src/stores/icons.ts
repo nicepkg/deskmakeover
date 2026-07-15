@@ -3,7 +3,7 @@ import { call } from '@/bridge/client'
 import type { ConfigDto, GridMetricsDto, IconItemDto, IconOpResultDto, IconPersistedDto, IconScanDto, IconsStateDto, IconKindBucket, KindPolicy, TypeOverrideEntry, TypeOverrides } from '@/bridge/types'
 import { DEFAULT_KIND_POLICY, kindBucket, kindParticipates } from '@/lib/kind-policy'
 import { appAccentSeed, resolveTypeConfig, typeHasFixedPlate } from '@/lib/type-config'
-import { activePresetIdOf as activePresetIdOfRecipe, assembleIconsState, defaultRecipe, parseHistory, parseRecipe, type IconStyleRecipe } from '@/lib/icons-assemble'
+import { activePresetIdOf as activePresetIdOfRecipe, assembleIconsState, defaultRecipe, parseHistory, parseRecipe, SYSTEM_DEFAULT_CONFIG, type IconStyleRecipe } from '@/lib/icons-assemble'
 import { serializeIconLook } from '@/lib/icon-look'
 import { useWallpaper } from '@/stores/wallpaper'
 import { getIconCompositor } from '@/icon-compositor/icon-renderer'
@@ -618,8 +618,18 @@ export const useIcons = create<IconsState>((set, get) => {
         adoptScan(fetched.scan, fetched.persisted, draftFromPersisted(fetched.persisted))
         // A3 resume: rehydrate the last bare-look intent BEFORE first paint, so a relaunch whose last
         // selection was System Default opens bare. Only the initial scan resumes it — a manual rescan
-        // must not resurrect a bare intent the user has since left.
-        set({ bareLook: readBareLook() })
+        // must not resurrect a bare intent the user has since left. The reset semantics ride along
+        // (owner order 2026-07-15): a resumed bare intent ALSO resets the draft to the baseline, so
+        // the panel's lit ⊘s and the draft agree after a relaunch exactly as they do at selection.
+        if (readBareLook()) {
+          const adopted = get().state
+          set({
+            bareLook: true,
+            ...(adopted
+              ? { state: { ...adopted, config: { ...SYSTEM_DEFAULT_CONFIG }, typeOverrides: {} } }
+              : {}),
+          })
+        }
         // First paint is gated by `ready` (loadSources): the desktop stays veiled until every tile has
         // landed, so there is never a wallpaper-with-blank-icons window. Safety: never strand the veil
         // if the pool never pings (0 renderable tiles) — force the reveal past a full-desktop paint.
@@ -752,17 +762,30 @@ export const useIcons = create<IconsState>((set, get) => {
     // NO host write (no apply, no restore) at selection. `bareLook` is the design
     // intent that lights the card and turns the CTA into a restore crossing. It is
     // undoable (rides the snapshot) and any real look edit clears it.
+    //
+    // The draft ITSELF resets to the system-default baseline (owner order
+    // 2026-07-15): before this, the previous preset's draft was silently
+    // preserved under the lens, so the first follow-up edit resurrected that
+    // whole preset with one key changed — the panel's lit ⊘s were lying about
+    // the draft. Now the draft matches what the panel shows, each later edit
+    // moves exactly one axis, and undo still recovers the pre-reset draft.
     selectSystemDefault: () => {
       if (busy()) return
       const s = get()
       if (!s.state || s.bareLook) return
       pushUndo()
-      set({ bareLook: true, hoverConfig: null })
+      set({
+        state: markDirty({ ...s.state, config: { ...SYSTEM_DEFAULT_CONFIG }, typeOverrides: {} }),
+        bareLook: true,
+        hoverConfig: null,
+      })
       persistBareLook(true) // resume the bare selection on the next launch (A3)
+      recomputeHueSpread()
     },
 
-    // The inverse crossing (当前风格 card while the lens is down): lift the lens,
-    // change NOTHING else — the draft was never mutated, it just becomes visible.
+    // The inverse crossing (当前风格 card while the lens is down): lift the lens
+    // over the (reset) draft — since selection resets the draft to the baseline,
+    // this reveals the baseline; the pre-reset draft is one undo away.
     resumeDraft: () => {
       if (busy()) return
       const s = get()

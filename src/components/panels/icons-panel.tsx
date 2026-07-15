@@ -284,9 +284,12 @@ export function IconsPanel() {
           const activeId = activePresetIdOf(state)
           const activeMeta = activeId ? PRESET_NAME[activeId] : undefined
           const currentName = activeMeta ? t(activeMeta.name) : t('Preset_CurrentCustom')
-          // While the lens is down, hovering 当前风格 previews the preserved
-          // draft (hoverConfig paints OVER bareLook in the mirror); clicking it
-          // lifts the lens (resumeDraft) — the inverse of the System Default card.
+          // While the lens is down, hovering 当前风格 previews the draft
+          // (hoverConfig paints OVER bareLook in the mirror); clicking it lifts
+          // the lens (resumeDraft) — the inverse of the System Default card.
+          // Since 系统默认 RESETS the draft to the baseline (owner order
+          // 2026-07-15), the draft here is the baseline until the user edits;
+          // the pre-reset look is one undo away.
           const draftTryOn = tryOn({})
           // System Default (A1): same card grammar — bare minis (original icons
           // WITH the native arrow), no host write; the CTA becomes a restore.

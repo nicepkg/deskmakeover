@@ -83,6 +83,30 @@ export const PRESET_TYPE_OVERRIDES: Record<string, TypeOverrides> = {
 /** The factory default look (the spectrum preset) — used when no saved-style (②) exists yet. */
 export const DEFAULT_PRESET_ID = 'spectrum'
 
+/** The SYSTEM-DEFAULT baseline (owner order 2026-07-15): selecting 系统默认 RESETS the draft to
+ *  THIS config — the values every panel row's ⊘ already advertises while the card is active
+ *  (shape ⊘, 原彩, plate ⊘ = null+white, filter ⊘, native arrow Keep, uniform shortcut shape off).
+ *  Before this, 系统默认 was only a display lens over the PRESERVED previous-preset draft, so the
+ *  first follow-up edit resurrected that whole preset with one key changed — the panel's lit ⊘s
+ *  were lying about the draft. Now draft and panel agree, and each subsequent edit moves exactly
+ *  one axis. Latent axes (tint/monoStyle/plateBand/markStyle) keep factory values — they only take
+ *  effect once their mode is picked. */
+export const SYSTEM_DEFAULT_CONFIG: ConfigDto = {
+  shape: 'None',
+  subject: 'Original',
+  plateBand: 'Vivid',
+  plateFallback: 'white',
+  shortcutShape: null,
+  monoStyle: 'Tonal',
+  tint: '#FF6F5E',
+  distinction: 'Keep',
+  markStyle: 'Shadow',
+  markColor: null,
+  plateColor: null,
+  size: 'Mid',
+  filter: 'None',
+}
+
 export const ICON_PALETTE = ['#B97D4E', '#8A5A33', '#E8C9A0', '#6E4526', '#F4E7D3']
 export const MONO_SWATCHES = ['#FFFFFF', '#141414', '#B97D4E', '#FF6F5E', '#3FB6A8', '#D9A94E']
 export const MARK_SWATCHES = ['#FFFFFF', '#141414', '#FF6F5E', '#B97D4E', '#3FB6A8']

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { ConfigDto, IconItemDto, IconsStateDto } from '../src/bridge/types'
 import { __setBridgeForTests, effectiveTileConfig, persistBareLook, readBareLook, resetIconsHistoryForTests, resumeStatusKey, useIcons } from '../src/stores/icons'
 import { DEFAULT_KIND_POLICY } from '../src/lib/kind-policy'
+import { SYSTEM_DEFAULT_CONFIG } from '../src/lib/icons-assemble'
 
 // Undo granularity + override semantics (spec 06 §3.3/§3.4): one step per
 // discrete pick, gesture-coalesced wheels, hover never snapshots.
@@ -203,10 +204,21 @@ describe('System Default reset preset (A1)', () => {
     __setBridgeForTests(null)
   })
 
-  test('config is untouched, so the highlight can only come from bareLook', () => {
-    const before = { ...useIcons.getState().state!.config }
+  test('selecting it RESETS the draft to the system-default baseline (owner order 2026-07-15)', () => {
+    // The old lens-only design preserved the previous preset's draft here, so the
+    // first follow-up edit resurrected that whole preset — the reported bug.
+    useIcons.setState({
+      state: {
+        ...useIcons.getState().state!,
+        config: { ...config, shape: 'Samsung', filter: 'Glass', subject: 'Mono' },
+        typeOverrides: { Folder: { source: 'custom', patch: { shape: 'Folder' } } },
+      },
+    })
     useIcons.getState().selectSystemDefault()
-    expect(useIcons.getState().state!.config).toEqual(before)
+    expect(useIcons.getState().state!.config).toEqual(SYSTEM_DEFAULT_CONFIG)
+    expect(useIcons.getState().state!.typeOverrides).toEqual({})
+    // The native arrow is the baseline's shortcut mark (快捷角标回到初始状态).
+    expect(SYSTEM_DEFAULT_CONFIG.distinction).toBe('Keep')
   })
 
   test('any real look edit leaves the bare look', () => {
@@ -214,6 +226,31 @@ describe('System Default reset preset (A1)', () => {
     s.selectSystemDefault()
     expect(useIcons.getState().bareLook).toBe(true)
     s.mutate({ shape: 'Circle' })
+    expect(useIcons.getState().bareLook).toBe(false)
+  })
+
+  test('an edit after the reset moves ONE axis off the baseline, never the previous preset', () => {
+    const s = useIcons.getState()
+    // Land on a loud preset first — its values must NOT bleed through the reset.
+    s.selectRecipe({ ...config, shape: 'Samsung', filter: 'Glass', subject: 'BlackWhite' }, {})
+    s.selectSystemDefault()
+    useIcons.getState().mutate({ shape: 'Circle' })
+    const c = useIcons.getState().state!.config
+    expect(c.shape).toBe('Circle') // the one edited axis
+    expect(c.filter).toBe('None') // NOT Glass from the previous preset
+    expect(c.subject).toBe('Original') // NOT BlackWhite
+    expect(c.distinction).toBe('Keep') // the native arrow stays until edited
+    expect(useIcons.getState().bareLook).toBe(false)
+  })
+
+  test('undo after the reset recovers the pre-reset draft', () => {
+    const s = useIcons.getState()
+    s.selectRecipe({ ...config, shape: 'Samsung', filter: 'Glass' }, {})
+    const before = { ...useIcons.getState().state!.config }
+    useIcons.getState().selectSystemDefault()
+    expect(useIcons.getState().state!.config).toEqual(SYSTEM_DEFAULT_CONFIG)
+    useIcons.getState().undo()
+    expect(useIcons.getState().state!.config).toEqual(before)
     expect(useIcons.getState().bareLook).toBe(false)
   })
 
@@ -307,14 +344,20 @@ describe('System-Default lens (spec 06 §3.13)', () => {
     expect(useIcons.getState().bareLook).toBe(true)
   })
 
-  test('the draft survives a lens round-trip losslessly', () => {
+  test('selection resets the type ladder too; the pre-reset draft is one undo away', () => {
+    // Owner order 2026-07-15 (supersedes the lossless round-trip contract): the
+    // reset is REAL — typeOverrides clear at selection, an edit builds on the
+    // baseline (never resurrects the parked draft), and undo recovers it.
     const s = useIcons.getState()
     s.selectSystemDefault()
-    expect(useIcons.getState().state!.typeOverrides).toEqual({ Folder: folderPatch })
+    expect(useIcons.getState().state!.typeOverrides).toEqual({})
     useIcons.getState().mutate({ shape: 'Samsung' }) // value-asserting → lens lifts
     expect(useIcons.getState().bareLook).toBe(false)
-    expect(useIcons.getState().state!.typeOverrides).toEqual({ Folder: folderPatch })
+    expect(useIcons.getState().state!.typeOverrides).toEqual({})
     expect(useIcons.getState().state!.config.shape).toBe('Samsung')
+    useIcons.getState().undo() // the Samsung pick
+    useIcons.getState().undo() // the reset
+    expect(useIcons.getState().state!.typeOverrides).toEqual({ Folder: folderPatch })
   })
 })
 

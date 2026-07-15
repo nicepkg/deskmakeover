@@ -15,6 +15,12 @@ Files that make this work (committed):
 
 Everything is **inert** until the four activation steps below are done.
 
+> **Status: validated end-to-end 2026-07-15.** A signed `workflow_dispatch` produced
+> `DeskMakeover_0.1.0_x64-setup.exe` with a **Valid** Authenticode signature (CN=Yang Jinming,
+> Certum Code Signing 2021 CA) + a Certum RFC-3161 timestamp — fully headless, no PIN prompt.
+> The runner + `DM_SIGN_THUMBPRINT` are already configured on the signing PC; steps 1–2 are done.
+> What remains for a real release: keep SimplySign's card loaded (step 3) and tag (step 4).
+
 ---
 
 ## One-time activation
@@ -48,17 +54,21 @@ Copy the `Thumbprint`, then GitHub → **Settings → Secrets and variables → 
 repository variable**: name `DM_SIGN_THUMBPRINT`, value = the thumbprint. (A thumbprint is a public
 identifier, so a *variable* is correct — do **not** put it in Secrets, and never commit it.)
 
-### 3. Keep SimplySign Desktop authenticated
+### 3. Keep SimplySign Desktop authenticated **with the card loaded**
 
-The cloud cert only appears in `CurrentUser\My` while SimplySign Desktop holds a session. Sessions
-expire (hours). Two options:
+The code-signing cert only appears in `CurrentUser\My` (where signtool reads it) while SimplySign
+Desktop has the **card loaded**, not merely a cloud login. The distinction bit us once: being logged
+into the SimplySign cloud account is NOT enough — you must load the card so the virtual reader
+presents the cert. Concretely: open **SimplySign Desktop** → its **Certificate list** shows the
+`code signing` cert (CN=Yang Jinming) → that load registers it into `CurrentUser\My` (and
+auto-triggers the Smart Card service). Signing then runs headless off the active session — signtool
+does NOT prompt for a PIN. Sessions expire (hours); reload before a release. The preflight step fails
+fast with a clear message if the cert isn't in the store, so you never get a half-built unsigned run.
 
-- **Manual**: log into SimplySign Desktop before cutting a release. The workflow's preflight step
-  fails fast with a clear message if the session is gone, so you never get a half-built unsigned run.
-- **Fully hands-off** (optional): automate the SimplySign login with the OTP seed. The setup QR is a
-  standard `otpauth://` URI — extract its Base32 secret once, then generate the TOTP programmatically
-  and feed it to SimplySign Desktop at login. See the community write-up linked at the bottom. Only
-  worth it if you cut releases often; the manual path is fine to start.
+- **Fully hands-off** (optional): automate the SimplySign login/card-load with the OTP seed. The setup
+  QR is a standard `otpauth://` URI — extract its Base32 secret once, then generate the TOTP
+  programmatically. See the community write-up linked at the bottom. Only worth it if you cut releases
+  often; the manual load is fine to start.
 
 ### 4. Cut a release
 

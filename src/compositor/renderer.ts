@@ -448,7 +448,11 @@ export class WallpaperCompositor {
       )
     }
     this.renderScale = bakeScale
-    this.blur.strength = Math.max(0.5, this.grid.cellHeight * (1 / 6) * SIGMA_TO_STRENGTH)
+    // Blur strength is in TEXTURE pixels, so it tracks the target resolution exactly
+    // as the live path does (renderNow multiplies by renderScale) — at native res
+    // bakeScale is 1 (unchanged), and on a capped overflow bake it scales down to keep
+    // the frost visually identical to the live preview instead of over-blurring.
+    this.blur.strength = Math.max(0.5, this.grid.cellHeight * (1 / 6) * SIGMA_TO_STRENGTH * bakeScale)
     this.blur.repeatEdgePixels = true
     for (const d of this.dying.values()) d.node.destroy()
     this.dying.clear() // a bake is a committed look — no mid-exit ghosts in it

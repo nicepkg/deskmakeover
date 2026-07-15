@@ -68,6 +68,8 @@ export function useWallpaperCompositor({
   // Which screen's source the live compositor currently holds — the seam guard so a
   // same-dims switch swaps the source while a co-fired recreate never double-loads.
   const loadedScreenRef = React.useRef<string | null>(null)
+  // Bumped on `webglcontextrestored` to force a full compositor rebuild (§A1).
+  const [recoverNonce, setRecoverNonce] = React.useState(0)
 
   // (Re)create on grid-dims change; load the active screen's source at birth.
   React.useEffect(() => {
@@ -80,6 +82,27 @@ export function useWallpaperCompositor({
     setLoadError(false)
     let cancelled = false
     let instance: WallpaperCompositor | null = null
+
+    // WebGL context loss (pitfalls doc §A1): a GPU driver update, a TDR reset, or a
+    // laptop dGPU/iGPU switch destroys the context and the pixi canvas goes blank
+    // FOREVER — nothing re-inits it. `preventDefault` on `lost` is REQUIRED or the
+    // browser never fires `restored`; while lost we fall back to the plain wallpaper
+    // <img> (the loadError path) instead of a blank canvas, and on `restored` we bump
+    // the nonce to tear down the dead compositor and rebuild a fresh one. Attached
+    // synchronously (before the async create) so a loss mid-init is caught too, and
+    // torn down with the effect so it re-binds to each recreated canvas.
+    const onContextLost = (e: Event) => {
+      e.preventDefault()
+      console.error('wallpaper compositor: WebGL context lost — showing the plain wallpaper until restore')
+      setReady(false)
+      setLoadError(true)
+    }
+    const onContextRestored = () => {
+      console.info('wallpaper compositor: WebGL context restored — rebuilding the preview')
+      setRecoverNonce((n) => n + 1)
+    }
+    canvas.addEventListener('webglcontextlost', onContextLost)
+    canvas.addEventListener('webglcontextrestored', onContextRestored)
     ;(async () => {
       const source = await resolveActiveSource()
       if (cancelled) return
@@ -105,13 +128,15 @@ export function useWallpaperCompositor({
     })
     return () => {
       cancelled = true
+      canvas.removeEventListener('webglcontextlost', onContextLost)
+      canvas.removeEventListener('webglcontextrestored', onContextRestored)
       registerCompositor(null)
       compositorRef.current?.destroy()
       compositorRef.current = null
       loadedScreenRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.grid.screenWidth, state?.grid.screenHeight, !!state])
+  }, [state?.grid.screenWidth, state?.grid.screenHeight, !!state, recoverNonce])
 
   // Swap the source on a SAME-dimension screen switch (a different-dimension switch
   // recreates above and that recreate already loads the right source). The

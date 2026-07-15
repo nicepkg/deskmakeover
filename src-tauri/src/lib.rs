@@ -162,6 +162,7 @@ pub fn export_bindings(path: &Path) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    sanitize_webview_env();
     let specta = specta_builder();
 
     let mut builder = tauri::Builder::default();
@@ -339,6 +340,33 @@ pub fn run() {
 
 /// The settings database file name under the OS app-data dir.
 const SETTINGS_DB_FILE: &str = "settings.sqlite3";
+
+/// Strip attacker-controllable WebView2 env vars before the webview is created
+/// (pitfalls doc §C, env-var hijack). Any process that can set our environment can
+/// otherwise: inject `--remote-debugging-port` (open a CDP control channel) via
+/// `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, redirect the profile with
+/// `WEBVIEW2_USER_DATA_FOLDER`, or — worst — point
+/// `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` at an attacker-supplied runtime and run
+/// arbitrary code INSIDE our process. A shipped build honors none of them.
+///
+/// Only stripped in release, and only when our private `DESKMAKEOVER_DEVTOOLS` opt-in
+/// is absent — so our own CDP debug workflow (which runs the RELEASE binary with
+/// `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=…`) still works when
+/// it also sets `DESKMAKEOVER_DEVTOOLS=1`. Debug builds keep everything untouched.
+/// Called at the very top of `run()`, before any thread spawns, so `remove_var` is sound.
+fn sanitize_webview_env() {
+    #[cfg(not(debug_assertions))]
+    if std::env::var_os("DESKMAKEOVER_DEVTOOLS").is_none() {
+        for key in [
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
+            "WEBVIEW2_USER_DATA_FOLDER",
+            "WEBVIEW2_RELEASE_CHANNEL_PREFERENCE",
+        ] {
+            std::env::remove_var(key);
+        }
+    }
+}
 
 /// Auto UI zoom (owner report 2026-07-15). The app chrome is authored in fixed px
 /// against the 1280×832 design window, so on a large low-DPI monitor a maximized

@@ -75,6 +75,10 @@ export class WallpaperCompositor {
   private backdropKey = ''
   /** Consecutive renderNow faults — bounds the self-heal retry (see renderNow). */
   private renderFailures = 0
+  /** GPU `MAX_TEXTURE_SIZE`, probed once at create — bake caps its RTs to this so a
+   *  native-res target on a 5K/8K screen or an old iGPU (4096 cap) never silently
+   *  allocates an oversized texture and bakes a BLACK image (§A5). */
+  private maxTextureSize = 4096
   private frostWall!: Sprite
   private backdropWall!: Sprite
   private frostDim!: Sprite
@@ -111,6 +115,7 @@ export class WallpaperCompositor {
       preference: 'webgl',
     })
     c.app.ticker.stop()
+    c.maxTextureSize = readMaxTextureSize(c.app.renderer)
     c.setSource(source)
 
     c.sourceSprite = new Sprite(c.sourceTexture)
@@ -156,13 +161,13 @@ export class WallpaperCompositor {
     }
   }
 
-  /** Backing-store scale: min(1, viewZoom × dpr), additionally capped so the
-   *  LIVE canvas long edge stays ≤4096 (8K monitors must not pay native-res
-   *  preview targets per frame; bake is unaffected — codex review M1 partial;
-   *  the full MAX_TEXTURE_SIZE / SwiftShader probe stays on the STATE list). */
+  /** Backing-store scale: min(1, viewZoom × dpr), additionally capped so the LIVE
+   *  canvas long edge stays ≤4096 (8K monitors must not pay native-res preview
+   *  targets per frame) AND never exceeds the probed GPU MAX_TEXTURE_SIZE (a sub-4096
+   *  iGPU would otherwise allocate past its limit). Bake caps separately in bake().  */
   setRenderScale(scale: number): void {
     const longEdge = Math.max(this.grid.screenWidth, this.grid.screenHeight)
-    const cap = Math.min(1, 4096 / longEdge)
+    const cap = Math.min(1, Math.min(4096, this.maxTextureSize) / longEdge)
     const k = Math.min(cap, Math.max(0.05, scale))
     if (Math.abs(k - this.renderScale) < 0.01) return
     this.renderScale = k
@@ -429,17 +434,28 @@ export class WallpaperCompositor {
   async bake(): Promise<Blob> {
     const liveScale = this.renderScale
     const liveStrength = this.blur.strength
-    // Bake at scale 1: per-node filters (feather/shadow/glow) read renderScale.
-    this.renderScale = 1
+    const g = this.grid
+    // Bake at native res (scale 1) — but never allocate an RT larger than the GPU's
+    // MAX_TEXTURE_SIZE, or the frost/backdrop/final targets come back BLACK on a 5K/8K
+    // screen or an old iGPU (§A5). When native overflows the cap we bake at the largest
+    // fitting scale: a slightly-soft wallpaper (Windows upscales it) beats a black one.
+    // Every downstream target keys off renderScale (ensureFrostRT) so one cap covers all.
+    const bakeScale = Math.min(1, this.maxTextureSize / Math.max(g.screenWidth, g.screenHeight))
+    if (bakeScale < 1) {
+      console.warn(
+        `bake: native ${g.screenWidth}×${g.screenHeight} exceeds GPU MAX_TEXTURE_SIZE ${this.maxTextureSize}; ` +
+          `baking at ${Math.round(bakeScale * 100)}% to avoid a black export`,
+      )
+    }
+    this.renderScale = bakeScale
     this.blur.strength = Math.max(0.5, this.grid.cellHeight * (1 / 6) * SIGMA_TO_STRENGTH)
     this.blur.repeatEdgePixels = true
     for (const d of this.dying.values()) d.node.destroy()
     this.dying.clear() // a bake is a committed look — no mid-exit ghosts in it
-    this.ensureFrostRT() // frostRT at scale 1 for the native-res bake
+    this.ensureFrostRT() // frostRT at bakeScale for the native-res bake
     this.syncScene() // clarity scrim current before frostRT mirrors it
     this.renderFrostRT()
-    const g = this.grid
-    const rt = RenderTexture.create({ width: g.screenWidth, height: g.screenHeight, resolution: 1 })
+    const rt = RenderTexture.create({ width: g.screenWidth, height: g.screenHeight, resolution: bakeScale })
     try {
       this.app.renderer.render({ container: this.app.stage, target: rt, transform: new Matrix() })
       const canvas = this.app.renderer.extract.canvas(rt) as HTMLCanvasElement
@@ -470,6 +486,19 @@ export class WallpaperCompositor {
     this.sourceBitmap?.close()
     this.sourceBitmap = null
   }
+}
+
+/** GPU `MAX_TEXTURE_SIZE` off the live pixi WebGL renderer (we init with
+ *  `preference:'webgl'`, so `renderer.gl` is always present). Duck-typed rather than
+ *  cast to a pixi type so a WebGPU/software fallback can't throw; defaults to 4096
+ *  (WebGL2 guarantees ≥2048, and 4096 is the common low-end iGPU cap) when unreadable. */
+function readMaxTextureSize(renderer: unknown): number {
+  const gl = (renderer as { gl?: WebGL2RenderingContext }).gl
+  if (gl && typeof gl.getParameter === 'function') {
+    const max = gl.getParameter(gl.MAX_TEXTURE_SIZE) as unknown
+    if (typeof max === 'number' && max > 0) return max
+  }
+  return 4096
 }
 
 // Vite/React Fast Refresh preserves the compositor instance across an HMR edit

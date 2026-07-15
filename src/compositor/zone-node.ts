@@ -69,6 +69,20 @@ export class ZoneNode {
     this.frost.texture = texture
   }
 
+  /** Swap a recreated shared backdrop RT under this node (identity-matched), so a
+   *  node the scene sync no longer visits — a mid-exit dying ghost — never keeps
+   *  sampling a destroyed texture (the zone-delete white-canvas crash). A node on
+   *  neither old target (source texture, or hidden) is left untouched. */
+  repointBackdrop(
+    oldFrost: Texture | null,
+    frost: Texture,
+    oldBackdrop: Texture | null,
+    backdrop: Texture,
+  ): void {
+    if (oldFrost && this.frost.texture === oldFrost) this.frost.texture = frost
+    else if (oldBackdrop && this.frost.texture === oldBackdrop) this.frost.texture = backdrop
+  }
+
   destroy(): void {
     this.title.texture?.destroy(true)
     this.glassFilter?.destroy() // custom GL program — release it (shared blur is NOT ours)

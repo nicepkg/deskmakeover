@@ -71,6 +71,10 @@ export class WallpaperCompositor {
   // SHARP full-screen backdrop (wallpaper + dim, no blur): what Liquid Glass
   // refracts — the exact pixels the desktop shows, dim included.
   private backdropRT: RenderTexture | null = null
+  /** The dims×scale the RTs were CREATED for (see ensureFrostRT — float-safe key). */
+  private backdropKey = ''
+  /** Consecutive renderNow faults — bounds the self-heal retry (see renderNow). */
+  private renderFailures = 0
   private frostWall!: Sprite
   private backdropWall!: Sprite
   private frostDim!: Sprite
@@ -331,22 +335,36 @@ export class WallpaperCompositor {
   }
 
   /** (Re)allocate the backdrop RTs to the current screen dims × render scale.
-   *  Cheap no-op when nothing changed; recreated on a scale/dims change. */
+   *  Cheap no-op when nothing changed; recreated on a scale/dims change.
+   *
+   *  The no-op check compares the CREATION key, never `frostRT.width` — that getter
+   *  is `pixelWidth / resolution`, a float division that misses strict equality with
+   *  `screenWidth` whenever screenWidth × renderScale is not an integer (routine at
+   *  125%/150% Windows DPI). The old getter comparison recreated BOTH RTs every
+   *  frame, and any zone mid-delete-exit (evicted from `nodes`, so never re-synced)
+   *  kept sampling the just-destroyed RT — the batcher then read a null texture
+   *  source and the render died mid-frame: the owner's "delete a zone → white
+   *  canvas until the next interaction" (2026-07-15, caught live in the debugger). */
   private ensureFrostRT(): void {
     const g = this.grid
-    const res = this.renderScale
-    if (
-      this.frostRT &&
-      this.frostRT.width === g.screenWidth &&
-      this.frostRT.height === g.screenHeight &&
-      Math.abs(this.frostRT.source.resolution - res) < 0.001
-    ) {
-      return
+    const key = `${g.screenWidth}x${g.screenHeight}@${this.renderScale}`
+    if (this.frostRT && this.backdropRT && this.backdropKey === key) return
+    this.backdropKey = key
+    const oldFrost = this.frostRT
+    const oldBackdrop = this.backdropRT
+    this.frostRT = RenderTexture.create({ width: g.screenWidth, height: g.screenHeight, resolution: this.renderScale })
+    this.backdropRT = RenderTexture.create({ width: g.screenWidth, height: g.screenHeight, resolution: this.renderScale })
+    // Re-point every zone at the fresh targets BEFORE destroying the old ones —
+    // INCLUDING mid-exit dying ghosts, which syncScene no longer visits. A ghost
+    // left on a destroyed RT is exactly the white-canvas crash above.
+    for (const node of this.nodes.values()) {
+      node.repointBackdrop(oldFrost, this.frostRT, oldBackdrop, this.backdropRT)
     }
-    this.frostRT?.destroy(true)
-    this.frostRT = RenderTexture.create({ width: g.screenWidth, height: g.screenHeight, resolution: res })
-    this.backdropRT?.destroy(true)
-    this.backdropRT = RenderTexture.create({ width: g.screenWidth, height: g.screenHeight, resolution: res })
+    for (const d of this.dying.values()) {
+      d.node.repointBackdrop(oldFrost, this.frostRT, oldBackdrop, this.backdropRT)
+    }
+    oldFrost?.destroy(true)
+    oldBackdrop?.destroy(true)
   }
 
   /** Composite the frost backdrop into frostRT — one pass every frost zone samples,
@@ -373,25 +391,37 @@ export class WallpaperCompositor {
 
   private renderNow(): void {
     if (this.disposed || !this.look) return
-    // Blur the whole wallpaper into frostRT BEFORE the zones sample it (one pass).
-    this.blur.strength = Math.max(0.5, this.grid.cellHeight * (1 / 6) * SIGMA_TO_STRENGTH * this.renderScale)
-    this.blur.repeatEdgePixels = true // clamp the screen-edge samples (see field note)
-    this.ensureFrostRT()
-    this.syncScene() // updates the clarity scrim texture BEFORE frostRT mirrors it
-    this.renderFrostRT()
-    // Exit lane: fade dying zones' material alpha in step with the DOM exit.
-    const now = performance.now()
-    for (const [id, d] of this.dying) {
-      const t = (now - d.at) / EXIT_MS
-      if (t >= 1) {
-        d.node.destroy()
-        this.dying.delete(id)
-      } else {
-        d.node.root.alpha = 1 - t
+    // A fault below aborts the frame AFTER the canvas was cleared — without a
+    // recovery the user stares at a white canvas until the next interaction
+    // happens to invalidate (the zone-delete crash's visible symptom). Catch,
+    // report, and retry a few frames; a healthy render resets the budget.
+    try {
+      // Blur the whole wallpaper into frostRT BEFORE the zones sample it (one pass).
+      this.blur.strength = Math.max(0.5, this.grid.cellHeight * (1 / 6) * SIGMA_TO_STRENGTH * this.renderScale)
+      this.blur.repeatEdgePixels = true // clamp the screen-edge samples (see field note)
+      this.ensureFrostRT()
+      this.syncScene() // updates the clarity scrim texture BEFORE frostRT mirrors it
+      this.renderFrostRT()
+      // Exit lane: fade dying zones' material alpha in step with the DOM exit.
+      const now = performance.now()
+      for (const [id, d] of this.dying) {
+        const t = (now - d.at) / EXIT_MS
+        if (t >= 1) {
+          d.node.destroy()
+          this.dying.delete(id)
+        } else {
+          d.node.root.alpha = 1 - t
+        }
       }
+      this.app.stage.setFromMatrix(new Matrix().scale(this.renderScale, this.renderScale))
+      this.app.render()
+    } catch (err) {
+      this.renderFailures++
+      console.error(`wallpaper compositor render failed (attempt ${this.renderFailures})`, err)
+      if (this.renderFailures <= 5) this.invalidate() // bounded: a permanent fault must not error-loop at rAF pace
+      return
     }
-    this.app.stage.setFromMatrix(new Matrix().scale(this.renderScale, this.renderScale))
-    this.app.render()
+    this.renderFailures = 0
     if (this.dying.size > 0) this.invalidate() // keep ticking until the exit lane drains
   }
 

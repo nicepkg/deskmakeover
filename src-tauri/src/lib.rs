@@ -343,12 +343,19 @@ const SETTINGS_DB_FILE: &str = "settings.sqlite3";
 /// Auto UI zoom (owner report 2026-07-15). The app chrome is authored in fixed px
 /// against the 1280×832 design window, so on a large low-DPI monitor a maximized
 /// window dwarfs the panel type that reads correctly at design size. Scale the whole
-/// page proportionally to the window's LOGICAL size through the platform webview
-/// zoom — WebView2 `ZoomFactor` on Windows (page-zoom semantics: it also raises
-/// `devicePixelRatio`, so every DPR-aware canvas re-renders sharper, and it works
-/// independently of the disabled user zoom hotkeys) and `WKWebView.pageZoom` on
-/// macOS. Quantized to 5% steps so a live drag-resize doesn't relayout every tick;
-/// never shrinks below 1× (the compact layout owns small windows).
+/// page with the window's LOGICAL size through the platform webview zoom — WebView2
+/// `ZoomFactor` on Windows (page-zoom semantics: it also raises `devicePixelRatio`,
+/// so every DPR-aware canvas re-renders sharper, and it works independently of the
+/// disabled user zoom hotkeys) and `WKWebView.pageZoom` on macOS.
+///
+/// The curve is √fit, not fit (owner call 2026-07-15 v2): linear-proportional zoom
+/// reproduces the design-window look at any size but wastes the larger canvas — the
+/// user gets the SAME content, only bigger ("无脑放大"). The square root splits
+/// window growth evenly between more content and larger chrome (maximized on a
+/// 2560×1392 desktop: fit 1.67 → zoom 1.30, viewport ≈1969 logical px), which is
+/// the density a bigger monitor is bought for. Quantized to 5% steps so a live
+/// drag-resize doesn't relayout every tick; never shrinks below 1× (the compact
+/// layout owns small windows).
 fn apply_ui_zoom(webview: &tauri::WebviewWindow) {
     use std::sync::atomic::{AtomicU32, Ordering};
     // The design-reference logical size — tauri.conf.json's initial main window.
@@ -364,7 +371,8 @@ fn apply_ui_zoom(webview: &tauri::WebviewWindow) {
     }
     let logical_w = f64::from(size.width) / scale;
     let logical_h = f64::from(size.height) / scale;
-    let zoom = (logical_w / DESIGN_W).min(logical_h / DESIGN_H).clamp(1.0, 2.0);
+    let fit = (logical_w / DESIGN_W).min(logical_h / DESIGN_H);
+    let zoom = fit.sqrt().clamp(1.0, 2.0);
     let quantized = ((zoom * 20.0).round() / 20.0) as f32;
     if LAST_APPLIED.swap(quantized.to_bits(), Ordering::Relaxed) == quantized.to_bits() {
         return; // unchanged after quantization — skip the relayout

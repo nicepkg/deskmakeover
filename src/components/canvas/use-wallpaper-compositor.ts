@@ -3,6 +3,8 @@ import { WallpaperCompositor } from '@/compositor/renderer'
 import type { CompositorSource, ZoneMeta } from '@/compositor/renderer'
 import { registerCompositor } from '@/compositor/registry'
 import { useWallpaper } from '@/stores/wallpaper'
+import { useToasts } from '@/stores/toasts'
+import { t } from '@/lib/i18n'
 import type { WallpaperStateDto } from '@/bridge/types'
 
 // Compositor lifecycle + the PER-SCREEN SOURCE SEAM (spec 04 §B2/B4). Split from
@@ -51,12 +53,16 @@ export function useWallpaperCompositor({
   state,
   setZoneMeta,
   setReady,
+  setLoadError,
 }: {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   compositorRef: React.MutableRefObject<WallpaperCompositor | null>
   state: WallpaperStateDto | null
   setZoneMeta: (meta: Record<string, ZoneMeta>) => void
   setReady: (ready: boolean) => void
+  /** Compositor init/source-load failed: the mirror clears the loading shimmer and
+   *  falls back to the plain wallpaper `<img>` instead of hanging on it forever. */
+  setLoadError: (v: boolean) => void
 }): void {
   const activeScreenId = useWallpaper((s) => s.activeScreenId)
   // Which screen's source the live compositor currently holds — the seam guard so a
@@ -71,6 +77,7 @@ export function useWallpaperCompositor({
     // canvas until the new compositor paints (the mirror shows the new screen's
     // plain wallpaper meanwhile). A same-dims switch never re-runs this effect.
     setReady(false)
+    setLoadError(false)
     let cancelled = false
     let instance: WallpaperCompositor | null = null
     ;(async () => {
@@ -88,7 +95,14 @@ export function useWallpaperCompositor({
       if (currentLook) instance.update(currentLook)
       loadedScreenRef.current = useWallpaper.getState().activeScreenId
       setReady(true)
-    })().catch((err) => console.error('compositor init failed', err))
+    })().catch((err) => {
+      if (cancelled) return
+      // Never leave the loading shimmer stuck: clear it, fall back to the plain
+      // wallpaper, and tell the user (owner report: 壁纸 page stuck loading).
+      console.error('compositor init failed', err)
+      setLoadError(true)
+      useToasts.getState().show(t('Paper_PreviewFailed'), 'warn')
+    })
     return () => {
       cancelled = true
       registerCompositor(null)

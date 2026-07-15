@@ -384,6 +384,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Paper_Dim": "压暗强度",
   "Paper_DropHint": "松手，用这张图设计",
   "Paper_DropReject": "只支持图片文件",
+  "Paper_PreviewFailed": "壁纸预览加载失败，已显示原壁纸",
   "Paper_EmptyDrawHint": "或在壁纸上拖一个框，自己划分区",
   "Paper_EmptyImportHint": "也可以导入自己的图片",
   "Paper_EmptyLead": "选一套布局开始",

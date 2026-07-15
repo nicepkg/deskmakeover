@@ -58,6 +58,7 @@ export function WallpaperMirror() {
   const [zoom, setZoomState] = React.useState(1)
   const setZoom = React.useCallback((z: number) => setZoomState(Math.min(3, Math.max(0.2, z))), [])
   const [ready, setReady] = React.useState(false)
+  const [loadError, setLoadError] = React.useState(false)
   const [rubber, setRubber] = React.useState<{ sx: number; sy: number; ex: number; ey: number } | null>(null)
   const [rename, setRename] = React.useState<{ id: string; value: string } | null>(null)
   const [zoneMenu, setZoneMenu] = React.useState<{ id: string; x: number; y: number } | null>(null)
@@ -111,7 +112,7 @@ export function WallpaperMirror() {
     center: 'xy',
   })
 
-  useWallpaperCompositor({ canvasRef, compositorRef, state, setZoneMeta, setReady })
+  useWallpaperCompositor({ canvasRef, compositorRef, state, setZoneMeta, setReady, setLoadError })
 
   // On a screen switch: re-fit for the new aspect + a brief opacity dip that masks
   // the change (§A2). `dip` hides the composed canvas while the new source repaints.
@@ -586,7 +587,7 @@ export function WallpaperMirror() {
           </div>
         )}
 
-        {!ready && <ScanShimmer />}
+        {!ready && !loadError && <ScanShimmer />}
       </div>
 
       {/* Multi-monitor switcher — floating glass pill, top-left (§B4). Renders

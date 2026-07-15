@@ -38,29 +38,50 @@ enum Utf16Endian {
 /// UTF-16 of that endianness) → strict UTF-8 → lossy UTF-8. The returned string never carries a
 /// leading U+FEFF, so the existing per-line [`strip_bom`] stays defensive rather than required.
 pub fn decode_ini_text_bytes(bytes: &[u8]) -> String {
+    decode_ini_text(bytes).0
+}
+
+/// Like [`decode_ini_text_bytes`] but yields `None` when the bytes could only be decoded LOSSILY
+/// (a legacy ANSI code-page file carrying non-ASCII bytes). A WRITER must use this and refuse,
+/// rather than rewrite the file as UTF-8 with those bytes replaced by U+FFFD — that corrupts the
+/// shortcut's URL/data (codex R2-#3). READERS/fingerprinters keep using the lossy
+/// [`decode_ini_text_bytes`]: a lossy read only risks a benign fingerprint miss, never on-disk loss.
+pub fn decode_ini_text_lossless(bytes: &[u8]) -> Option<String> {
+    let (text, lossy) = decode_ini_text(bytes);
+    if lossy {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+/// The shared decoder. The bool is `true` when the ANSI fallback had to replace undecodable bytes
+/// with U+FFFD. UTF-8 (BOM or bare) reports loss precisely; UTF-16 is treated as lossless (the shell
+/// never writes the unpaired surrogates that are the only thing `from_utf16_lossy` would drop).
+fn decode_ini_text(bytes: &[u8]) -> (String, bool) {
     if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
-        return utf8_or_lossy(rest);
+        return utf8_checked(rest);
     }
     if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
-        return decode_utf16(rest, Utf16Endian::Little);
+        return (decode_utf16(rest, Utf16Endian::Little), false);
     }
     if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
-        return decode_utf16(rest, Utf16Endian::Big);
+        return (decode_utf16(rest, Utf16Endian::Big), false);
     }
     // No BOM. A slice riddled with NULs is BOM-less UTF-16 (a NUL is legal UTF-8, so `from_utf8`
     // would otherwise silently accept UTF-16 LE ASCII as a string full of NUL chars) — sniff that
     // FIRST, then trust UTF-8, then decode lossily so a genuinely mixed-encoding file still yields
     // its ASCII keys and paths.
     if let Some(endian) = sniff_bomless_utf16(bytes) {
-        return decode_utf16(bytes, endian);
+        return (decode_utf16(bytes, endian), false);
     }
-    utf8_or_lossy(bytes)
+    utf8_checked(bytes)
 }
 
-fn utf8_or_lossy(bytes: &[u8]) -> String {
+fn utf8_checked(bytes: &[u8]) -> (String, bool) {
     match std::str::from_utf8(bytes) {
-        Ok(s) => s.to_string(),
-        Err(_) => String::from_utf8_lossy(bytes).into_owned(),
+        Ok(s) => (s.to_string(), false),
+        Err(_) => (String::from_utf8_lossy(bytes).into_owned(), true),
     }
 }
 
@@ -444,6 +465,20 @@ mod tests {
             parse_internet_shortcut_icon(&decode_ini_text_bytes(&bytes)),
             Some((r"C:\a.ico".to_string(), 0))
         );
+    }
+
+    #[test]
+    fn decode_ini_text_lossless_accepts_utf8_and_utf16_but_rejects_ansi() {
+        // UTF-8 (bare + BOM) and UTF-16 (BOM) decode losslessly → a writer may safely rewrite.
+        assert!(decode_ini_text_lossless(b"[InternetShortcut]\r\nURL=https://x").is_some());
+        let utf16 = utf16_with_bom("[InternetShortcut]\r\nURL=https://例子.test\r\n", false);
+        assert!(decode_ini_text_lossless(&utf16).is_some());
+        // A GBK byte (0xC4 0xE3 = 你) is invalid UTF-8 with no NULs, so it falls through to the
+        // lossy ANSI path → None: the writer must refuse rather than corrupt it.
+        let ansi = b"[InternetShortcut]\r\nURL=https://x/\xC4\xE3\r\n";
+        assert!(decode_ini_text_lossless(ansi).is_none());
+        // The lossy READER still yields a (U+FFFD-bearing) string for the same bytes — reads tolerate it.
+        assert!(decode_ini_text_bytes(ansi).contains('\u{fffd}'));
     }
 
     #[test]

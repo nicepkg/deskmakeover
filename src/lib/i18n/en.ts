@@ -383,6 +383,7 @@ export const en = {
   "Paper_DropHint": "Drop to design on this image", // PENDING-RESX
   "Paper_DropReject": "Images only", // PENDING-RESX
   "Paper_PreviewFailed": "Couldn't load the wallpaper preview, showing your original wallpaper", // PENDING-RESX
+  "Paper_ApplyScreenSyncing": "The preview is still switching screens — try applying again in a moment", // PENDING-RESX
   "Paper_EmptyDrawHint": "Or drag a frame on the wallpaper to draw your own", // PENDING-RESX
   "Paper_EmptyImportHint": "Or import your own image", // PENDING-RESX
   "Paper_EmptyLead": "Pick a layout to start", // PENDING-RESX

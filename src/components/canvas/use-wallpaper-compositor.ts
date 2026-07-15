@@ -123,6 +123,8 @@ export function useWallpaperCompositor({
       const currentLook = useWallpaper.getState().look
       if (currentLook) instance.update(currentLook)
       loadedScreenRef.current = useWallpaper.getState().activeScreenId
+      // Mirror the loaded screen into the store so apply() can gate on it (codex #5).
+      useWallpaper.setState({ loadedScreenId: loadedScreenRef.current })
       setReady(true)
     })().catch((err) => {
       if (cancelled) return
@@ -140,6 +142,8 @@ export function useWallpaperCompositor({
       compositorRef.current?.destroy()
       compositorRef.current = null
       loadedScreenRef.current = null
+      // A torn-down / mid-recreate compositor holds no screen — apply() must refuse until reload.
+      useWallpaper.setState({ loadedScreenId: null })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.grid.screenWidth, state?.grid.screenHeight, !!state, recoverNonce])
@@ -157,6 +161,8 @@ export function useWallpaperCompositor({
       if (cancelled || compositorRef.current !== compositor) return
       compositor.setSource(source)
       loadedScreenRef.current = activeScreenId
+      // The swap landed — the compositor now holds this screen; apply() may proceed (codex #5).
+      useWallpaper.setState({ loadedScreenId: activeScreenId })
       const look = useWallpaper.getState().look
       if (look) compositor.update(look)
     })().catch((err) => console.error('source swap failed', err))

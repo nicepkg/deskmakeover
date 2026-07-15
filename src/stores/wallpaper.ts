@@ -27,6 +27,11 @@ interface WallpaperState {
   screens: Record<string, ScreenLook>
   /** The monitor currently being edited; the top-level mirror follows it. */
   activeScreenId: string | null
+  /** Which screen's source the compositor currently HOLDS (mirrored by the compositor hook). On a
+   *  same-dims screen switch the source swap is async, so this lags `activeScreenId` for a beat;
+   *  `apply()` gates on the two matching so a mid-swap apply can't bake screen A's pixels and submit
+   *  them under screen B's monitorId (codex #5). Null before the first load / during a recreate. */
+  loadedScreenId: string | null
 
   // ---- active-screen mirror (UI back-compat + single-monitor parity) ----
   look: LookDto | null
@@ -245,6 +250,7 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
     state: null,
     screens: {},
     activeScreenId: null,
+    loadedScreenId: null,
     look: null,
     selected: null,
     sourceName: null,
@@ -467,9 +473,17 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
     },
 
     apply: async () => {
-      const { look, applying, activeScreenId } = get()
+      const { look, applying, activeScreenId, loadedScreenId } = get()
       const compositor = getCompositor()
       if (!look || !compositor || applying || !activeScreenId) return false
+      // The compositor's loaded source must be the ACTIVE screen's, or a bake started mid
+      // screen-switch (same-dims swaps load asynchronously) would submit screen A's pixels under
+      // screen B's monitorId (codex #5). Refuse for the beat it takes the swap to land, rather
+      // than apply the wrong monitor — the seamless visual switch itself is unaffected.
+      if (loadedScreenId !== activeScreenId) {
+        useToasts.getState().show(t('Paper_ApplyScreenSyncing'), 'warn')
+        return false
+      }
       set({ applying: true })
       // Keep the CTA shimmer for one calm beat even when the mock returns instantly.
       const started = Date.now()

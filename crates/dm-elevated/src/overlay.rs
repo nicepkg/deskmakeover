@@ -3,12 +3,16 @@
 //! `ElevatedHelper/OverlayCommands.cs`.
 //!
 //! Invariants preserved from the oracle:
-//! * the pre-DeskMakeover value is snapshotted exactly once (with an explicit `__absent__`
-//!   marker) before the first modification, under `%ProgramData%`, so restore never depends on
-//!   the caller;
+//! * the pre-DeskMakeover value is snapshotted exactly once, DURABLY, before the first
+//!   modification, under `%ProgramData%`, so restore never depends on the caller;
 //! * the registry NEVER points at a caller-supplied path — the ICO is validated and copied into
 //!   `%ProgramData%` first (LPE guard);
 //! * restore rewrites the exact original value (or deletes it when it was absent), zero residue.
+//!
+//! Hardened beyond the oracle (codex R2-#2/#3): the snapshot records the original value's TYPE +
+//! raw bytes (get_raw_value/set_raw_value), so a REG_EXPAND_SZ / non-string / embedded-NUL original
+//! is restored verbatim instead of being lost; and restore CAS-checks the live value against the one
+//! we installed, refusing to clobber a third-party change made after our apply.
 
 use crate::args::Style;
 
@@ -41,8 +45,10 @@ pub fn restore() -> Result<(), String> {
 mod windows_impl {
     use std::path::{Path, PathBuf};
 
-    use winreg::enums::HKEY_LOCAL_MACHINE;
-    use winreg::RegKey;
+    use std::fmt::Write as _;
+
+    use winreg::enums::*;
+    use winreg::{RegKey, RegValue};
 
     use crate::args::Style;
     use crate::guards::read_capped_ico;
@@ -61,6 +67,8 @@ mod windows_impl {
 
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
         let key = hklm.create_subkey(SHELL_ICONS_KEY).map_err(io)?.0;
+        // Point the registry at the ProgramData copy — NEVER the caller path (LPE guard).
+        let installed = format!("{},0", ico.display());
 
         // Snapshot the pre-DeskMakeover value exactly once, DURABLY, BEFORE touching the registry.
         // The write must be fsync'd first (codex 2026-07-12): a plain `fs::write` that has not
@@ -70,15 +78,28 @@ mod windows_impl {
         // so a standard user cannot pre-plant it to defeat this guard.
         let state = dir.join(STATE_FILE);
         if !state.exists() {
-            let original: String =
-                key.get_value(OVERLAY_VALUE).unwrap_or_else(|_| ABSENT_MARKER.to_string());
+            // Capture the original value WITH ITS TYPE via get_raw_value (codex R2-#2): the old lossy
+            // `get_value::<String>` recorded a REG_EXPAND_SZ / non-string / embedded-NUL original as
+            // "__absent__", so restore DELETED another tool's real value. `None` is a genuine absence;
+            // a NotFound is absent; any other read fault propagates (fail closed, never guess absent).
+            let original = match key.get_raw_value(OVERLAY_VALUE) {
+                Ok(v) => Some(v),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => return Err(io(e)),
+            };
+            // Record BOTH the raw original and the value we are about to install, so restore can CAS
+            // the live value against ours and refuse to clobber a third-party change (codex R2-#3).
+            // We know `installed` before the set, so the snapshot still precedes the registry write.
             // Non-replacing atomic claim: if another elevated apply raced in between the check above
             // and here, our publish fails-closed and does NOT overwrite their real-original snapshot.
-            snapshot_once(&dir, STATE_FILE, original.as_bytes())?;
+            let body = serialize_state(
+                original.as_ref().map(|v| (v.vtype.clone() as u32, v.bytes.as_slice())),
+                &installed,
+            );
+            snapshot_once(&dir, STATE_FILE, body.as_bytes())?;
         }
 
-        // Point the registry at the ProgramData copy — NEVER the caller path (LPE guard).
-        key.set_value(OVERLAY_VALUE, &format!("{},0", ico.display())).map_err(io)?;
+        key.set_value(OVERLAY_VALUE, &installed).map_err(io)?;
         notify_shell();
         Ok(())
     }
@@ -89,28 +110,137 @@ mod windows_impl {
         if !state.exists() {
             return Ok(()); // untouched — nothing to restore
         }
-        let original = read_state_capped(&state)?;
+        let raw = read_state_capped(&state)?;
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
         let key = hklm.create_subkey(SHELL_ICONS_KEY).map_err(io)?.0;
-        if original == ABSENT_MARKER {
-            // Ignore ONLY a genuine not-found (idempotent); an access-denied/hive failure must NOT be
-            // swallowed into a false success that then discards the only restore anchor (audit F6).
-            match key.delete_value(OVERLAY_VALUE) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(io(e)),
+
+        match parse_state(&raw) {
+            Some(st) => {
+                // CAS (codex R2-#3): only restore if the LIVE value is still the one WE installed. If a
+                // third-party tool changed Shell Icons\29 after our apply, refuse and KEEP the snapshot
+                // so the user can resolve it — never silently clobber their newer setting. Compared as a
+                // string via winreg's own get/set round-trip, so encoding details stay symmetric.
+                let current: Option<String> = key.get_value(OVERLAY_VALUE).ok();
+                if current.as_deref() != Some(st.installed.as_str()) {
+                    return Err(
+                        "the shortcut-overlay value changed since DeskMakeover set it (another app owns \
+                         it now); refusing to restore over it — clear it manually or re-apply to take \
+                         ownership"
+                            .to_string(),
+                    );
+                }
+                restore_original(&key, st.original.as_ref())?;
             }
-        } else {
-            key.set_value(OVERLAY_VALUE, &original).map_err(io)?;
+            // Legacy v1 state (a bare REG_SZ string / "__absent__" from before the raw+CAS format):
+            // restore with the old semantics so an item styled by an older build still reverts.
+            None => restore_v1(&key, raw.trim())?,
         }
+
         std::fs::remove_file(&state).map_err(io)?;
-        // [WINDOWS-VERIFY residual] the snapshot stores the value as a lossy String, so a
-        // REG_EXPAND_SZ / non-string / embedded-NUL original is captured as `__absent__` and restore
-        // DELETES it (data loss); and restore rewrites without a CAS against the value we installed.
-        // Fixing both needs winreg get_raw_value/set_raw_value + a recorded applied-value, verified on
-        // the box (winreg is Windows-only + this crate's msvc-check is blocked by blake3 asm).
         notify_shell();
         Ok(())
+    }
+
+    /// The parsed v2 overlay state: the raw original value (type + bytes; `None` = it was absent) and
+    /// the exact string DeskMakeover installed (the CAS anchor).
+    struct OverlayState {
+        original: Option<(u32, Vec<u8>)>,
+        installed: String,
+    }
+
+    const STATE_MAGIC: &str = "DMOVL2";
+
+    /// Serializes the v2 state as all-ASCII text (hex-encoded bytes) so it round-trips through the
+    /// UTF-8 `read_state_capped` reader even when the original value is UTF-16/binary.
+    fn serialize_state(original: Option<(u32, &[u8])>, installed: &str) -> String {
+        let orig_line = match original {
+            None => "orig:A".to_string(),
+            Some((vtype, bytes)) => format!("orig:P:{vtype}:{}", to_hex(bytes)),
+        };
+        format!("{STATE_MAGIC}\n{orig_line}\ninstalled:{}\n", to_hex(installed.as_bytes()))
+    }
+
+    /// Parses the v2 state. Returns `None` for anything that is not v2 (an old v1 file), so the caller
+    /// can fall back to the legacy restore path.
+    fn parse_state(s: &str) -> Option<OverlayState> {
+        let mut lines = s.lines();
+        if lines.next()? != STATE_MAGIC {
+            return None;
+        }
+        let orig_line = lines.next()?;
+        let installed_hex = lines.next()?.strip_prefix("installed:")?;
+        let original = if orig_line == "orig:A" {
+            None
+        } else {
+            let (vtype_str, hex) = orig_line.strip_prefix("orig:P:")?.split_once(':')?;
+            Some((vtype_str.parse::<u32>().ok()?, from_hex(hex)?))
+        };
+        let installed = String::from_utf8(from_hex(installed_hex)?).ok()?;
+        Some(OverlayState { original, installed })
+    }
+
+    /// Restores the raw original value exactly (preserving its type) or deletes ours when the original
+    /// was absent. A genuine NotFound on delete is idempotent; any other fault propagates (audit F6).
+    fn restore_original(key: &RegKey, original: Option<&(u32, Vec<u8>)>) -> Result<(), String> {
+        match original {
+            None => match key.delete_value(OVERLAY_VALUE) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(io(e)),
+            },
+            Some((vtype, bytes)) => {
+                let value = RegValue { bytes: bytes.clone(), vtype: regtype_from_u32(*vtype) };
+                key.set_raw_value(OVERLAY_VALUE, &value).map_err(io)
+            }
+        }
+    }
+
+    /// Legacy v1 restore: the state file held the original REG_SZ string, or the absent marker.
+    fn restore_v1(key: &RegKey, original: &str) -> Result<(), String> {
+        if original == ABSENT_MARKER {
+            match key.delete_value(OVERLAY_VALUE) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(io(e)),
+            }
+        } else {
+            key.set_value(OVERLAY_VALUE, &original).map_err(io)
+        }
+    }
+
+    /// Maps a stored registry-type discriminant back to a `RegType`. An unknown/newer type falls back
+    /// to `REG_BINARY`, which set_raw_value writes verbatim — so the original bytes are still restored.
+    fn regtype_from_u32(v: u32) -> RegType {
+        match v {
+            x if x == REG_NONE as u32 => REG_NONE,
+            x if x == REG_SZ as u32 => REG_SZ,
+            x if x == REG_EXPAND_SZ as u32 => REG_EXPAND_SZ,
+            x if x == REG_BINARY as u32 => REG_BINARY,
+            x if x == REG_DWORD as u32 => REG_DWORD,
+            x if x == REG_DWORD_BIG_ENDIAN as u32 => REG_DWORD_BIG_ENDIAN,
+            x if x == REG_LINK as u32 => REG_LINK,
+            x if x == REG_MULTI_SZ as u32 => REG_MULTI_SZ,
+            x if x == REG_RESOURCE_LIST as u32 => REG_RESOURCE_LIST,
+            x if x == REG_FULL_RESOURCE_DESCRIPTOR as u32 => REG_FULL_RESOURCE_DESCRIPTOR,
+            x if x == REG_RESOURCE_REQUIREMENTS_LIST as u32 => REG_RESOURCE_REQUIREMENTS_LIST,
+            x if x == REG_QWORD as u32 => REG_QWORD,
+            _ => REG_BINARY,
+        }
+    }
+
+    fn to_hex(bytes: &[u8]) -> String {
+        let mut s = String::with_capacity(bytes.len() * 2);
+        for b in bytes {
+            let _ = write!(s, "{b:02x}");
+        }
+        s
+    }
+
+    fn from_hex(s: &str) -> Option<Vec<u8>> {
+        if s.len() % 2 != 0 {
+            return None;
+        }
+        (0..s.len()).step_by(2).map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok()).collect()
     }
 
     /// Validates the rendered ICO and copies it into the hardened data `dir`, returning its path.
@@ -249,5 +379,55 @@ mod windows_impl {
 
     fn io(e: std::io::Error) -> String {
         e.to_string()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use winreg::enums::*;
+
+        use super::*;
+
+        #[test]
+        fn hex_round_trips_arbitrary_bytes() {
+            let bytes = [0x00u8, 0x66, 0xFF, 0x2c, 0x30, 0x00];
+            assert_eq!(from_hex(&to_hex(&bytes)), Some(bytes.to_vec()));
+            assert_eq!(from_hex("zz"), None); // non-hex
+            assert_eq!(from_hex("abc"), None); // odd length
+        }
+
+        #[test]
+        fn state_round_trips_an_absent_original() {
+            let body = serialize_state(None, r"C:\ProgramData\dm\refined-overlay.ico,0");
+            let st = parse_state(&body).expect("v2 parses");
+            assert!(st.original.is_none());
+            assert_eq!(st.installed, r"C:\ProgramData\dm\refined-overlay.ico,0");
+        }
+
+        #[test]
+        fn state_round_trips_a_reg_expand_sz_original_verbatim() {
+            // The exact case the old lossy-String snapshot dropped: a REG_EXPAND_SZ value whose
+            // UTF-16LE bytes are not valid UTF-8. It must survive serialize→parse byte-for-byte.
+            let orig_bytes: Vec<u8> = "%SystemRoot%\\a.ico,0\0".encode_utf16().flat_map(u16::to_le_bytes).collect();
+            let body = serialize_state(Some((REG_EXPAND_SZ as u32, &orig_bytes)), "installed,0");
+            let st = parse_state(&body).expect("v2 parses");
+            assert_eq!(st.original, Some((REG_EXPAND_SZ as u32, orig_bytes)));
+            assert_eq!(st.installed, "installed,0");
+        }
+
+        #[test]
+        fn parse_state_rejects_legacy_v1_content() {
+            // A bare v1 string or the absent marker is not v2 → None, so restore falls back to v1.
+            assert!(parse_state("C:\\old.ico,0").is_none());
+            assert!(parse_state(ABSENT_MARKER).is_none());
+        }
+
+        #[test]
+        fn regtype_round_trips_through_its_discriminant() {
+            for t in [REG_SZ, REG_EXPAND_SZ, REG_BINARY, REG_DWORD, REG_QWORD, REG_NONE] {
+                assert_eq!(regtype_from_u32(t.clone() as u32), t);
+            }
+            // An unknown discriminant degrades to REG_BINARY (bytes still restored verbatim).
+            assert_eq!(regtype_from_u32(0xDEAD_BEEF), REG_BINARY);
+        }
     }
 }

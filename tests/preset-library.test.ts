@@ -58,7 +58,7 @@ describe('toImportCandidate', () => {
   })
 
   test('an opt-in-exported kindPolicy round-trips through import (owner #4, codex F1)', () => {
-    const policy = { App: true, Folder: false, File: true, System: true }
+    const policy = { App: true, Folder: false, File: true }
     const withPolicy = serializeIconLook({ config: BASE_CONFIGS.ink, typeOverrides: {}, kindPolicy: policy })
     const c = toImportCandidate(readEntry({ payloadJson: withPolicy }))
     expect(c.recipe!.config.shape).toBe('Circle')

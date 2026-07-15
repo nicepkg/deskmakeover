@@ -14,24 +14,24 @@ const BASE: ConfigDto = {
 
 const LADDER: TypeOverrides = {
   Folder: { source: 'custom', patch: { shape: 'Bookmark' } },
-  System: { source: 'custom', patch: { shape: 'Circle', subject: 'Mono' } },
+  App: { source: 'custom', patch: { shape: 'Circle', subject: 'Mono' } },
   File: { source: 'global' },
 }
 
 describe('resolveTypeConfig', () => {
   test('followers and bucketless icons take the base untouched', () => {
-    expect(resolveTypeConfig(BASE, LADDER, 'App')).toBe(BASE) // no entry → base identity
+    expect(resolveTypeConfig(BASE, { File: { source: 'global' } }, 'App')).toBe(BASE) // no entry → base identity
     expect(resolveTypeConfig(BASE, LADDER, 'File')).toBe(BASE) // explicit global → base
     expect(resolveTypeConfig(BASE, LADDER, null)).toBe(BASE)
     expect(resolveTypeConfig(BASE, undefined, 'Folder')).toBe(BASE)
   })
 
   test('custom patches merge sparsely over the base', () => {
-    const sys = resolveTypeConfig(BASE, LADDER, 'System')
-    expect(sys.shape).toBe('Circle')
-    expect(sys.subject).toBe('Mono')
-    expect(sys.tint).toBe(BASE.tint) // untouched keys inherit
-    expect(sys.filter).toBe(BASE.filter) // filter is not even patchable
+    const app = resolveTypeConfig(BASE, LADDER, 'App')
+    expect(app.shape).toBe('Circle')
+    expect(app.subject).toBe('Mono')
+    expect(app.tint).toBe(BASE.tint) // untouched keys inherit
+    expect(app.filter).toBe(BASE.filter) // filter is not even patchable
     const folder = resolveTypeConfig(BASE, LADDER, 'Folder')
     expect(folder.shape).toBe('Bookmark')
     expect(folder.subject).toBe('Original')
@@ -42,14 +42,14 @@ describe('resolveTypeConfig', () => {
     expect(resolveTypeConfig(BASE, pinned, 'File').plateColor).toBe('#DDE6F2')
     expect(typeHasFixedPlate(pinned, 'File')).toBe(true)
     expect(typeHasFixedPlate(pinned, 'App')).toBe(false)
-    expect(typeHasFixedPlate(LADDER, 'System')).toBe(false) // demotion is not a pin
+    expect(typeHasFixedPlate(LADDER, 'App')).toBe(false) // demotion is not a pin
     expect(typeHasFixedPlate(pinned, null)).toBe(false)
   })
 
   test('typeIsCustom: only live non-empty patches count', () => {
     expect(typeIsCustom(LADDER, 'Folder')).toBe(true)
     expect(typeIsCustom(LADDER, 'File')).toBe(false) // source global
-    expect(typeIsCustom(LADDER, 'App')).toBe(false) // absent
+    expect(typeIsCustom({ File: { source: 'global' } }, 'App')).toBe(false) // absent
     expect(typeIsCustom({ App: { source: 'custom', patch: {} } }, 'App')).toBe(false) // empty patch
   })
 
@@ -60,7 +60,7 @@ describe('resolveTypeConfig', () => {
     expect(typeOverridesEqual(undefined, {})).toBe(true)
     expect(typeOverridesEqual(LADDER, {})).toBe(false)
     const other = structuredClone(LADDER)
-    other.System!.patch!.subject = 'BlackWhite'
+    other.App!.patch!.subject = 'BlackWhite'
     expect(typeOverridesEqual(LADDER, other)).toBe(false)
   })
 })
@@ -75,5 +75,10 @@ describe('kindBucket (ADR-0017 taxonomy)', () => {
     expect(kindBucket('Shortcut')).toBe('App')
     expect(kindBucket('UrlShortcut')).toBe('App')
     expect(kindBucket('AppxShortcut')).toBe('App')
+  })
+
+  test('system virtual items merged into App (owner 2026-07-16)', () => {
+    expect(kindBucket('RecycleBin')).toBe('App')
+    expect(kindBucket('SystemIcon')).toBe('App')
   })
 })

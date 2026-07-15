@@ -181,9 +181,11 @@ export type IconKind =
   | 'Unsupported'
 
 /** User-facing buckets over IconKind for the participation policy (App / Folder
- *  / File / System). Unsupported has no bucket — it is never styleable, so never
- *  governed. Mapping + defaults live in `lib/kind-policy.ts`. */
-export type IconKindBucket = 'App' | 'Folder' | 'File' | 'System'
+ *  / File). System virtual items (Recycle Bin / This PC family) merged into App
+ *  (owner 2026-07-16): to the user they are programs, a fourth "system" split
+ *  was taxonomy jargon. Unsupported has no bucket — it is never styleable, so
+ *  never governed. Mapping + defaults live in `lib/kind-policy.ts`. */
+export type IconKindBucket = 'App' | 'Folder' | 'File'
 
 /** Per-bucket "participate in beautify?" — the persistent participation layer
  *  (chief-UI/UX + owner 2026-07-09). ONE switch per bucket governs BOTH manual

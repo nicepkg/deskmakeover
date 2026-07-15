@@ -272,7 +272,6 @@ export const en = {
   "KindBucket_App": "programs",
   "KindBucket_Folder": "folders",
   "KindBucket_File": "files",
-  "KindBucket_System": "system",
   "Icons_KeepAllKind": "Don't beautify {0}",
   "Icons_ReincludeKind": "Beautify {0}",
   "Icons_KeptCount": "{0} kept as-is",

@@ -39,7 +39,10 @@ const DISTINCTIONS = ['None', 'Mark', 'Keep'] as const satisfies readonly Config
 const MARK_STYLES = ['Glass', 'Shadow', 'Halo', 'Satin', 'Arc', 'Fold', 'Ring', 'Comet'] as const satisfies readonly ConfigDto['markStyle'][]
 const SIZES = ['Small', 'Mid', 'Big'] as const satisfies readonly ConfigDto['size'][]
 const FILTERS = ['None', 'Gloss', 'Glass', 'Pixel', 'Sticker'] as const satisfies readonly ConfigDto['filter'][]
-const BUCKETS = ['App', 'Folder', 'File', 'System'] as const satisfies readonly IconKindBucket[]
+// System merged into App (owner 2026-07-16). Old payloads carrying a `System`
+// entry stay loadable: unknown buckets are DROPPED by the whitelist walk below
+// (spec 09 §3 additive tolerance) — no version bump, no migration step needed.
+const BUCKETS = ['App', 'Folder', 'File'] as const satisfies readonly IconKindBucket[]
 
 type MustCover<Union, List extends readonly Union[]> = Exclude<Union, List[number]> extends never ? true : never
 const _shapes: MustCover<IconShape, typeof ICON_SHAPES> = true

@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-14
+updated: 2026-07-16
 version: 0.1.0 pre-release (owner-named 2026-07-15; root package.json + src-tauri/tauri.conf.json = 0.1.0; stays 0.x until the owner-supervised Windows WRITE surface is human-verified, then 1.0)
 branch: main (repo is PRIVATE; making it public is the owner's call at release)
 ---
@@ -86,11 +86,14 @@ what is in flight, and what comes next.
 - **M7 resident — platform bodies.** Decision core DONE + hardened on Mac (→ journal); remaining is
   the [WV] platform layer: tray + windowless residency wiring, tray bitmaps, watcher→reconciler→
   driver loop, T2 judge-1 WinEventHook precision layer.
-- **M8 release engineering — INSTALLER BUILDS (2026-07-15).** `bun run tauri:build` produces a
-  working per-user NSIS installer (app + `dm-elevated` sidecar w/ requireAdministrator manifest +
-  WebView2 downloadBootstrapper; gen-bindings excluded). Remaining: owner names the version (still
-  `0.0.0`), Authenticode signing, updater, per-machine-vs-per-user call, `.dmpreset` file
-  association, CI. (The frozen TS compositor still awaits physical deletion.)
+- **M8 release engineering — INSTALLER BUILDS + SIGNING CI VALIDATED (2026-07-16).**
+  `bun run tauri:build` produces a working per-user NSIS installer (app + `dm-elevated` sidecar w/
+  requireAdministrator manifest + WebView2 downloadBootstrapper; gen-bindings excluded).
+  Authenticode signing CI is END-TO-END VALIDATED (Certum SimplySign + self-hosted runner
+  `deskmakeover-signer`; `git tag v* && push` → signed Release; runbook `docs/signing-setup.md`).
+  Remaining: updater, per-machine-vs-per-user call, `.dmpreset` file association, runner service
+  install (admin), the owner cutting the actual first tag. (The frozen TS compositor still awaits
+  physical deletion.)
 - **The Windows-runtime gate** — READ half now CLOSED (2026-07-15): the app boots on a real Win11
   box, the WebView2 bridge routes, startup recovery + STA COM run, and the read-only `[WINDOWS-VERIFY]`
   surface (scan/topology/geometry/extraction/fingerprint/known-folders) passes (`verify_readonly`).
@@ -100,6 +103,9 @@ what is in flight, and what comes next.
 
 ## Recently shipped (one line each — detail in journal/CHANGELOG)
 
+- 2026-07-16 **Icons owner round**: System bucket merged into App (taxonomy + presets + Rust resolve, legacy keys tolerated); per-type accordion hover try-on (WYSIWYG with global axes, CDP-verified); File kind glyph folds top-right (matches the File shape); Comet badge = native arrow footprint (0.28); `{true&&}` dead wrappers cleaned. Codex pass: 1 finding, judged by-design (bareLook reset semantics).
+- 2026-07-15/16 **Signing CI validated end-to-end**: Certum SimplySign + self-hosted runner; signed `DeskMakeover_0.1.0_x64-setup.exe`, Authenticode Valid + RFC-3161 timestamp, headless no-PIN. Runbook `docs/signing-setup.md`.
+- 2026-07-15 **Pre-ship hardening**: WebGL context-loss recovery, bake MAX_TEXTURE_SIZE probe, WEBVIEW2_* env sanitizing (devtools feature); 2 codex review rounds (9 real fixes) + 3 owner-approved bugs (overlay registry raw+CAS, apply screen-bind, .url ANSI lossless).
 - 2026-07-15 **FIRST WINDOWS-RUNTIME SESSION**: built + tested (683) + booted on a real Win11 box; read-only [WV] surface verified (`verify_readonly`); 2 Windows-only bugs fixed (comctl32 v6 test manifest, IDesktopWallpaper CLSCTX_ALL); M8 NSIS installer builds (app + dm-elevated sidecar). See `ship-readiness.md` §Windows-runtime session.
 - 2026-07-14 清爽 W2: two Windows platform ports (WinregBackend + WindowsSystemProfileProbe), codex R5 Approve → journal.
 - 2026-07-14 清爽 W1: Rust decision core + bridge schema 8, codex R7 Approve → journal.

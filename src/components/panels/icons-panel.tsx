@@ -750,7 +750,7 @@ export function IconsPanel() {
           {/* The persistent per-type participation policy as a 5th axis row
               (spec 06 §6), then the per-icon keep ledger (spec 06 §3.4) — both
               one store state, no matrix. */}
-          <KindTypeSection />
+          <KindTypeSection tryOn={tryOn} />
           <KeptBar />
         </InspectorCard>
 

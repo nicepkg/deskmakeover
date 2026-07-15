@@ -47,7 +47,7 @@ export function typeHasFixedPlate(overrides: TypeOverrides | undefined, bucket: 
 
 /** Deep-enough equality for preset matching (sparse maps, small patches). */
 export function typeOverridesEqual(a: TypeOverrides | undefined, b: TypeOverrides | undefined): boolean {
-  const buckets: IconKindBucket[] = ['App', 'Folder', 'File', 'System']
+  const buckets: IconKindBucket[] = ['App', 'Folder', 'File']
   for (const k of buckets) {
     const ea = a?.[k]
     const eb = b?.[k]

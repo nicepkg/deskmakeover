@@ -12,7 +12,7 @@ import type { ConfigDto } from '@/bridge/types'
 export interface RenderOpts {
   /** Hue-spread-adjusted seed colour (hex). null/absent = derive from artwork. */
   fieldSeed?: string | null
-  kindBucket?: 'App' | 'Folder' | 'File' | 'System' | null
+  kindBucket?: 'App' | 'Folder' | 'File' | null
 }
 
 export interface ArrowMsg {

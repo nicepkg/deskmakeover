@@ -42,41 +42,37 @@ export const BASE_CONFIGS: Record<string, ConfigDto> = {
 }
 
 // Per-preset type ladders (Preset Collection v2) — every set ships its own.
+// The System demotion entries (Circle+BlackWhite) died with the System→App
+// bucket merge (owner 2026-07-16): system virtual items now dress like the
+// programs they sit next to.
 export const PRESET_TYPE_OVERRIDES: Record<string, TypeOverrides> = {
   spectrum: {
     Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: null, plateFallback: 'derived' } },
     File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#EDEAE4' } },
   },
   stationery: {
     Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#EAD6A8' } },
     File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#EDEAE4' } },
   },
   glass: {
     Folder: { source: 'custom', patch: { shape: 'Samsung', plateColor: null, plateFallback: 'derived' } },
     File: { source: 'custom', patch: { shape: 'Samsung', plateColor: '#FFFFFF' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#ECECEE' } },
   },
   pebble: {
     Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#EAD6A8' } },
     File: { source: 'custom', patch: { shape: 'Teardrop', plateColor: '#E9E2D4' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#EAE7E0' } },
   },
   ink: {
     Folder: { source: 'custom', patch: { shape: 'Bookmark', plateColor: '#EDE8DC' } },
     File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#F4F1EA' } },
-    System: { source: 'custom', patch: { shape: 'Circle', plateColor: '#EEEBE4' } },
   },
   white: {
     Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#FFFFFF' } },
     File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#FFFFFF' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#F2F2F2' } },
   },
   ascast: {
     Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: null, plateFallback: 'white' } },
     File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
-    System: { source: 'custom', patch: { shape: 'Circle', subject: 'BlackWhite', plateColor: '#EDEAE4' } },
   },
 }
 

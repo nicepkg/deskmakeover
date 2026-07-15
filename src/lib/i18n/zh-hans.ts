@@ -274,7 +274,6 @@ export const zhHans: Record<keyof typeof en, string> = {
   "KindBucket_App": "程序",
   "KindBucket_Folder": "文件夹",
   "KindBucket_File": "文档",
-  "KindBucket_System": "系统",
   "Icons_KeepAllKind": "所有{0}不参与美化",
   "Icons_ReincludeKind": "让{0}参与美化",
   "Icons_KeptCount": "保留原样 {0} 个",

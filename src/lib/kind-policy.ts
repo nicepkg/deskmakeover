@@ -1,16 +1,18 @@
 import type { IconKind, IconKindBucket, KindPolicy } from '@/bridge/types'
 import type { StringKey } from '@/lib/i18n'
 
-// The participation-policy bucketing (chief-UI/UX + owner 2026-07-09): four
+// The participation-policy bucketing (chief-UI/UX + owner 2026-07-09): three
 // user-facing buckets over the engineering IconKind taxonomy — kind names like
 // AppxShortcut / RegularFile are jargon, buckets speak the user's language.
+// The former System bucket merged into App (owner 2026-07-16): Recycle Bin /
+// This PC read as programs to the user; a fourth split was taxonomy jargon.
 // Unsupported has no bucket (never styleable → never governed).
 
-export const KIND_BUCKETS: IconKindBucket[] = ['App', 'Folder', 'File', 'System']
+export const KIND_BUCKETS: IconKindBucket[] = ['App', 'Folder', 'File']
 
 /** Every bucket participates by default — the app beautifies everything until
  *  the user opts a bucket out. */
-export const DEFAULT_KIND_POLICY: KindPolicy = { App: true, Folder: true, File: true, System: true }
+export const DEFAULT_KIND_POLICY: KindPolicy = { App: true, Folder: true, File: true }
 
 /** The bucket an icon kind belongs to, or null for Unsupported (ungoverned). */
 export function kindBucket(kind: IconKind): IconKindBucket | null {
@@ -22,14 +24,16 @@ export function kindBucket(kind: IconKind): IconKindBucket | null {
     // bucket with App, never with documents. Mechanism semantics: shortcuts
     // stay here regardless of target (owner override of the panel's 2:1).
     case 'ExecutableFile':
+    // System virtual items (Recycle Bin / This PC / Network / Control Panel)
+    // are PROGRAMS in the user's mind (owner merge 2026-07-16) — same bucket,
+    // same policy switch, same type ladder as every other launcher.
+    case 'RecycleBin':
+    case 'SystemIcon':
       return 'App'
     case 'Folder':
       return 'Folder'
     case 'RegularFile':
       return 'File'
-    case 'RecycleBin':
-    case 'SystemIcon':
-      return 'System'
     default:
       return null
   }
@@ -40,7 +44,6 @@ export const BUCKET_NAME_KEY: Record<IconKindBucket, StringKey> = {
   App: 'KindBucket_App',
   Folder: 'KindBucket_Folder',
   File: 'KindBucket_File',
-  System: 'KindBucket_System',
 }
 
 /** True when the icon participates in beautify under the policy (before per-icon

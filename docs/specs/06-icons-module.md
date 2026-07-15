@@ -316,8 +316,11 @@ broken/Unsupported items.
 
 **Participation policy (schema v3, chief-UI/UX + owner 2026-07-09).** A
 persistent per-BUCKET participation switch, `IconsStateDto.kindPolicy`
-(`{App, Folder, File, System}: boolean`, default all true — buckets over
-IconKind per `lib/kind-policy.ts`; Unsupported is ungoverned). ONE switch per
+(`{App, Folder, File}: boolean`, default all true — buckets over IconKind per
+`lib/kind-policy.ts`; Unsupported is ungoverned). The former System bucket
+merged into App (owner 2026-07-16): RecycleBin/SystemIcon kinds bucket to App;
+legacy persisted `System` keys are dropped by the whitelist normalizers on
+both sides of the bridge, no migration step. ONE switch per
 bucket governs BOTH manual apply (that kind renders as-original, ships no
 master — RESTORE-FIRST) AND the future background auto-format (§7). It is NOT
 part of ConfigDto (that would pollute every preset/history entry) — it rides
@@ -325,9 +328,9 @@ the module state, persisted via `icons.setLook`. **Cascade** (folded by
 `effectiveTileConfig`): `styleable:false` > per-icon override > kindPolicy —
 an icon the user styled individually stays styled even if its whole bucket is
 opted out. Two entry points, one state: the panel's **always-visible 「参与美化的
-类型」 section — a 2×2 grid of labeled chips** (glyph + name + check/hollow ring;
-the earlier collapsed-fold and toggle-wall designs were rejected by the owner
-2026-07-10; shows even count-0 buckets) and the tile right-click
+类型」 section — one labeled accordion row per bucket** (checkbox + glyph +
+name + status badge; the earlier collapsed-fold, toggle-wall and 2×2-grid
+designs were superseded; shows even count-0 buckets) and the tile right-click
 「所有<此类>不参与美化」. The RegularFile 「文件美化」 setting is subsumed as
 `kindPolicy.File` — **default TRUE** (owner decision 2026-07-10: ordinary files
 participate by default; reversibility + the one-click bucket opt-out replace the
@@ -339,11 +342,14 @@ The Beautified-types area grows into a TYPE DISTINCTION SYSTEM — per-type
 styling bounded by a findability envelope. Normative decisions in ADR-0017;
 contract facts here:
 
-- **Type space**: the 4 buckets × shortcut as an orthogonal modifier.
+- **Type space**: the 3 buckets × shortcut as an orthogonal modifier.
   MECHANISM semantics (owner override): every shortcut kind (`Shortcut`,
   `UrlShortcut`, `AppxShortcut`) buckets to App regardless of target; bare
   `.exe` files join the App bucket (the Rust host classifies by extension at Windows
-  integration; the dev mock flags fixtures now). App's user-facing label becomes 程序.
+  integration; the dev mock flags fixtures now); system virtual items
+  (RecycleBin/SystemIcon) joined App too (owner merge 2026-07-16 — the
+  separate System bucket and its grayscale demotion ladder are gone).
+  App's user-facing label becomes 程序.
   `isShortcut` includes `AppxShortcut` (bug fix — UWP shortcuts must wear
   the mark).
 - **Config model**: `ConfigDto.kindShapes` is DELETED. `IconsStateDto` (not
@@ -362,12 +368,12 @@ contract facts here:
   The pool filters to icons whose resolved lane is the derived colour-field
   (原彩 subject with a derived plate, ADR-0018) and whose type has no fixed plate.
 - **Factory default (the saliency ladder)**: App=Apple squircle+derived field ·
-  Folder=Folder/Bookmark+derived · File=Tile+warm board · System=Circle+**BlackWhite** ·
-  shortcut mark default **None** (owner decree 2026-07-07 + the durable rule
-  「presets never carry a shortcut mark」 — the distinction badge marks shortcuts,
-  never a default arrow; the 「快捷方式统一形状」 toggle also defaults OFF). Shape
-  carries the type split; System demotes to quiet grayscale; the derived
-  colour-field keeps per-icon identity.
+  Folder=Folder/Bookmark+derived · File=Tile+warm board · shortcut mark default
+  **None** (owner decree 2026-07-07 + the durable rule 「presets never carry a
+  shortcut mark」 — the distinction badge marks shortcuts, never a default
+  arrow; the 「快捷方式统一形状」 toggle also defaults OFF). Shape carries the
+  type split; the derived colour-field keeps per-icon identity. (The System
+  grayscale demotion died with the System→App merge, owner 2026-07-16.)
 - **Panel**: the Shape section's One-shape/By-type segmented is REMOVED;
   the type area is an accordion (one row per bucket: summary chip 名称·形
   状·显著性 + custom badge; expand-to-edit reusing the global controls;

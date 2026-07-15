@@ -24,23 +24,26 @@ use serde::Deserialize;
 
 use crate::error::{OperationError, Result};
 
-/// The four governed buckets (`IconKindBucket`).
+/// The three governed buckets (`IconKindBucket`). The former System bucket merged into App
+/// (owner 2026-07-16, TS `kind-policy.ts`): Recycle Bin / This PC read as programs to the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KindBucket {
     App,
     Folder,
     File,
-    System,
 }
 
 /// The bucket an item kind belongs to; `None` = ungoverned (Unsupported) — governed by
 /// `styleable`, not the policy (TS `kindBucket`).
 pub fn bucket_of(kind: ItemKind) -> Option<KindBucket> {
     match kind {
-        ItemKind::Shortcut | ItemKind::UrlShortcut | ItemKind::AppxShortcut => Some(KindBucket::App),
+        ItemKind::Shortcut
+        | ItemKind::UrlShortcut
+        | ItemKind::AppxShortcut
+        | ItemKind::RecycleBin
+        | ItemKind::System => Some(KindBucket::App),
         ItemKind::Folder => Some(KindBucket::Folder),
         ItemKind::RegularFile => Some(KindBucket::File),
-        ItemKind::RecycleBin | ItemKind::System => Some(KindBucket::System),
         ItemKind::Unsupported => None,
     }
 }
@@ -121,6 +124,8 @@ where
 /// until the user opts a bucket out — TS `DEFAULT_KIND_POLICY`). The hand-written `Default`
 /// (all-true) is load-bearing (codex m7a-🟠6): the derived all-FALSE default would make a recipe
 /// with a MISSING `kindPolicy` mean the OPPOSITE of `{}` — silently opting every bucket OUT.
+/// A legacy `"System"` key in persisted JSON is silently ignored (serde default struct
+/// tolerance) — old recipes stay loadable after the System→App merge (owner 2026-07-16).
 #[derive(Debug, Clone, Deserialize)]
 pub struct KindPolicyJson {
     #[serde(default = "yes", rename = "App")]
@@ -129,13 +134,11 @@ pub struct KindPolicyJson {
     pub folder: bool,
     #[serde(default = "yes", rename = "File")]
     pub file: bool,
-    #[serde(default = "yes", rename = "System")]
-    pub system: bool,
 }
 
 impl Default for KindPolicyJson {
     fn default() -> Self {
-        Self { app: true, folder: true, file: true, system: true }
+        Self { app: true, folder: true, file: true }
     }
 }
 
@@ -152,8 +155,6 @@ pub struct TypeOverridesJson {
     pub folder: Option<TypeOverrideJson>,
     #[serde(default, rename = "File")]
     pub file: Option<TypeOverrideJson>,
-    #[serde(default, rename = "System")]
-    pub system: Option<TypeOverrideJson>,
 }
 
 /// The parsed appearance recipe: the three global knobs of an `IconStyle`.
@@ -179,7 +180,6 @@ impl StyleRecipe {
             KindBucket::App => self.type_overrides.app.as_ref(),
             KindBucket::Folder => self.type_overrides.folder.as_ref(),
             KindBucket::File => self.type_overrides.file.as_ref(),
-            KindBucket::System => self.type_overrides.system.as_ref(),
         }
     }
 
@@ -189,7 +189,6 @@ impl StyleRecipe {
             Some(KindBucket::App) => self.kind_policy.app,
             Some(KindBucket::Folder) => self.kind_policy.folder,
             Some(KindBucket::File) => self.kind_policy.file,
-            Some(KindBucket::System) => self.kind_policy.system,
         }
     }
 
@@ -390,14 +389,18 @@ mod tests {
 
     #[test]
     fn kind_policy_opt_out_yields_none_and_unsupported_bypasses_the_policy() {
+        // The legacy "System" key (pre-merge recipes) must stay tolerated — ignored, never an error.
         let s = style(json!({
             "config": base_config(),
-            "kindPolicy": { "App": true, "Folder": false, "File": true, "System": true },
+            "kindPolicy": { "App": true, "Folder": false, "File": true, "System": false },
             "typeOverrides": {}
         }));
         let recipe = StyleRecipe::parse(&s).unwrap();
         assert!(recipe.effective_config(ItemKind::Folder, false).unwrap().is_none());
         assert!(recipe.effective_config(ItemKind::Shortcut, true).unwrap().is_some());
+        // System virtual items ride the App switch after the merge (owner 2026-07-16) —
+        // the legacy System:false above has no effect.
+        assert!(recipe.effective_config(ItemKind::RecycleBin, false).unwrap().is_some());
         // Bucketless kinds pass the policy (governed by styleable upstream).
         assert!(recipe.effective_config(ItemKind::Unsupported, false).unwrap().is_some());
     }
@@ -448,7 +451,7 @@ mod tests {
         // would make a recipe whose `kindPolicy` deserializes via `#[serde(default)]` opt every
         // bucket OUT — the exact opposite of `{}`.
         let d = KindPolicyJson::default();
-        assert!(d.app && d.folder && d.file && d.system, "every bucket participates by default");
+        assert!(d.app && d.folder && d.file, "every bucket participates by default");
         // And a StyleRecipe parsed from JSON with NO kindPolicy field takes that all-true default
         // (serde-level, below IconStyle's envelope validation).
         let recipe: StyleRecipe = serde_json::from_value(json!({

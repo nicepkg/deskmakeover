@@ -3,7 +3,7 @@
 - Status: ✅ SHIPPED + ACCEPTED — historical curation record（Owner 直接下令 2026-07-10 全权策展；
   七套预设已落地并通过设计师验收，commits `b7dd226`/`f8eb20d`，详见 `docs/journal/2026-07.md`）
 - 依据：两轴颜色模型（`docs/product/two-axis-colour-spec.md` / ADR-0018）、纸色文件带（Owner PASS c080912）、暗棕文件夹判决（否）
-- 数据契约：`ConfigDto = { shape, subject, tint, monoStyle, plateColor, plateFallback, plateBand, shortcutShape, distinction, markStyle, markColor, size, filter }`；`TypePatch` 同字段可选，桶 = App/Folder/File/System
+- 数据契约：`ConfigDto = { shape, subject, tint, monoStyle, plateColor, plateFallback, plateBand, shortcutShape, distinction, markStyle, markColor, size, filter }`；`TypePatch` 同字段可选，桶 = App/Folder/File（System 已并入 App，owner 2026-07-16）
 
 ---
 
@@ -33,7 +33,6 @@
 // PRESET_TYPE_OVERRIDES.spectrum
 Folder: { source:'custom', patch:{ shape:'Folder', plateColor:null, plateFallback:'derived' } } // 留自带色，杜绝暗棕
 File:   { source:'custom', patch:{ shape:'Tile',   plateColor:'#E9E2D4' } }                    // 暖纸带（Owner PASS）
-System: { source:'custom', patch:{ shape:'Circle', subject:'BlackWhite', plateColor:'#EDEAE4' } } // 退灰
 ```
 - 角标 **Halo**（柔光晕）替代 Fold：高级、不抢主体。滤镜 None。形状 Apple 稳。
 
@@ -54,7 +53,6 @@ System: { source:'custom', patch:{ shape:'Circle', subject:'BlackWhite', plateCo
 // PRESET_TYPE_OVERRIDES.stationery
 Folder: { source:'custom', patch:{ shape:'Folder', plateColor:'#EAD6A8' } }  // 马尼拉蜜色（"金"的正确做法）
 File:   { source:'custom', patch:{ shape:'Tile',   plateColor:'#E9E2D4' } }  // 暖纸
-System: { source:'custom', patch:{ shape:'Circle', subject:'BlackWhite', plateColor:'#EDEAE4' } }
 ```
 - 角标 **Satin**（缎面微光）：温润，配纸感。Quiet 带让 App 也淡下来 = 整屏一个暖色温。
 
@@ -75,7 +73,6 @@ System: { source:'custom', patch:{ shape:'Circle', subject:'BlackWhite', plateCo
 // PRESET_TYPE_OVERRIDES.glass
 Folder: { source:'custom', patch:{ shape:'Samsung', plateColor:null, plateFallback:'derived' } }
 File:   { source:'custom', patch:{ shape:'Samsung', plateColor:'#FFFFFF' } }  // 磨砂白文件（冷玻璃里纸太暖，改霜白）
-System: { source:'custom', patch:{ shape:'Circle',  subject:'BlackWhite', plateColor:'#ECECEE' } }
 ```
 - 形状 **Samsung**（方中带圆）读作现代玻璃砖，跟默认 Apple 拉开。角标 **Glass**、滤镜 **Glass** 同材质。
 
@@ -96,9 +93,8 @@ System: { source:'custom', patch:{ shape:'Circle',  subject:'BlackWhite', plateC
 // PRESET_TYPE_OVERRIDES.pebble
 Folder: { source:'custom', patch:{ shape:'Folder',   plateColor:'#EAD6A8' } }   // 蜜色，暖
 File:   { source:'custom', patch:{ shape:'Teardrop', plateColor:'#E9E2D4' } }   // 水滴 + 纸
-System: { source:'custom', patch:{ shape:'Circle',   subject:'BlackWhite', plateColor:'#EAE7E0' } }
 ```
-- 形状：App=**Pebble**、File=**Teardrop**、Folder 留 Folder（可辨识）、System=Circle（退）。角标 **Shadow**、滤镜 **Sticker** 给软立体。
+- 形状：App=**Pebble**、File=**Teardrop**、Folder 留 Folder（可辨识）。角标 **Shadow**、滤镜 **Sticker** 给软立体。
 
 ---
 
@@ -117,9 +113,8 @@ System: { source:'custom', patch:{ shape:'Circle',   subject:'BlackWhite', plate
 // PRESET_TYPE_OVERRIDES.ink
 Folder: { source:'custom', patch:{ shape:'Bookmark', plateColor:'#EDE8DC' } }  // 书签形 + 更暖纸
 File:   { source:'custom', patch:{ shape:'Tile',     plateColor:'#F4F1EA' } }
-System: { source:'custom', patch:{ shape:'Circle',   plateColor:'#EEEBE4' } }  // 已灰，板更淡
 ```
-- 全部 `subject:'BlackWhite'`（System 继承即可）。角标 **Arc**（细弧，像一笔）。形状 Circle/Bookmark，禅意。
+- 全部 `subject:'BlackWhite'`。角标 **Arc**（细弧，像一笔）。形状 Circle/Bookmark，禅意。
 
 ---
 
@@ -134,7 +129,7 @@ System: { source:'custom', patch:{ shape:'Circle',   plateColor:'#EEEBE4' } }  /
   plateColor:'#FFFFFF', plateFallback:'white', plateBand:'Vivid',
   shortcutShape:null, distinction:'Mark', markStyle:'Ring', markColor:null,
   size:'Mid', filter:'None' }
-// 阶梯：Folder{shape:'Folder',plateColor:'#FFFFFF'} · File{shape:'Tile',plateColor:'#FFFFFF'} · System{shape:'Circle',subject:'BlackWhite',plateColor:'#F2F2F2'}
+// 阶梯：Folder{shape:'Folder',plateColor:'#FFFFFF'} · File{shape:'Tile',plateColor:'#FFFFFF'}
 ```
 
 ### 6b. 本色 · As-Cast
@@ -144,7 +139,7 @@ System: { source:'custom', patch:{ shape:'Circle',   plateColor:'#EEEBE4' } }  /
   plateColor:null, plateFallback:'white', plateBand:'Vivid',   // 本色档：自带板 1:1、裸图标回退白
   shortcutShape:null, distinction:'Mark', markStyle:'Ring', markColor:null,
   size:'Mid', filter:'None' }
-// 阶梯：Folder{shape:'Folder',plateColor:null,plateFallback:'white'} · File{shape:'Tile',plateColor:'#E9E2D4'} · System{shape:'Circle',subject:'BlackWhite',plateColor:'#EDEAE4'}
+// 阶梯：Folder{shape:'Folder',plateColor:null,plateFallback:'white'} · File{shape:'Tile',plateColor:'#E9E2D4'}
 ```
 - 6a 强制白覆盖一切；6b 保留每个图标自带板（Twitter 蓝、Xbox 绿 1:1）。二者是两轴 `白` 档 vs `本色` 档的预设化，语义完整保留。
 

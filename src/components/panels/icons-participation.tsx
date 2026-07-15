@@ -11,7 +11,7 @@ import { ALL_SHAPES, TYPE_PLATE_SWATCHES, paleOf } from '@/components/panels/ico
 import { useIcons } from '@/stores/icons'
 import { BUCKET_NAME_KEY, KIND_BUCKETS, kindBucket } from '@/lib/kind-policy'
 import { typeIsCustom } from '@/lib/type-config'
-import type { IconKindBucket, TypePatch } from '@/bridge/types'
+import type { ConfigDto, IconKindBucket, TypeOverrides, TypePatch } from '@/bridge/types'
 import { format, useT } from '@/lib/i18n'
 
 // Participation surfaces (chief-UI/UX + owner 2026-07-09), both fed by one
@@ -92,6 +92,12 @@ export function KeptBar() {
   )
 }
 
+/** The panel's hover try-on channel (icons-panel `tryOn`): the debounced
+ *  candidate painter the type chips share with the global axes, so hovering a
+ *  per-type option previews on the canvas exactly like a global chip does
+ *  (owner 2026-07-16: the type rows previously previewed nothing — 割裂). */
+export type TypeTryOn = (change: Partial<ConfigDto>, typeOverrides?: TypeOverrides) => (hovering: boolean) => void
+
 /** The TYPE ACCORDION v2 (ADR-0017 D5; chief-designer control spec
  *  2026-07-10) — every option is the SAME SwatchButton chip grammar as the
  *  global axes, nothing invented: each sub-axis leads with an AutoGlyph
@@ -100,7 +106,7 @@ export function KeptBar() {
  *  list rows (beautify checkbox · glyph · name · status badge · chevron),
  *  separated by hair lines — no heavy coral frames. One row open at a time;
  *  the open row scope-highlights its icons on the canvas (dims the rest). */
-export function KindTypeSection() {
+export function KindTypeSection({ tryOn }: { tryOn: TypeTryOn }) {
   const t = useT()
   const items = useIcons((s) => s.items)
   const policy = useIcons((s) => s.state?.kindPolicy)
@@ -129,7 +135,7 @@ export function KindTypeSection() {
 
   // Hooks must run unconditionally (before any early return).
   const counts = React.useMemo(() => {
-    const c = { App: 0, Folder: 0, File: 0, System: 0 }
+    const c = { App: 0, Folder: 0, File: 0 }
     for (const i of items) {
       const b = kindBucket(i.kind)
       if (b) c[b]++
@@ -145,16 +151,34 @@ export function KindTypeSection() {
 
   if (!policy || !config) return null
 
-  const patchType = (bucket: IconKindBucket, change: Partial<Record<keyof TypePatch, TypePatch[keyof TypePatch] | undefined>>) => {
-    // Merge onto the REAL draft patch, never the lens projection: a value-
-    // asserting edit lifts the lens and applies onto the preserved draft
-    // (spec 06 §3.13) — exactly like the main axes' mutate() onto config.
+  type PatchChange = Partial<Record<keyof TypePatch, TypePatch[keyof TypePatch] | undefined>>
+
+  // Merge onto the REAL draft patch, never the lens projection: a value-
+  // asserting edit lifts the lens and applies onto the preserved draft
+  // (spec 06 §3.13) — exactly like the main axes' mutate() onto config.
+  const mergedPatch = (bucket: IconKindBucket, change: PatchChange): TypePatch => {
     const current: TypePatch = { ...(rawTypeOverrides?.[bucket]?.patch ?? {}) }
     for (const [k, v] of Object.entries(change)) {
       if (v === undefined) delete current[k as keyof TypePatch]
       else (current as Record<string, unknown>)[k] = v
     }
-    setTypeOverride(bucket, { source: 'custom', patch: current })
+    return current
+  }
+
+  const patchType = (bucket: IconKindBucket, change: PatchChange) => {
+    setTypeOverride(bucket, { source: 'custom', patch: mergedPatch(bucket, change) })
+  }
+
+  // Hover try-on for a type chip: the candidate is the FULL ladder a click
+  // would commit (merged patch in place, empty patch = entry removed), painted
+  // through the shared debounced channel. `{}` keeps the base config as-is —
+  // only the hovered bucket's icons change on the canvas.
+  const tryType = (bucket: IconKindBucket, change: PatchChange): ((hovering: boolean) => void) => {
+    const patch = mergedPatch(bucket, change)
+    const ladder: TypeOverrides = { ...rawTypeOverrides }
+    if (Object.keys(patch).length === 0) delete ladder[bucket]
+    else ladder[bucket] = { source: 'custom', patch }
+    return tryOn({}, ladder)
   }
 
   const anyCustom = KIND_BUCKETS.some((b) => typeIsCustom(typeOverrides, b))
@@ -262,6 +286,7 @@ export function KindTypeSection() {
                               title: t('Type_FollowGlobal'),
                               selected: patch.shape === undefined,
                               onPick: () => patchType(b, { shape: undefined }),
+                              onHover: tryType(b, { shape: undefined }),
                               glyph: <AutoGlyph selected={patch.shape === undefined} />,
                             },
                             ...ALL_SHAPES.map((o) => ({
@@ -269,6 +294,7 @@ export function KindTypeSection() {
                               title: t(o.key),
                               selected: patch.shape === o.value,
                               onPick: () => patchType(b, { shape: o.value }),
+                              onHover: tryType(b, { shape: o.value }),
                               glyph: <ShapeSwatch shape={o.value} active={patch.shape === o.value} />,
                             })),
                           ]}
@@ -276,142 +302,147 @@ export function KindTypeSection() {
                       </div>
                       {/* 颜色 — the global Colour row minus Original (DRY law):
                           AutoGlyph anchor, 满彩, 黑白, mono pair-dots, custom wheel. */}
-                      {true && (
-                        <div>
-                          <p className="mb-1.5 text-[11px] text-t2">{t('Subject_Label')}</p>
-                          <div className="flex flex-wrap items-center gap-1">
-                            {/* Order (owner correction 2026-07-12): 继承 dashed-circle
-                                FIRST, then the 系统默认 ⊘, then the specific styles. */}
+                      <div>
+                        <p className="mb-1.5 text-[11px] text-t2">{t('Subject_Label')}</p>
+                        <div className="flex flex-wrap items-center gap-1">
+                          {/* Order (owner correction 2026-07-12): 继承 dashed-circle
+                              FIRST, then the 系统默认 ⊘, then the specific styles. */}
+                          <SwatchButton
+                            title={t('Type_FollowGlobal')}
+                            selected={patch.subject === undefined}
+                            onHover={tryType(b, { subject: undefined, tint: undefined })}
+                            onClick={() => patchType(b, { subject: undefined, tint: undefined })}
+                          >
+                            <AutoGlyph selected={patch.subject === undefined} />
+                          </SwatchButton>
+                          {/* ⊘ 系统默认 = 原彩: the type keeps its own colours
+                              regardless of the global subject (mirrors the main
+                              Subject row's ⊘). */}
+                          <SwatchButton
+                            title={t('Subject_Orig')}
+                            selected={patch.subject === 'Original'}
+                            onHover={tryType(b, { subject: 'Original', tint: undefined })}
+                            onClick={() => patchType(b, { subject: 'Original', tint: undefined })}
+                          >
+                            <NoneGlyph active={patch.subject === 'Original'} />
+                          </SwatchButton>
+                          <SwatchButton
+                            title={t('Color_Bw')}
+                            selected={patch.subject === 'BlackWhite'}
+                            onHover={tryType(b, { subject: 'BlackWhite', tint: undefined })}
+                            onClick={() => patchType(b, { subject: 'BlackWhite', tint: undefined })}
+                          >
+                            <BwGlyph />
+                          </SwatchButton>
+                          {monoSwatches.map((sw) => (
                             <SwatchButton
-                              title={t('Type_FollowGlobal')}
-                              selected={patch.subject === undefined}
-                              onClick={() => patchType(b, { subject: undefined, tint: undefined })}
+                              key={sw}
+                              title={sw}
+                              selected={patch.subject === 'Mono' && patch.tint?.toUpperCase() === sw.toUpperCase()}
+                              onHover={tryType(b, { subject: 'Mono', tint: sw })}
+                              onClick={() => patchType(b, { subject: 'Mono', tint: sw })}
                             >
-                              <AutoGlyph selected={patch.subject === undefined} />
+                              <PairDot fg={sw} bg={paleOf(sw)} />
                             </SwatchButton>
-                            {/* ⊘ 系统默认 = 原彩: the type keeps its own colours
-                                regardless of the global subject (mirrors the main
-                                Subject row's ⊘). */}
-                            <SwatchButton
-                              title={t('Subject_Orig')}
-                              selected={patch.subject === 'Original'}
-                              onClick={() => patchType(b, { subject: 'Original', tint: undefined })}
-                            >
-                              <NoneGlyph active={patch.subject === 'Original'} />
-                            </SwatchButton>
-                            <SwatchButton
-                              title={t('Color_Bw')}
-                              selected={patch.subject === 'BlackWhite'}
-                              onClick={() => patchType(b, { subject: 'BlackWhite', tint: undefined })}
-                            >
-                              <BwGlyph />
-                            </SwatchButton>
-                            {monoSwatches.map((sw) => (
-                              <SwatchButton
-                                key={sw}
-                                title={sw}
-                                selected={patch.subject === 'Mono' && patch.tint?.toUpperCase() === sw.toUpperCase()}
-                                onClick={() => patchType(b, { subject: 'Mono', tint: sw })}
+                          ))}
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                title={t('Palette_Button')}
+                                aria-label={t('Palette_Button')}
+                                className={swatchButtonClass(monoCustom)}
                               >
-                                <PairDot fg={sw} bg={paleOf(sw)} />
-                              </SwatchButton>
-                            ))}
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <button
-                                  type="button"
-                                  title={t('Palette_Button')}
-                                  aria-label={t('Palette_Button')}
-                                  className={swatchButtonClass(monoCustom)}
-                                >
-                                  <WheelRing size={20} value={patch.tint ?? config.tint} active={monoCustom} />
-                                </button>
-                              </PopoverTrigger>
-                              <PopoverContent side="left" align="start" className="w-auto rounded-[14px] p-3">
-                                <ColorPickerPanel
-                                  value={patch.tint ?? config.tint}
-                                  onChange={(hex) => patchType(b, { subject: 'Mono', tint: hex })}
-                                  wallpaperSwatches={palette ?? []}
-                                  quickSwatches={QUICK_SWATCHES}
-                                />
-                              </PopoverContent>
-                            </Popover>
-                          </div>
+                                <WheelRing size={20} value={patch.tint ?? config.tint} active={monoCustom} />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent side="left" align="start" className="w-auto rounded-[14px] p-3">
+                              <ColorPickerPanel
+                                value={patch.tint ?? config.tint}
+                                onChange={(hex) => patchType(b, { subject: 'Mono', tint: hex })}
+                                wallpaperSwatches={palette ?? []}
+                                quickSwatches={QUICK_SWATCHES}
+                              />
+                            </PopoverContent>
+                          </Popover>
                         </div>
-                      )}
+                      </div>
                       {/* 底板 — ⊘ 系统默认 · 继承 · derived · white · low-sat chips. */}
-                      {true && (
-                        <div>
-                          <p className="mb-1.5 text-[11px] text-t2">{t('Type_Plate')}</p>
-                          <div className="flex flex-wrap items-center gap-1">
-                            {/* Order (owner correction 2026-07-12): 继承 dashed-circle
-                                FIRST, then the 系统默认 ⊘, then the specific plates.
-                                The ⊘ = 本色 (null + white): the per-type plate model
-                                has no config distinct from 本色 for "no plate", so the
-                                ⊘ IS that state (mirrors the main Plate row's ⊘). */}
+                      <div>
+                        <p className="mb-1.5 text-[11px] text-t2">{t('Type_Plate')}</p>
+                        <div className="flex flex-wrap items-center gap-1">
+                          {/* Order (owner correction 2026-07-12): 继承 dashed-circle
+                              FIRST, then the 系统默认 ⊘, then the specific plates.
+                              The ⊘ = 本色 (null + white): the per-type plate model
+                              has no config distinct from 本色 for "no plate", so the
+                              ⊘ IS that state (mirrors the main Plate row's ⊘). */}
+                          <SwatchButton
+                            title={t('Type_FollowGlobal')}
+                            selected={patch.plateColor === undefined && patch.plateFallback === undefined}
+                            onHover={tryType(b, { plateColor: undefined, plateFallback: undefined })}
+                            onClick={() => patchType(b, { plateColor: undefined, plateFallback: undefined })}
+                          >
+                            <AutoGlyph selected={patch.plateColor === undefined && patch.plateFallback === undefined} />
+                          </SwatchButton>
+                          <SwatchButton
+                            title={t('Plate_None')}
+                            selected={patch.plateColor === null && patch.plateFallback === 'white'}
+                            onHover={tryType(b, { plateColor: null, plateFallback: 'white' })}
+                            onClick={() => patchType(b, { plateColor: null, plateFallback: 'white' })}
+                          >
+                            <NoneGlyph active={patch.plateColor === null && patch.plateFallback === 'white'} />
+                          </SwatchButton>
+                          <SwatchButton
+                            title={t('Plate_Auto')}
+                            selected={patch.plateColor === null && patch.plateFallback !== 'white'}
+                            onHover={tryType(b, { plateColor: null, plateFallback: 'derived' })}
+                            onClick={() => patchType(b, { plateColor: null, plateFallback: 'derived' })}
+                          >
+                            <QuadPlateGlyph />
+                          </SwatchButton>
+                          <SwatchButton
+                            title={t('Plate_White')}
+                            selected={patch.plateColor?.toUpperCase() === '#FFFFFF'}
+                            onHover={tryType(b, { plateColor: '#FFFFFF', plateFallback: undefined })}
+                            onClick={() => patchType(b, { plateColor: '#FFFFFF', plateFallback: undefined })}
+                          >
+                            <PairDot fg="#FFFFFF" bg="#FFFFFF" />
+                          </SwatchButton>
+                          {TYPE_PLATE_SWATCHES.map((hex) => (
                             <SwatchButton
-                              title={t('Type_FollowGlobal')}
-                              selected={patch.plateColor === undefined && patch.plateFallback === undefined}
-                              onClick={() => patchType(b, { plateColor: undefined, plateFallback: undefined })}
+                              key={hex}
+                              title={hex}
+                              selected={patch.plateColor?.toUpperCase() === hex.toUpperCase()}
+                              onHover={tryType(b, { plateColor: hex })}
+                              onClick={() => patchType(b, { plateColor: hex })}
                             >
-                              <AutoGlyph selected={patch.plateColor === undefined && patch.plateFallback === undefined} />
+                              <span className="block size-5 rounded-md ring-1 ring-hair" style={{ background: hex }} />
                             </SwatchButton>
-                            <SwatchButton
-                              title={t('Plate_None')}
-                              selected={patch.plateColor === null && patch.plateFallback === 'white'}
-                              onClick={() => patchType(b, { plateColor: null, plateFallback: 'white' })}
-                            >
-                              <NoneGlyph active={patch.plateColor === null && patch.plateFallback === 'white'} />
-                            </SwatchButton>
-                            <SwatchButton
-                              title={t('Plate_Auto')}
-                              selected={patch.plateColor === null && patch.plateFallback !== 'white'}
-                              onClick={() => patchType(b, { plateColor: null, plateFallback: 'derived' })}
-                            >
-                              <QuadPlateGlyph />
-                            </SwatchButton>
-                            <SwatchButton
-                              title={t('Plate_White')}
-                              selected={patch.plateColor?.toUpperCase() === '#FFFFFF'}
-                              onClick={() => patchType(b, { plateColor: '#FFFFFF', plateFallback: undefined })}
-                            >
-                              <PairDot fg="#FFFFFF" bg="#FFFFFF" />
-                            </SwatchButton>
-                            {TYPE_PLATE_SWATCHES.map((hex) => (
-                              <SwatchButton
-                                key={hex}
-                                title={hex}
-                                selected={patch.plateColor?.toUpperCase() === hex.toUpperCase()}
-                                onClick={() => patchType(b, { plateColor: hex })}
+                          ))}
+                          {/* Custom plate colour — the free wheel, matching the main plate row
+                              and the per-type subject wheel (owner 2026-07-14). */}
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                title={t('Palette_Button')}
+                                aria-label={t('Palette_Button')}
+                                className={swatchButtonClass(plateCustom)}
                               >
-                                <span className="block size-5 rounded-md ring-1 ring-hair" style={{ background: hex }} />
-                              </SwatchButton>
-                            ))}
-                            {/* Custom plate colour — the free wheel, matching the main plate row
-                                and the per-type subject wheel (owner 2026-07-14). */}
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <button
-                                  type="button"
-                                  title={t('Palette_Button')}
-                                  aria-label={t('Palette_Button')}
-                                  className={swatchButtonClass(plateCustom)}
-                                >
-                                  <WheelRing size={20} value={patch.plateColor ?? config.plateColor ?? '#FFFFFF'} active={plateCustom} />
-                                </button>
-                              </PopoverTrigger>
-                              <PopoverContent side="left" align="start" className="w-auto rounded-[14px] p-3">
-                                <ColorPickerPanel
-                                  value={patch.plateColor ?? config.plateColor ?? '#FFFFFF'}
-                                  onChange={(hex) => patchType(b, { plateColor: hex })}
-                                  wallpaperSwatches={palette ?? []}
-                                  quickSwatches={QUICK_SWATCHES}
-                                />
-                              </PopoverContent>
-                            </Popover>
-                          </div>
+                                <WheelRing size={20} value={patch.plateColor ?? config.plateColor ?? '#FFFFFF'} active={plateCustom} />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent side="left" align="start" className="w-auto rounded-[14px] p-3">
+                              <ColorPickerPanel
+                                value={patch.plateColor ?? config.plateColor ?? '#FFFFFF'}
+                                onChange={(hex) => patchType(b, { plateColor: hex })}
+                                wallpaperSwatches={palette ?? []}
+                                quickSwatches={QUICK_SWATCHES}
+                              />
+                            </PopoverContent>
+                          </Popover>
                         </div>
-                      )}
+                      </div>
                       {custom && (
                         <div className="flex justify-end">
                           <button

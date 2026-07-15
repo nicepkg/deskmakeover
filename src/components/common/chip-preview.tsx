@@ -436,24 +436,16 @@ function kindBody(bucket: IconKindBucket): ReactNode {
           fill="currentColor"
         />
       )
-    case 'File': // page with the fold at the BOTTOM-right — the top-right corner
-      // stays clean so the participation ✓ badge never masks the file's identity.
+    case 'File': // page with the fold at the TOP-right (owner 2026-07-16) — the
+      // same corner the File SHAPE mask cuts (shapes.ts: TR 45° cut), so the
+      // panel glyph and the rendered silhouette share one dog-ear identity.
       return (
         <>
           <path
-            d="M6.2 2.6 H13.9 A1.5 1.5 0 0 1 15.4 4.1 V12.4 L10.8 17.4 H6.2 A1.5 1.5 0 0 1 4.7 15.9 V4.1 A1.5 1.5 0 0 1 6.2 2.6 Z"
+            d="M10.8 2.6 L15.4 7.6 V15.9 A1.5 1.5 0 0 1 13.9 17.4 H6.2 A1.5 1.5 0 0 1 4.7 15.9 V4.1 A1.5 1.5 0 0 1 6.2 2.6 Z"
             fill="currentColor"
           />
-          <path d="M10.8 17.4 V13.9 A1.5 1.5 0 0 1 12.3 12.4 H15.4 Z" fill="currentColor" opacity="0.4" />
-        </>
-      )
-    case 'System': // a cog — ring body (centre hole) with eight teeth
-      return (
-        <>
-          {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => (
-            <rect key={a} x="9.1" y="1.9" width="1.8" height="3.5" rx="0.6" fill="currentColor" transform={`rotate(${a} 10 10)`} />
-          ))}
-          <circle cx="10" cy="10" r="4.6" fill="none" stroke="currentColor" strokeWidth="2.6" />
+          <path d="M10.8 2.6 V6.1 A1.5 1.5 0 0 0 12.3 7.6 H15.4 Z" fill="currentColor" opacity="0.4" />
         </>
       )
     default: {

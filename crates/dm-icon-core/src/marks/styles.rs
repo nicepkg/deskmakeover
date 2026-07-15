@@ -425,9 +425,11 @@ impl Mark for CometMark {
     fn render(&self, target: &mut Raster, _card_mask: &[f64], ctx: &MarkContext, _masks: &mut MaskCache, _scratch: &mut RenderScratch) {
         let size = ctx.size;
         let s = size as f64;
-        // Seat ≈ 0.36·tile (32px → ~12px: the barbs still read as a triangle),
-        // fixed bottom-left (the Windows-arrow muscle-memory corner).
-        let cs = (s * 0.36).max(14.0).min(s * 0.94);
+        // Seat = 0.28·tile — the SAME footprint as the native badge in
+        // `draw_classic_arrow` (owner 2026-07-16: the designed arrow must render
+        // the same overall size as the default arrow), fixed bottom-left (the
+        // Windows-arrow muscle-memory corner). Same 14px floor as the native path.
+        let cs = (s * 0.28).max(14.0).min(s * 0.94);
         let cs_px = 1.max(js_round(cs) as i64) as usize;
         let sx = (s * 0.05).max(0.0).min(s - cs);
         let sy = (s - cs - s * 0.05).max(0.0).min(s - cs);

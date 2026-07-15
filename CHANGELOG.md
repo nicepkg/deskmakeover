@@ -20,7 +20,10 @@ and release packaging are still pending (tracked as "F8" in STATE.md).
   Circle / Samsung / Tile / Teardrop / Bookmark / Lemon / Diamond / Flower / Pebble / 无), shared
   by the on-screen swatch and the bake. Colour treatments (原彩 / 黑白 / 极致单色) + shared 调色盘.
   Shortcut marks (six refined + classic arrow + none), silhouette-aware. Filters incl. Gloss.
-- Per-bucket participation (`kindPolicy`: apps / folders / files / system).
+- Per-bucket participation (`kindPolicy`: apps / folders / files — the system bucket merged
+  into apps, 2026-07-16). Per-type accordion chips hover-preview live like the global axes;
+  the File kind glyph folds top-right matching the File shape; the Comet arrow badge renders
+  at the native classic-arrow footprint (0.28 × tile).
 
 ### Wallpaper module
 - Zone editor: translucent panels painted into the wallpaper — five materials, four title styles,

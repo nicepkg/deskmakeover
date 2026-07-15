@@ -425,7 +425,7 @@ describe('kind families + affordances (D2, plan T5)', () => {
   })
 
   test('dark grayscale artwork (no own bg) gets a light NEUTRAL plate (white legal)', () => {
-    const tile = renderTile(plusGlyph(40, 44, 50), FIELD_CONFIG, false, false, S, { kindBucket: 'System' })
+    const tile = renderTile(plusGlyph(40, 44, 50), FIELD_CONFIG, false, false, S, { kindBucket: 'App' })
     const [r, g, b] = px(tile, 4, S / 2)
     expect(chromaOf(r, g, b)).toBeLessThan(0.02)
     expect(perceivedLightness(r, g, b)).toBeGreaterThan(0.8) // dark subject → light board
@@ -435,15 +435,15 @@ describe('kind families + affordances (D2, plan T5)', () => {
     // The per-type shape now arrives RESOLVED: renderTile itself is
     // ladder-blind, resolveTypeConfig folds the bucket patch upstream.
     const art = greenGlyph()
-    const ladder: TypeOverrides = { System: { source: 'custom', patch: { shape: 'Circle' } } }
+    const ladder: TypeOverrides = { File: { source: 'custom', patch: { shape: 'Circle' } } }
     const follower = renderTile(art, resolveTypeConfig(FIELD_CONFIG, ladder, 'App'), false, false, S)
-    const patched = renderTile(art, resolveTypeConfig(FIELD_CONFIG, ladder, 'System'), false, false, S)
+    const patched = renderTile(art, resolveTypeConfig(FIELD_CONFIG, ladder, 'File'), false, false, S)
     // (8,8) sits inside the Apple squircle's rounded corner but OUTSIDE the
     // inscribed circle.
     const [, , , followerCorner] = px(follower, 8, 8)
     const [, , , patchedCorner] = px(patched, 8, 8)
     expect(followerCorner).toBeGreaterThan(0) // App follows the global Apple squircle
-    expect(patchedCorner).toBe(0) // System's Circle patch wins
+    expect(patchedCorner).toBe(0) // File's Circle patch wins
   })
 })
 

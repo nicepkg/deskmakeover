@@ -203,7 +203,7 @@ async function sourcesSettled(): Promise<void> {
 /** id -> hue-spread-adjusted Field seed hex (ADR-0016 D1; designer item 3). */
 let fieldSeeds = new Map<string, string>()
 /** id -> kind bucket (Field kind families + affordances + kindShapes, D2). */
-let kindBuckets = new Map<string, 'App' | 'Folder' | 'File' | 'System' | null>()
+let kindBuckets = new Map<string, 'App' | 'Folder' | 'File' | null>()
 /** The last scan's OBSERVED grid metrics, reused so op-result reassembly uses platform truth (not
  *  the fabricated default) between scans (codex Major 5). */
 let lastGridMetrics: GridMetricsDto | undefined
@@ -694,7 +694,7 @@ export const useIcons = create<IconsState>((set, get) => {
       const s = get()
       if (!s.state) return
       pushUndo()
-      set({ state: markDirty({ ...s.state, config: { ...s.state.config, ...change } }), hoverConfig: null, bareLook: false })
+      set({ state: markDirty({ ...s.state, config: { ...s.state.config, ...change } }), hoverConfig: null, hoverTypeOverrides: null, bareLook: false })
       schedulePersist()
       // Pool membership follows the resolved configs (cheap; invalidates only
       // when the seed map actually moves).
@@ -756,6 +756,7 @@ export const useIcons = create<IconsState>((set, get) => {
           ...(kindPolicy ? { kindPolicy: { ...s.state.kindPolicy, ...kindPolicy } } : {}),
         }),
         hoverConfig: null,
+        hoverTypeOverrides: null,
         bareLook: false,
       })
       schedulePersist()
@@ -783,6 +784,7 @@ export const useIcons = create<IconsState>((set, get) => {
         state: markDirty({ ...s.state, config: { ...SYSTEM_DEFAULT_CONFIG }, typeOverrides: {} }),
         bareLook: true,
         hoverConfig: null,
+        hoverTypeOverrides: null,
       })
       persistBareLook(true) // resume the bare selection on the next launch (A3)
       recomputeHueSpread()
@@ -796,7 +798,7 @@ export const useIcons = create<IconsState>((set, get) => {
       const s = get()
       if (!s.state || !s.bareLook) return
       pushUndo()
-      set({ bareLook: false, hoverConfig: null })
+      set({ bareLook: false, hoverConfig: null, hoverTypeOverrides: null })
       persistBareLook(false)
     },
 
@@ -864,6 +866,7 @@ export const useIcons = create<IconsState>((set, get) => {
       set({
         state: markDirty({ ...s.state, typeOverrides: next }),
         hoverConfig: null,
+        hoverTypeOverrides: null,
         ...(clearing ? {} : { bareLook: false }),
       })
       schedulePersist()
@@ -878,7 +881,7 @@ export const useIcons = create<IconsState>((set, get) => {
       const s = get()
       if (!s.state || Object.keys(s.state.typeOverrides).length === 0) return
       pushUndo()
-      set({ state: markDirty({ ...s.state, typeOverrides: {} }), hoverConfig: null })
+      set({ state: markDirty({ ...s.state, typeOverrides: {} }), hoverConfig: null, hoverTypeOverrides: null })
       schedulePersist()
       recomputeHueSpread()
     },
@@ -1072,6 +1075,7 @@ export const useIcons = create<IconsState>((set, get) => {
         // so a history look never applies A's visuals with B's participation policy (codex Major 2).
         state: markDirty({ ...s.state, config: { ...entry.config }, kindPolicy: { ...entry.kindPolicy }, typeOverrides: structuredClone(entry.typeOverrides) }),
         hoverConfig: null,
+        hoverTypeOverrides: null,
         bareLook: false,
       })
       schedulePersist()

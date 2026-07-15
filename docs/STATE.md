@@ -1,6 +1,6 @@
 ---
 updated: 2026-07-14
-version: Unreleased (root package.json + src-tauri/tauri.conf.json both 0.0.0; the owner names the first release number)
+version: 0.1.0 pre-release (owner-named 2026-07-15; root package.json + src-tauri/tauri.conf.json = 0.1.0; stays 0.x until the owner-supervised Windows WRITE surface is human-verified, then 1.0)
 branch: main (repo is PRIVATE; making it public is the owner's call at release)
 ---
 

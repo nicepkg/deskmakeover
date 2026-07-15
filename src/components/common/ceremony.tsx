@@ -50,6 +50,7 @@ export function ConfirmSheet({
   confirmLabel,
   cancelLabel,
   destructive = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: {
@@ -60,6 +61,8 @@ export function ConfirmSheet({
   confirmLabel: string
   cancelLabel: string
   destructive?: boolean
+  /** Gate the confirm on required input (visible disabled state, never a silent no-op click). */
+  confirmDisabled?: boolean
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -68,7 +71,9 @@ export function ConfirmSheet({
       {open && (
         <Scrim onClose={onCancel}>
           <p className="text-body font-medium text-t1">{title}</p>
-          {body && <p className="mt-2 text-[12px] leading-relaxed text-t2">{body}</p>}
+          {/* div, not p: callers pass structured bodies (input fields, checkbox rows) and
+              block elements inside a <p> are invalid HTML the parser would re-nest. */}
+          {body && <div className="mt-2 text-[12px] leading-relaxed text-t2">{body}</div>}
           <div className="mt-4 flex justify-end gap-1.5">
             <button
               type="button"
@@ -79,10 +84,12 @@ export function ConfirmSheet({
             </button>
             <button
               type="button"
+              disabled={confirmDisabled}
               onClick={onConfirm}
               className={cn(
                 'rounded-[9px] px-3 py-1.5 text-[12px] font-medium text-primary-foreground transition-transform active:scale-[0.98]',
                 destructive ? 'bg-destructive' : 'bg-primary shadow-elev-cta',
+                confirmDisabled && 'cursor-default opacity-40 active:scale-100',
               )}
             >
               {confirmLabel}

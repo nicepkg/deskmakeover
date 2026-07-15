@@ -98,14 +98,20 @@ export type CalmSkipReasonDto = "changed";
 /**
  *  The OBSERVED desktop metrics a scan reports, so the frontend assembles the grid from PLATFORM
  *  truth instead of fabricating dims (codex Major 5 — a hardcoded 1920×1080 lies on 4K/ultrawide/
- *  side-taskbar desktops). The frontend derives `iconPx`/cell sizes from these + the chosen size.
- *  [WINDOWS-VERIFY] the real `SPI_GETWORKAREA` + shell icon metrics on the box; the dev host
- *  synthesizes plausible values.
+ *  side-taskbar desktops). `cell_width`/`cell_height`/`icon_px` carry the TRUE snap-cell pitch and
+ *  icon size from the live shell view (`IFolderView::GetSpacing` + `GetViewModeAndIconSize`);
+ *  they are `None` when that walk fails, and the frontend then falls back to its approximation
+ *  constants (owner report 2026-07-16: the fabricated 92px cell rendered every icon ~22px right
+ *  of where Windows draws it). [WINDOWS-VERIFY] the real `SPI_GETWORKAREA` + shell icon metrics
+ *  on the box; the dev host synthesizes plausible values.
  */
 export type GridMetricsDto = {
 	screenWidth: number,
 	screenHeight: number,
 	taskbarHeight: number,
+	cellWidth: number | null,
+	cellHeight: number | null,
+	iconPx: number | null,
 };
 
 /**

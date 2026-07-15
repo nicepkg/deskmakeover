@@ -5,6 +5,7 @@ import { DEFAULT_KIND_POLICY, kindBucket, kindParticipates } from '@/lib/kind-po
 import { appAccentSeed, resolveTypeConfig, typeHasFixedPlate } from '@/lib/type-config'
 import { activePresetIdOf as activePresetIdOfRecipe, assembleIconsState, defaultRecipe, parseHistory, parseRecipe, SYSTEM_DEFAULT_CONFIG, type IconStyleRecipe } from '@/lib/icons-assemble'
 import { serializeIconLook } from '@/lib/icon-look'
+import { recordObservedGrid } from '@/lib/observed-grid'
 import { useWallpaper } from '@/stores/wallpaper'
 import { getIconCompositor } from '@/icon-compositor/icon-renderer'
 import type { RenderOpts } from '@/icon-wasm/protocol'
@@ -542,6 +543,8 @@ export const useIcons = create<IconsState>((set, get) => {
       : scan.items
     kindBuckets = new Map(items.map((i) => [i.id, kindBucket(i.kind)]))
     lastGridMetrics = scan.grid
+    // Share the platform truth with the wallpaper zone lattice (observed-grid.ts).
+    recordObservedGrid(scan.grid)
     getIconCompositor().invalidateAll()
     const assembled = assembleIconsState({
       draft,

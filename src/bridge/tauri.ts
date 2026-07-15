@@ -46,6 +46,9 @@ const HANDLED = new Set([
   'shell.openDataFolder',
   // Diagnostics (audit #7): real host facts, not the browser `(mock)` stub.
   'diagnostics.getInfo',
+  // App identity: frontend content blob + the REAL app version (the mock's 0.0.0
+  // was leaking into the About card under Tauri — owner report 2026-07-16).
+  'app.getInfo',
 ])
 
 export function tauriHandles(method: string): boolean {
@@ -85,6 +88,13 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
       return unwrap(await commands.settingsGet())
     case 'diagnostics.getInfo':
       return unwrap(await commands.diagnosticsGetInfo())
+    case 'app.getInfo': {
+      const [{ appInfo }, { getVersion }] = await Promise.all([
+        import('@/lib/app-info'),
+        import('@tauri-apps/api/app'),
+      ])
+      return { ...appInfo, version: await getVersion() }
+    }
     case 'settings.set':
       return unwrap(await commands.settingsSet(params as Parameters<typeof commands.settingsSet>[0]))
     // Wallpaper (schema 6 thin, D1): the store reconciles + assembles; Rust returns

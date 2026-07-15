@@ -341,23 +341,27 @@ export const ZoneView = React.memo(function ZoneView({
 
       {isSelected && (
         <>
-          {/* Double-stroke selection: coral core + white halo (readable on any art). */}
+          {/* Double-stroke selection: coral core + white halo (readable on any art).
+              The chrome floats a constant on-screen gap OUTSIDE the zone rect — sitting on
+              inset:0 it covered the zone's own material border/shadow exactly while the user
+              is switching 分区样式 (owner report 2026-07-16). Handles ride the ring. */}
           <div
             className="pointer-events-none absolute border-[1.5px] border-coral/95"
             style={{
-              inset: 0,
-              borderRadius: Math.max(0, zone.cornerRadius),
+              inset: -(6 / scale),
+              borderRadius: Math.max(0, zone.cornerRadius) + 6 / scale,
               boxShadow: '0 0 0 1px rgba(255,255,255,0.9), inset 0 0 0 1px rgba(255,255,255,0.35)',
             }}
           />
           {handles.map((h) => {
             const hit = 20 / scale
             const half = hit / 2
+            const gap = 6 / scale
             const pos: React.CSSProperties = {}
-            if (h.includes('n')) pos.top = -half
-            if (h.includes('s')) pos.bottom = -half
-            if (h.includes('w')) pos.left = -half
-            if (h.includes('e')) pos.right = -half
+            if (h.includes('n')) pos.top = -half - gap
+            if (h.includes('s')) pos.bottom = -half - gap
+            if (h.includes('w')) pos.left = -half - gap
+            if (h.includes('e')) pos.right = -half - gap
             if (h === 'n' || h === 's') {
               pos.left = '50%'
               pos.marginLeft = -half

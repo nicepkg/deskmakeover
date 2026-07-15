@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { CALM_CATALOG, type CalmControlId } from '../src/lib/calm/catalog'
 import type { CalmRowState } from '../src/lib/calm/states'
 import { MockCalmBackend } from '../src/bridge/mock-calm'
-import { countOwnedWrites, countQuieted, countRestorable, groupedRows, reopenedRows, setCalmBackend, useCalm } from '../src/stores/calm'
+import { countOwnedWrites, countQuieted, countRestorable, groupedRows, guidedOnlyFace, reopenedRows, setCalmBackend, useCalm } from '../src/stores/calm'
 
 // Store behaviour tests over the CalmBackend mock (plan W0.3 + codex R1 fixes).
 // The mock's fake environment: starter slice certified, other automatic rows
@@ -31,6 +31,21 @@ describe('calm store', () => {
     expect(groups.guided[0]).toBe('widgets.feed') // the opening act leads
     expect(groups.held.length).toBeGreaterThan(0) // uncertified rows sit honestly in group 3
     expect(useCalm.getState().rows['search.highlights']).toBe('unsupported')
+  })
+
+  test('an all-fail-closed probe wears the guided-only face, never an eternal spinner', () => {
+    // ADR-0023 D2 regression (owner 2026-07-16): the real-Windows stack ships fail-closed
+    // pre-W3 — every automatic candidate probes unsupported. The hero must switch to the
+    // honest guided-only face instead of spinning on 「扫描中」 forever.
+    const failClosed = Object.fromEntries(
+      CALM_CATALOG.map((c) => [c.id, c.tier === 'guided' ? 'pushing' : 'unsupported']),
+    ) as Record<CalmControlId, CalmRowState>
+    expect(guidedOnlyFace(true, failClosed)).toBe(true)
+    expect(guidedOnlyFace(false, failClosed)).toBe(false) // pre-probe stays on the spinner
+    // Any real one-click state (a candidate, a verified write, a reopened drift) → normal hero.
+    expect(guidedOnlyFace(true, { ...failClosed, 'taskbar.search': 'pushing' })).toBe(false)
+    expect(guidedOnlyFace(true, { ...failClosed, 'taskbar.search': 'verified' })).toBe(false)
+    expect(guidedOnlyFace(true, { ...failClosed, 'taskbar.search': 'reopened' })).toBe(false)
   })
 
   test('managed rows land in group 3 as managed', async () => {

@@ -271,6 +271,20 @@
     cursor: text;
   }
 
+  /* Range inputs are drag controls, not text fields — the generic `input` rule above
+     would give their thumbs an I-beam (owner report 2026-07-16: slider 没有 pointer). */
+  input[type='range'] {
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+  }
+  input[type='range']:disabled {
+    cursor: default;
+  }
+  input[type='range']::-webkit-slider-thumb {
+    cursor: pointer;
+  }
+
   img {
     -webkit-user-drag: none;
   }

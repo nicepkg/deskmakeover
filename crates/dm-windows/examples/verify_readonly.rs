@@ -96,8 +96,8 @@ fn main() {
     let geo = WindowsDesktopGeometry::new(exec.clone());
     match geo.geometry() {
         Ok(g) => println!(
-            "[PASS] DesktopGeometryReader::geometry — {}x{} taskbar={}",
-            g.screen_width, g.screen_height, g.taskbar_height
+            "[PASS] DesktopGeometryReader::geometry — {}x{} taskbar={} icon_grid={:?}",
+            g.screen_width, g.screen_height, g.taskbar_height, g.icon_grid
         ),
         Err(e) => println!("[WARN] DesktopGeometryReader::geometry: {e:?} (host falls back to synthetic grid)"),
     }

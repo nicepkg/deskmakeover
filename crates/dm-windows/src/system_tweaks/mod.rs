@@ -15,6 +15,8 @@ pub mod translate;
 #[cfg(windows)]
 mod backend;
 #[cfg(windows)]
+pub mod launch;
+#[cfg(windows)]
 mod profile;
 
 #[cfg(windows)]

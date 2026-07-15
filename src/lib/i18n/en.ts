@@ -86,6 +86,8 @@ export const en = {
   "Calm_Held_NotYet": "Not yet on this build",
   "Calm_Held_Reason_Uncertified": "To avoid breaking anything, these are not yet verified on your Windows build, so we leave them alone.",
   "Calm_HeroPromise": "Quiet the recommendations Windows keeps pushing at you.",
+  "Calm_GuidedOnly_Head": "Auto quiet isn't verified on this Windows build yet", // §5 degraded honesty: fail-closed manifest (pre-W3)
+  "Calm_GuidedOnly_Sub": "To stay safe we won't change anything automatically for now; every item below can walk you to the official setting to turn it off yourself.",
   "Calm_ListJoin": ", ",
   "Calm_LockStatus": "Lock screen extras",
   "Calm_LockStatus_Desc": "No more weather and news cards",
@@ -481,7 +483,7 @@ export const en = {
   "Library_ExportConfirm": "Choose location & export",
   "Library_SaveTitle": "Save as my style",
   "Library_SaveConfirm": "Save",
-  "Library_NamePlaceholder": "Style name",
+  "Library_NamePlaceholder": "Style name (required)",
   "Library_AuthorPlaceholder": "Author (optional, ships with the pack)",
   "Library_NeedsDesktop": "This needs the desktop app",
   "Library_InvalidEntry": "Unreadable: pack is damaged or needs a newer DeskMakeover",
@@ -630,6 +632,7 @@ export const en = {
   "Toast_ArrowRestored": "System arrow restored", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Toast_AutoFormatNeedsApply": "Complete one Beautify to save a look first, then enable auto-format", // resident §2 precondition
   "Toast_NoHistoryYet": "No history yet · every Beautify records a version here", // tray history deep-link, empty state
+  "Toast_OpenLinkFailed": "Could not open it — the link stays here in Settings", // opener rejection surfaced honestly
   "Toast_ResidentProposal": "{0} new icon(s) found · formatted on confirm or in 2 hours", // resident §2 item 4
   "Toast_ResidentApplied": "{0} new icon(s) auto-formatted · undo from the tray menu", // resident batch applied
   "Toast_ResidentUndone": "Undone · {0} icon(s) back to their original look", // resident undo (§13 level 2)

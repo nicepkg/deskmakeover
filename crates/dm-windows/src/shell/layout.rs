@@ -44,27 +44,82 @@ impl DesktopGeometryReader for WindowsDesktopGeometry {
 }
 
 mod win {
-    use dm_domain::{DesktopGeometry, DesktopIconSlot, PortError, PortResult};
+    use dm_domain::{DesktopGeometry, DesktopIconGrid, DesktopIconSlot, PortError, PortResult};
     use windows::core::Interface;
-    use windows::Win32::Foundation::RECT;
+    use windows::Win32::Foundation::{POINT, RECT};
     use windows::Win32::System::Com::{
         CoCreateInstance, CoTaskMemFree, IServiceProvider, CLSCTX_ALL,
     };
     use windows::Win32::System::Variant::VARIANT;
     use windows::Win32::UI::Shell::Common::{ITEMIDLIST, STRRET};
     use windows::Win32::UI::Shell::{
-        IFolderView2, IShellBrowser, IShellFolder, IShellWindows, ShellWindows, StrRetToBufW,
-        SHGDN_NORMAL, SID_STopLevelBrowser, SVGIO_ALLVIEW, SWC_DESKTOP, SWFO_NEEDDISPATCH,
+        FOLDERVIEWMODE, IFolderView2, IShellBrowser, IShellFolder, IShellWindows, ShellWindows,
+        StrRetToBufW, SHGDN_NORMAL, SID_STopLevelBrowser, SVGIO_ALLVIEW, SWC_DESKTOP,
+        SWFO_NEEDDISPATCH,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         GetSystemMetrics, SystemParametersInfoW, SM_CXSCREEN, SM_CYSCREEN, SM_XVIRTUALSCREEN,
         SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
     };
 
+    /// The live desktop `IFolderView2` (technique A's shared entry): `IShellWindows` →
+    /// `IServiceProvider` → `IShellBrowser` → active view → QI. Any step can legitimately fail
+    /// (session 0, MTA caller, denied QI) — callers degrade per their own contract.
+    unsafe fn desktop_folder_view() -> PortResult<IFolderView2> {
+        let shell: IShellWindows = CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)
+            .map_err(|e| PortError::Io(format!("ShellWindows: {e}")))?;
+        let mut hwnd = 0i32;
+        let dispatch = shell
+            .FindWindowSW(
+                &VARIANT::default(),
+                &VARIANT::default(),
+                SWC_DESKTOP,
+                &mut hwnd,
+                SWFO_NEEDDISPATCH,
+            )
+            .map_err(|e| PortError::Io(format!("FindWindowSW(desktop): {e}")))?;
+        let provider: IServiceProvider = dispatch
+            .cast()
+            .map_err(|e| PortError::Io(format!("desktop IServiceProvider: {e}")))?;
+        let browser: IShellBrowser = provider
+            .QueryService(&SID_STopLevelBrowser)
+            .map_err(|e| PortError::Io(format!("SID_STopLevelBrowser: {e}")))?;
+        let view = browser
+            .QueryActiveShellView()
+            .map_err(|e| PortError::Io(format!("QueryActiveShellView: {e}")))?;
+        view.cast()
+            .map_err(|e| PortError::Io(format!("IFolderView2 QI: {e}")))
+    }
+
+    /// The desktop's TRUE snap-cell pitch + icon size (`GetSpacing` +
+    /// `GetViewModeAndIconSize`) — reflects WindowMetrics spacing tweaks and ctrl+scroll
+    /// icon sizing, which the SM_*ICONSPACING metrics do not. `None` on any failure or
+    /// implausible value; the frontend then keeps its approximation constants.
+    unsafe fn icon_grid_blocking() -> Option<DesktopIconGrid> {
+        let folder_view = desktop_folder_view().ok()?;
+        let mut spacing = POINT::default();
+        folder_view.GetSpacing(&mut spacing).ok()?;
+        let mut mode = FOLDERVIEWMODE::default();
+        let mut icon_px = 0i32;
+        folder_view.GetViewModeAndIconSize(&mut mode, &mut icon_px).ok()?;
+        // Sanity: a cell narrower than its icon or a non-positive read means the view
+        // answered garbage (e.g. a non-icon view mode) — report nothing over a lie.
+        if spacing.x < icon_px || spacing.y < icon_px || icon_px <= 0 {
+            return None;
+        }
+        Some(DesktopIconGrid {
+            cell_width: spacing.x as u32,
+            cell_height: spacing.y as u32,
+            icon_px: icon_px as u32,
+        })
+    }
+
     /// Full screen dims + the taskbar's reserved height (screen − work area). A side-docked
     /// taskbar reserves width, not height — the height then reads 0, which the grid tolerates.
+    /// The observed icon grid rides along (None when the shell walk fails — geometry itself
+    /// never fails on that account).
     pub(super) fn geometry_blocking() -> PortResult<DesktopGeometry> {
-        // SAFETY: plain user32 metric reads.
+        // SAFETY: plain user32 metric reads + the COM shell walk on the STA thread.
         unsafe {
             let width = GetSystemMetrics(SM_CXSCREEN);
             let height = GetSystemMetrics(SM_CYSCREEN);
@@ -84,6 +139,7 @@ mod win {
                 screen_width: width as u32,
                 screen_height: height as u32,
                 taskbar_height: taskbar as u32,
+                icon_grid: icon_grid_blocking(),
             })
         }
     }
@@ -93,30 +149,7 @@ mod win {
     pub(super) fn positions_blocking() -> PortResult<Vec<DesktopIconSlot>> {
         // SAFETY: COM on the STA thread; PIDLs are CoTaskMem-owned and freed per iteration.
         unsafe {
-            let shell: IShellWindows = CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)
-                .map_err(|e| PortError::Io(format!("ShellWindows: {e}")))?;
-            let mut hwnd = 0i32;
-            let dispatch = shell
-                .FindWindowSW(
-                    &VARIANT::default(),
-                    &VARIANT::default(),
-                    SWC_DESKTOP,
-                    &mut hwnd,
-                    SWFO_NEEDDISPATCH,
-                )
-                .map_err(|e| PortError::Io(format!("FindWindowSW(desktop): {e}")))?;
-            let provider: IServiceProvider = dispatch
-                .cast()
-                .map_err(|e| PortError::Io(format!("desktop IServiceProvider: {e}")))?;
-            let browser: IShellBrowser = provider
-                .QueryService(&SID_STopLevelBrowser)
-                .map_err(|e| PortError::Io(format!("SID_STopLevelBrowser: {e}")))?;
-            let view = browser
-                .QueryActiveShellView()
-                .map_err(|e| PortError::Io(format!("QueryActiveShellView: {e}")))?;
-            let folder_view: IFolderView2 = view
-                .cast()
-                .map_err(|e| PortError::Io(format!("IFolderView2 QI: {e}")))?;
+            let folder_view = desktop_folder_view()?;
             let folder: IShellFolder = folder_view
                 .GetFolder()
                 .map_err(|e| PortError::Io(format!("IFolderView2::GetFolder: {e}")))?;

@@ -352,3 +352,18 @@ export function groupedRows(rows: Record<CalmControlId, CalmRowState>) {
   for (const c of CALM_CATALOG) groups[groupOf(c, rows[c.id])].push(c.id)
   return groups
 }
+
+/** §5 degraded honesty (ADR-0023 D2): TRUE when the probe found NO one-click writable row at
+ *  all — the real-Windows stack ships fail-closed until the W3 cert lab certifies recipes, so
+ *  every automatic candidate sits held. The hero must then wear the honest guided-only face:
+ *  an eternal 「扫描中」 spinner (the pre-fix behavior) reads as a hang, and a 「可以让 0 个
+ *  界面安静下来」 line reads as a bug. Quieted/reopened rows keep the normal hero (they carry
+ *  real state worth summarizing). */
+export function guidedOnlyFace(probed: boolean, rows: Record<CalmControlId, CalmRowState>): boolean {
+  if (!probed) return false
+  return (
+    groupedRows(rows).oneClick.length === 0 &&
+    countQuieted(rows) === 0 &&
+    reopenedRows(rows).length === 0
+  )
+}

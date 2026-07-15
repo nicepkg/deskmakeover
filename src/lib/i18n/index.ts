@@ -26,10 +26,24 @@ interface I18nState {
   setPreference: (preference: Language) => void
 }
 
-export const useI18n = create<I18nState>((set) => ({
-  lang: resolveLanguage('System'),
-  setPreference: (preference) => set({ lang: resolveLanguage(preference) }),
-}))
+/** Keep `<html lang>` truthful — :lang() CSS and a11y/spellcheck read it, and the
+ *  static index.html value would otherwise lie the moment the user switches to English. */
+function syncDocumentLang(lang: ResolvedLanguage): void {
+  if (typeof document !== 'undefined') document.documentElement.lang = lang
+}
+
+export const useI18n = create<I18nState>((set) => {
+  const initial = resolveLanguage('System')
+  syncDocumentLang(initial)
+  return {
+    lang: initial,
+    setPreference: (preference) => {
+      const lang = resolveLanguage(preference)
+      syncDocumentLang(lang)
+      set({ lang })
+    },
+  }
+})
 
 /** Reactive translate — use inside components. */
 export function useT(): (key: StringKey) => string {

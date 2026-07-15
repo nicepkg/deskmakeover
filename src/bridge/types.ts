@@ -330,11 +330,17 @@ export interface ToastDto {
 // above is now a FRONTEND-ASSEMBLED store shape, not a bridge DTO. ----
 
 /** Observed desktop metrics a scan reports (mirrors Rust `GridMetricsDto`) — the frontend assembles
- *  its grid from these PLATFORM values, never fabricated dims. */
+ *  its grid from these PLATFORM values, never fabricated dims. `cellWidth`/`cellHeight`/`iconPx`
+ *  are the TRUE snap-cell pitch + icon size from the live shell view (IFolderView GetSpacing /
+ *  GetViewModeAndIconSize); null when that walk fails → the frontend falls back to its
+ *  approximation constants. */
 export interface GridMetricsDto {
   screenWidth: number
   screenHeight: number
   taskbarHeight: number
+  cellWidth: number | null
+  cellHeight: number | null
+  iconPx: number | null
 }
 
 /** `icons.scan` result — raw observed items + revision + the observed grid metrics. NO embedded

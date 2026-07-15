@@ -88,6 +88,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Calm_Held_NotYet": "此版本暂不提供",
   "Calm_Held_Reason_Uncertified": "为了不动坏东西，这几项还没在你的 Windows 版本上验证过，暂时不碰。",
   "Calm_HeroPromise": "把 Windows 悄悄塞给你的推荐和推送收起来。",
+  "Calm_GuidedOnly_Head": "一键关闭还没在这个 Windows 版本上验证过", // §5 degraded honesty: fail-closed manifest (pre-W3)
+  "Calm_GuidedOnly_Sub": "为了不动坏东西，我们暂时不自动改；下面每一项都能带你去官方设置里亲手关掉。",
   "Calm_ListJoin": "、",
   "Calm_LockStatus": "锁屏推送",
   "Calm_LockStatus_Desc": "不再显示天气、资讯卡片",
@@ -483,7 +485,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Library_ExportConfirm": "选择位置并导出", // PENDING-RESX
   "Library_SaveTitle": "保存为我的风格", // PENDING-RESX
   "Library_SaveConfirm": "保存", // PENDING-RESX
-  "Library_NamePlaceholder": "风格名称", // PENDING-RESX
+  "Library_NamePlaceholder": "风格名称（必填）", // PENDING-RESX
   "Library_AuthorPlaceholder": "作者（可选，随包分享）", // PENDING-RESX
   "Library_NeedsDesktop": "此功能需要桌面端应用", // PENDING-RESX
   "Library_InvalidEntry": "无法读取：包已损坏或需要更新桌面美颜", // PENDING-RESX
@@ -632,6 +634,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Toast_ArrowRestored": "已恢复系统箭头", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "Toast_AutoFormatNeedsApply": "先完成一次「一键美颜」保存外观，再开启自动整理", // resident §2 precondition
   "Toast_NoHistoryYet": "还没有整理记录 · 每次「一键美颜」都会在这里记下一版", // tray history deep-link, empty state
+  "Toast_OpenLinkFailed": "打开失败了，链接已在设置里，可手动访问", // opener rejection surfaced honestly
   "Toast_ResidentProposal": "发现 {0} 个新图标 · 将在确认或 2 小时后自动整理", // resident §2 item 4
   "Toast_ResidentApplied": "已自动整理 {0} 个新图标 · 托盘菜单可撤销", // resident batch applied
   "Toast_ResidentUndone": "已撤销 · {0} 个图标回到原来的样子", // resident undo (§13 level 2)

@@ -16,7 +16,11 @@
     "window-state:default",
     "log:default",
     "opener:allow-open-url",
-    "opener:allow-open-path",
+    "opener:allow-default-urls",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**" }]
+    },
     "dialog:allow-open",
     "dialog:allow-save"
   ]

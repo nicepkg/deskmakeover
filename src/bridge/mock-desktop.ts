@@ -335,11 +335,19 @@ export async function mockIconsCall(method: string, params: unknown): Promise<un
       session.styleableCount = items.filter((i) => i.styleable).length
       session.revision += 1
       // Observed grid metrics (the frontend assembles its grid from these). The mock's fake desktop
-      // is a 1080p work area matching the item layout.
+      // is a 1080p work area matching the item layout; it reports ITS OWN lattice as the observed
+      // cell so the dev loop exercises the real-metrics path (WYSIWYG with the positions above).
       return {
         revision: session.revision,
         items,
-        grid: { screenWidth: MOCK_GRID.screenWidth, screenHeight: MOCK_GRID.screenHeight, taskbarHeight: MOCK_GRID.taskbarHeight },
+        grid: {
+          screenWidth: MOCK_GRID.screenWidth,
+          screenHeight: MOCK_GRID.screenHeight,
+          taskbarHeight: MOCK_GRID.taskbarHeight,
+          cellWidth: MOCK_GRID.cellWidth,
+          cellHeight: MOCK_GRID.cellHeight,
+          iconPx: MOCK_GRID.iconPx,
+        },
       } satisfies IconScanDto
     }
     case 'icons.applyBakedBegin':

@@ -230,8 +230,18 @@ impl IconHost {
                 screen_width: g.screen_width,
                 screen_height: g.screen_height,
                 taskbar_height: g.taskbar_height,
+                cell_width: g.icon_grid.map(|ig| ig.cell_width),
+                cell_height: g.icon_grid.map(|ig| ig.cell_height),
+                icon_px: g.icon_grid.map(|ig| ig.icon_px),
             })
-            .unwrap_or(GridMetricsDto { screen_width: 1920, screen_height: 1080, taskbar_height: 48 });
+            .unwrap_or(GridMetricsDto {
+                screen_width: 1920,
+                screen_height: 1080,
+                taskbar_height: 48,
+                cell_width: None,
+                cell_height: None,
+                icon_px: None,
+            });
         Ok(IconScanDto { revision: rev, items: dtos, grid })
     }
 

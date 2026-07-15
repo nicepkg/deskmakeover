@@ -110,7 +110,14 @@ export const MARK_SWATCHES = ['#FFFFFF', '#141414', '#FF6F5E', '#B97D4E', '#3FB6
 // Desktop icon px is Small 32 · Mid 48 · Big 96 (C# DesktopIconSize.cs).
 const ICON_PX: Record<ConfigDto['size'], number> = { Small: 32, Mid: 48, Big: 96 }
 /** Fallback metrics before the first scan lands (the store always feeds real scan metrics after). */
-const DEFAULT_METRICS: GridMetricsDto = { screenWidth: 1920, screenHeight: 1080, taskbarHeight: 48 }
+const DEFAULT_METRICS: GridMetricsDto = {
+  screenWidth: 1920,
+  screenHeight: 1080,
+  taskbarHeight: 48,
+  cellWidth: null,
+  cellHeight: null,
+  iconPx: null,
+}
 
 /** Presets as DATA — the web renders each mini with the live renderer. */
 export function iconPresets(): PresetDto[] {
@@ -122,16 +129,27 @@ export function iconPresets(): PresetDto[] {
 }
 
 /** The desktop grid for an icon size, built from the OBSERVED platform metrics (D1: dims are
- *  platform truth from the scan; iconPx + cell padding are the frontend rendering concern). */
+ *  platform truth from the scan). When the scan carries the TRUE snap-cell pitch + icon size
+ *  (IFolderView GetSpacing/GetViewModeAndIconSize), the cell derives from those — a mirror tile
+ *  centers its glyph inside `cellWidth`, so a fabricated wider cell shifted every icon right of
+ *  where Windows draws it (owner report 2026-07-16: the preview's left padding read too large).
+ *  Previewing a non-current size scales the observed cell by the icon-size ratio (Windows
+ *  re-derives spacing with the icon size, approximately proportionally). The `iconPx + 44/48`
+ *  constants remain ONLY as the no-observation fallback (browser mock / failed shell walk). */
 export function iconGrid(size: ConfigDto['size'], metrics: GridMetricsDto = DEFAULT_METRICS): GridDto {
   const iconPx = ICON_PX[size]
+  const observed =
+    metrics.cellWidth != null && metrics.cellHeight != null && metrics.iconPx != null && metrics.iconPx > 0
+      ? { w: metrics.cellWidth, h: metrics.cellHeight, px: metrics.iconPx }
+      : null
+  const scale = observed ? iconPx / observed.px : 1
   return {
     screenWidth: metrics.screenWidth,
     screenHeight: metrics.screenHeight,
     taskbarHeight: metrics.taskbarHeight,
     iconPx,
-    cellWidth: iconPx + 44,
-    cellHeight: iconPx + 48,
+    cellWidth: observed ? Math.round(observed.w * scale) : iconPx + 44,
+    cellHeight: observed ? Math.round(observed.h * scale) : iconPx + 48,
     inset: 14,
     labelFontPx: 12,
   }

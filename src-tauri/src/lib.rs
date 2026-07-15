@@ -325,8 +325,13 @@ pub fn run() {
             let wallpaper = build_wallpaper_host(&data_dir)?;
             let icons = build_icon_host(&data_dir, settings.clone())?;
             let presets = PresetStore::new(&data_dir);
-            // W1: the calm host uses the in-memory devhost on every platform (the real winreg
-            // backend is Wave 2). No data_dir yet — its journal is in-memory this slice.
+            // Calm host: real winreg/profile ports + 「带我去关」 route launch on Windows, under
+            // the FAIL-CLOSED manifest (no writes until the W3 cert lab, ADR-0023 D2); the
+            // in-memory devhost everywhere else. Journal stays in-memory on both stacks — no
+            // transaction can exist while the manifest certifies nothing.
+            #[cfg(windows)]
+            let tweaks = TweaksHost::new_windows();
+            #[cfg(not(windows))]
             let tweaks = TweaksHost::new_devhost();
             // M7 (spec 07 §1/§12): register the resident tray + menu and spawn the reconcile-loop
             // driver behind the cfg-adapter pattern (real dm-windows engine on Windows, devhost fake

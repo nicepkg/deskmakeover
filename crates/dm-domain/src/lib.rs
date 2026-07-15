@@ -24,7 +24,7 @@ pub use source::{
     FileId, IconLocationState, PackageState, SourceFingerprint, SourceIdentity, TargetState,
 };
 pub use ports::{
-    ActivityMonitor, AssetStore, DesktopGeometry, DesktopGeometryReader, DesktopIconSlot,
+    ActivityMonitor, AssetStore, DesktopGeometry, DesktopGeometryReader, DesktopIconGrid, DesktopIconSlot,
     DesktopScanner,
     ExplorerRefresher, IconApplier, IconSourceExtractor, ImageDecoder, ItemStateReader,
     MonitorTopology, OverlayControl, OverlayOutcome, OverlayStyle, WallpaperApplier,

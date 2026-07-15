@@ -116,7 +116,7 @@ const opResult = (over: Partial<IconPersistedDto>, extra: Partial<IconOpResultDt
 const scanDto = (revision = 1): IconScanDto => ({
   revision,
   items: [],
-  grid: { screenWidth: 1920, screenHeight: 1080, taskbarHeight: 48 },
+  grid: { screenWidth: 1920, screenHeight: 1080, taskbarHeight: 48, cellWidth: null, cellHeight: null, iconPx: null },
 })
 
 beforeEach(() => {

@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use dm_domain::{
-    ApplyAssets, DecodedImage, DesktopGeometry, DesktopGeometryReader, DesktopIconSlot,
+    ApplyAssets, DecodedImage, DesktopGeometry, DesktopGeometryReader, DesktopIconGrid, DesktopIconSlot,
     DesktopItem, DesktopScanner, ExplorerRefresher, Fingerprint, IconApplier, IconSourceExtractor,
     ItemId, ItemKind, ItemState, ItemStateReader, ItemTarget, OverlayControl, OverlayOutcome,
     OverlayStyle, PortError, PortResult, RestoreAnchor,
@@ -252,12 +252,19 @@ impl ExplorerRefresher for DevExplorerRefresher {
 }
 
 /// The dev geometry: a plausible 1080p work area; NO live positions (the host then lays items
-/// out synthetically, exactly the degraded path the real reader falls back to).
+/// out synthetically, exactly the degraded path the real reader falls back to). The reported
+/// icon grid is `synthetic_layout`'s own lattice (dto.rs: pitch 104×116, 48px icons) so the
+/// dev loop stays WYSIWYG with the positions it fabricates.
 pub struct DevDesktopGeometry;
 
 impl DesktopGeometryReader for DevDesktopGeometry {
     fn geometry(&self) -> PortResult<DesktopGeometry> {
-        Ok(DesktopGeometry { screen_width: 1920, screen_height: 1080, taskbar_height: 48 })
+        Ok(DesktopGeometry {
+            screen_width: 1920,
+            screen_height: 1080,
+            taskbar_height: 48,
+            icon_grid: Some(DesktopIconGrid { cell_width: 104, cell_height: 116, icon_px: 48 }),
+        })
     }
 
     fn positions(&self) -> PortResult<Vec<DesktopIconSlot>> {

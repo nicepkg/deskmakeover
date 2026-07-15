@@ -82,13 +82,29 @@ pub struct DesktopIconSlot {
     pub y: i32,
 }
 
+/// The desktop grid's OBSERVED cell geometry (`IFolderView::GetSpacing` +
+/// `IFolderView2::GetViewModeAndIconSize`): the true snap-cell pitch and the true icon size,
+/// reflecting the user's spacing tweaks and ctrl+scroll icon sizing. The icon sits horizontally
+/// centered inside its cell (the SM_CXICONSPACING contract), so the visual left inset is
+/// `(cell_width - icon_px) / 2` — fabricating a wider cell shifts every rendered icon right
+/// (owner report 2026-07-16: the preview's left padding read larger than the real desktop).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DesktopIconGrid {
+    pub cell_width: u32,
+    pub cell_height: u32,
+    pub icon_px: u32,
+}
+
 /// The desktop's observed geometry: full screen dims + the taskbar's reserved height (screen
 /// minus work area). The frontend assembles its grid from these — never fabricated dims.
+/// `icon_grid` is `None` only when the shell view walk fails (headless session, denied QI);
+/// the frontend then falls back to its approximation constants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DesktopGeometry {
     pub screen_width: u32,
     pub screen_height: u32,
     pub taskbar_height: u32,
+    pub icon_grid: Option<DesktopIconGrid>,
 }
 
 /// Reads the desktop's live geometry + icon positions (oracle: `FolderViewInterop` technique A —

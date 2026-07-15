@@ -94,8 +94,14 @@ export function SettingsPage() {
 
   if (!settings || !info) return null
 
-  const openExternal = (url: string) => void call('shell.openExternal', { url })
+  // Every external open reports failure honestly — the opener plugin rejects out-of-scope
+  // urls/paths inside Rust, and a swallowed rejection reads as a dead button (owner report
+  // 2026-07-16: "设置里的链接点了没反应").
   const toast = useToasts.getState().show
+  const openExternal = (url: string) =>
+    void call('shell.openExternal', { url }).catch(() => toast(t('Toast_OpenLinkFailed'), 'warn'))
+  const openDataFolder = () =>
+    void call('shell.openDataFolder').catch(() => toast(t('Toast_OpenLinkFailed'), 'warn'))
   const copyDiagnostics = async () => copyText(await buildReport())
 
   return (
@@ -237,7 +243,7 @@ export function SettingsPage() {
                   <ActionButton icon={<ImageDown size={12} />} onClick={() => void useIcons.getState().exportCompare()}>
                     {t('Settings_ExportCompare')}
                   </ActionButton>
-                  <ActionButton icon={<FolderOpen size={12} />} onClick={() => void call('shell.openDataFolder')}>
+                  <ActionButton icon={<FolderOpen size={12} />} onClick={openDataFolder}>
                     {t('Settings_OpenDataFolder')}
                   </ActionButton>
                 </div>
@@ -358,7 +364,10 @@ function Row({
       ref={innerRef}
       className={cn(
         'flex min-h-[54px] items-center justify-between gap-6 px-5 py-3 transition-colors duration-500',
-        highlight && 'rounded-[10px] bg-coral/5 ring-2 ring-coral/50',
+        // ring-INSET: the card wrapper is overflow-hidden, so an outset ring loses its left/right
+        // edges at the card boundary (same clipping class as the 2026-07-09 swatch-corner fix,
+        // inspector.tsx swatchButtonClass) — owner report 2026-07-16 "高亮边框两边被截断".
+        highlight && 'rounded-[10px] bg-coral/5 ring-2 ring-inset ring-coral/50',
       )}
     >
       <div className="min-w-0">

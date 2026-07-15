@@ -1,10 +1,12 @@
 import type { LookDto, MonitorBounds, MonitorLookDto, ScreenOrientation, WallpaperSourceDto } from '@/bridge/types'
+import { observedGrid } from '@/lib/observed-grid'
 
 // Pure, DOM-free multi-monitor reconciliation (spec 04 §B3). Shared by the
 // browser mock (persistence + on-load reconcile) and the wallpaper store
 // (per-screen map merge across hot-plug / resolution / orientation changes), so
 // the identity/fallback rules live in ONE tested place. No browser APIs here —
-// unit-testable under `bun test` without a DOM.
+// unit-testable under `bun test` without a DOM (gridForBounds reads the
+// observed-grid cache, which tests simply leave empty → deterministic constants).
 
 /** h > w ⇒ portrait. Ultrawide (very wide landscape) is still landscape; the
  *  fit-mode decision (≥21:9 → fit-all) is a UI concern (Task 2), not here. */
@@ -88,27 +90,33 @@ function boundsEqual(a: MonitorBounds, b: MonitorBounds): boolean {
   return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h
 }
 
-// Grid geometry derived from a monitor's physical bounds. Mirrors the icons-side
-// grid math (48px icons, taskbar reserve, cell size) so a portrait monitor gets
-// a taller/narrower cell field. [WINDOWS-VERIFY] the real host reports the true
-// per-monitor grid (DPI, taskbar edge, icon spacing); the mock derives it.
+// Grid geometry derived from a monitor's physical bounds. The cell pitch + icon size come from
+// the last icon scan's OBSERVED platform grid when available (observed-grid.ts — IFolderView
+// GetSpacing truth), so zones snap to the SAME cells the real desktop icons sit on; the
+// constants below are only the pre-scan / browser-mock fallback (owner report 2026-07-16: a
+// second fabricated 92px lattice drifted from the real desktop grid).
 const TASKBAR_HEIGHT = 48
 const ICON_PX = 48
 const CELL = 92
 const INSET = 14
 
 export function gridForBounds(bounds: MonitorBounds) {
-  const usableH = bounds.h - TASKBAR_HEIGHT - INSET * 2
+  const o = observedGrid()
+  const iconPx = o?.iconPx ?? ICON_PX
+  const cellW = o?.cellWidth ?? CELL
+  const cellH = o?.cellHeight ?? CELL
+  const taskbar = o?.taskbarHeight ?? TASKBAR_HEIGHT
+  const usableH = bounds.h - taskbar - INSET * 2
   return {
     screenWidth: bounds.w,
     screenHeight: bounds.h,
-    taskbarHeight: TASKBAR_HEIGHT,
-    iconPx: ICON_PX,
-    cellWidth: CELL,
-    cellHeight: CELL,
+    taskbarHeight: taskbar,
+    iconPx,
+    cellWidth: cellW,
+    cellHeight: cellH,
     inset: INSET,
-    columns: Math.max(1, Math.floor((bounds.w - INSET * 2) / CELL)),
-    rows: Math.max(1, Math.floor(usableH / CELL)),
+    columns: Math.max(1, Math.floor((bounds.w - INSET * 2) / cellW)),
+    rows: Math.max(1, Math.floor(usableH / cellH)),
   }
 }
 

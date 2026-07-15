@@ -84,15 +84,21 @@ pub struct IconChunkItemDto {
 
 /// The OBSERVED desktop metrics a scan reports, so the frontend assembles the grid from PLATFORM
 /// truth instead of fabricating dims (codex Major 5 — a hardcoded 1920×1080 lies on 4K/ultrawide/
-/// side-taskbar desktops). The frontend derives `iconPx`/cell sizes from these + the chosen size.
-/// [WINDOWS-VERIFY] the real `SPI_GETWORKAREA` + shell icon metrics on the box; the dev host
-/// synthesizes plausible values.
+/// side-taskbar desktops). `cell_width`/`cell_height`/`icon_px` carry the TRUE snap-cell pitch and
+/// icon size from the live shell view (`IFolderView::GetSpacing` + `GetViewModeAndIconSize`);
+/// they are `None` when that walk fails, and the frontend then falls back to its approximation
+/// constants (owner report 2026-07-16: the fabricated 92px cell rendered every icon ~22px right
+/// of where Windows draws it). [WINDOWS-VERIFY] the real `SPI_GETWORKAREA` + shell icon metrics
+/// on the box; the dev host synthesizes plausible values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct GridMetricsDto {
     pub screen_width: u32,
     pub screen_height: u32,
     pub taskbar_height: u32,
+    pub cell_width: Option<u32>,
+    pub cell_height: Option<u32>,
+    pub icon_px: Option<u32>,
 }
 
 /// The result of `icons.scan`: a monotonically increasing revision, the raw observed items, and the
@@ -228,7 +234,14 @@ mod tests {
     fn scan_dto_round_trips() {
         let scan = IconScanDto {
             revision: 3,
-            grid: GridMetricsDto { screen_width: 3840, screen_height: 2160, taskbar_height: 48 },
+            grid: GridMetricsDto {
+                screen_width: 3840,
+                screen_height: 2160,
+                taskbar_height: 48,
+                cell_width: Some(76),
+                cell_height: Some(97),
+                icon_px: Some(48),
+            },
             items: vec![IconItemDto {
                 id: "bin".into(),
                 label: "回收站".into(),

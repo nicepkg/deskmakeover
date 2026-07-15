@@ -9,7 +9,7 @@ import { CtaButton, type HeroPhase } from '@/components/common/cta-button'
 import { SurfaceSchematic, applyStaggerDelay } from '@/components/calm/surface-schematic'
 import { controlById, type CalmControl, type CalmControlId } from '@/lib/calm/catalog'
 import type { CalmRowState } from '@/lib/calm/states'
-import { applyCandidates, countQuieted, countRestorable, groupedRows, reopenedRows, useCalm } from '@/stores/calm'
+import { applyCandidates, countQuieted, countRestorable, groupedRows, guidedOnlyFace, reopenedRows, useCalm } from '@/stores/calm'
 import { useToasts } from '@/stores/toasts'
 import { format, useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -52,6 +52,10 @@ export function CalmPage() {
   const reopenedAll = reopenedRows(rows)
   const reopenedActionable = reopenedAll.filter((id) => !excluded.has(id))
   const awaiting = groups.oneClick.filter((id) => rows[id] === 'setAwaiting').length
+  // §5 degraded honesty (ADR-0023 D2): with every automatic candidate fail-closed (real
+  // Windows before the W3 cert lab), the hero wears the guided-only face — honest words, no
+  // CTA — instead of an eternal spinner + 「可以让 0 个界面安静下来」.
+  const guidedFace = op === 'idle' && guidedOnlyFace(probed, rows)
 
   // Honest hero phases: ready only with real candidates; synced only when our
   // verified writes exist AND nothing is still awaiting; awaiting gets its own
@@ -90,9 +94,15 @@ export function CalmPage() {
             {/* Typographic hierarchy (owner 2026-07-13): the count line IS the
                 page's message — large; everything explanatory shrinks and fades. */}
             <p className="text-[18px] font-medium tracking-[-0.01em] text-t1">
-              {quieted > 0 ? format(t('Calm_Summary'), quieted) : format(t('Calm_CanQuiet'), candidates.length)}
+              {guidedFace
+                ? t('Calm_GuidedOnly_Head')
+                : quieted > 0
+                  ? format(t('Calm_Summary'), quieted)
+                  : format(t('Calm_CanQuiet'), candidates.length)}
             </p>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-t3">{t('Calm_HeroPromise')}</p>
+            <p className="mt-1.5 text-[12px] leading-relaxed text-t3">
+              {guidedFace ? t('Calm_GuidedOnly_Sub') : t('Calm_HeroPromise')}
+            </p>
             {/* HealthCheck re-propose (spec 08 §6): additive notice, never an
                 auto-replay — 重新关闭 runs the same verify pipeline, scoped to
                 the ACTIONABLE set (excluded rows are user-silenced). */}
@@ -108,14 +118,18 @@ export function CalmPage() {
           </div>
           <div className="w-[200px] shrink-0">
             {/* Spec 08 §10: verified success is coral-ink on this page — the shared
-                synced teal would read as the banned green-family shield (codex R3 #5). */}
-            <CtaButton
-              phase={phase}
-              onClick={() => setConfirmOpen(true)}
-              className={phase === 'synced' ? 'bg-coral/10 text-coral-ink' : undefined}
-            >
-              {ctaLabel}
-            </CtaButton>
+                synced teal would read as the banned green-family shield (codex R3 #5).
+                The guided-only face carries NO CTA (nothing one-click exists to run);
+                the guided rows below are the page's working surface. */}
+            {!guidedFace && (
+              <CtaButton
+                phase={phase}
+                onClick={() => setConfirmOpen(true)}
+                className={phase === 'synced' ? 'bg-coral/10 text-coral-ink' : undefined}
+              >
+                {ctaLabel}
+              </CtaButton>
+            )}
             {/* Restore gates on live LEDGER rows, not the verified count. */}
             {restorable > 0 && (
               <button

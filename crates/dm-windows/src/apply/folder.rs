@@ -50,6 +50,15 @@ pub fn restore(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(PortError::Io(format!("cannot stat {folder_path}: {e}"))),
     }
+    // Same reparse guard the apply side carries (APPLY-2, codex R2-#2): metadata() above FOLLOWS a
+    // junction, so a folder swapped for a junction since apply would send every write below into the
+    // LINK'S TARGET — creating/overwriting desktop.ini in an unrelated directory and rewriting its
+    // attributes. Refuse, exactly as apply does. is_reparse_point() is the non-following check.
+    if attrs::is_reparse_point(folder_path)? {
+        return Err(PortError::Io(format!(
+            "{folder_path} became a reparse point after apply; refusing to restore desktop.ini through it"
+        )));
+    }
     let ini = ini_path(folder_path);
     attrs::clear_readonly(folder_path)?;
     // try_exists(), not exists() (audit F3, codex B3-🟠): a `desktop.ini` metadata error must not

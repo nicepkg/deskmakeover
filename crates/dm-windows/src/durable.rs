@@ -221,6 +221,29 @@ fn io(e: std::io::Error) -> PortError {
     PortError::Io(e.to_string())
 }
 
+/// The largest a `.lnk`/`.url`/`desktop.ini`/wrapper we read into memory. These formats are a few
+/// KB in practice; 8 MiB is ~100× the largest realistic case yet refuses the multi-gigabyte file a
+/// hostile or corrupt desktop item could otherwise use to OOM the scan/apply pass (codex R2-#1).
+/// Mirrors the read-cap discipline the elevated helper already uses (`read_capped_ico`).
+pub const SHORTCUT_READ_CAP: u64 = 8 * 1024 * 1024;
+
+/// Reads at most `cap` bytes from `path`, erroring (`InvalidData`) if the file exceeds it instead of
+/// allocating an unbounded buffer. A drop-in for `std::fs::read` on the small shortcut/INI formats:
+/// it returns a plain `io::Result` so each caller keeps its own NotFound handling, and reads through
+/// `File::take(cap + 1)` so nothing larger than `cap + 1` is ever materialized (codex R2-#1).
+pub fn read_capped(path: impl AsRef<Path>, cap: u64) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    fs::File::open(path)?.take(cap + 1).read_to_end(&mut buf)?;
+    if buf.len() as u64 > cap {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "file exceeds the read cap",
+        ));
+    }
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,6 +270,23 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
             .collect();
         assert!(stragglers.is_empty(), "atomic replace left temp files: {stragglers:?}");
+    }
+
+    #[test]
+    fn read_capped_reads_small_files_and_rejects_over_cap_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shortcut.url");
+        let body = b"[InternetShortcut]\nURL=https://x"; // 32 bytes
+        fs::write(&path, body).unwrap();
+        // Under cap: the whole file comes back.
+        assert_eq!(read_capped(&path, SHORTCUT_READ_CAP).unwrap(), body);
+        // Exactly at cap is accepted (take(cap+1) reads cap bytes; len == cap is not "> cap").
+        assert_eq!(read_capped(&path, 32).unwrap().len(), 32);
+        // Over cap: rejected as InvalidData, never materialized past cap+1.
+        assert_eq!(
+            read_capped(&path, 4).unwrap_err().kind(),
+            std::io::ErrorKind::InvalidData
+        );
     }
 
     #[cfg(unix)]

@@ -176,7 +176,19 @@ pub fn parse_desktop_ini_icon(bytes: &[u8]) -> Option<(String, i32)> {
     // fingerprint failure but the same root cause).
     let text = decode_ini_text_bytes(bytes);
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
-    for line in text.lines() {
+    // Section-scoped (codex R2-#4): `IconResource` is a `[.ShellClassInfo]` key, so scan ONLY that
+    // section — a decoy `IconResource` in another section (e.g. `[ViewState]`) before it must never
+    // be read as the folder icon, or the fingerprint mismatches and a real restore reads a false CAS
+    // conflict. Mirrors `parse_internet_shortcut_icon`'s section discipline.
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| l.trim().eq_ignore_ascii_case("[.ShellClassInfo]"))?;
+    for line in &lines[start + 1..] {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            break; // next section — IconResource past here belongs to a different section
+        }
         if let Some(sep) = line.find('=') {
             if line[..sep].trim().eq_ignore_ascii_case("IconResource") {
                 let value = line[sep + 1..].trim();
@@ -335,6 +347,22 @@ mod tests {
     #[test]
     fn parse_desktop_ini_icon_absent_is_none() {
         assert_eq!(parse_desktop_ini_icon(b"[.ShellClassInfo]\r\nConfirmFileOp=0\r\n"), None);
+    }
+
+    #[test]
+    fn parse_desktop_ini_icon_ignores_iconresource_outside_shellclassinfo() {
+        // A decoy IconResource in a PRIOR section must not be read as the folder icon — only the
+        // one under [.ShellClassInfo] counts (codex R2-#4).
+        let content =
+            "[ViewState]\r\nIconResource=C:\\decoy.ico,9\r\n[.ShellClassInfo]\r\nIconResource=C:\\real.ico,0\r\nConfirmFileOp=0\r\n";
+        assert_eq!(parse_desktop_ini_icon(content.as_bytes()), Some((r"C:\real.ico".to_string(), 0)));
+    }
+
+    #[test]
+    fn parse_desktop_ini_icon_iconresource_only_outside_section_is_none() {
+        // IconResource that never appears under [.ShellClassInfo] is not the folder icon.
+        let content = "[ViewState]\r\nIconResource=C:\\decoy.ico,9\r\n[.ShellClassInfo]\r\nConfirmFileOp=0\r\n";
+        assert_eq!(parse_desktop_ini_icon(content.as_bytes()), None);
     }
 
     #[test]

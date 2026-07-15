@@ -20,6 +20,7 @@ use dm_domain::{
 use crate::apply::{file_wrapper, recyclebin, system};
 use crate::classify::parse_icon_location;
 use crate::com::StaExecutor;
+use crate::durable::{read_capped, SHORTCUT_READ_CAP};
 use crate::fingerprint_surface::{self as fp, SurfaceState, WrapperSurface};
 use crate::pathcheck;
 use crate::shell::{attrs, shell_link};
@@ -158,7 +159,7 @@ fn capture_folder(folder_path: &str) -> PortResult<RestoreAnchor> {
     // reports `false` on any failure — so a present-but-unreadable `desktop.ini` is never captured
     // as "absent" and then wrongly removed on restore (P2-#3).
     let desktop_ini = if ini.try_exists().map_err(|e| PortError::Io(e.to_string()))? {
-        let content = std::fs::read(&ini).map_err(|e| PortError::Io(e.to_string()))?;
+        let content = read_capped(&ini, SHORTCUT_READ_CAP).map_err(|e| PortError::Io(e.to_string()))?;
         let ini_attrs = attrs::get(&ini.to_string_lossy())?;
         Some(DesktopIniAnchor { content, attributes: ini_attrs })
     } else {
@@ -178,7 +179,7 @@ fn capture_file(file_path: &str) -> PortResult<RestoreAnchor> {
         // A present wrapper ALWAYS captures its bytes — the enum makes "existed but no content"
         // (which restore could not undo) unrepresentable (audit A1-🔴). A read fault propagates
         // (fail closed) rather than recording an unrestorable present-with-no-bytes anchor.
-        let content = std::fs::read(&wrapper).map_err(|e| PortError::Io(e.to_string()))?;
+        let content = read_capped(&wrapper, SHORTCUT_READ_CAP).map_err(|e| PortError::Io(e.to_string()))?;
         PriorWrapper::Present { content }
     } else {
         PriorWrapper::Absent
@@ -189,7 +190,7 @@ fn capture_file(file_path: &str) -> PortResult<RestoreAnchor> {
 /// The `desktop.ini` bytes for a folder: absent ⇒ empty (an unstyled folder); a present-but-
 /// unreadable file ⇒ a propagated I/O error rather than a silent "unstyled" reading (P2-3).
 fn read_desktop_ini(folder_path: &str) -> PortResult<Vec<u8>> {
-    match std::fs::read(Path::new(folder_path).join("desktop.ini")) {
+    match read_capped(Path::new(folder_path).join("desktop.ini"), SHORTCUT_READ_CAP) {
         Ok(bytes) => Ok(bytes),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(e) => Err(PortError::Io(e.to_string())),
@@ -197,7 +198,7 @@ fn read_desktop_ini(folder_path: &str) -> PortResult<Vec<u8>> {
 }
 
 fn read_bytes(path: &str) -> PortResult<Vec<u8>> {
-    match std::fs::read(path) {
+    match read_capped(path, SHORTCUT_READ_CAP) {
         Ok(bytes) => Ok(bytes),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             Err(PortError::NotFound(path.to_string()))

@@ -17,7 +17,8 @@ use crate::textfmt::{decode_ini_text_bytes, internet_shortcut_upsert};
 ///
 /// [WINDOWS-VERIFY] runtime (filesystem semantics).
 pub fn apply(url_path: &str, icon_path: &str, index: i32) -> PortResult<()> {
-    let bytes = std::fs::read(url_path).map_err(|e| io(url_path, e))?;
+    let bytes = crate::durable::read_capped(url_path, crate::durable::SHORTCUT_READ_CAP)
+        .map_err(|e| io(url_path, e))?;
     let text = decode_ini_text_bytes(&bytes);
     let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
     internet_shortcut_upsert(&mut lines, "IconFile", icon_path).map_err(PortError::Io)?;

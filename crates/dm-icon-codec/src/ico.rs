@@ -28,8 +28,11 @@ pub fn write_ico(frames: &[Raster]) -> Vec<u8> {
     );
 
     // ICONDIR: reserved=0, type=1 (icon), image count. Envelope: the directory count is
-    // a u16, so at most 65,535 frames (the ladders ship 6).
-    debug_assert!(frames.len() <= u16::MAX as usize, "ICO image count exceeds the u16 directory field");
+    // a u16, so at most 65,535 frames (the ladders ship 6). `assert!`, not `debug_assert!`
+    // (codex R2-#5): a release build must fail-closed on an oversized input like the empty-frame
+    // guard above, never silently wrap the cast and emit a corrupt ICO. Unreachable for our
+    // controlled ladders, so this never fires for valid inputs — pure defense-in-depth.
+    assert!(frames.len() <= u16::MAX as usize, "ICO image count exceeds the u16 directory field");
     out.extend_from_slice(&0u16.to_le_bytes());
     out.extend_from_slice(&1u16.to_le_bytes());
     out.extend_from_slice(&(frames.len() as u16).to_le_bytes());
@@ -44,10 +47,11 @@ pub fn write_ico(frames: &[Raster]) -> Vec<u8> {
         out.extend_from_slice(&1u16.to_le_bytes()); // color planes
         out.extend_from_slice(&32u16.to_le_bytes()); // bits per pixel
         // Envelope: bytesInRes and the running offset are both u32 (a 256² frame is ~256 KB).
-        debug_assert!(payload.len() <= u32::MAX as usize, "frame bytesInRes exceeds the u32 field");
+        // `assert!` (codex R2-#5): fail-closed in release rather than wrap a cast into a corrupt ICO.
+        assert!(payload.len() <= u32::MAX as usize, "frame bytesInRes exceeds the u32 field");
         out.extend_from_slice(&(payload.len() as u32).to_le_bytes()); // bytesInRes
         out.extend_from_slice(&image_offset.to_le_bytes());
-        debug_assert!(
+        assert!(
             (image_offset as u64) + (payload.len() as u64) <= u32::MAX as u64,
             "ICO image offset overflows the u32 field"
         );

@@ -101,7 +101,7 @@ export function IconsMirror() {
 
   const { grid } = state
   const activeConfig = hoverConfig ?? state.config
-  const renderSize = displaySize(state, zoom)
+  const renderSize = displaySize(state, view.scale)
 
   // Fit toggle (owner 2026-07-09): one button flips between 满宽 (full width,
   // centered) and 满高·靠左 (full height, pinned to the LEFT — where most users

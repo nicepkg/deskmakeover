@@ -208,10 +208,15 @@ let kindBuckets = new Map<string, 'App' | 'Folder' | 'File' | 'System' | null>()
  *  the fabricated default) between scans (codex Major 5). */
 let lastGridMetrics: GridMetricsDto | undefined
 
-/** Device-resolution tile render size (same clamp discipline as v1). */
-export function displaySize(state: IconsStateDto | null, zoom: number): number {
+/** Device-resolution tile render size (same clamp discipline as v1). `scale` is the
+ *  tile's effective on-screen scale (view fit × user zoom). Tiles render at 2× their
+ *  physical pixel size and the GPU downscales the canvas — an exact 2:1 bilinear is a
+ *  box filter, smoothing shape edges that direct coverage AA leaves visibly stepped on
+ *  low-density displays (owner report 2026-07-15). Never exceed ~2:1: deeper bilinear
+ *  downscales SKIP source pixels and re-alias the artwork. */
+export function displaySize(state: IconsStateDto | null, scale: number): number {
   const iconPx = state?.grid.iconPx ?? 48
-  const raw = Math.ceil(iconPx * zoom * window.devicePixelRatio)
+  const raw = Math.ceil(iconPx * scale * window.devicePixelRatio * 2)
   return Math.min(256, Math.max(24, Math.ceil(raw / 4) * 4))
 }
 
@@ -1129,6 +1134,9 @@ export const useIcons = create<IconsState>((set, get) => {
 
     setZoom: (zoom) => {
       const clamped = Math.min(3, Math.max(0.2, zoom))
+      // Change-detection heuristic only: the store can't know the view's fit factor,
+      // but "did the quantized size step" answers the same for zoom-driven changes
+      // (fit is constant within a gesture). The mirror passes the true view.scale.
       const previous = displaySize(get().state, get().zoom)
       set({ zoom: clamped })
       // The canvas scales existing bitmaps during the gesture (free); the crisp

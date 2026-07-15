@@ -260,17 +260,25 @@ pub fn run() {
         })
         .invoke_handler(specta.invoke_handler())
         .on_window_event(|window, event| {
-            // Windowless residency (spec 07 §1): while automation is enabled, closing the window
-            // keeps the process resident (hide the WebView, do not exit) — reopening via the tray
-            // works. When disabled, the close falls through to the normal exit.
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if let Some(state) = window.try_state::<AppState>() {
-                    if resident::on_close_requested(&state.resident, || {
-                        let _ = window.hide();
-                    }) {
-                        api.prevent_close();
+            match event {
+                // Windowless residency (spec 07 §1): while automation is enabled, closing the
+                // window keeps the process resident (hide the WebView, do not exit) — reopening
+                // via the tray works. When disabled, the close falls through to the normal exit.
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    if let Some(state) = window.try_state::<AppState>() {
+                        if resident::on_close_requested(&state.resident, || {
+                            let _ = window.hide();
+                        }) {
+                            api.prevent_close();
+                        }
                     }
                 }
+                tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. } => {
+                    if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+                        apply_ui_zoom(&webview);
+                    }
+                }
+                _ => {}
             }
         })
         .setup(move |app| {
@@ -302,6 +310,11 @@ pub fn run() {
             let resident = resident::setup(app.handle(), settings.clone(), data_dir.clone())?;
             app.manage(AppState { settings, wallpaper, icons, tweaks, presets, resident });
             log::info!("settings store ready at {}", db_path.display());
+            // First zoom pass: the window-state plugin may restore a maximized window
+            // before any Resized event reaches the handler above.
+            if let Some(webview) = app.get_webview_window("main") {
+                apply_ui_zoom(&webview);
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -326,6 +339,38 @@ pub fn run() {
 
 /// The settings database file name under the OS app-data dir.
 const SETTINGS_DB_FILE: &str = "settings.sqlite3";
+
+/// Auto UI zoom (owner report 2026-07-15). The app chrome is authored in fixed px
+/// against the 1280×832 design window, so on a large low-DPI monitor a maximized
+/// window dwarfs the panel type that reads correctly at design size. Scale the whole
+/// page proportionally to the window's LOGICAL size through the platform webview
+/// zoom — WebView2 `ZoomFactor` on Windows (page-zoom semantics: it also raises
+/// `devicePixelRatio`, so every DPR-aware canvas re-renders sharper, and it works
+/// independently of the disabled user zoom hotkeys) and `WKWebView.pageZoom` on
+/// macOS. Quantized to 5% steps so a live drag-resize doesn't relayout every tick;
+/// never shrinks below 1× (the compact layout owns small windows).
+fn apply_ui_zoom(webview: &tauri::WebviewWindow) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    // The design-reference logical size — tauri.conf.json's initial main window.
+    const DESIGN_W: f64 = 1280.0;
+    const DESIGN_H: f64 = 832.0;
+    static LAST_APPLIED: AtomicU32 = AtomicU32::new(0);
+
+    let (Ok(size), Ok(scale)) = (webview.inner_size(), webview.scale_factor()) else {
+        return;
+    };
+    if size.width == 0 || size.height == 0 {
+        return; // minimized — keep the last zoom, recompute on restore
+    }
+    let logical_w = f64::from(size.width) / scale;
+    let logical_h = f64::from(size.height) / scale;
+    let zoom = (logical_w / DESIGN_W).min(logical_h / DESIGN_H).clamp(1.0, 2.0);
+    let quantized = ((zoom * 20.0).round() / 20.0) as f32;
+    if LAST_APPLIED.swap(quantized.to_bits(), Ordering::Relaxed) == quantized.to_bits() {
+        return; // unchanged after quantization — skip the relayout
+    }
+    let _ = webview.set_zoom(f64::from(quantized));
+}
 
 /// The crash-recovery inputs under the app-data dir: the write-ahead journal and the active
 /// ledger the transaction machinery persists.

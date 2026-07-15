@@ -22,7 +22,7 @@
         "resizable": true,
         "decorations": false,
         "dragDropEnabled": false,
-        "backgroundColor": "#FBF7F2"
+        "backgroundColor": "#F7F7F9"
       }
     ],
     "security": {

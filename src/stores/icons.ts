@@ -214,9 +214,9 @@ let lastGridMetrics: GridMetricsDto | undefined
  *  box filter, smoothing shape edges that direct coverage AA leaves visibly stepped on
  *  low-density displays (owner report 2026-07-15). Never exceed ~2:1: deeper bilinear
  *  downscales SKIP source pixels and re-alias the artwork. */
-export function displaySize(state: IconsStateDto | null, scale: number): number {
+export function displaySize(state: IconsStateDto | null, scale: number, dpr = window.devicePixelRatio): number {
   const iconPx = state?.grid.iconPx ?? 48
-  const raw = Math.ceil(iconPx * scale * window.devicePixelRatio * 2)
+  const raw = Math.ceil(iconPx * scale * dpr * 2)
   return Math.min(256, Math.max(24, Math.ceil(raw / 4) * 4))
 }
 

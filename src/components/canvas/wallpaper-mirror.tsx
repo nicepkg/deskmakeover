@@ -5,6 +5,7 @@ import { useWallpaper } from '@/stores/wallpaper'
 import { makeZone } from '@/stores/wallpaper'
 import { useT } from '@/lib/i18n'
 import { useCanvasView } from '@/lib/canvas-view'
+import { useDevicePixelRatio } from '@/lib/use-dpr'
 import { cellOf, createFromDrag, magnetizeMove, moveZone, nudgeZone, overlapRegions, resizeZone } from '@/lib/zone-math'
 import type { HandleId, MagnetGuide, ZoneRect } from '@/lib/zone-math'
 import type { WallpaperCompositor } from '@/compositor/renderer'
@@ -118,10 +119,26 @@ export function WallpaperMirror() {
   // the change (§A2). `dip` hides the composed canvas while the new source repaints.
   const dip = useScreenSwitchTransition({ view, state, activeScreenId })
 
-  // Backing-store resolution follows the view zoom (never above native).
+  // Backing-store resolution follows the view zoom (never above native). `dpr` is
+  // a real dependency: a different-DPI monitor or an OS scale change re-arms it
+  // without any resize event (wv2-render audit 2026-07-15 §4).
+  const dpr = useDevicePixelRatio()
   React.useEffect(() => {
-    compositorRef.current?.setRenderScale(view.scale * (window.devicePixelRatio || 1))
-  }, [view.scale])
+    compositorRef.current?.setRenderScale(view.scale * dpr)
+  }, [view.scale, dpr])
+
+  // WebView2 can restore from minimize/tray with a stale (blank) frame — a pure
+  // repaint bug on the compositor side (WebView2Feedback #5171 class). A dirty
+  // invalidate on focus/visibility is a free belt: no-op when nothing changed.
+  React.useEffect(() => {
+    const kick = () => compositorRef.current?.invalidate()
+    window.addEventListener('focus', kick)
+    document.addEventListener('visibilitychange', kick)
+    return () => {
+      window.removeEventListener('focus', kick)
+      document.removeEventListener('visibilitychange', kick)
+    }
+  }, [])
 
   // The chip under an open rename editor hides (the DOM input replaces it).
   React.useEffect(() => {

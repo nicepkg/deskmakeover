@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { motion } from 'motion/react'
 import { useCanvasView } from '@/lib/canvas-view'
+import { useDevicePixelRatio } from '@/lib/use-dpr'
 import { displaySize, useIcons } from '@/stores/icons'
 import { format, useT } from '@/lib/i18n'
 import type { IconItemDto } from '@/bridge/types'
@@ -77,6 +78,7 @@ export function IconsMirror() {
     center: 'xy',
     panIgnoreSelector: '[data-tile]',
   })
+  const dpr = useDevicePixelRatio()
 
   // Pre-scan the mirror is a quiet placeholder. Once the scan retry budget is
   // spent (review P2-2) it surfaces a manual re-read entry so a permanent bridge
@@ -101,7 +103,9 @@ export function IconsMirror() {
 
   const { grid } = state
   const activeConfig = hoverConfig ?? state.config
-  const renderSize = displaySize(state, view.scale)
+  // `dpr` is read inside displaySize; subscribing here makes a monitor-DPI change
+  // (which fires no resize) re-render tiles at the new density (wv2 audit §4).
+  const renderSize = displaySize(state, view.scale, dpr)
 
   // Fit toggle (owner 2026-07-09): one button flips between 满宽 (full width,
   // centered) and 满高·靠左 (full height, pinned to the LEFT — where most users

@@ -106,6 +106,69 @@ fn straight_bgra_to_rgba(bits: &[u8], mask: Option<&[u8]>) -> Vec<u8> {
     out
 }
 
+/// Normalizes an extracted icon so its opaque content fills the slot, matching how the Windows
+/// desktop sizes an icon to its display size. When an icon's largest available frame is much smaller
+/// than the requested 256px, the shell returns that small frame PADDED with transparency (not scaled
+/// up), so it renders as a tiny logo lost in the preview slot (owner report 2026-07-15). Here, if the
+/// alpha bounding box is well inside the canvas we crop to it and rescale to fill (aspect-preserving,
+/// small margin); an icon whose content already spans the slot is returned byte-for-byte unchanged,
+/// so crisp full-frame icons (Chrome, a solid-square app icon) are never touched. Pure — host-tested.
+#[cfg(any(windows, test))]
+fn fit_content_to_canvas(rgba: Vec<u8>, w: u32, h: u32) -> Vec<u8> {
+    use image::{imageops, Rgba, RgbaImage};
+    // Detect the SOLID content, not faint padding. When the shell pads a sub-256 frame into the 256
+    // canvas it leaves a thin faint (alpha ≤ ~77) border at the extreme edge; counting it would make
+    // the bbox span the whole canvas and defeat the fit. A solid-alpha threshold separates the real
+    // logo (near-opaque) from that faint border independent of the border's thickness. The crop below
+    // then also drops the border, since it copies only the content bbox onto a fresh transparent canvas.
+    const SOLID: u8 = 100; // pixels this opaque are "content"; fainter padding/AA is ignored
+    const FILL_RATIO: f32 = 0.70; // solid content already spans >= this fraction of the edge ⇒ leave as-is
+    const TARGET: f32 = 0.92; // else rescale content to this fraction of the canvas (desktop-like margin)
+
+    if w == 0 || h == 0 {
+        return rgba;
+    }
+    let Some(src) = RgbaImage::from_raw(w, h, rgba.clone()) else { return rgba };
+    let (mut minx, mut miny, mut maxx, mut maxy) = (w, h, 0u32, 0u32);
+    let mut any = false;
+    for y in 0..h {
+        for x in 0..w {
+            if src.get_pixel(x, y)[3] >= SOLID {
+                any = true;
+                minx = minx.min(x);
+                miny = miny.min(y);
+                maxx = maxx.max(x);
+                maxy = maxy.max(y);
+            }
+        }
+    }
+    if !any {
+        return rgba; // fully transparent → nothing to fit
+    }
+    // Pad the solid bbox by 2px so the logo's own anti-aliased fringe is kept (a hard clip would
+    // show a jagged edge after the upscale); the faint edge border sits far outside a small logo, so
+    // this never re-includes it.
+    let pad = 2u32;
+    minx = minx.saturating_sub(pad);
+    miny = miny.saturating_sub(pad);
+    maxx = (maxx + pad).min(w - 1);
+    maxy = (maxy + pad).min(h - 1);
+    let (cw, ch) = (maxx - minx + 1, maxy - miny + 1);
+    let longest = cw.max(ch) as f32;
+    let edge = w.min(h) as f32;
+    if longest >= FILL_RATIO * edge {
+        return rgba; // already fills the slot
+    }
+    let content = imageops::crop_imm(&src, minx, miny, cw, ch).to_image();
+    let scale = (TARGET * edge) / longest;
+    let nw = (cw as f32 * scale).round().max(1.0) as u32;
+    let nh = (ch as f32 * scale).round().max(1.0) as u32;
+    let resized = imageops::resize(&content, nw, nh, imageops::FilterType::Lanczos3);
+    let mut canvas = RgbaImage::from_pixel(w, h, Rgba([0, 0, 0, 0]));
+    imageops::overlay(&mut canvas, &resized, (w as i64 - nw as i64) / 2, (h as i64 - nh as i64) / 2);
+    canvas.into_raw()
+}
+
 /// Parses a captured `desktop.ini`'s folder-icon reference into `(location, index)`, covering
 /// BOTH forms the shell honours: the modern `IconResource=path,index` and the classic
 /// `IconFile=path` + `IconIndex=n` pair (codex icons2-🔴3 sub-point — the old parser saw only
@@ -248,8 +311,8 @@ mod win {
     };
 
     use super::{
-        expand_env, mono_planes_to_rgba, parse_desktop_ini_icon_ref, premul_bgra_to_rgba,
-        resolve_relative, straight_bgra_to_rgba, ICON_PX,
+        expand_env, fit_content_to_canvas, mono_planes_to_rgba, parse_desktop_ini_icon_ref,
+        premul_bgra_to_rgba, resolve_relative, straight_bgra_to_rgba, ICON_PX,
     };
     use crate::apply::recyclebin;
     use crate::classify::parse_icon_location;
@@ -693,6 +756,8 @@ mod win {
     /// Encodes straight-alpha RGBA rows as the PNG `DecodedImage` the compositor consumes.
     fn encode_png(width: u32, height: u32, rgba: Vec<u8>) -> PortResult<DecodedImage> {
         use image::ImageEncoder;
+        // Fill the slot the way the desktop does — small padded frames render tiny otherwise.
+        let rgba = fit_content_to_canvas(rgba, width, height);
         let mut png = Vec::new();
         image::codecs::png::PngEncoder::new(&mut png)
             .write_image(&rgba, width, height, image::ExtendedColorType::Rgba8)
@@ -716,6 +781,45 @@ mod tests {
         // The clamp: premul overflow (corrupt input) saturates at 255, never wraps.
         let hot = premul_bgra_to_rgba(&[200, 0, 0, 100]);
         assert_eq!(hot[2], 255, "200*255/100 clamps to 255");
+    }
+
+    #[test]
+    fn fit_scales_a_small_padded_icon_up_but_leaves_a_full_frame_untouched() {
+        // Helper: alpha bounding-box longest edge of an 8x8-tiled 32x32 rgba.
+        let bbox_edge = |rgba: &[u8], n: u32| -> u32 {
+            let (mut lo, mut hi, mut seen) = (n, 0u32, false);
+            for y in 0..n {
+                for x in 0..n {
+                    if rgba[((y * n + x) * 4 + 3) as usize] > 8 {
+                        seen = true;
+                        lo = lo.min(x).min(y);
+                        hi = hi.max(x).max(y);
+                    }
+                }
+            }
+            if seen { hi - lo + 1 } else { 0 }
+        };
+        let n = 64u32;
+        // A 6x6 opaque red blob centered in a 64x64 transparent canvas (content ~9% of the edge).
+        let mut small = vec![0u8; (n * n * 4) as usize];
+        for y in 29..35 {
+            for x in 29..35 {
+                let o = ((y * n + x) * 4) as usize;
+                small[o..o + 4].copy_from_slice(&[255, 0, 0, 255]);
+            }
+        }
+        assert_eq!(bbox_edge(&small, n), 6, "precondition: tiny content");
+        let fitted = fit_content_to_canvas(small, n, n);
+        let after = bbox_edge(&fitted, n);
+        assert!(after >= 55, "small padded content must scale up to fill (~92% of 64), got {after}");
+
+        // A fully-opaque 64x64 frame already fills → returned byte-for-byte unchanged.
+        let full = vec![200u8; (n * n * 4) as usize];
+        assert_eq!(fit_content_to_canvas(full.clone(), n, n), full, "full frame is never touched");
+
+        // Fully transparent → unchanged (no divide-by-zero, no panic).
+        let empty = vec![0u8; (n * n * 4) as usize];
+        assert_eq!(fit_content_to_canvas(empty.clone(), n, n), empty);
     }
 
     #[test]

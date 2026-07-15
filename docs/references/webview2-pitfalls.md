@@ -48,14 +48,13 @@ or those quietly re-enable. ([tauri#11144](https://github.com/tauri-apps/tauri/i
    Defender/360/火绒; EV no longer buys SmartScreen reputation (2024 change) —
    buy OV, sign installer + exe + `dm-elevated.exe`, pre-register 360/火绒
    whitelists (§C4).
-5. **Env-var hijack surface**: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` et al.
-   override code and can open a CDP port into the app; sanitize in `main()` (§C9).
-6. **WebGL context loss has no restore path** — fatal for a resident tray app
-   (§A1). **`bake()` has no MAX_TEXTURE_SIZE guard** — black export on 5K/8K or
-   old iGPU (§A5).
-7. **Elevated-launch UDF conflict** under Win11 24H2 Administrator Protection
+5. **Elevated-launch UDF conflict** under Win11 24H2 Administrator Protection
    ([tauri#13926](https://github.com/tauri-apps/tauri/issues/13926)) — keep the
    main window non-elevated forever; only `dm-elevated` elevates (§C1).
+
+> Note: item 1 (§C6) is the *renderer-process* crash — still DIY-only because wry
+> exposes no `ProcessFailed`. The *GL-context* loss (§A1), which is the crash users
+> actually hit from driver updates, is now recovered — see ✅ below.
 
 ### 🟡 Verify on real devices before ship
 Touch: title-bar drag + hover-only affordances (§D3/§D6) · tray-restore
@@ -73,19 +72,31 @@ swallowed → `set_focus` on tray show (§D7) · fractional-DPI hairlines at
 - DPR-change tracking (monitor move re-renders canvases), invalidate-on-show
   belt, pre-paint backgroundColor unified (`c9fe802`)
 - IME composition guard + spellCheck=false on zone rename (`cfafa65`)
+- WebGL context-loss recovery: `preventDefault` on `lost` + full rebuild on
+  `restored`, plain-`<img>` fallback meanwhile (§A1, `db96a5a`)
+- `bake()` caps its render targets to the probed GPU `MAX_TEXTURE_SIZE` → no more
+  black export on 5K/8K or old iGPU; the live scale respects it too (§A5, `db96a5a`)
+- `WEBVIEW2_*` env-var sanitization in release builds — arg injection
+  (`--remote-debugging-port`), runtime-folder swap (code exec), profile redirect;
+  gated by a private `DESKMAKEOVER_DEVTOOLS` opt-in for our CDP workflow (§C9, `db96a5a`)
 
 ---
 
 ## A. Rendering & compositing
 
-**A1 [🔴 AT-RISK] WebGL context loss — no recovery path.** GPU-process crash,
+**A1 [✅ FIXED `db96a5a`] WebGL context loss — no recovery path.** GPU-process crash,
 TDR/driver reset, sleep wake, RDP, or an Evergreen update mid-session loses the
 GL context; Pixi v8's internal restore is unreliable (textures created before
 the loss come back empty). Our `renderNow` try/catch only catches synchronous
-throws — loss is async and silent. Canvas is keyed on grid dims, so it never
-remounts on loss. Fix: `webglcontextlost` → `preventDefault()`; on
-`webglcontextrestored` do a full compositor teardown + `create` + re-decode the
-source (retain a re-decodable handle — today we `close()` the ImageBitmap).
+throws — loss is async and silent. Fix (in `useWallpaperCompositor`):
+`webglcontextlost` → `preventDefault()` (required or `restored` never fires) +
+fall back to the plain wallpaper `<img>` (the `loadError` path) instead of a blank
+canvas; `webglcontextrestored` bumps a nonce in the create-effect deps → full
+teardown + `create` + re-decode from the store's source URL (the effect re-fetches;
+we don't rely on the `close()`d ImageBitmap). Listeners re-bind to each recreated
+canvas. The `renderNow` retry budget (≤5) still absorbs invalidations that land
+while the context is down. Same-canvas rebuild (canvas keyed on grid dims, so it
+persists across loss); the `create` catch degrades gracefully if re-init ever fails.
 [pixijs#6494](https://github.com/pixijs/pixijs/issues/6494) ·
 [pixijs#5386](https://github.com/pixijs/pixijs/issues/5386) ·
 [WebView2Feedback#3817](https://github.com/MicrosoftEdge/WebView2Feedback/issues/3817)
@@ -118,11 +129,16 @@ aren't MSAA + rounded-clip slow path; MSAA on RTs is flaky on ANGLE D3D11.
 radial-gradient caps + a rounded hairline ring overlay.
 [pixijs#4509](https://github.com/pixijs/pixijs/issues/4509)
 
-**A5 [🔴 AT-RISK] `bake()` exceeds MAX_TEXTURE_SIZE on big screens/old iGPU.**
-Live path caps the long edge at 4096; `bake()` allocates full
+**A5 [✅ FIXED `db96a5a`] `bake()` exceeds MAX_TEXTURE_SIZE on big screens/old iGPU.**
+Live path caps the long edge at 4096; `bake()` used to allocate full
 `screenWidth×screenHeight` RTs at resolution 1 — a 5K/8K/Span target on a
-4096-limit iGPU fails → black/empty export PNG. Probe
-`gl.getParameter(gl.MAX_TEXTURE_SIZE)` at init; tile the bake or cap + upscale.
+4096-limit iGPU failed → black/empty export PNG. Now `readMaxTextureSize` probes
+`gl.getParameter(gl.MAX_TEXTURE_SIZE)` once at init; `bake()` sets its scale to
+`min(1, max / longEdge)` so every RT (frost/backdrop/final, all keyed off
+`renderScale`) fits — a slightly-soft upscaled wallpaper beats a black one. The
+live `setRenderScale` cap also respects the probe (sub-4096 iGPU). Non-overflowing
+GPUs (the 99% case: 4K = 3840 < 4096, modern GPUs 8192+) are byte-identical to before.
+Tiling to preserve full native res on overflow is a future refinement, not shipped.
 
 **A6 [🟡] Occlusion/backgrounding.** Chromium's native occlusion tracker can
 false-positive a *visible* window (white content) and throttles rAF when
@@ -262,15 +278,16 @@ runtime mixing has documented Office-class failures. Add a native
 `aarch64-pc-windows-msvc` installer, or at minimum test first-run on a
 Snapdragon X device.
 
-**C9 [🔴] Env-var sanitization in `main()`** before `tauri::Builder`:
-`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (env **wins over code**,
-[#5571](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5571) — can
-inject `--remote-debugging-port`/`--no-sandbox`),
-`WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` (runtime replacement),
-`WEBVIEW2_RELEASE_CHANNEL_PREFERENCE`; pin `WEBVIEW2_USER_DATA_FOLDER` to the
-known-good LocalAppData path (also the C1 elevation fix). Log what was cleared.
-(Note: our own debug workflow uses the args var for CDP — sanitize in release
-builds only, or gate on a dev env check.)
+**C9 [✅ FIXED `db96a5a`] Env-var sanitization in `run()`** before `tauri::Builder`.
+`sanitize_webview_env()` removes `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (env **wins
+over code**, [#5571](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5571) —
+injects `--remote-debugging-port`/`--no-sandbox`), `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`
+(runtime replacement = arbitrary code in our process — the highest-severity vector),
+`WEBVIEW2_USER_DATA_FOLDER` (profile redirect), and `WEBVIEW2_RELEASE_CHANNEL_PREFERENCE`.
+`#[cfg(not(debug_assertions))]` so it only fires in release, and skipped when the private
+`DESKMAKEOVER_DEVTOOLS` opt-in is set so our own CDP workflow (release binary +
+`--remote-debugging-port`) still works. Called at the top of `run()`, single-threaded,
+so `remove_var` is sound.
 
 **C10 [🟡] Startup diagnostics block** (rotating local log): runtime version
 (wry `Webview::version()`), effective UDF path, GPU/software-render probe, OS

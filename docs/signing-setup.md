@@ -70,7 +70,9 @@ git push origin v0.1.0
 
 The tag triggers `release.yml`: build → sign exe + installer → publish a GitHub Release with the
 signed `*-setup.exe`. `workflow_dispatch` (Actions tab → Run workflow) does the same minus the
-Release (installer lands as a build artifact) — use it for a dry run.
+Release (installer lands as a build artifact). It exposes a **`sign` checkbox**: leave it on for a
+signed dry-run, or **uncheck it for an UNSIGNED dry-run** that validates the runner + build with no
+certificate / SimplySign session — the right first shakeout before the cert is wired up.
 
 ---
 

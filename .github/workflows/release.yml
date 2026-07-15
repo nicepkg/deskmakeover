@@ -1,19 +1,24 @@
 name: release
 
-# Signed Windows release build on a SELF-HOSTED runner — the signing PC that has the Certum
-# code-signing certificate + SimplySign Desktop installed. This workflow is INERT until:
-#   1. a self-hosted runner labelled [self-hosted, windows] is registered on that PC,
-#   2. SimplySign Desktop is logged in there (so the cloud cert is in CurrentUser\My),
-#   3. the repo variable DM_SIGN_THUMBPRINT is set to that cert's SHA-1 thumbprint.
-# Full activation runbook: docs/signing-setup.md.
+# Windows release build on a SELF-HOSTED runner — the signing PC that has the Certum code-signing
+# certificate + SimplySign Desktop. Signs both the app .exe and the NSIS installer via Tauri's
+# signCommand, then publishes a GitHub Release. INERT until a runner labelled [self-hosted, windows]
+# is registered. Full runbook: docs/signing-setup.md.
 #
-# Fires on a version tag (v*) — which also publishes a GitHub Release — or manual dispatch
-# (build + sign + upload artifact only, no release).
+#   - tag push (v*)          → signed build + GitHub Release
+#   - manual dispatch        → signed build + artifact (no Release), OR an UNSIGNED dry-run when the
+#                              `sign` input is false (validates the runner + build without the cert /
+#                              a live SimplySign session — useful for first shakeout).
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      sign:
+        description: 'Code-sign (needs SimplySign logged in + DM_SIGN_THUMBPRINT). Uncheck for an unsigned dry-run.'
+        type: boolean
+        default: true
 
 permissions:
   contents: write # create the Release + upload the signed installer
@@ -28,32 +33,43 @@ jobs:
     env:
       # Not a secret — a cert thumbprint is a public identifier. Set as a repo VARIABLE.
       DM_SIGN_THUMBPRINT: ${{ vars.DM_SIGN_THUMBPRINT }}
+      # Sign on every tag push; on manual dispatch honour the `sign` input.
+      DM_SIGN: ${{ (github.event_name == 'workflow_dispatch' && inputs.sign == false) && 'no' || 'yes' }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Preflight — toolchain + live signing session
+      - name: Preflight — toolchain (+ live signing session when signing)
         shell: pwsh
         run: |
           foreach ($tool in 'bun', 'cargo') {
             if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool is not on PATH on this runner" }
           }
-          if (-not $env:DM_SIGN_THUMBPRINT) { throw 'repo variable DM_SIGN_THUMBPRINT is not set' }
-          # The cert is only in the store while SimplySign Desktop is logged in — fail early otherwise
-          # so the build doesn't burn minutes then die at the signing step.
-          $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Thumbprint -eq $env:DM_SIGN_THUMBPRINT }
-          if (-not $cert) { throw "signing cert $env:DM_SIGN_THUMBPRINT not found in CurrentUser\My — log into SimplySign Desktop" }
-          "Signing as: $($cert.Subject)"
+          if ($env:DM_SIGN -eq 'yes') {
+            if (-not $env:DM_SIGN_THUMBPRINT) { throw 'repo variable DM_SIGN_THUMBPRINT is not set' }
+            # The cert is only in the store while SimplySign Desktop is logged in — fail early otherwise.
+            $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Thumbprint -eq $env:DM_SIGN_THUMBPRINT }
+            if (-not $cert) { throw "signing cert $env:DM_SIGN_THUMBPRINT not found in CurrentUser\My — log into SimplySign Desktop" }
+            "Will sign as: $($cert.Subject)"
+          } else {
+            "UNSIGNED dry-run (sign=false) — validates the runner + build only, no certificate needed"
+          }
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build + sign (Tauri signCommand signs the exe AND the NSIS installer)
-        run: bunx tauri build --config src-tauri/tauri.release.conf.json
+      - name: Build (Tauri signCommand signs the exe AND the NSIS installer when signing)
+        shell: pwsh
+        run: |
+          if ($env:DM_SIGN -eq 'yes') {
+            bunx tauri build --config src-tauri/tauri.release.conf.json
+          } else {
+            bunx tauri build
+          }
 
-      - name: Upload the signed installer as a build artifact
+      - name: Upload the installer as a build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: deskmakeover-setup
+          name: deskmakeover-setup${{ env.DM_SIGN == 'yes' && '-signed' || '-unsigned' }}
           path: target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
 

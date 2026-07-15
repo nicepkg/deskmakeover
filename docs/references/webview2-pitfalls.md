@@ -1,195 +1,331 @@
-# WebView2 consumer-machine pitfalls — research report (2026-07-08)
+# WebView2 pitfalls — Tauri-era edition (2026-07-15)
 
-Compiled by a dedicated research agent for the v3 redesign hardening phase (plan F6).
-Scope: WPF host + Evergreen WebView2 + local React SPA + frameless custom chrome +
-SharedBuffer pixel streams + non-technical users on messy machines. Every claim
-carries a source URL; the two high-stakes items (font CORS, occlusion throttling)
-were verified across ≥2 sources.
+Supersedes the 2026-07-08 WPF-era report (git remembers it). Compiled from four
+dedicated research agents (rendering/compositing · Tauri×WebView2 integration ·
+runtime/deployment · input/IME) plus live findings from the 2026-07-15 Windows
+debugging session. Every finding carries source URLs and a status tag audited
+against THIS codebase:
 
-> **DeskMakeover reconciliation notes (commander):**
-> 1. Fonts: this report suggests `font-display: swap` (web-general advice). Our
->    typography decision (ADR-0013 D2) uses `font-display: block` + a
->    `document.fonts.ready` first-render gate — correct for a LOCAL desktop app
->    (fonts come off disk in milliseconds; zero FOUT beats fast-fallback). Keep D2.
-> 2. Virtual-host mapping / kiosk settings / DPI / ProcessFailed items must be
->    AUDITED against the existing C# host (`Host/WebShellWindow.cs`, spec 05) on the
->    Windows side — some may already be in place; verify, don't assume, in F6.
+> **[HIT]** we hit it (fixed or reproduced) · **[COVERED]** code/config already
+> handles it — do NOT "fix" again · **[AT-RISK]** real gap, action listed ·
+> **[N-A]** doesn't apply to this app.
 
----
+## ⭐ Meta-finding: the WPF→Tauri migration orphaned the old doc's host layer
 
-## TL;DR 高危 Top 10（按「杂机器翻车概率 × 伤害」排序）
+The 07-08 report deferred ~a dozen mitigations to "🏗 host-side, do on
+`Host/WebShellWindow.cs`" — **that C# host no longer exists**. Under Tauri,
+**wry owns WebView2 environment creation** and exposes almost none of the
+`CoreWebView2Settings`/`EnvironmentOptions` knobs the old plan relied on
+(`AreBrowserAcceleratorKeysEnabled`, `IsPinchZoomEnabled`, `IsZoomControlEnabled`,
+`DefaultBackgroundColor`, `ScrollBarStyle`, `ProcessFailed`…). Three consequences:
 
-1. **Evergreen Runtime 缺失/被企业策略拦装 → 整个 app 白屏起不来。** 启动前必须 `GetAvailableCoreWebView2BrowserVersionString` 探测，缺了引导装 Bootstrapper 或退回 Fixed Version。非技术用户 + 老 Win10 极常见。
-2. **杀软/EDR/DLP 掐掉 `msedgewebview2.exe` 子进程 → 白屏、卡死、初始化 `E_FAIL`。** 消费级机器上「激进杀软」是头号杀手，只能靠签名 + 引导 + 崩溃兜底 UI。
-3. **125%/150% 分数 DPI → 文字发虚、1px 描边/发丝线糊成一团。** 必须 PerMonitorV2 + 跟踪 `RasterizationScale`。
-4. **首帧白闪（white flash）。** `DefaultBackgroundColor` + `WEBVIEW2_DEFAULT_BACKGROUND_COLOR` 环境变量双保险。
-5. **GPU 崩溃/被禁/老显卡/RDP → 软件渲染，`backdrop-filter`/blur/canvas/动画卡成 PPT 甚至花屏。** 重度依赖 blur 的 UI 要有降级。
-6. **`ProcessFailed` 不处理 → renderer/browser 进程崩了以后停在错误页。** 必须挂事件自动 Reload/重建。
-7. **中文 IME 候选框错位**（无边框 / 多屏 / DPI 变化 / RDP 下尤甚）。
-8. **浏览器快捷键/右键菜单/F12/拖文件进窗口没锁死** → kiosk 感全无，拖文件可把整个 SPA 导航走。
-9. **用户名含中文/非 ASCII、UDF 落在 OneDrive 同步目录/网络盘 → 初始化失败或数据损坏。**
-10. **无边框窗口拖拽/缩放/最大化后最小化多屏白屏。** `app-region: drag` 需较新 Runtime（老 Runtime 静默失效）；`WM_NCHITTEST` 不认触摸；最大化多屏最小化有官方 bug (#2549)。
+1. The JS/CSS belts in `src/lib/webview-hardening.ts` are now the **sole**
+   defense, not a redundant belt — its comments claiming "the host disables the
+   equivalent settings" describe a host that is gone. (Comments to be corrected;
+   the belts themselves work.)
+2. Levers now come in exactly three shapes: wry built-in behavior · a Chromium
+   flag via `windows.additionalBrowserArgs` · JS/CSS. Anything else is "patch wry".
+3. A few old 🔴 items became **DIY projects** (crash watchdog) or **decisions**
+   (install mode, signing) — triaged below.
 
-## 分类详单
-
-### 1. CSS / 渲染差异
-
-**坑：分数 DPI（125%/150%/175%）文字发虚、发丝线糊。**
-修复：① `PerMonitorV2`（Win32 `SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)`；WPF `app.manifest` `<dpiAwareness>PerMonitorV2</dpiAwareness>`）。② `CoreWebView2Controller.RasterizationScale` = 显示器 scale × 文字缩放；默认 `ShouldDetectMonitorScaleChanges=true` 自动跟随，手动管窗口则设 false 并监听 `RasterizationScaleChanged`。③ 发丝线在 1.25/1.5 落半像素 → 用 `box-shadow inset`/`transform` 对齐设备像素，别裸 `border:1px`。
-来源：github.com/MicrosoftEdge/WebView2Feedback/issues/571 · github.com/tauri-apps/tauri/issues/1074 · learn.microsoft.com corewebview2controller.rasterizationscale · WebView2Feedback specs/RasterizationScale.md
-
-**坑：文字 greyscale AA 而非 ClearType → 比原生略糊略细。** 合成层/非不透明背景下禁子像素 AA。
-修复：无法强制 ClearType。缓解：文字背后垫不透明背景色；PerMonitorV2 + 尽量整数缩放；选 hinting 好的字体，正文字重略加。
-来源：github.com/microsoft/vscode/issues/24957 · WebView2Feedback/issues/5205
-
-**坑：滚动条默认样式不搭；部分 Runtime `::-webkit-scrollbar` 被 overlay 覆盖。**
-修复：`CoreWebView2EnvironmentOptions.ScrollBarStyle = FluentOverlay`，或自绘 CSS + `scrollbar-gutter: stable`（在最低目标 Runtime 实测）。
-来源：learn.microsoft.com corewebview2scrollbarstyle · WebView2Feedback/issues/4131
-
-**坑：无边框拖拽 — WebView2 不认 Electron 的 `-webkit-app-region`。**
-修复：`CoreWebView2Settings.IsNonClientRegionSupportEnabled = true`（ICoreWebView2Settings9，默认 false，下次导航生效）→ CSS `app-region: drag/no-drag` 生效。老 Runtime 属性缺失静默失效 → 保留 `WM_NCHITTEST` 子类化兜底；该方案只认鼠标不认触摸。
-来源：learn.microsoft.com icorewebview2settings9 · WebView2Feedback/issues/200 · /issues/2243
-
-**坑：GPU 关闭/老显卡/RDP/VM → 软件渲染，blur/canvas/动画极卡甚至花屏。**
-修复：别关 GPU（`--disable-gpu` 不受支持且全局变慢）。做能力降级：检测软件渲染 → blur→半透明纯色、停非必要动画、尊重 `prefers-reduced-motion`。花屏引导更新驱动/Runtime。
-来源：learn.microsoft.com webview2/concepts/performance · WebView2Feedback/issues/725 · /issues/2421
-
-**坑：Ctrl+滚轮 / Ctrl± / 捏合意外缩放整个 SPA。**
-修复：`IsZoomControlEnabled = false` 且 `IsPinchZoomEnabled = false`（二者独立）。
-来源：learn.microsoft.com iszoomcontrolenabled · WebView2Feedback/issues/459
-
-### 2. @font-face / bundled 本地字体
-
-**坑：字体从 `file://` 加载 → CORS 静默失败掉回 fallback。**
-修复：不要用 `file://`。`SetVirtualHostNameToFolderMapping("appassets.local", <dist>, DenyCors)` 映射整站 → 导航 `https://appassets.local/index.html`。字体与 HTML 同一虚拟 host = 同源，DenyCors 也正常加载；虚拟 host 顺带给 secure context。
-来源：learn.microsoft.com webview2/concepts/working-with-local-content
-
-**坑：字体跨源引用 → CORS 拦截静默不显示。** 字体是强 CORS 资源，浏览器通用行为。
-修复：全部资源塞同一虚拟 host（首选）；确需跨源用 `Allow` + `crossorigin`。
-来源：working-with-local-content · hirehop.com cross-domain-fonts-cors
-
-**坑：bundled 字体首帧 FOUT/FOIT。**
-修复（web 通用建议）：`font-display: swap` + 度量接近的 fallback + `<link rel=preload as=font crossorigin>`。**DeskMakeover 取 block + fonts.ready 门（见顶部 reconciliation）。**
-来源：debugbear.com web-font-layout-shift
-
-**坑：`src: local("字体名")` 在杂机器上行为不一致。**
-修复：bundled 场景直接 `url()` 走打包文件；VF 用 woff2 + `font-weight: 100 900` 区间声明。
-来源：runebook.dev @font-face/src
-
-### 3. Runtime / 环境地雷
-
-**坑：Evergreen Runtime 未装/损坏 → 初始化失败白屏。**
-修复：启动探测 `GetAvailableCoreWebView2BrowserVersionString(null)`；缺→引导装 ~2MB Evergreen Bootstrapper（按架构自动拉）或 Fixed Version（封闭机器）。友好引导 UI，绝不裸崩。
-来源：webview2/concepts/distribution · evergreen-vs-fixed-version
-
-**坑：杀软/EDR/WDAC/AppLocker 破坏多进程架构 → 白屏/卡死/E_FAIL。**
-修复：① host exe + `msedgewebview2.exe` 数字签名；② 文档给 IT publisher-rule allowlist 指引；③ 保留 Runtime 目录默认 ACL/LowIL；④ 允许 Renderer/GPU/Network/Crashpad 子进程、不注入 DLL；⑤ `ProcessFailed` + init try/catch → 「被安全软件拦截」兜底页。排查：Task Manager 子进程 / Event Viewer / Reliability Monitor。
-来源：webview2/concepts/measures · /concepts/enterprise
-
-**坑：UDF 落 OneDrive/网络盘/只读区，或非 ASCII 用户名 → Access Denied、数据损坏。**
-修复：UDF 显式设 `%LOCALAPPDATA%\<App>\WebView2`（Local 非 Roaming）；宽字符 API 处理路径。
-来源：webview2/concepts/user-data-folder · WebView2Feedback/issues/2594 · /issues/1410
-
-**坑：进程崩溃不兜底。**
-修复：挂 `ProcessFailed` 按 `ProcessFailedKind` 分流：GPU/Utility → 自恢复记日志；RenderProcessExited → `Reload()`；BrowserProcessExited → 重建控件（与 `BrowserProcessExited` 事件协调防 race）；RenderProcessUnresponsive（~15s 重复）→ 阈值后 Reload。dump 在 `UDF\EBWebView\Crashpad\reports\`。
-来源：webview2/concepts/process-related-events · WebView2Feedback/issues/4452
-
-### 4. 输入 & IME
-
-**坑：中文 IME 候选框错位（无边框/多屏/DPI 变化/RDP）。**
-修复：桌面场景用默认 windowed hosting（避开 composition hosting 的定位问题）；DPI 变化后刷新窗口位置；RDP 已知官方 bug #5570。中文输入是核心用户群 → 真机逐输入框实测。
-来源：WebView2Feedback/issues/5570 · microsoft-ui-xaml/issues/9867 · WebView2Feedback/issues/869
-
-**坑：浏览器快捷键暴露「这是浏览器」。**
-修复：`AreBrowserAcceleratorKeysEnabled = false`（关 Ctrl+F/P/D/G/F3/F5/F7…；不关 Ctrl+C/V/X/A/Z 和 Home/End/PgUp/PgDn——通常正是想要的）。细粒度走 `AcceleratorKeyPressed`。
-来源：learn.microsoft.com arebrowseracceleratorkeysenabled
-
-**坑：右键菜单/F12/状态栏/自动填充/存密码弹窗露馅。**
-修复：`AreDefaultContextMenusEnabled=false` · `AreDevToolsEnabled=false`(发布) · `IsStatusBarEnabled=false` · `IsGeneralAutofillEnabled=false` · `IsPasswordAutosaveEnabled=false`。
-来源：learn.microsoft.com corewebview2settings
-
-**坑：拖文件进窗口 → SPA 被导航走。**
-修复：`CoreWebView2Controller.AllowExternalDrop = false`（默认 true）；需要拖入则 JS `dragover/drop preventDefault` 自行处理。
-来源：WebView2Feedback/issues/4859 · specs/APIReview_AllowExternalDrop.md
-
-**坑：滑动手势触发后退/前进。**
-修复：`IsSwipeNavigationEnabled = false`；已知 bug #4502 部分版本仍穿透 → CSS `overscroll-behavior: none` + JS 拦截兜底。
-来源：learn.microsoft.com isswipenavigationenabled · WebView2Feedback/issues/4502
-
-### 5. 无边框窗口专项
-
-**坑：首帧白闪。**
-修复：`DefaultBackgroundColor` = app 底色（只支持 alpha 0 或 255）+ 环境变量 `WEBVIEW2_DEFAULT_BACKGROUND_COLOR`（如 `FFF5F5F3`）进程级兜底 + WPF host 窗口同色。
-来源：west-wind.com WebView2-Flashing · specs/BackgroundColor.md · WebView2Feedback/issues/3384
-
-**坑：WPF airspace — windowed 托管的 webview 永远盖在 WPF 内容上。**
-修复：chrome 全画进 web（DeskMakeover 已如此）；确需覆盖才考虑 composition hosting（自带模糊 bug #5205 + 输入路由复杂度）。
-
-**坑：最大化+多屏+最小化还原 → 白屏（官方 bug #2549）。**
-修复：还原时强制 resize/重排 webview；上线前多屏混合 DPI 回归最小化/还原/最大化循环。
-
-**坑：无边框 resize 边框（6px 白条等）。**
-修复：`WM_NCCALCSIZE` 自绘 + `WM_NCHITTEST` 命中（不认触摸）。
-来源：WebView2Feedback/issues/704 · /issues/1515
-
-**坑：`window.open`/`target=_blank` 弹内嵌窗或跳 Edge。**
-修复：`NewWindowRequested` → `Handled=true` + 外链 `Process.Start` 丢系统默认浏览器；`NavigationStarting` 白名单只允许 `https://appassets.local/*`。
-来源：WebView2Feedback/issues/2587 · /issues/881
-
-### 6. 性能陷阱
-
-**坑：SharedBuffer 生命周期泄漏。** 每帧新建不释放 → 内存暴涨；上限 <2GB。
-修复：复用一个（或双缓冲两个）SharedBuffer；native 侧用完 `Close()`；大数据永远 SharedBuffer 不走 postMessage JSON。
-来源：specs/SharedBuffer.md · learn.microsoft.com postsharedbuffertoscript
-
-**坑：最小化/被遮挡时 Chromium 节流 rAF/timer；`CalculateNativeWinOcclusion` 误判遮挡 → 可见窗口也被节流/空白。** 对实时预览类 app 是隐形杀手。
-修复：`AdditionalBrowserArguments` 加 `--disable-features=CalculateNativeWinOcclusion`；按需 `--disable-background-timer-throttling` `--disable-renderer-backgrounding`（牺牲功耗，只在需要时）；配合 Page Visibility API 主动降级。
-来源：WebView2Feedback/issues/1172 · rostacik.net webview2-setup · tauri/issues/5250
-
-### 7. 主题 / 系统集成
-
-**坑：`prefers-color-scheme` 与 Windows 主题不同步（滚动条/弹窗尤其）。**
-修复：`CoreWebView2Profile.PreferredColorScheme = Auto`（同时决定 WebView2 自身 UI 明暗）；已知 #3696 滚动条有时不尊重 → CSS 显式配色兜底。host 与前端双向一致。
-来源：learn.microsoft.com preferredcolorscheme · WebView2Feedback/issues/3696
-
-**坑：高对比度 `forced-colors: active` 覆盖品牌色，图标/边框消失。**
-修复：`@media (forced-colors: active)` 适配（`-ms-high-contrast` 已弃用），系统色关键字 Canvas/CanvasText/ButtonFace，必要处 `forced-color-adjust`。至少可读不崩。
-来源：blogs.windows.com styling-for-windows-high-contrast · deprecating-ms-high-contrast
-
-**坑：`prefers-reduced-motion` 不降级。**
-修复：前端 `@media (prefers-reduced-motion: reduce)` 全量降级（spec 02 v3 已定为无洞覆盖）。
+⚠️ `additionalBrowserArgs` gotcha: setting it **replaces** wry's defaults — any
+custom string must re-include `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`
+or those quietly re-enable. ([tauri#11144](https://github.com/tauri-apps/tauri/issues/11144))
 
 ---
 
-## DeskMakeover 补丁清单（build plan F6 的输入）
+## TL;DR triage
 
-> **Status legend (2026-07-08 checkpoint)**: ✅ web-side DONE (Mac session) ·
-> 🏗 host-side, audit/do in F8 on Windows · web-side belts live in
-> `src/DeskMakeover.Web/src/lib/webview-hardening.ts`.
+### 🔴 Before public ship
+1. **Webview crash = frozen white window, no recovery.** wry surfaces no
+   `ProcessFailed`/`BrowserProcessExited`. DIY watchdog needed (§C6).
+2. **Missing/corrupt runtime at launch has no friendly fallback UI** (§C2);
+   pair with a UDF delete-and-restart recovery (§C1).
+3. **Install mode for China**: `downloadBootstrapper` needs the MS CDN at
+   install time — decide `offlineInstaller` (+127 MB) vs accept a dead-first-launch
+   tail on offline/throttled networks (§C5).
+4. **Signing + CN AV whitelisting**: unsigned Tauri NSIS gets false-flagged by
+   Defender/360/火绒; EV no longer buys SmartScreen reputation (2024 change) —
+   buy OV, sign installer + exe + `dm-elevated.exe`, pre-register 360/火绒
+   whitelists (§C4).
+5. **Env-var hijack surface**: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` et al.
+   override code and can open a CDP port into the app; sanitize in `main()` (§C9).
+6. **WebGL context loss has no restore path** — fatal for a resident tray app
+   (§A1). **`bake()` has no MAX_TEXTURE_SIZE guard** — black export on 5K/8K or
+   old iGPU (§A5).
+7. **Elevated-launch UDF conflict** under Win11 24H2 Administrator Protection
+   ([tauri#13926](https://github.com/tauri-apps/tauri/issues/13926)) — keep the
+   main window non-elevated forever; only `dm-elevated` elevates (§C1).
 
-### 🔴 必打（发布前必须）
-- [ ] 🏗 Runtime 探测 + Bootstrapper 引导 + 友好兜底 UI（绝不裸崩）
-- [ ] 🏗 数字签名 + IT allowlist 指引文档（杀软白屏头号问题）
-- [ ] 🏗 `ProcessFailed`/`BrowserProcessExited` 全分支兜底（Reload/重建/错误页）
-- [ ] 🏗 UDF 显式 `%LOCALAPPDATA%\DeskMakeover\WebView2`；非 ASCII 用户名宽字符处理
-- [ ] 🏗 PerMonitorV2 + `RasterizationScale` 跟踪；125%/150% 实测（⚠️ v3 卡片从 ring 改为真 border 1px——分数 DPI 下发丝线需实测，糊则回 box-shadow inset）
-- [ ] 🏗 首帧白闪三保险（DefaultBackgroundColor + 环境变量 + host 同色）
-- [x] ✅ 字体侧：preload + `font-display: block` + 显式 3-face `fonts.load` 门（D2，`main.tsx`）；🏗 虚拟 host 映射（禁 file://）待 F8 对 `WebShellWindow.cs` 审计
-- [ ] 🏗 `IsNonClientRegionSupportEnabled` + `app-region: drag`，保留 `WM_NCHITTEST` 兜底；多屏最小化/还原回归
-- [x] ✅ web 侧 kiosk 皮带：drop 导航守卫（任何环境）、Ctrl+滚轮页面缩放守卫（任何环境）、右键菜单 + 浏览器快捷键抑制（仅 host 内，dev 浏览器不受影响）——`webview-hardening.ts`；🏗 host settings 全套关闭仍需 F8 审计（老 Runtime 上 web 皮带是唯一兜底）
-- [ ] 🏗 `NewWindowRequested` + `NavigationStarting` 白名单，外链走系统浏览器（web 侧已统一走 `shell.openExternal`）
-- [ ] 🏗 中文 IME 真机逐输入框实测（windowed hosting；多屏 + DPI 切换；v3 新增输入框：欢迎页认错书、分区改名、标题字体搜索）
-- [ ] 🏗 SharedBuffer 复用 + Close()；`--disable-features=CalculateNativeWinOcclusion`
+### 🟡 Verify on real devices before ship
+Touch: title-bar drag + hover-only affordances (§D3/§D6) · tray-restore
+white-screen ×20 cycle (§B4) · IME candidate window under stacked zoom (§D1) ·
+maximize/multi-monitor/minimize-restore blank (§B3) · first-click-after-restore
+swallowed → `set_focus` on tray show (§D7) · fractional-DPI hairlines at
+125%/150% · P3 wide-gamut color drift (§A7).
 
-### 🟡 建议打
-- [ ] 🏗 `ScrollBarStyle = FluentOverlay` 或自绘滚动条（web 侧已 `scrollbar-gutter: stable` 限定滚动容器；最低 Runtime 实测）
-- [ ] 🏗 `PreferredColorScheme = Auto` 与前端主题双向一致；滚动条配色兜底
-- [x] ✅ reduced-motion 全量降级（spec 02 v3；欢迎门/仪式/画布波纹全部覆盖）
-- [x] ✅ `overscroll-behavior: none`（滑动导航穿透兜底，`index.css`）
-- [ ] 🏗 软件渲染/老显卡降级：blur→纯色、砍动画、花屏引导更新驱动
-- [ ] 🏗 ClearType 缓解：文字垫不透明底 + 字重微调
+### ✅ Fixed this session (2026-07-15)
+- `.url` UTF-16 encoding → Steam icons stylable (`bdb1d7b`)
+- 系统默认 real draft reset (`834be70`)
+- Backdrop-RT float-key churn → zone-delete white screen (`7703dd4`)
+- Auto UI zoom, √fit curve, WebView2 ZoomFactor raises DPR (`49088d5`+`1217312`)
+- Icon tiles render at exactly 2× on-screen physical px (SSAA) (`06c70ff`)
+- DPR-change tracking (monitor move re-renders canvases), invalidate-on-show
+  belt, pre-paint backgroundColor unified (`c9fe802`)
+- IME composition guard + spellCheck=false on zone rename (`cfafa65`)
 
-### 🟢 可暂缓
-- [ ] `forced-colors` 高对比度完整适配（先保可读不崩）
-- [ ] composition hosting 迁移（无需求不动）
-- [ ] RDP/VM IME 定位精修（官方 bug 待修）
+---
+
+## A. Rendering & compositing
+
+**A1 [🔴 AT-RISK] WebGL context loss — no recovery path.** GPU-process crash,
+TDR/driver reset, sleep wake, RDP, or an Evergreen update mid-session loses the
+GL context; Pixi v8's internal restore is unreliable (textures created before
+the loss come back empty). Our `renderNow` try/catch only catches synchronous
+throws — loss is async and silent. Canvas is keyed on grid dims, so it never
+remounts on loss. Fix: `webglcontextlost` → `preventDefault()`; on
+`webglcontextrestored` do a full compositor teardown + `create` + re-decode the
+source (retain a re-decodable handle — today we `close()` the ImageBitmap).
+[pixijs#6494](https://github.com/pixijs/pixijs/issues/6494) ·
+[pixijs#5386](https://github.com/pixijs/pixijs/issues/5386) ·
+[WebView2Feedback#3817](https://github.com/MicrosoftEdge/WebView2Feedback/issues/3817)
+
+**A2 [🟡 AT-RISK] Software rendering / no-WebGL fallback.** SwiftShader is now
+disabled by default in Chromium (`--allow-unsafe-swiftshader`) — blocklisted
+driver/VM/RDP may yield **no WebGL at all** → `Application.init` rejects → blank.
+And under software raster the per-frame full-screen `BlurFilter` (quality 6) is
+seconds-per-frame. Fix: probe `UNMASKED_RENDERER_WEBGL` once; on
+software/`SwiftShader` cap renderScale, drop blur quality, freeze gesture
+re-blur; on init rejection fall back to the static `<img>` mirror we already
+render while `!ready`.
+[chromium#40277080](https://issues.chromium.org/issues/40277080)
+
+**A3 [HIT→fixed `7703dd4`] Fractional-DPI RenderTexture churn.** `RT.width` is
+`pixelWidth/resolution` — float division that misses strict equality at 125%/150%
+(and at our fractional zoom DPRs) → per-frame destroy/recreate of two full-screen
+RTs → dying-ghost sampled a destroyed texture → white canvas. Keep the creation-key
+pattern (`${w}x${h}@${scale}`); never compare against RT getters.
+
+**A4 [HIT — workaround designed, deferred by owner] Composited rounded-corner
+clip is not antialiased.** With the desktop-space under `scale()` transform,
+WebView2's compositor hard-scissors accelerated layers (WebGL canvas,
+backdrop-filter taskbar) at the container's `border-radius` — jagged 1px fringe
+at the corner arcs, flush case only. None of isolation/translateZ/contain:paint/
+clip-path/mask/opacity fix it (all tried live via CDP). Root: intermediate RTs
+aren't MSAA + rounded-clip slow path; MSAA on RTs is flaky on ANGLE D3D11.
+**Verified fix (to apply when owner green-lights):** square-clip the container
+(integer rect scissor is pixel-exact) + paint the four corner arcs with DOM
+radial-gradient caps + a rounded hairline ring overlay.
+[pixijs#4509](https://github.com/pixijs/pixijs/issues/4509)
+
+**A5 [🔴 AT-RISK] `bake()` exceeds MAX_TEXTURE_SIZE on big screens/old iGPU.**
+Live path caps the long edge at 4096; `bake()` allocates full
+`screenWidth×screenHeight` RTs at resolution 1 — a 5K/8K/Span target on a
+4096-limit iGPU fails → black/empty export PNG. Probe
+`gl.getParameter(gl.MAX_TEXTURE_SIZE)` at init; tile the bake or cap + upscale.
+
+**A6 [🟡] Occlusion/backgrounding.** Chromium's native occlusion tracker can
+false-positive a *visible* window (white content) and throttles rAF when
+minimized; WebView2 also has a blank-after-minimize-restore repaint bug
+([#5171](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5171)).
+Our invalidate-driven ticker + direct-render bake are the right architecture,
+and `c9fe802` added the invalidate-on-focus/visibility belt. If field reports
+still show blanks: add
+`--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling`
+(note the re-included wry defaults). Tauri's `backgroundThrottling` config is
+**not supported on Windows** — the flag route is the only lever.
+[tauri#5250](https://github.com/tauri-apps/tauri/issues/5250)
+
+**A7 [🟡] Color management.** Wide-gamut panels under Win11 Auto Color
+Management can oversaturate untagged sRGB; the WebGL wallpaper and DOM swatches
+travel different color paths and can drift apart. If a P3-device test shows it:
+`--force-color-profile=srgb` pins both. OKLCH/`color-mix` themselves are fine
+across the Evergreen range (111+).
+[chromium#328856550](https://issues.chromium.org/issues/328856550)
+
+**A8 [🟡] Pixi `extract.canvas` returns premultiplied alpha** — any α<1 pixel
+in an exported PNG gets darkened RGB ([pixijs#10820](https://github.com/pixijs/pixijs/issues/10820)).
+Our baked wallpaper is opaque cover-fit so bulk pixels are safe; if any
+translucent layer ever reaches the export, flatten onto an opaque background
+before extract (also guarantees an opaque wallpaper file).
+
+**A9 [🟢 notes]** Fonts: bundled-font FOUT is COVERED (block + fonts.ready
+gate). Text on composited layers renders grayscale-AA (no ClearType) — expected
+Chromium behavior since 115, don't fight it; if CN text at 11–13px reads thin on
+1× displays, bump the smallest CJK sizes to weight 500. DPI story: WebView2
+ZoomFactor **multiplies devicePixelRatio** (our auto-zoom exploits this; macOS
+`pageZoom` does NOT change DPR — WebKit #124862). Runtime 142.0.3595.65 has a
+canvas-≥3840px perf regression ([WebView2Feedback#5426](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5426)) — keep the 4096 renderScale cap.
+
+## B. Tauri × WebView2 integration
+
+**B1 [COVERED] Custom schemes.** `dmwallpaper:`/`dmicon:`/`dmpreset:` are served
+as `http://<scheme>.localhost` = cross-origin → the `ACAO:*` headers in `lib.rs`
+are load-bearing (we hit this once; keep on 404s too). CSP correctly lists both
+URL forms. ⚠️ Windows custom protocols buffer the **whole body** (no streaming,
+sync handler) — keep responses modest; avoid re-fetch when the path is unchanged
+([wry#1022](https://github.com/tauri-apps/wry/issues/1022)).
+
+**B2 [COVERED] IPC.** Pixels ride the custom protocols, never invoke (10 MB
+through invoke ≈ 200 ms on Windows + base64 bloat); icon bytes are chunked
+(`icons_apply_baked_chunk`). Residual: `*.localhost` interception by corporate
+proxies can kill `ipc.localhost` entirely — document, don't engineer around.
+
+**B3 [🟡] Frameless window.** Drag works via `data-tauri-drag-region` →
+`startDragging()` (Win32), **not** CSS `app-region` — Tauri reverted
+`IsNonClientRegionSupportEnabled` on Windows, so the `.app-drag` CSS rules are
+likely dead grammar (harmless; decide: enable the setting via wry, or drop the
+CSS). Known holes: **touch can't drag or double-tap-maximize** (§D3), drag
+fails when unfocused ([#11605](https://github.com/tauri-apps/tauri/issues/11605)),
+Win11 Snap-Layouts flyout doesn't appear on a custom maximize button (plugins
+exist), double-click-maximize restore-size bugs
+([#11945](https://github.com/tauri-apps/tauri/issues/11945)), verify DWM rounded
+corners/shadow on-device. Multi-monitor mixed-DPI maximize/minimize/restore
+blank is the classic #2549 family — the `c9fe802` invalidate belt is the cheap
+mitigation; add a Rust-side repaint nudge on `show()` if field reports persist.
+
+**B4 [🟡] Tray residency (hide → show).** tauri#9393 white-screen-on-show is
+fixed but the pattern stays version-sensitive — regression-test 20 cycles on
+every wry bump. While hidden, the webview throttles (fine — the reconcile loop
+is native Rust). Memory: a hidden webview holds ~100–200 MB by design. Add
+`set_focus()` after tray-show so the first click and IME land (§D7).
+
+**B5 [COVERED] window-state plugin** validates restored geometry against
+connected monitors; our setup-time first-zoom-pass already closes the
+maximized-restore race. Verify the plugin saves pre-hide geometry (not a
+minimized 0×0) under residency.
+
+**B6 [COVERED] Zoom.** Host-set ZoomFactor persists across navigations and
+survives hide/show (only a webview recreate resets it — which we never do while
+resident). Zoom compounds with OS scale: 150% monitor × zoom 2.0 = DPR 3 —
+watch Pixi texture memory on 4K@150% machines.
+
+## C. Runtime / deployment / environment
+
+**C1 [🔴] UDF.** Default: `%LOCALAPPDATA%\com.xiaominglab.deskmakeover\EBWebView`
+(keyed on identifier). Crash dumps in `…\EBWebView\Crashpad\reports\`. Add a
+**delete-and-restart-once** recovery on webview init failure (corrupt UDF is the
+common consumer killer; guard with a retry-count file). Win11 24H2
+Administrator Protection: an **elevated main window** points the UDF at the
+elevated user while WebView2 de-elevates → instant death
+([tauri#13926](https://github.com/tauri-apps/tauri/issues/13926)). Law: the UI
+process never elevates; only the `dm-elevated` sidecar does (already our
+security boundary — this is one more reason it stays that way). Add
+`tauri-plugin-single-instance` (second launch = focus, not UDF lock race).
+
+**C2 [🔴] Runtime missing/corrupt at launch.** `downloadBootstrapper` installs
+at install-time only; later removal/AV-block/corruption = bare error, no
+friendly UI. Tauri ≥ the May-2025 pre-flight check
+([PR#13406](https://github.com/tauri-apps/tauri/pull/13406)) at least surfaces a
+proper error — route it to an "install WebView2" screen with the bootstrapper
+link. Verify our pinned Tauri includes that PR.
+
+**C3 [🟡] Evergreen auto-update mid-session** can crash the browser process
+(binaries deleted under a running instance; e.g. the 136.0.3222.0 regression
+wave). wry doesn't surface `NewBrowserVersionAvailable`. Mitigation = the C6
+watchdog + "restart to update" toast. `fixedRuntime` (+~180 MB, manual security
+updates, App-Container ACL quirk on Win10) is the escape hatch only if field
+telemetry shows instability — stay Evergreen by default.
+
+**C4 [🔴] Signing & CN antivirus.** 2024 change: **EV certs no longer grant
+instant SmartScreen reputation** — reputation accrues from volume for OV and EV
+alike; buy **OV**, sign installer + main exe + `dm-elevated.exe`. Unsigned Tauri
+NSIS is routinely false-flagged (Defender `Wacatac`, plus 360/火绒 heuristics —
+even Tauri's own `nsis_tauri_utils.dll` got flagged,
+[#14882](https://github.com/tauri-apps/tauri/issues/14882)). Pre-register:
+360 `open.soft.360.cn/report.htm` · 火绒 `seclab@huorong.cn`; ship a
+"被安全软件拦截" support doc (allowlist `DeskMakeover.exe` + `msedgewebview2.exe`).
+
+**C5 [🔴 decision] Install mode for CN consumers.** The bootstrapper pulls from
+the MS delivery CDN (reachable in mainland China, unlike GitHub — the GitHub
+fetches are **build-time only**, a dev-box concern). But offline/locked-down/
+throttled installs still die with a white first launch. For a consumer visual
+app, first-run success = retention: prefer **`offlineInstaller`** (+~127 MB) or
+at least `embedBootstrapper`. Win10 LTSC (common in CN) ships without the
+runtime most often — it's the population this decision protects.
+
+**C6 [🔴 DIY] Crash watchdog.** wry exposes no `ProcessFailed` — on
+renderer/browser crash the app is a frozen white window. Build: JS heartbeat →
+Rust; on silence, recreate the WebviewWindow (bonus: re-applies zoom, reloads
+SPA); plus `window.onerror`/`unhandledrejection` → `invoke('report_crash')`.
+This is the single biggest regression vs the WPF plan — the old doc assumed a
+config toggle. ([tauri#10157](https://github.com/tauri-apps/tauri/issues/10157))
+
+**C7 [🟡] Enterprise policies.** Edge *browser* GPO does NOT apply (good);
+WebView2-specific policies DO: `BrowserExecutableFolder` redirects,
+`AdditionalBrowserArguments` injection, `ReleaseChannels`, `UpdatesSuppressed`
+(`HKLM\SOFTWARE\Policies\Microsoft\Edge\WebView2\…`). Defense = C10 telemetry
+(log effective runtime path/version/args) so support can spot hijacks.
+
+**C8 [🟡] ARM64 (Snapdragon).** x64-only NSIS runs emulated; x64 host + ARM64
+runtime mixing has documented Office-class failures. Add a native
+`aarch64-pc-windows-msvc` installer, or at minimum test first-run on a
+Snapdragon X device.
+
+**C9 [🔴] Env-var sanitization in `main()`** before `tauri::Builder`:
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (env **wins over code**,
+[#5571](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5571) — can
+inject `--remote-debugging-port`/`--no-sandbox`),
+`WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` (runtime replacement),
+`WEBVIEW2_RELEASE_CHANNEL_PREFERENCE`; pin `WEBVIEW2_USER_DATA_FOLDER` to the
+known-good LocalAppData path (also the C1 elevation fix). Log what was cleared.
+(Note: our own debug workflow uses the args var for CDP — sanitize in release
+builds only, or gate on a dev env check.)
+
+**C10 [🟡] Startup diagnostics block** (rotating local log): runtime version
+(wry `Webview::version()`), effective UDF path, GPU/software-render probe, OS
+build + arch (x64-native vs ARM64-emulated), env/policy overrides detected,
+Crashpad dump presence. This is what makes every other field issue diagnosable.
+
+## D. Input / IME (CN users are the default)
+
+**D1 [HIT→fixed `cfafa65`] IME composition vs Enter/Escape in zone rename** —
+Enter picks the candidate, Escape cancels the pinyin; the editor was
+committing/closing mid-composition. Guard `isComposing || keyCode 229`; also
+`spellCheck=false` (WebView2 spellcheck keys off OS env language, no disable
+API, squiggles pinyin). **Rule for every future text input**: same guard; drive
+search-as-you-type from `input`+`compositionend`, never `keydown`.
+
+**D2 [🟡] Candidate window drift under stacked zoom.** The rename input lives
+inside `transform: scale(view.scale)` (0.2–3) × native ZoomFactor (1.0–2.0);
+Chromium's IME caret-rect math is weak inside CSS-scaled containers → the
+candidate list can float away from the caret. If confirmed on-device: render the
+rename editor in host space (like the zone context menu) instead of the scaled
+layer. ([WebView2Feedback#5570](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5570))
+
+**D3 [🔴 for touch devices] Touch/pen can't move the frameless window.** Both
+drag paths are mouse-only (`data-tauri-drag-region` keys on mouse buttons;
+WebView2 non-client is mouse-only by design, [#2243](https://github.com/MicrosoftEdge/WebView2Feedback/issues/2243)).
+Fix: `onPointerDown` with `pointerType !== 'mouse'` → `startDragging()` + a
+~300 ms double-tap → `toggleMaximize()` on the title bar.
+
+**D4 [🟡] Keyboard accelerators are JS-only.** Host never sets
+`AreBrowserAcceleratorKeysEnabled=false` (wry doesn't expose it) — reload/print
+are handled in the browser process and can leak past `preventDefault` on some
+runtimes; `Ctrl+Shift+I`/`F12`/`F11`/`Ctrl+U` aren't in the JS list at all.
+Verify DevTools is compiled out of release (wry `devtools` feature); consider
+`tauri-plugin-prevent-default` (release-only) to close the rest.
+
+**D5 [🟡] Pinch zoom.** JS ctrl+wheel guard catches trackpad pinch; touchscreen
+pinch goes through native `IsPinchZoomEnabled` (default **true**, not disabled —
+wry doesn't expose it). On touch devices two-finger pinch will page-zoom and
+fight our ZoomFactor. Same lever options as D4.
+
+**D6 [🟡] Hover-only affordances are unreachable by touch** (tile ⋯ button,
+zoom stepper popover, bare try-on, inspector hover). Pen sends hover; finger
+doesn't. Audit for a tap path / `@media (hover: none)` fallback.
+
+**D7 [🟡] First click after tray-restore is swallowed** (wry#637 class) — call
+`set_focus()` in the tray-show handler so the first click, autofocus, and IME
+land. Pairs with B4.
+
+**D8 [🟢 notes]** `dragDropEnabled:false` is **inverted semantics** — it
+disables Tauri's native drop interception, which is precisely what lets our
+HTML5 drop-import work; a future feature needing real file *paths* (not bytes)
+would need re-architecture. Clipboard: prefer the Tauri clipboard plugin over
+`navigator.clipboard` (focus-gated, permission quirks). Window hotkeys are
+IME-safe today (input-element guards); broaden the `HTMLInputElement` check if a
+textarea/contenteditable ever ships. Forced-colors/high-contrast: verify the
+rename input caret; scroll feel is steppier than macOS (fixed wheel deltas) —
+accept. `user-select:none` + context-menu suppression also removes IME
+reconversion — acceptable.

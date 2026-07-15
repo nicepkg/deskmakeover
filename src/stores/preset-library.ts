@@ -129,16 +129,26 @@ interface PresetLibraryStore {
   exportTo: (destPath: string, entries: PresetSaveDto[]) => Promise<boolean>
 }
 
+// Monotonic list-refresh generation (codex #8): a slow `presets.list` must not
+// publish its stale array over a delete/rename that completed while it was in flight
+// (which would resurrect a deleted entry in the UI until the next refresh). Each
+// refresh captures a gen and drops its result if a newer refresh or a mutation has
+// since bumped it. Module scope is fine — the store is a singleton.
+let listGen = 0
+
 export const usePresetLibrary = create<PresetLibraryStore>((set, get) => ({
   entries: [],
   loaded: false,
 
   refresh: async () => {
+    const gen = ++listGen
     try {
       const raw = await call('presets.list')
+      if (gen !== listGen) return // a newer refresh or a mutation superseded us — drop the stale list
       const entries = raw.map(toLibraryPreset).filter((e): e is LibraryPreset => e !== null)
       set({ entries, loaded: true })
     } catch {
+      if (gen !== listGen) return
       set({ entries: [], loaded: true })
     }
   },
@@ -209,6 +219,7 @@ export const usePresetLibrary = create<PresetLibraryStore>((set, get) => ({
   deleteEntry: async (id) => {
     try {
       await call('presets.delete', { entryId: id })
+      listGen++ // invalidate any refresh in flight that predates this delete
       set({ entries: get().entries.filter((e) => e.id !== id) })
     } catch (e) {
       useToasts.getState().show(String(e instanceof Error ? e.message : e))
@@ -220,6 +231,7 @@ export const usePresetLibrary = create<PresetLibraryStore>((set, get) => ({
     if (!trimmed) return
     try {
       await call('presets.rename', { entryId: id, name: trimmed })
+      listGen++ // invalidate any refresh in flight that predates this rename
       set({ entries: get().entries.map((e) => (e.id === id ? { ...e, name: trimmed } : e)) })
     } catch (e) {
       useToasts.getState().show(String(e instanceof Error ? e.message : e))

@@ -349,22 +349,22 @@ const SETTINGS_DB_FILE: &str = "settings.sqlite3";
 /// `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` at an attacker-supplied runtime and run
 /// arbitrary code INSIDE our process. A shipped build honors none of them.
 ///
-/// Only stripped in release, and only when our private `DESKMAKEOVER_DEVTOOLS` opt-in
-/// is absent — so our own CDP debug workflow (which runs the RELEASE binary with
-/// `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=…`) still works when
-/// it also sets `DESKMAKEOVER_DEVTOOLS=1`. Debug builds keep everything untouched.
+/// Active in release builds EXCEPT when the `devtools` cargo feature is compiled in
+/// (off by default; `tauri build` never enables it — so shipped binaries always
+/// sanitize). `devtools` lets a locally-built binary keep the vars so our CDP debug
+/// workflow can pass `--remote-debugging-port`. The opt-out is COMPILE-TIME on purpose
+/// (codex review): a *runtime* env escape hatch would be defeatable by the very
+/// attacker who controls our environment, so a distributed binary must honor no bypass.
 /// Called at the very top of `run()`, before any thread spawns, so `remove_var` is sound.
 fn sanitize_webview_env() {
-    #[cfg(not(debug_assertions))]
-    if std::env::var_os("DESKMAKEOVER_DEVTOOLS").is_none() {
-        for key in [
-            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
-            "WEBVIEW2_USER_DATA_FOLDER",
-            "WEBVIEW2_RELEASE_CHANNEL_PREFERENCE",
-        ] {
-            std::env::remove_var(key);
-        }
+    #[cfg(all(not(debug_assertions), not(feature = "devtools")))]
+    for key in [
+        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+        "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
+        "WEBVIEW2_USER_DATA_FOLDER",
+        "WEBVIEW2_RELEASE_CHANNEL_PREFERENCE",
+    ] {
+        std::env::remove_var(key);
     }
 }
 

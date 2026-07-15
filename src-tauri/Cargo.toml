@@ -24,6 +24,11 @@ required-features = ["bindgen"]
 [features]
 # Enables the gen-bindings dev binary (see [[bin]] above). Off in release/ship builds.
 bindgen = []
+# Opts a locally-built binary OUT of WebView2 env-var sanitization (sanitize_webview_env)
+# so the CDP debug workflow can inject --remote-debugging-port. Off by default and NEVER
+# enabled by `tauri build`, so shipped binaries always sanitize. Compile-time on purpose:
+# a runtime env escape hatch would be defeatable by the attacker it defends against.
+devtools = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

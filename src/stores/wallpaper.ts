@@ -99,6 +99,9 @@ export function makeZone(partial: Partial<ZoneDto> & Pick<ZoneDto, 'cellX' | 'ce
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let interactionOpen = false
 let snapshotTakenThisGesture = false
+// A cold `load()` in flight — so `loaded` can latch only on SUCCESS (see load())
+// without a concurrent second call double-fetching in the gap before it settles.
+let loadInFlight = false
 // Continuous PANEL inputs (typing a title, dragging a slider) coalesce like
 // canvas gestures: same coalesce key within the window = one undo step
 // (codex review M4: per-keystroke snapshots burned the 100-entry history).
@@ -256,11 +259,20 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
     fonts: [],
 
     load: async () => {
-      if (get().loaded) return
-      set({ loaded: true })
-      // Cold load: getScreens now reports whether a durable snapshot persists, so the
-      // whole-desktop restore affordance is correct across a restart (schema 6 D1).
-      await syncFromHost()
+      // Latch `loaded` only AFTER a successful sync (codex #4): a transient first-run
+      // failure — COM init, a temporary adapter error — must stay retryable, not
+      // permanently no-op the wallpaper page for the process lifetime. The in-flight
+      // guard keeps a concurrent second call (StrictMode double-mount) from double-fetching.
+      if (get().loaded || loadInFlight) return
+      loadInFlight = true
+      try {
+        // Cold load: getScreens now reports whether a durable snapshot persists, so the
+        // whole-desktop restore affordance is correct across a restart (schema 6 D1).
+        await syncFromHost()
+        set({ loaded: true })
+      } finally {
+        loadInFlight = false
+      }
     },
 
     refresh: async () => {

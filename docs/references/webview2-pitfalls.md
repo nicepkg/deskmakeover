@@ -284,10 +284,13 @@ over code**, [#5571](https://github.com/MicrosoftEdge/WebView2Feedback/issues/55
 injects `--remote-debugging-port`/`--no-sandbox`), `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`
 (runtime replacement = arbitrary code in our process — the highest-severity vector),
 `WEBVIEW2_USER_DATA_FOLDER` (profile redirect), and `WEBVIEW2_RELEASE_CHANNEL_PREFERENCE`.
-`#[cfg(not(debug_assertions))]` so it only fires in release, and skipped when the private
-`DESKMAKEOVER_DEVTOOLS` opt-in is set so our own CDP workflow (release binary +
-`--remote-debugging-port`) still works. Called at the top of `run()`, single-threaded,
-so `remove_var` is sound.
+`#[cfg(all(not(debug_assertions), not(feature = "devtools")))]` so it fires in every
+release build EXCEPT one compiled with the `devtools` cargo feature — off by default and
+never set by `tauri build`, so shipped binaries always sanitize. `devtools` (compile-time,
+NOT a runtime env flag — a runtime bypass would be defeatable by the attacker it defends
+against, per codex review) lets a locally-built binary keep the vars for the CDP debug
+workflow: `cargo build --release --features devtools`. Called at the top of `run()`,
+single-threaded, so `remove_var` is sound.
 
 **C10 [🟡] Startup diagnostics block** (rotating local log): runtime version
 (wry `Webview::version()`), effective UDF path, GPU/software-render probe, OS

@@ -105,7 +105,13 @@ export function useWallpaperCompositor({
     canvas.addEventListener('webglcontextrestored', onContextRestored)
     ;(async () => {
       const source = await resolveActiveSource()
-      if (cancelled) return
+      if (cancelled) {
+        // The compositor never took ownership of this bitmap — close it here or the
+        // decoded full-res wallpaper leaks in GPU-backed memory (codex #6). Rapid
+        // monitor/dimension changes and WebGL-recovery rebuilds hit this path often.
+        source.bitmap.close()
+        return
+      }
       instance = await WallpaperCompositor.create(canvas, source, state.grid, state.wallTint)
       if (cancelled) {
         instance.destroy()

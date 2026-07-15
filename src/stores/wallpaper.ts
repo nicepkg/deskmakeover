@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { call } from '@/bridge/client'
 import type { FontChoiceDto, LookDto, WallpaperResultDto, WallpaperSourceDto, WallpaperStateDto, ZoneDto } from '@/bridge/types'
 import { decodeWallpaperResult, decodeWallpaperScreens } from '@/bridge/wallpaper-decode'
-import { type ScreenLook, mergeScreenMap } from '@/lib/monitor-reconcile'
+import { type ScreenLook, gridForBounds, mergeScreenMap } from '@/lib/monitor-reconcile'
 import { assembleWallpaperState, loadPersistedLooks, lookDirty, savePersistedLook } from '@/lib/wallpaper-assemble'
 import { activeScreenSourceUrl } from '@/lib/screen-arrange'
 import { getCompositor } from '@/compositor/registry'
@@ -56,6 +56,11 @@ interface WallpaperState {
   /** Re-fetch getScreens + re-assemble (preserving drafts) — the fingerprint-mismatch
    *  regenerate affordance and any external re-sync. */
   refresh: () => Promise<void>
+  /** Recompute every screen's zone lattice from its bounds against the CURRENT observed
+   *  desktop grid (no host round-trip). The icon scan calls this after it records the real
+   *  IFolderView cell pitch, so a wallpaper screen reconciled before the scan (both modules
+   *  mount at boot) does not keep the fallback 92px lattice (codex P2 timing). */
+  regridScreens: () => void
   /** Switch the active monitor; the active-screen mirror + compositor follow it. */
   selectScreen: (monitorId: string) => void
   mutateLook: (change: (look: LookDto) => LookDto, coalesce?: string) => void
@@ -283,6 +288,14 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
 
     refresh: async () => {
       await syncFromHost()
+    },
+
+    regridScreens: () => {
+      const { state } = get()
+      if (!state) return
+      const screens = state.screens.map((s) => ({ ...s, grid: gridForBounds(s.bounds) }))
+      const active = screens.find((s) => s.monitorId === state.activeScreenId)
+      set({ state: { ...state, screens, grid: active?.grid ?? state.grid } })
     },
 
     selectScreen: (monitorId) => {

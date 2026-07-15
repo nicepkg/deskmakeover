@@ -90,11 +90,15 @@ function boundsEqual(a: MonitorBounds, b: MonitorBounds): boolean {
   return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h
 }
 
-// Grid geometry derived from a monitor's physical bounds. The cell pitch + icon size come from
+// Grid geometry derived from a monitor's physical bounds. The cell PITCH + icon size come from
 // the last icon scan's OBSERVED platform grid when available (observed-grid.ts — IFolderView
 // GetSpacing truth), so zones snap to the SAME cells the real desktop icons sit on; the
-// constants below are only the pre-scan / browser-mock fallback (owner report 2026-07-16: a
-// second fabricated 92px lattice drifted from the real desktop grid).
+// constants below are the pre-scan / browser-mock fallback (owner report 2026-07-16: a second
+// fabricated 92px lattice drifted from the real desktop grid). The taskbar reserve stays the
+// per-bounds constant on purpose: the observed reading is the PRIMARY monitor's, and applying
+// it to a secondary monitor (which may have no taskbar) would wrongly drop a row (codex P2).
+// The wallpaper store re-derives grids via `regridScreens` once a scan lands, so a screen
+// reconciled before the first scan does not keep the fallback pitch (codex P2 timing).
 const TASKBAR_HEIGHT = 48
 const ICON_PX = 48
 const CELL = 92
@@ -105,12 +109,11 @@ export function gridForBounds(bounds: MonitorBounds) {
   const iconPx = o?.iconPx ?? ICON_PX
   const cellW = o?.cellWidth ?? CELL
   const cellH = o?.cellHeight ?? CELL
-  const taskbar = o?.taskbarHeight ?? TASKBAR_HEIGHT
-  const usableH = bounds.h - taskbar - INSET * 2
+  const usableH = bounds.h - TASKBAR_HEIGHT - INSET * 2
   return {
     screenWidth: bounds.w,
     screenHeight: bounds.h,
-    taskbarHeight: taskbar,
+    taskbarHeight: TASKBAR_HEIGHT,
     iconPx,
     cellWidth: cellW,
     cellHeight: cellH,

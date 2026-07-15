@@ -543,8 +543,11 @@ export const useIcons = create<IconsState>((set, get) => {
       : scan.items
     kindBuckets = new Map(items.map((i) => [i.id, kindBucket(i.kind)]))
     lastGridMetrics = scan.grid
-    // Share the platform truth with the wallpaper zone lattice (observed-grid.ts).
+    // Share the platform truth with the wallpaper zone lattice (observed-grid.ts), then poke an
+    // already-loaded wallpaper store to re-derive its grids — both modules mount at boot, so the
+    // wallpaper may have reconciled on the fallback pitch before this scan resolved (codex P2).
     recordObservedGrid(scan.grid)
+    if (useWallpaper.getState().loaded) useWallpaper.getState().regridScreens()
     getIconCompositor().invalidateAll()
     const assembled = assembleIconsState({
       draft,

@@ -8,9 +8,11 @@ import {
   orientationOf,
   pickActiveScreenId,
   reconcileMonitorLook,
+  gridForBounds,
   reconcileScreens,
   screenLookFromDto,
 } from '../src/lib/monitor-reconcile'
+import { recordObservedGrid, resetObservedGrid } from '../src/lib/observed-grid'
 import type { LookDto, MonitorBounds, MonitorLookDto } from '../src/bridge/types'
 
 // Pure multi-monitor reconcile rules (spec 04 §B3). No DOM — the identity +
@@ -146,5 +148,36 @@ describe('pickActiveScreenId', () => {
   })
   test('falls back to the first screen when neither matches', () => {
     expect(pickActiveScreenId('GONE', [dto('A'), dto('B')], 'ALSO-GONE')).toBe('A')
+  })
+})
+
+describe('gridForBounds observed-grid coupling (owner 2026-07-16; codex P2)', () => {
+  // The cache is a process-global; reset around each case so the fallback is deterministic.
+  test('falls back to the 92px constants before any scan is recorded', () => {
+    resetObservedGrid()
+    const g = gridForBounds(LAND)
+    expect(g.cellWidth).toBe(92)
+    expect(g.cellHeight).toBe(92)
+    expect(g.iconPx).toBe(48)
+    expect(g.taskbarHeight).toBe(48)
+  })
+
+  test('consumes the observed cell PITCH once a scan is recorded', () => {
+    resetObservedGrid()
+    recordObservedGrid({ screenWidth: 1920, screenHeight: 1080, taskbarHeight: 40, cellWidth: 75, cellHeight: 97, iconPx: 48 })
+    const g = gridForBounds(LAND)
+    expect(g.cellWidth).toBe(75)
+    expect(g.cellHeight).toBe(97)
+    // Taskbar stays the per-bounds constant: the observed reading is the PRIMARY monitor's and
+    // must not be applied to a secondary that may have no taskbar (codex P2).
+    expect(g.taskbarHeight).toBe(48)
+    resetObservedGrid()
+  })
+
+  test('a null-cell observed grid (shell walk failed) keeps the fallback pitch', () => {
+    resetObservedGrid()
+    recordObservedGrid({ screenWidth: 1920, screenHeight: 1080, taskbarHeight: 48, cellWidth: null, cellHeight: null, iconPx: null })
+    expect(gridForBounds(LAND).cellWidth).toBe(92)
+    resetObservedGrid()
   })
 })

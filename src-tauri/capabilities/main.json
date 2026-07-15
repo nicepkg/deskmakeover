@@ -19,7 +19,7 @@
     "opener:allow-default-urls",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**" }]
+      "allow": [{ "path": "$APPDATA" }]
     },
     "dialog:allow-open",
     "dialog:allow-save"

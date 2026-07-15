@@ -133,23 +133,26 @@ export function iconPresets(): PresetDto[] {
  *  (IFolderView GetSpacing/GetViewModeAndIconSize), the cell derives from those — a mirror tile
  *  centers its glyph inside `cellWidth`, so a fabricated wider cell shifted every icon right of
  *  where Windows draws it (owner report 2026-07-16: the preview's left padding read too large).
- *  Previewing a non-current size scales the observed cell by the icon-size ratio (Windows
- *  re-derives spacing with the icon size, approximately proportionally). The `iconPx + 44/48`
- *  constants remain ONLY as the no-observation fallback (browser mock / failed shell walk). */
+ *  For a size OTHER than the observed one we keep the observed ABSOLUTE gutter (`cell − icon`)
+ *  and re-add it around the new icon — NOT a proportional scale: Windows does not promise the
+ *  gutter scales with icon size, and a custom `IconSpacing` would break that assumption (codex
+ *  P2). The `iconPx + 44/48` constants remain ONLY as the no-observation fallback (browser mock
+ *  / failed shell walk). */
 export function iconGrid(size: ConfigDto['size'], metrics: GridMetricsDto = DEFAULT_METRICS): GridDto {
   const iconPx = ICON_PX[size]
   const observed =
     metrics.cellWidth != null && metrics.cellHeight != null && metrics.iconPx != null && metrics.iconPx > 0
       ? { w: metrics.cellWidth, h: metrics.cellHeight, px: metrics.iconPx }
       : null
-  const scale = observed ? iconPx / observed.px : 1
   return {
     screenWidth: metrics.screenWidth,
     screenHeight: metrics.screenHeight,
     taskbarHeight: metrics.taskbarHeight,
     iconPx,
-    cellWidth: observed ? Math.round(observed.w * scale) : iconPx + 44,
-    cellHeight: observed ? Math.round(observed.h * scale) : iconPx + 48,
+    // Preserve the observed gutter around the (possibly different) preview icon; clamp so a
+    // freak reading can never make the cell narrower than the icon.
+    cellWidth: observed ? Math.max(iconPx, iconPx + (observed.w - observed.px)) : iconPx + 44,
+    cellHeight: observed ? Math.max(iconPx, iconPx + (observed.h - observed.px)) : iconPx + 48,
     inset: 14,
     labelFontPx: 12,
   }

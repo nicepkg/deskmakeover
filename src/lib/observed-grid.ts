@@ -15,3 +15,9 @@ export function recordObservedGrid(metrics: GridMetricsDto): void {
 export function observedGrid(): GridMetricsDto | null {
   return observed
 }
+
+/** Test-hygiene reset (the cache is a process-global): lets a suite assert the pre-scan
+ *  fallback deterministically regardless of a prior test having recorded a scan. */
+export function resetObservedGrid(): void {
+  observed = null
+}

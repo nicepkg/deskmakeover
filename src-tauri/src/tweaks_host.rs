@@ -404,10 +404,15 @@ mod tests {
                 );
             }
         }
-        let outcomes = host
-            .apply(STARTER_SLICE.iter().map(|s| s.to_string()).collect())
-            .expect_err("apply of uncertified recipes must refuse, not write");
-        assert!(!outcomes.is_empty());
+        // Every non-guided recipe (not just the starter slice) must refuse a single-id apply —
+        // the fail-closed gate is per-recipe, so assert it per-recipe (codex P3 test strength).
+        for descriptor in first_batch() {
+            if descriptor.tier == TweakTier::Guided {
+                continue;
+            }
+            host.apply(vec![descriptor.id.as_str().to_string()])
+                .expect_err(&format!("{} must refuse a write pre-W3", descriptor.id.as_str()));
+        }
     }
 
     #[test]

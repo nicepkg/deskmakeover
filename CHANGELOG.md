@@ -33,6 +33,10 @@ and release packaging are still pending (tracked as "F8" in STATE.md).
 ### Shell
 - Left module rail (图标 / 壁纸 / 设置), right inspector, compact layout for narrow windows.
   Light-first theme following the system; in-app version + changelog narrative (ADR-0013).
+- Resident tray fully wired (2026-07-16): every menu item responds — deep-links into
+  history/settings/reset, honest toggle-precondition feedback, 撤销最近一次整理 (CAS-gated
+  batch undo), privileged-scope roots + watcher on real known folders; Settings gains the
+  恢复系统原始外观 row (spec 07 §13.2 confirmation) and the auto-format switch.
 
 ### Engineering
 - Warm coral `#FF6F5E` is the only UI accent (blue/violet banned, test-gated); reviewed

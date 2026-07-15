@@ -1,6 +1,6 @@
 import * as React from 'react'
 import type { ReactNode } from 'react'
-import { Bug, CircleHelp, ClipboardCopy, Download, FolderOpen, ImageDown, Mail, MessageSquare, RotateCcw, ScrollText, Tv } from 'lucide-react'
+import { Bug, CircleHelp, ClipboardCopy, Download, FolderOpen, ImageDown, Mail, MessageSquare, RotateCcw, ScrollText, Tv, Undo2 } from 'lucide-react'
 import { call } from '@/bridge/client'
 const appIcon = '/app-icon.svg'
 import { InspectorCard } from '@/components/common/inspector'
@@ -11,6 +11,7 @@ import { Segmented } from '@/components/common/segmented'
 import { ToggleSwitch } from '@/components/common/toggle-switch'
 import { useApp } from '@/stores/app'
 import { useIcons } from '@/stores/icons'
+import { usePresetLibrary } from '@/stores/preset-library'
 import { ChangelogDialog } from '@/components/common/changelog-dialog'
 import { format, useT } from '@/lib/i18n'
 import { buildReport, copyText, issueUrl, mailtoUrl } from '@/lib/diagnostics'
@@ -29,9 +30,10 @@ import { cn } from '@/lib/utils'
 // dialect, matching macOS System Settings density instead of shrinking to
 // side-panel sizes that read miniature on a maximized window.
 
-// Hidden until the host actually implements new-icon auto-beautify (owner 2026-07-10).
-// See the Row it gates below.
-const SHOW_KEEP_UP = false
+// The M7 resident (spec 07) now consumes `keepNewIconsStyled` — the tray loop polls it every
+// heartbeat, so this switch and the tray ☑自动整理新图标 are ONE state. (The 2026-07-10 hide was
+// for the pre-resident era when nothing consumed the flag.)
+const SHOW_KEEP_UP = true
 
 const TRUST_CHIPS: StringKey[] = [
   'About_Chip_Local',
@@ -66,6 +68,29 @@ export function SettingsPage() {
     setArrowHighlight(true)
     window.setTimeout(() => setArrowHighlight(false), 1600)
   }
+
+  // 恢复系统原始外观 (spec 07 §13 level 4 — Settings › Advanced): the destructive vertical exit,
+  // behind the §13.2 confirmation. Also the tray 「恢复系统原始外观…」 deep-link target.
+  const iconsWorking = useIcons((s) => s.state?.working ?? false)
+  const styledCount = useIcons((s) => s.state?.styleableCount ?? 0)
+  const savedLooks = usePresetLibrary((s) => s.entries.length)
+  const [resetOpen, setResetOpen] = React.useState(false)
+  const resetRowRef = React.useRef<HTMLDivElement>(null)
+  const [resetHighlight, setResetHighlight] = React.useState(false)
+  const deepLink = useApp((s) => s.deepLink)
+  React.useEffect(() => {
+    // The §13.2 dialog quotes "你保存的 M 个外观方案" — make M live, not a stale 0.
+    void usePresetLibrary.getState().refresh()
+  }, [])
+  React.useEffect(() => {
+    if (deepLink !== 'reset') return
+    useApp.getState().consumeDeepLink()
+    // Routing only (spec §13: the tray item ROUTES here) — reveal + pulse, never auto-open the
+    // confirmation, so a stray tray click cannot walk toward a destructive action by itself.
+    resetRowRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    setResetHighlight(true)
+    window.setTimeout(() => setResetHighlight(false), 1600)
+  }, [deepLink])
 
   if (!settings || !info) return null
 
@@ -196,7 +221,13 @@ export function SettingsPage() {
                 <Row label={t('Settings_KeepUp')} desc={t('Settings_KeepUpDesc')}>
                   <ToggleSwitch
                     checked={settings.keepNewIconsStyled}
-                    onChange={(keepNewIconsStyled) => void updateSettings({ keepNewIconsStyled })}
+                    onChange={(keepNewIconsStyled) =>
+                      // The §2 precondition (② saved-style must exist) rejects enabling before the
+                      // first Apply — surface WHY instead of a silently stuck switch.
+                      void updateSettings({ keepNewIconsStyled }).catch(() =>
+                        toast(t('Toast_AutoFormatNeedsApply'), 'warn'),
+                      )
+                    }
                     label={t('Settings_KeepUp')}
                   />
                 </Row>
@@ -247,6 +278,19 @@ export function SettingsPage() {
                   </ActionButton>
                 </div>
               </Row>
+              {/* 恢复系统原始外观 (spec 07 §13 level 4): the destructive vertical exit lives HERE
+                  (Settings › Advanced), never in the tray — the tray item only routes to this row.
+                  Deliberately the LAST row: a level-4 action should not sit above everyday knobs. */}
+              <Row
+                innerRef={resetRowRef}
+                highlight={resetHighlight}
+                label={t('Settings_ResetAll')}
+                desc={t('Settings_ResetAllDesc')}
+              >
+                <ActionButton icon={<Undo2 size={12} />} disabled={iconsWorking} onClick={() => setResetOpen(true)}>
+                  {t('Settings_ResetAll')}
+                </ActionButton>
+              </Row>
             </InspectorCard>
           </main>
         </div>
@@ -267,6 +311,28 @@ export function SettingsPage() {
           void useIcons.getState().restoreOverlay()
         }}
         onCancel={() => setArrowRestoreOpen(false)}
+      />
+
+      {/* The §13.2 binding reset copy: the headline sentence + the two bullets that pre-empt the
+          two likely misreadings (saved appearances survive; automation turns off, not resumes). */}
+      <ConfirmSheet
+        open={resetOpen}
+        destructive
+        title={t('ResetAll_Title')}
+        body={
+          <>
+            {format(t('ResetAll_Body1'), styledCount)}
+            <span className="mt-1.5 block">{format(t('ResetAll_Body2'), savedLooks)}</span>
+            <span className="block">{t('ResetAll_Body3')}</span>
+          </>
+        }
+        confirmLabel={t('ResetAll_Confirm')}
+        cancelLabel={t('ResetAll_Cancel')}
+        onConfirm={() => {
+          setResetOpen(false)
+          void useIcons.getState().restore()
+        }}
+        onCancel={() => setResetOpen(false)}
       />
     </FullPage>
   )

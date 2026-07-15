@@ -154,7 +154,7 @@ Ordered by dependency. Tagged **[MAC]** (closable + verifiable here) or **[WIN]*
 | ~~`icon_host.rs` exportCompare~~ | ✅ DONE — webview composes, Rust validates + saves | src-tauri + web |
 | ~~`crates/dm-resident`~~ | ✅ DECISION CORE DONE + codex-hardened — reconciler/queue/tray-SM/consent/stability/version-switch. Remaining = T8 tray/residency wiring + the reconcile-loop driver, `[WV]` | dm-resident |
 | ~~`WindowsActivityMonitor` (T2)~~ | ✅ judge-2 synchronous poll written + msvc-clean; judge-1 WinEventHook precision layer `[WV]` | dm-windows |
-| `src-tauri` tray (T8/T11) | tray-icon feature, §12 menu, windowless close handler, autostart, tray bitmaps — NOT WIRED | src-tauri |
+| ~~`src-tauri` tray (T8)~~ | ✅ WIRED + owner-box-verified 2026-07-16: §12 menu fully live (deep-links to history/settings/reset via `resident://navigate`, toggle precondition feedback, 撤销最近一次整理 = `Reconciler::restore_batch`, settings-poll enablement convergence), windowless close handler, §14 scope RESOLVED via `SHGetKnownFolderPath` (foreground + resident share one resolver), watcher on real known-folder roots. Remaining: T11 tray bitmaps, autostart plugin, OS toast notifications | src-tauri |
 
 ## `[WINDOWS-VERIFY]` surface (blind-written, msvc-clean)
 

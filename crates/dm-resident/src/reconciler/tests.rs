@@ -730,3 +730,139 @@ fn a_prior_crash_is_recovered_unconditionally_every_cycle_even_with_no_new_candi
     // Recovery ran unconditionally: the interrupted mutation was walked back to the original.
     assert_eq!(w.desk.surfaces.borrow()[&items[0].path], b"original:a", "recovery restored the desktop");
 }
+
+// ---- 撤销最近一次整理 (restore_batch, spec 07 §13 level 2) ------------------------------------
+
+/// Runs `restore_batch` over the shared World with the given activity.
+fn undo(
+    w: &mut World,
+    rec: &mut Reconciler,
+    activity: &ScriptedActivity,
+    targets: &[UndoTarget],
+) -> RestoreBatchOutcome {
+    let desk = w.desk.clone();
+    let reader = DeskReader(&desk);
+    let applier = DeskApplier(&desk);
+    let ports = ReconcilerPorts {
+        scanner: &FakeScanner(Vec::new()), // restore_batch never scans
+        extractor: &FakeExtractor,
+        reader: &reader,
+        applier: &applier,
+        assets: &w.assets,
+        activity,
+        stability: &ScriptedStability::default(),
+    };
+    rec.restore_batch(&ports, targets, &mut w.journal, &mut w.ledger).unwrap()
+}
+
+#[test]
+fn undo_restores_the_batch_and_the_resident_never_re_proposes_it() {
+    let items = vec![user_item("edge")];
+    let mut w = World::new(&items);
+    let mut rec = Reconciler::new();
+    let scanner = FakeScanner(items.clone());
+    let stable = ScriptedStability::default();
+
+    // Prime the settle gate (first sight defers), then propose→apply.
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    let out = cycle_then_apply(&mut w, &mut rec, &scanner, &stable, &style());
+    assert_eq!(out.applied, vec![ItemId::from_raw("edge")]);
+    assert_eq!(out.applied_snapshot.len(), 1, "the batch carries its undo snapshot");
+    assert!(w.desk.surfaces.borrow()[&items[0].path].starts_with(b"styled:"));
+
+    let undone = undo(&mut w, &mut rec, &ScriptedActivity::idle(), &out.applied_snapshot);
+    assert_eq!(undone.restored, vec![ItemId::from_raw("edge")], "the batch is restored");
+    assert_eq!(
+        w.desk.surfaces.borrow()[&items[0].path], b"original:edge",
+        "the bytes are back to the true original"
+    );
+    // The ledger row is KEPT (manual-restore tuple semantics): the resident must never treat the
+    // undone item as a fresh newcomer and restyle it (the ABA reconcile's comment forbids).
+    assert!(w.ledger.get(&ItemId::from_raw("edge")).unwrap().is_some(), "the row lingers by design");
+    let after = cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    assert!(after.proposed.is_empty(), "an undone item is never re-proposed");
+    assert!(after.conflicts.is_empty(), "the poison tuple is silently skipped, not alarmed");
+
+    // Idempotence: a second undo of the same batch is a clean skip, not an error.
+    let again = undo(&mut w, &mut rec, &ScriptedActivity::idle(), &out.applied_snapshot);
+    assert_eq!(again.skipped, vec![ItemId::from_raw("edge")], "already original → skipped");
+    assert!(again.restored.is_empty() && again.errors.is_empty());
+}
+
+#[test]
+fn undo_never_reverts_a_newer_foreground_restyle() {
+    // codex 2026-07-16 P1: the user re-styled the item VIA THE APP after the resident batch —
+    // the ledger row now carries a NEWER last-applied fingerprint. The undo's CAS anchor is the
+    // BATCH's snapshot, so the item reads superseded and the newer look survives.
+    let items = vec![user_item("fresh")];
+    let mut w = World::new(&items);
+    let mut rec = Reconciler::new();
+    let scanner = FakeScanner(items.clone());
+    let stable = ScriptedStability::default();
+
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    let out = cycle_then_apply(&mut w, &mut rec, &scanner, &stable, &style());
+    assert_eq!(out.applied.len(), 1);
+
+    // Simulate the foreground Apply: new bytes on the desktop + the ledger row's last-applied
+    // bumped to match (exactly what TxnDriver::apply does on a re-style).
+    let newer = b"styled:foreground-v2".to_vec();
+    w.desk.surfaces.borrow_mut().insert(items[0].path.clone(), newer.clone());
+    let mut entry = w.ledger.get(&ItemId::from_raw("fresh")).unwrap().unwrap();
+    entry.last_applied_fingerprint = Fingerprint::of_bytes(&newer);
+    w.ledger.upsert(entry).unwrap();
+
+    let undone = undo(&mut w, &mut rec, &ScriptedActivity::idle(), &out.applied_snapshot);
+    assert_eq!(undone.conflicts, vec![ItemId::from_raw("fresh")], "superseded — flagged, not undone");
+    assert!(undone.restored.is_empty());
+    assert_eq!(
+        w.desk.surfaces.borrow()[&items[0].path], newer,
+        "the user's newer app-applied look survives the undo"
+    );
+}
+
+#[test]
+fn undo_never_clobbers_a_hand_edit_since_the_batch() {
+    let items = vec![user_item("edited")];
+    let mut w = World::new(&items);
+    let mut rec = Reconciler::new();
+    let scanner = FakeScanner(items.clone());
+    let stable = ScriptedStability::default();
+
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    let out = cycle_then_apply(&mut w, &mut rec, &scanner, &stable, &style());
+    assert_eq!(out.applied.len(), 1);
+    // The user hand-edits the styled icon before clicking undo.
+    w.desk.surfaces.borrow_mut().insert(items[0].path.clone(), b"user-custom".to_vec());
+
+    let undone = undo(&mut w, &mut rec, &ScriptedActivity::idle(), &out.applied_snapshot);
+    assert_eq!(undone.conflicts, vec![ItemId::from_raw("edited")], "flagged, never touched");
+    assert!(undone.restored.is_empty());
+    assert_eq!(
+        w.desk.surfaces.borrow()[&items[0].path], b"user-custom",
+        "the hand-edit survives the undo (never-clobber)"
+    );
+}
+
+#[test]
+fn undo_defers_while_the_desktop_is_busy_and_a_missing_row_is_a_clean_skip() {
+    let items = vec![user_item("busybee")];
+    let mut w = World::new(&items);
+    let mut rec = Reconciler::new();
+    let scanner = FakeScanner(items.clone());
+    let stable = ScriptedStability::default();
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    let out = cycle_then_apply(&mut w, &mut rec, &scanner, &stable, &style());
+    assert_eq!(out.applied.len(), 1);
+
+    // Busy → the whole undo defers, nothing restored (spec 07 §11: no writes while active).
+    let deferred = undo(&mut w, &mut rec, &ScriptedActivity::script(&[true]), &out.applied_snapshot);
+    assert!(deferred.deferred_busy && deferred.restored.is_empty());
+    assert!(w.desk.surfaces.borrow()[&items[0].path].starts_with(b"styled:"), "untouched while busy");
+
+    // A target with no ledger row (already healed elsewhere) is a clean skip, not an error.
+    let ghost = UndoTarget { id: ItemId::from_raw("ghost"), applied_fingerprint: Fingerprint::of_bytes(b"whatever") };
+    let missing = undo(&mut w, &mut rec, &ScriptedActivity::idle(), &[ghost]);
+    assert_eq!(missing.skipped, vec![ItemId::from_raw("ghost")]);
+    assert!(missing.errors.is_empty());
+}

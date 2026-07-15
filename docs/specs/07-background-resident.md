@@ -490,7 +490,13 @@ OFF→OFF (disabling when already disabled) is the idempotent no-op.
 
 1. **Toast inline undo** (trust-building tier, §2 — single action, zero navigation).
 2. **Tray "撤销最近一次整理"** (always available once automation has run once —
-   still narrow, one batch).
+   still narrow, one batch). Implementation contract (2026-07-16,
+   `Reconciler::restore_batch`): recover-first · busy-defers (§11) · per-item CAS
+   on OUR last-applied fingerprint (a hand-edit since the batch is flagged, never
+   clobbered) · restores from the ledger `original_anchor` · the ledger row is
+   deliberately KEPT — the restored item then reads as the manual-restore tuple
+   `reconcile` silently skips, so the resident never re-proposes an undone item
+   (removing the row would make it a fresh newcomer → restyle-after-undo ABA).
 3. **Switch to a different saved appearance** (§9 — the primary "buyer's remorse"
    path; horizontal re-dress, strictly lighter-weight than a reset).
 4. **Settings › Advanced › 「恢复所有图标为系统原始外观」** (§10 — vertical exit,

@@ -22,8 +22,8 @@ use std::sync::{Arc, Mutex};
 
 use dm_operations::SettingsStore;
 use dm_resident::{
-    DriverConfig, MonotonicClock, Proposal, ResidentDriver, ResidentHost, TrayState, VettedCandidate,
-    WatchEvent, PROPOSAL_TIMEOUT_SECS,
+    DriverConfig, MonotonicClock, Proposal, ResidentDriver, ResidentHost, TrayState, UndoTarget,
+    VettedCandidate, WatchEvent, PROPOSAL_TIMEOUT_SECS,
 };
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -43,6 +43,9 @@ enum ResidentCmd {
     SetEnabled(bool),
     /// The user acknowledged the ERROR state → retry (spec 07 §12).
     AcknowledgeError,
+    /// 撤销最近一次整理 (spec 07 §13 level 2): restore the last applied batch off its ledger
+    /// anchors — CAS-gated, never clobbers a hand-edit.
+    UndoLast,
 }
 
 /// Shared state between the main thread (tray handlers, window-close) and the driver loop thread.
@@ -155,12 +158,20 @@ struct TrayHost {
     status: MenuItem<Wry>,
     toggle: CheckMenuItem<Wry>,
     pending_item: MenuItem<Wry>,
+    /// 撤销最近一次整理 — enabled only while an undoable batch exists (spec 07 §12.1 menu law).
+    undo: MenuItem<Wry>,
     pending: Option<Pending>,
 }
 
 impl TrayHost {
-    fn new(app: AppHandle<Wry>, status: MenuItem<Wry>, toggle: CheckMenuItem<Wry>, pending_item: MenuItem<Wry>) -> Self {
-        Self { app, status, toggle, pending_item, pending: None }
+    fn new(
+        app: AppHandle<Wry>,
+        status: MenuItem<Wry>,
+        toggle: CheckMenuItem<Wry>,
+        pending_item: MenuItem<Wry>,
+        undo: MenuItem<Wry>,
+    ) -> Self {
+        Self { app, status, toggle, pending_item, undo, pending: None }
     }
 
     /// Arms the surfaced proposal's 2h-timeout deadline on the driver's clock (spec 07 §2 item 4).
@@ -218,6 +229,7 @@ fn run_loop<E: engine::ResidentEngine>(
     mut engine: E,
     mut host: TrayHost,
     shared: Arc<ResidentShared>,
+    settings: Arc<SettingsStore>,
     initial_enabled: bool,
 ) {
     // Reflect the persisted toggle on boot (spec 07 §2 — enablement survives restarts).
@@ -226,7 +238,22 @@ fn run_loop<E: engine::ResidentEngine>(
     } else {
         host.render_tray(&TrayState::Off, 0);
     }
+    // The last successfully applied batch WITH its snapshot fingerprints — the tray
+    // 「撤销最近一次整理」 target (spec 07 §13 level 2). Cleared only when an undo pass finishes
+    // with no per-item errors; a busy/recovery-deferred or degraded undo keeps it for a retry.
+    let mut last_batch: Vec<UndoTarget> = Vec::new();
     while !shared.shutdown.load(Ordering::Relaxed) {
+        // Converge on the PERSISTED toggle every pass (one indexed sqlite read per 500ms
+        // heartbeat): the tray writes it, but so do the Settings page toggle and the §10 reset
+        // coupling (`reset_style_and_autoformat`) — without this the loop would keep a stale
+        // enablement until restart after any non-tray writer flipped it. The engine already
+        // re-reads ② every cycle for the same never-drift reason.
+        if let Ok(s) = settings.get() {
+            if s.keep_new_icons_styled != shared.enabled.load(Ordering::Relaxed) {
+                shared.enabled.store(s.keep_new_icons_styled, Ordering::Relaxed);
+                driver.set_enabled(s.keep_new_icons_styled, &mut host);
+            }
+        }
         for cmd in shared.take_cmds() {
             match cmd {
                 ResidentCmd::SetEnabled(on) => {
@@ -234,6 +261,42 @@ fn run_loop<E: engine::ResidentEngine>(
                     driver.set_enabled(on, &mut host);
                 }
                 ResidentCmd::AcknowledgeError => driver.on_error_acknowledged(&mut host),
+                ResidentCmd::UndoLast => {
+                    if last_batch.is_empty() {
+                        continue; // stale click — the menu item disables right after an undo
+                    }
+                    match engine.restore_batch(&last_batch) {
+                        Ok(out) if out.deferred_busy || out.deferred_recovery => {
+                            // Nothing restored — keep the batch so the user can retry once idle.
+                            log::info!("resident: undo deferred (busy/recovery) — batch kept");
+                        }
+                        Ok(out) => {
+                            log::info!(
+                                "resident: undo restored {} item(s) ({} conflict(s) kept, {} skipped)",
+                                out.restored.len(),
+                                out.conflicts.len(),
+                                out.skipped.len()
+                            );
+                            if !out.restored.is_empty() {
+                                let _ = host.app.emit("resident://undone", out.restored.len());
+                            }
+                            if out.errors.is_empty() {
+                                // Fully settled: every item restored / superseded / already
+                                // original — nothing undoable remains.
+                                last_batch.clear();
+                                let _ = host.undo.set_enabled(false);
+                            } else {
+                                // A per-item read/restore fault — KEEP the batch armed so the
+                                // user can retry (already-restored items re-skip idempotently;
+                                // clearing here would strand the failed items, codex P2).
+                                for e in &out.errors {
+                                    log::warn!("resident: undo degraded — {e}");
+                                }
+                            }
+                        }
+                        Err(reason) => driver.on_failure(format!("undo: {reason}"), &mut host),
+                    }
+                }
             }
         }
         if shared.force_reconcile.swap(false, Ordering::Relaxed) {
@@ -255,6 +318,13 @@ fn run_loop<E: engine::ResidentEngine>(
             match engine.apply_batch(batch) {
                 Ok(out) => {
                     shared.pending_privileged.store(out.pending_privileged, Ordering::Relaxed);
+                    if !out.applied_snapshot.is_empty() {
+                        // Arm 撤销最近一次整理 with THIS batch's id+fingerprint snapshots
+                        // (level 2 — narrow, one batch; the snapshot is the undo CAS anchor).
+                        last_batch = out.applied_snapshot.clone();
+                        let _ = host.undo.set_enabled(true);
+                        let _ = host.app.emit("resident://applied", out.applied_snapshot.len());
+                    }
                     driver.on_batch_done(&mut host);
                 }
                 Err(reason) => driver.on_failure(reason, &mut host),
@@ -299,12 +369,15 @@ pub fn setup(
 
     let shared_evt = shared.clone();
     let settings_evt = settings.clone();
+    let toggle_evt = toggle.clone();
     let _tray = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip(tooltip_for(&initial))
         .icon(app.default_window_icon().expect("bundled window icon").clone())
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(move |app, event| on_menu_event(app, event.id.as_ref(), &shared_evt, &settings_evt))
+        .on_menu_event(move |app, event| {
+            on_menu_event(app, event.id.as_ref(), &shared_evt, &settings_evt, &toggle_evt)
+        })
         .on_tray_icon_event(|tray, event| {
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
@@ -313,13 +386,21 @@ pub fn setup(
         })
         .build(app)?;
 
-    spawn_loop(app.clone(), shared.clone(), settings, data_dir, (status, toggle, pending_item), enabled0);
+    spawn_loop(app.clone(), shared.clone(), settings, data_dir, (status, toggle, pending_item, undo), enabled0);
     Ok(ResidentHandle(shared))
 }
 
 /// Handles a tray menu click (main thread). Enable/disable go through the settings-patch layer FIRST
 /// (spec 07 §2 precondition — a `true` while ② is empty is rejected there), then queue the driver.
-fn on_menu_event(app: &AppHandle<Wry>, id: &str, shared: &Arc<ResidentShared>, settings: &Arc<SettingsStore>) {
+/// History / Settings / Reset show the window AND emit a `resident://navigate` deep-link the web
+/// shell routes ("恢复系统原始外观" lands on Settings › Advanced there, never reverts inline — §13).
+fn on_menu_event(
+    app: &AppHandle<Wry>,
+    id: &str,
+    shared: &Arc<ResidentShared>,
+    settings: &Arc<SettingsStore>,
+    toggle: &CheckMenuItem<Wry>,
+) {
     match id {
         "dm_quit" => {
             shared.shutdown.store(true, Ordering::Relaxed);
@@ -334,7 +415,15 @@ fn on_menu_event(app: &AppHandle<Wry>, id: &str, shared: &Arc<ResidentShared>, s
                     shared.enabled.store(desired, Ordering::Relaxed);
                     shared.push_cmd(ResidentCmd::SetEnabled(desired));
                 }
-                Err(e) => log::warn!("resident: toggle rejected (spec 07 §2 precondition?) — {e}"),
+                Err(e) => {
+                    // The OS menu auto-flips the checkmark on click — put it back to the REAL
+                    // state, then tell the user WHY in-app (a silent dead toggle was the exact
+                    // "menu items don't respond" trap, owner 2026-07-16).
+                    let _ = toggle.set_checked(shared.enabled.load(Ordering::Relaxed));
+                    log::warn!("resident: toggle rejected (spec 07 §2 precondition) — {e}");
+                    show_main_window(app);
+                    let _ = app.emit("resident://toggle-rejected", ());
+                }
             }
         }
         // "立即整理桌面": rescan now + confirm the pending batch (skip the 2h wait, spec 07 §12/§2).
@@ -345,8 +434,25 @@ fn on_menu_event(app: &AppHandle<Wry>, id: &str, shared: &Arc<ResidentShared>, s
             shared.force_reconcile.store(true, Ordering::Relaxed);
             shared.apply_now.store(true, Ordering::Relaxed);
         }
-        // Every other item opens the window (deep-linking history/settings/reset/undo is a frontend
-        // follow-up; "恢复系统原始外观" lands on Settings › Advanced there, never inline — spec §13).
+        "dm_undo" => shared.push_cmd(ResidentCmd::UndoLast),
+        // Deep-link emits ride the tauri event bus; the web listener registers during webview
+        // module init, so a click landing in the first moments of a COLD boot can lose the
+        // navigate payload (the window still opens — a second click navigates). Known narrow
+        // window, accepted (codex 2026-07-16 P2-3): the tray exists before the webview only
+        // during startup, and hide-on-close keeps listeners alive for the resident's lifetime.
+        "dm_history" => {
+            show_main_window(app);
+            let _ = app.emit("resident://navigate", "history");
+        }
+        "dm_settings" => {
+            show_main_window(app);
+            let _ = app.emit("resident://navigate", "settings");
+        }
+        "dm_reset" => {
+            show_main_window(app);
+            let _ = app.emit("resident://navigate", "reset");
+        }
+        // dm_open (and anything unrecognized) just shows the window.
         _ => show_main_window(app),
     }
 }
@@ -379,14 +485,14 @@ fn spawn_loop(
     shared: Arc<ResidentShared>,
     settings: Arc<SettingsStore>,
     data_dir: PathBuf,
-    items: (MenuItem<Wry>, CheckMenuItem<Wry>, MenuItem<Wry>),
+    items: (MenuItem<Wry>, CheckMenuItem<Wry>, MenuItem<Wry>, MenuItem<Wry>),
     enabled0: bool,
 ) {
-    let engine = engine::DevhostResidentEngine::new(settings, &data_dir);
+    let engine = engine::DevhostResidentEngine::new(settings.clone(), &data_dir);
     std::thread::spawn(move || {
-        let host = TrayHost::new(app, items.0, items.1, items.2);
+        let host = TrayHost::new(app, items.0, items.1, items.2, items.3);
         let driver = ResidentDriver::new(MonotonicClock::new(), DriverConfig::default());
-        run_loop(driver, engine, host, shared, enabled0);
+        run_loop(driver, engine, host, shared, settings, enabled0);
     });
 }
 
@@ -396,46 +502,48 @@ fn spawn_loop(
     shared: Arc<ResidentShared>,
     settings: Arc<SettingsStore>,
     data_dir: PathBuf,
-    items: (MenuItem<Wry>, CheckMenuItem<Wry>, MenuItem<Wry>),
+    items: (MenuItem<Wry>, CheckMenuItem<Wry>, MenuItem<Wry>, MenuItem<Wry>),
     enabled0: bool,
 ) {
     // [WINDOWS-VERIFY] the real engine + watcher. Cannot be msvc-cross-checked here (src-tauri pulls
     // rusqlite's C build) — see docs/references/windows-wiring-handoff/m7-resident.md.
-    let engine = match engine::WindowsResidentEngine::new(settings, &data_dir) {
+    let engine = match engine::WindowsResidentEngine::new(settings.clone(), &data_dir) {
         Ok(e) => e,
         Err(e) => {
+            // The loop never starts: say so IN the menu instead of leaving live-looking rows that
+            // silently do nothing (the owner's "没有反应" trap, 2026-07-16).
             log::error!("resident: failed to build the Windows engine — {e}");
+            let _ = items.0.set_text("自动整理：初始化失败，重启应用后重试");
+            let _ = items.1.set_enabled(false);
             return;
         }
     };
-    // The real desktop watcher (B10) feeds the loop's hint queue. Roots MUST come from
-    // SHGetKnownFolderPath (spec 07 §3, never hardcoded) — resolved here is a [WINDOWS-VERIFY] point.
+    // The real desktop watcher (B10) feeds the loop's hint queue. Roots come from
+    // SHGetKnownFolderPath (spec 07 §3, never hardcoded) — [WINDOWS-VERIFY] runtime.
     let watch = start_desktop_watch(shared.clone());
     std::thread::spawn(move || {
         let _watch = watch; // hold the DesktopWatch alive for the loop's lifetime
-        let host = TrayHost::new(app, items.0, items.1, items.2);
+        let host = TrayHost::new(app, items.0, items.1, items.2, items.3);
         let driver = ResidentDriver::new(MonotonicClock::new(), DriverConfig::default());
-        run_loop(driver, engine, host, shared, enabled0);
+        run_loop(driver, engine, host, shared, settings, enabled0);
     });
 }
 
 /// [WINDOWS-VERIFY] Arms the `notify` desktop watcher (B10) and forwards each hint into the loop's
-/// queue. Returns the `DesktopWatch` guard the caller must hold. Known-folder resolution +
-/// OneDrive-KFM re-resolution are the runtime verification points.
+/// queue. Returns the `DesktopWatch` guard the caller must hold. Roots resolve via
+/// `SHGetKnownFolderPath` (user + public desktop, spec 07 §3 — never hardcoded); OneDrive-KFM
+/// re-resolution stays a runtime verification point.
 #[cfg(windows)]
 fn start_desktop_watch(shared: Arc<ResidentShared>) -> Option<dm_windows::watcher::DesktopWatch> {
-    // [WINDOWS-VERIFY] resolve via SHGetKnownFolderPath (user + public desktop); this env-based
-    // placeholder is NOT spec-compliant (§3 forbids hardcoding) and exists only so the blind wiring
-    // is shaped — replace with the real known-folder resolver on the box.
-    let mut roots: Vec<PathBuf> = Vec::new();
-    if let Ok(user) = std::env::var("USERPROFILE") {
-        roots.push(PathBuf::from(user).join("Desktop"));
-    }
-    if let Ok(public) = std::env::var("PUBLIC") {
-        roots.push(PathBuf::from(public).join("Desktop"));
-    }
+    let roots: Vec<PathBuf> = match dm_windows::shell::known_folders::desktop_roots() {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("resident: desktop-root resolution failed — the watcher is not armed: {e}");
+            return None;
+        }
+    };
     if roots.is_empty() {
-        log::error!("resident: no desktop roots resolved — the watcher is not armed ([WINDOWS-VERIFY])");
+        log::error!("resident: no desktop roots resolved — the watcher is not armed");
         return None;
     }
     match dm_windows::watcher::watch_desktops(roots, move |event| shared.push_event(event)) {

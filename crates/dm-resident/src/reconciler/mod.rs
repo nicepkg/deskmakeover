@@ -73,6 +73,17 @@ pub struct VettedCandidate {
     pub fingerprint: Fingerprint,
 }
 
+/// One undoable item of an applied batch: the id plus the fingerprint THE BATCH left on it —
+/// [`Reconciler::restore_batch`]'s CAS anchor. Anchoring on this snapshot (never on the ledger's
+/// CURRENT `last_applied`) is load-bearing: a foreground re-style after the batch bumps the
+/// ledger fingerprint, and an undo must then treat the item as superseded — restoring it to
+/// original would wipe the user's newer look (codex 2026-07-16 P1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UndoTarget {
+    pub id: ItemId,
+    pub applied_fingerprint: Fingerprint,
+}
+
 /// What one reconcile cycle did / decided.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ReconcileOutcome {
@@ -83,6 +94,9 @@ pub struct ReconcileOutcome {
     /// Items committed by `apply_batch` (the host's confirm/timeout entry). `reconcile` never
     /// populates this in v1 — it only proposes (spec §2 item 4).
     pub applied: Vec<ItemId>,
+    /// The committed items WITH the fingerprint the batch left on each — the host arms the tray
+    /// 「撤销最近一次整理」 with these (spec 07 §13 level 2; see [`UndoTarget`]).
+    pub applied_snapshot: Vec<UndoTarget>,
     /// Items flagged, never touched: externally modified vs our ledger row, or ambiguous
     /// poison/manual-restore tuples (the background NEVER resolves ambiguity — the foreground
     /// heal path owns that).
@@ -417,9 +431,122 @@ impl Reconciler {
         let outcome = TxnDriver::new(ports.reader, ports.applier, ports.assets)
             .apply(txn.next_id(), requests, journal, ledger)?;
         out.applied = outcome.committed;
+        // Snapshot each committed row's just-written fingerprint — the undo CAS anchor. Read
+        // straight off the ledger the driver just upserted, so the anchor is EXACTLY what this
+        // batch left behind (a later foreground re-style bumps the row and undo then skips).
+        for id in &out.applied {
+            if let Some(entry) = ledger.get(id)? {
+                out.applied_snapshot.push(UndoTarget {
+                    id: id.clone(),
+                    applied_fingerprint: entry.last_applied_fingerprint.clone(),
+                });
+            }
+        }
         out.conflicts.extend(outcome.conflicts);
         if let Some(e) = outcome.error {
             out.errors.push(e);
+        }
+        Ok(out)
+    }
+}
+
+/// What [`Reconciler::restore_batch`] did — the tray 「撤销最近一次整理」 outcome (spec 07 §13
+/// level 2).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct RestoreBatchOutcome {
+    /// Items whose bytes were restored to the true original.
+    pub restored: Vec<ItemId>,
+    /// Items skipped because there was nothing safe to undo: no ledger row, already at the
+    /// original, vanished, or an in-flight row recovery owns.
+    pub skipped: Vec<ItemId>,
+    /// Items whose live state matched NEITHER our last-applied nor the original — a user hand-edit
+    /// since the batch. Never clobbered (recovery:265 never-clobber law).
+    pub conflicts: Vec<ItemId>,
+    /// The whole undo deferred because the desktop was busy (spec 07 §11) — nothing restored;
+    /// the host keeps the batch and the user can retry.
+    pub deferred_busy: bool,
+    /// A prior crash was recovered first — the undo stands down this pass (retry after re-sync).
+    pub deferred_recovery: bool,
+    /// Per-item read/restore faults — the rest of the batch proceeds.
+    pub errors: Vec<String>,
+}
+
+impl Reconciler {
+    /// Undoes the last auto-format batch (spec 07 §13 level 2 — the tray 「撤销最近一次整理」):
+    /// restores each item's bytes from its ledger anchor, CAS-gated on THE BATCH's snapshot
+    /// fingerprint ([`UndoTarget`]) so neither a user hand-edit NOR a newer foreground re-style
+    /// since the batch is ever clobbered (both read as superseded → conflict, untouched).
+    ///
+    /// The ledger row is deliberately KEPT (state unchanged): after the restore the live bytes
+    /// equal the original, which reads as the poison/manual-restore tuple `reconcile` already
+    /// silently skips — so the resident never re-proposes the undone item (dropping the row would
+    /// make it a fresh newcomer next cycle: restyle-after-undo, the exact ABA `reconcile`'s
+    /// comment forbids). The foreground heal+fence owns resolving the stale row, same as a manual
+    /// restore. Restores are idempotent byte-writes off a durable anchor, so this path takes no
+    /// journal transaction — a crash mid-batch leaves each item individually consistent (either
+    /// still styled-ours or exactly original), mirroring `reset_to_original`'s documented model.
+    /// The read→restore pair is check-then-act like every platform write path (the known F1
+    /// platform-CAS limitation, recovery:265) — the §11 idle gate bounds, not eliminates, it.
+    pub fn restore_batch(
+        &mut self,
+        ports: &ReconcilerPorts<'_>,
+        targets: &[UndoTarget],
+        journal: &mut dyn JournalSink,
+        ledger: &mut dyn LedgerStore,
+    ) -> Result<RestoreBatchOutcome> {
+        let mut out = RestoreBatchOutcome::default();
+        // A crash between the batch and this undo must reconcile first (same law as apply_batch).
+        let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger)?;
+        if !recovery.degraded.is_empty() || recovery.moved_or_uncertain() {
+            out.errors.push("recovery pending — undo deferred".into());
+            out.deferred_recovery = true;
+            return Ok(out);
+        }
+        // No writes while the user is active (spec 07 §11) — an undo is still a desktop write wave.
+        if ports.activity.is_desktop_busy().unwrap_or(true) {
+            out.deferred_busy = true;
+            return Ok(out);
+        }
+        for target in targets {
+            let id = &target.id;
+            let Some(entry) = ledger.get(id)? else {
+                out.skipped.push(id.clone()); // row already healed/removed — nothing to undo
+                continue;
+            };
+            if !entry.state.is_committed() {
+                out.skipped.push(id.clone()); // in-flight/recovering row — recovery owns it
+                continue;
+            }
+            // A ledger row newer than the batch (a foreground Apply / version switch re-styled
+            // this item since) SUPERSEDES the undo — restoring to original here would wipe the
+            // user's newer look (codex 2026-07-16 P1).
+            if entry.last_applied_fingerprint != target.applied_fingerprint {
+                out.conflicts.push(id.clone());
+                continue;
+            }
+            let current = match ports.reader.read_fingerprint(&entry.target) {
+                Ok(f) => f,
+                Err(PortError::NotFound(_)) => {
+                    out.skipped.push(id.clone()); // vanished since the batch — nothing to restore
+                    continue;
+                }
+                Err(e) => {
+                    out.errors.push(format!("read {}: {e}", id.as_str()));
+                    continue;
+                }
+            };
+            if current == entry.original_fingerprint {
+                out.skipped.push(id.clone()); // already at the true original — idempotent no-op
+                continue;
+            }
+            if current != target.applied_fingerprint {
+                out.conflicts.push(id.clone()); // hand-edited since the batch — never clobber
+                continue;
+            }
+            match ports.applier.restore(&entry.target, &entry.original_anchor) {
+                Ok(()) => out.restored.push(id.clone()),
+                Err(e) => out.errors.push(format!("restore {}: {e}", id.as_str())),
+            }
         }
         Ok(out)
     }

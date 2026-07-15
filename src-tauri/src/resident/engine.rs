@@ -15,7 +15,7 @@ use dm_operations::icons::scope::ScopeRoots;
 use dm_operations::{JournalSink, LedgerStore, SettingsStore, TxnIdAllocator};
 use dm_resident::{
     FreshnessInputs, ReconcileContext, ReconcileEngine, ReconcileOutcome, Reconciler,
-    ReconcilerPorts, TrustState, VettedCandidate,
+    ReconcilerPorts, RestoreBatchOutcome, TrustState, UndoTarget, VettedCandidate,
 };
 
 /// The host-side engine the resident loop drives: [`ReconcileEngine::reconcile`] (the driver's
@@ -25,6 +25,10 @@ pub trait ResidentEngine: ReconcileEngine {
     /// flow uses, writing ONLY store ①. A busy desktop or a since-propose hand-edit is handled inside
     /// the reconciler (CAS + activity re-check) — the host just hands the batch over.
     fn apply_batch(&mut self, candidates: Vec<VettedCandidate>) -> Result<ReconcileOutcome, String>;
+
+    /// Undoes the last applied batch (spec 07 §13 level 2 — the tray 「撤销最近一次整理」):
+    /// snapshot-CAS-gated ledger-anchor restores through [`Reconciler::restore_batch`].
+    fn restore_batch(&mut self, targets: &[UndoTarget]) -> Result<RestoreBatchOutcome, String>;
 }
 
 /// Wall-clock seconds for the freshness signal (spec 07 §2 item 8 — dormant in v1, which always
@@ -204,6 +208,26 @@ mod devhost {
                 &mut self.ledger,
             )
         }
+
+        fn restore_batch(&mut self, targets: &[UndoTarget]) -> Result<RestoreBatchOutcome, String> {
+            let scanner = DevDesktopScanner;
+            let extractor = DevIconSourceExtractor(self.desk.clone());
+            let reader = DevIconReader(self.desk.clone());
+            let applier = DevIconApplier(self.desk.clone());
+            let (activity, stability) = (DevActivity, DevStability);
+            let ports = ReconcilerPorts {
+                scanner: &scanner,
+                extractor: &extractor,
+                reader: &reader,
+                applier: &applier,
+                assets: &self.assets,
+                activity: &activity,
+                stability: &stability,
+            };
+            self.rec
+                .restore_batch(&ports, targets, &mut self.journal, &mut self.ledger)
+                .map_err(|e| e.to_string())
+        }
     }
 }
 #[cfg(not(windows))]
@@ -253,9 +277,9 @@ mod win {
                 settings,
                 assets: FsAssetStore::new(data_dir.join("icon-assets")),
                 stability: FsStabilityReader,
-                // [WINDOWS-VERIFY] resolve via SHGetKnownFolderPath (Public Desktop + ProgramData)
-                // then swap to `ScopeRoots::resolved(public, programdata)?`; until then FAIL CLOSED.
-                scope: ScopeRoots::Unresolved,
+                // §14 scope via the shared SHGetKnownFolderPath resolver (identical to the
+                // foreground icon host's gate); fail-closed to Unresolved. [WINDOWS-VERIFY] runtime.
+                scope: crate::resolve_scope_roots(),
                 trust: TrustState::default(),
                 journal: FileJournal::new(data_dir.join("txn.log")),
                 ledger: JsonLedgerStore::new(data_dir.join("ledger.json")),
@@ -320,6 +344,26 @@ mod win {
                 &mut self.journal,
                 &mut self.ledger,
             )
+        }
+
+        fn restore_batch(&mut self, targets: &[UndoTarget]) -> Result<RestoreBatchOutcome, String> {
+            let scanner = WindowsScanner::new(self.exec.clone());
+            let extractor = WindowsIconSourceExtractor::new(self.exec.clone());
+            let reader = WindowsStateReader::new(self.exec.clone());
+            let applier = WindowsIconApplier::new(self.exec.clone());
+            let activity = WindowsActivityMonitor::new();
+            let ports = ReconcilerPorts {
+                scanner: &scanner,
+                extractor: &extractor,
+                reader: &reader,
+                applier: &applier,
+                assets: &self.assets,
+                activity: &activity,
+                stability: &self.stability,
+            };
+            self.rec
+                .restore_batch(&ports, targets, &mut self.journal, &mut self.ledger)
+                .map_err(|e| e.to_string())
         }
     }
 }

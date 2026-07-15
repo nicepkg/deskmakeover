@@ -94,6 +94,16 @@ export interface BridgeEvents {
   toast: { text: string; tone?: 'info' | 'success' | 'warn' }
   /** Host-side captured errors stream into the web error log (F8 wires the host end). */
   'host-error': { message: string; stack?: string }
+  /** A tray menu deep-link (spec 07 §12/§13): route the shell to the named surface. */
+  'resident-navigate': { target: 'history' | 'settings' | 'reset' }
+  /** The tray 自动整理 toggle was rejected by the §2 precondition (② saved-style empty). */
+  'resident-toggle-rejected': Record<string, never>
+  /** The resident applied a batch of N new icons (spec 07 §2 item 4). */
+  'resident-applied': { count: number }
+  /** The tray 撤销最近一次整理 restored N items. */
+  'resident-undone': { count: number }
+  /** The resident surfaced a batched proposal of N new icons (confirm or 2h timeout applies). */
+  'resident-proposal': { count: number }
 }
 
 // ---- Icons module (mirrors Host/Bridge/IconsContracts.cs) ----

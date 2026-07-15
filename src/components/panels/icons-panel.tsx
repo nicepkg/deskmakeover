@@ -16,6 +16,8 @@ import { CtaButton } from '@/components/common/cta-button'
 import { ArrowGateSheet, ConfirmSheet, ConsentSheet, DoneCard } from '@/components/common/ceremony'
 import { Segmented } from '@/components/common/segmented'
 import { activePresetIdOf, resumeStatusKey, useIcons } from '@/stores/icons'
+import { useApp } from '@/stores/app'
+import { useToasts } from '@/stores/toasts'
 import { useIconsHero } from '@/lib/hero'
 import { format, useT } from '@/lib/i18n'
 import type { StringKey } from '@/lib/i18n'
@@ -70,6 +72,19 @@ export function IconsPanel() {
   const { celebrateKey, celebrate } = useCelebration()
   const [ripple, setRipple] = React.useState<{ key: number; cx: number; cy: number } | null>(null)
   const { footerRef, clearance } = useFooterClearance()
+
+  // Tray deep-link (spec 07 §12): 「查看最近整理记录」 lands here with a pending 'history'
+  // link — open the history popover, or say honestly that no history exists yet (the popover
+  // only renders once an Apply recorded a version; a silent landing would read as a dead
+  // menu item — the owner's exact complaint, 2026-07-16).
+  const deepLink = useApp((s) => s.deepLink)
+  React.useEffect(() => {
+    if (deepLink !== 'history') return
+    useApp.getState().consumeDeepLink()
+    const st = useIcons.getState().state
+    if (st?.applied && st.history.length > 0) setHistoryOpen(true)
+    else useToasts.getState().show(t('Toast_NoHistoryYet'), 'info')
+  }, [deepLink, t])
 
   // The apply ceremony (D9): first apply shows the consent sheet once (persisted),
   // every successful apply lands the completion card — the real change happens

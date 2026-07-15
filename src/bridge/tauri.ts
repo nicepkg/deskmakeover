@@ -201,8 +201,22 @@ async function startWindowStateSync(): Promise<void> {
   await win.onResized(() => void push())
 }
 
+// Forward the resident tray's host events (spec 07 §12/§13) into the bridge's own event bus —
+// deep-link navigation, toggle-precondition feedback, batch apply/undo/proposal notices.
+async function startResidentEventSync(): Promise<void> {
+  const { listen } = await import('@tauri-apps/api/event')
+  await listen<'history' | 'settings' | 'reset'>('resident://navigate', (e) =>
+    emit('resident-navigate', { target: e.payload }),
+  )
+  await listen('resident://toggle-rejected', () => emit('resident-toggle-rejected', {}))
+  await listen<number>('resident://applied', (e) => emit('resident-applied', { count: e.payload }))
+  await listen<number>('resident://undone', (e) => emit('resident-undone', { count: e.payload }))
+  await listen<number>('resident://proposal', (e) => emit('resident-proposal', { count: e.payload }))
+}
+
 if (isTauri()) {
   void startWindowStateSync()
+  void startResidentEventSync()
   // Wave 1 (bridge schema 8): the calm module's CalmBackend port now routes to the real Rust
   // decision core. In the browser / mock loop the store keeps its MockCalmBackend default.
   void (async () => {

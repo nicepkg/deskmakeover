@@ -546,8 +546,16 @@ export const en = {
   "Settings_ExportCompare": "Save before/after image",
   "Settings_Feedback": "Contact & feedback",
   "Settings_General": "General",
-  "Settings_KeepUp": "Keep new icons styled",
-  "Settings_KeepUpDesc": "Newly added icons are styled automatically when the app opens",
+  "Settings_KeepUp": "Auto-format new icons",
+  "Settings_KeepUpDesc": "New desktop icons are styled to your saved look automatically; complete one Beautify first to enable", // resident (spec 07 §2)
+  "Settings_ResetAll": "Restore the original system look", // spec 07 §13 level 4 (Settings › Advanced)
+  "Settings_ResetAllDesc": "Removes every icon change DeskMakeover made; the desktop returns to how it started",
+  "ResetAll_Title": "Restore all icons to the original system look?", // spec 07 §13.2 binding copy
+  "ResetAll_Body1": "This removes every change DeskMakeover made to all {0} icons, whether you set them by hand or automation did, returning the desktop to how it looked before DeskMakeover.",
+  "ResetAll_Body2": "· Your {0} saved appearance(s) are kept and can be reapplied any time.",
+  "ResetAll_Body3": "· Auto-format turns off too, until you next apply an appearance.",
+  "ResetAll_Confirm": "Restore original look",
+  "ResetAll_Cancel": "Cancel",
   "Settings_Language": "Language",
   "Settings_LocalData": "Local data",
   "Settings_LocalDataDesc": "Restore snapshots and comparison images stay on this PC.",
@@ -620,6 +628,11 @@ export const en = {
   "Toast_ResetSkipped": "Skipped {0} item(s) you'd edited yourself",
   "Toast_ResetDegraded": "Restored · but cleanup didn't fully finish; you can restore again",
   "Toast_ArrowRestored": "System arrow restored", // PENDING-RESX (arrow-restore panel 2026-07-11)
+  "Toast_AutoFormatNeedsApply": "Complete one Beautify to save a look first, then enable auto-format", // resident §2 precondition
+  "Toast_NoHistoryYet": "No history yet · every Beautify records a version here", // tray history deep-link, empty state
+  "Toast_ResidentProposal": "{0} new icon(s) found · formatted on confirm or in 2 hours", // resident §2 item 4
+  "Toast_ResidentApplied": "{0} new icon(s) auto-formatted · undo from the tray menu", // resident batch applied
+  "Toast_ResidentUndone": "Undone · {0} icon(s) back to their original look", // resident undo (§13 level 2)
   "Toast_ArrowRestoreDeclined": "Cancelled; the little arrow stays hidden", // PENDING-RESX (UAC declined)
   "Toast_RestoreArrowFailed": "Couldn't restore the arrow. Please try again.", // PENDING-RESX (restore-specific failure)
   "Toast_BackTo": "Back to: {0}",

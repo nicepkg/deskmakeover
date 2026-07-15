@@ -548,8 +548,16 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Settings_ExportCompare": "保存前后对比图",
   "Settings_Feedback": "联系反馈",
   "Settings_General": "通用",
-  "Settings_KeepUp": "新图标自动跟上",
-  "Settings_KeepUpDesc": "打开应用时，自动美化新添加的图标",
+  "Settings_KeepUp": "自动整理新图标",
+  "Settings_KeepUpDesc": "桌面出现新图标时，自动按你保存的外观整理；先完成一次「一键美颜」才能开启", // resident (spec 07 §2)
+  "Settings_ResetAll": "恢复系统原始外观", // spec 07 §13 level 4 (Settings › Advanced)
+  "Settings_ResetAllDesc": "移除 DeskMakeover 做过的所有图标修改，桌面回到最初的样子",
+  "ResetAll_Title": "恢复所有图标为系统原始外观？", // spec 07 §13.2 binding copy
+  "ResetAll_Body1": "这会移除 DeskMakeover 对全部 {0} 个图标做过的所有修改——无论你手动设置的还是自动整理的，桌面回到安装 DeskMakeover 之前的样子。",
+  "ResetAll_Body2": "· 你保存的 {0} 个外观方案会保留，随时可重新应用。",
+  "ResetAll_Body3": "· 自动整理会一并关闭，直到你下次应用某外观。",
+  "ResetAll_Confirm": "恢复原始外观",
+  "ResetAll_Cancel": "取消",
   "Settings_Language": "语言",
   "Settings_LocalData": "本地数据",
   "Settings_LocalDataDesc": "还原快照和对比图都留在这台电脑上。",
@@ -622,6 +630,11 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Toast_ResetSkipped": "已跳过 {0} 项（你自己改过的图标）",
   "Toast_ResetDegraded": "已还原 · 但收尾没能全部完成，可再点一次还原",
   "Toast_ArrowRestored": "已恢复系统箭头", // PENDING-RESX (arrow-restore panel 2026-07-11)
+  "Toast_AutoFormatNeedsApply": "先完成一次「一键美颜」保存外观，再开启自动整理", // resident §2 precondition
+  "Toast_NoHistoryYet": "还没有整理记录 · 每次「一键美颜」都会在这里记下一版", // tray history deep-link, empty state
+  "Toast_ResidentProposal": "发现 {0} 个新图标 · 将在确认或 2 小时后自动整理", // resident §2 item 4
+  "Toast_ResidentApplied": "已自动整理 {0} 个新图标 · 托盘菜单可撤销", // resident batch applied
+  "Toast_ResidentUndone": "已撤销 · {0} 个图标回到原来的样子", // resident undo (§13 level 2)
   "Toast_ArrowRestoreDeclined": "已取消，小箭头保持隐藏", // PENDING-RESX (UAC declined)
   "Toast_RestoreArrowFailed": "恢复箭头没成功，请稍后再试", // PENDING-RESX (restore-specific failure)
   "Toast_BackTo": "已回到：{0}",

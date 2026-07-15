@@ -7,7 +7,8 @@ use dm_domain::{PortError, PortResult};
 use windows::core::GUID;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::UI::Shell::{
-    SHGetKnownFolderPath, FOLDERID_Desktop, FOLDERID_PublicDesktop, KF_FLAG_DEFAULT,
+    SHGetKnownFolderPath, FOLDERID_Desktop, FOLDERID_ProgramData, FOLDERID_PublicDesktop,
+    KF_FLAG_DEFAULT,
 };
 
 /// The existing desktop roots (user first, then public). Missing roots are skipped.
@@ -27,6 +28,18 @@ pub fn desktop_roots() -> PortResult<Vec<PathBuf>> {
         }
     }
     Ok(roots)
+}
+
+/// The §14 privileged-scope roots: `(Public Desktop, ProgramData)`, resolved via
+/// `SHGetKnownFolderPath` (spec 07 §14, never hardcoded). Fail-closed contract: `None` when
+/// EITHER folder does not resolve — the caller must then run with `ScopeRoots::Unresolved`
+/// (defer everything) rather than a partial gate that silently fails open on the missing half.
+///
+/// [WINDOWS-VERIFY] runtime.
+pub fn privileged_roots() -> Option<(PathBuf, PathBuf)> {
+    let public = known_folder(&FOLDERID_PublicDesktop).ok().flatten()?;
+    let programdata = known_folder(&FOLDERID_ProgramData).ok().flatten()?;
+    Some((public, programdata))
 }
 
 fn known_folder(id: &GUID) -> PortResult<Option<PathBuf>> {

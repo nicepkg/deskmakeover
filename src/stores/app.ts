@@ -2,13 +2,18 @@ import { create } from 'zustand'
 import { call, on } from '@/bridge/client'
 import { BRIDGE_SCHEMA_VERSION } from '@/bridge/types'
 import type { AppInfoDto, SettingsDto } from '@/bridge/types'
-import { useI18n } from '@/lib/i18n'
+import { format, t, useI18n } from '@/lib/i18n'
 import { useToasts } from '@/stores/toasts'
 
 // App-level session state: module routing, window state, settings, app info.
 // One boot() wires the bridge; settings changes flow bridge → store → i18n/theme.
 
 export type AppModule = 'icons' | 'paper' | 'calm' | 'settings'
+
+/** A tray deep-link target a panel consumes once mounted (spec 07 §12/§13): 'history' opens
+ *  the icons history popover; 'reset' reveals Settings › 恢复系统原始外观. Plain 设置 needs no
+ *  pending link — the module switch is the whole navigation. */
+export type DeepLink = 'history' | 'reset'
 
 interface AppState {
   booted: boolean
@@ -19,8 +24,11 @@ interface AppState {
   panelOpen: boolean
   info: AppInfoDto | null
   settings: SettingsDto | null
+  /** The pending tray deep-link — consumed (nulled) by the target panel's effect. */
+  deepLink: DeepLink | null
   setModule: (module: AppModule) => void
   setPanelOpen: (open: boolean) => void
+  consumeDeepLink: () => void
   updateSettings: (patch: Partial<SettingsDto>) => Promise<void>
   boot: () => Promise<void>
 }
@@ -43,10 +51,13 @@ export const useApp = create<AppState>((set, get) => ({
   panelOpen: false,
   info: null,
   settings: null,
+  deepLink: null,
 
   setModule: (module) => set({ module, panelOpen: false }),
 
   setPanelOpen: (panelOpen) => set({ panelOpen }),
+
+  consumeDeepLink: () => set({ deepLink: null }),
 
   updateSettings: async (patch) => {
     const settings = await call('settings.set', patch)
@@ -72,6 +83,18 @@ export const useApp = create<AppState>((set, get) => ({
       set({ osDark: dark })
       applyTheme(get().settings, dark)
     })
+    // Tray deep-links (spec 07 §12/§13): route the shell, leave a pending link the target panel
+    // consumes ('history' → the icons history popover; 'reset' → Settings › 恢复系统原始外观).
+    on('resident-navigate', ({ target }) => {
+      if (target === 'history') set({ module: 'icons', panelOpen: false, deepLink: 'history' })
+      else set({ module: 'settings', panelOpen: false, deepLink: target === 'reset' ? 'reset' : null })
+    })
+    // Tray feedback (spec 07 §2/§12): the toggle precondition + batch apply/undo notices land as
+    // in-app toasts (the window was just shown / is the surface the user reads).
+    on('resident-toggle-rejected', () => useToasts.getState().show(t('Toast_AutoFormatNeedsApply'), 'warn'))
+    on('resident-proposal', ({ count }) => useToasts.getState().show(format(t('Toast_ResidentProposal'), count), 'info'))
+    on('resident-applied', ({ count }) => useToasts.getState().show(format(t('Toast_ResidentApplied'), count), 'success'))
+    on('resident-undone', ({ count }) => useToasts.getState().show(format(t('Toast_ResidentUndone'), count), 'info'))
 
     try {
       const [info, settings] = await Promise.all([call('app.getInfo'), call('settings.get')])

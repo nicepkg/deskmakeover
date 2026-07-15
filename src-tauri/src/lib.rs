@@ -125,10 +125,9 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
             geometry: Arc::new(dm_windows::WindowsDesktopGeometry::new(exec)),
         };
         // Real active-profile count is a [WINDOWS-VERIFY] ProfileList enum; default single-user.
-        // [WINDOWS-VERIFY] the §14 scope is UNRESOLVED until SHGetKnownFolderPath resolves the real
-        // Public Desktop / ProgramData folders — until then version-switch / auto-format fail CLOSED
-        // (style nothing), never open. Swapping to live = `ScopeRoots::resolved(public, programdata)?`.
-        Ok(IconHost::new(ports, settings, data_dir, 1, ScopeRoots::Unresolved))
+        // §14 scope: the REAL known folders via SHGetKnownFolderPath (fail-closed to Unresolved —
+        // version-switch / auto-format / reset then style nothing rather than fail open).
+        Ok(IconHost::new(ports, settings, data_dir, 1, resolve_scope_roots()))
     }
     #[cfg(not(windows))]
     {
@@ -144,6 +143,30 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
         };
         // The dev host has no shared/privileged desktop scope — nothing is scope-excluded.
         Ok(IconHost::new(ports, settings, data_dir, 1, ScopeRoots::Unprivileged))
+    }
+}
+
+/// Resolves the §14 privileged-scope roots (Public Desktop + ProgramData) via
+/// `SHGetKnownFolderPath` — the ONE resolver both the foreground icon host and the resident
+/// engine share, so they gate identically. Fail-closed: any resolution failure returns
+/// `ScopeRoots::Unresolved` (automation defers, styles nothing) rather than a partial gate.
+///
+/// [WINDOWS-VERIFY] runtime.
+#[cfg(windows)]
+pub(crate) fn resolve_scope_roots() -> ScopeRoots {
+    let Some((public, programdata)) = dm_windows::shell::known_folders::privileged_roots() else {
+        log::error!("§14 scope: known-folder resolution failed — staying fail-closed (Unresolved)");
+        return ScopeRoots::Unresolved;
+    };
+    match ScopeRoots::resolved(
+        vec![public.to_string_lossy().into_owned()],
+        vec![programdata.to_string_lossy().into_owned()],
+    ) {
+        Ok(scope) => scope,
+        Err(_) => {
+            log::error!("§14 scope: resolved roots were degenerate — staying fail-closed (Unresolved)");
+            ScopeRoots::Unresolved
+        }
     }
 }
 

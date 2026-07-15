@@ -27,7 +27,10 @@ pub use driver::{
     ResidentHost, TickReport, WatchEventSource,
 };
 pub use pending_privileged::{PendingPrivilegedQueue, PendingReason};
-pub use reconciler::{ReconcileContext, ReconcileOutcome, Reconciler, ReconcilerPorts, VettedCandidate};
+pub use reconciler::{
+    ReconcileContext, ReconcileOutcome, Reconciler, ReconcilerPorts, RestoreBatchOutcome,
+    UndoTarget, VettedCandidate,
+};
 pub use stability::{FsStabilityReader, SettleProbe, StabilityReader, StabilitySnapshot};
 pub use tray_state::{transition, TrayEvent, TrayState};
 // Re-export the watcher hint type the driver consumes so composition roots (src-tauri) need no

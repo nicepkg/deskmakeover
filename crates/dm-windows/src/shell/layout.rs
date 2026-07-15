@@ -57,8 +57,8 @@ mod win {
         SHGDN_NORMAL, SID_STopLevelBrowser, SVGIO_ALLVIEW, SWC_DESKTOP, SWFO_NEEDDISPATCH,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetSystemMetrics, SystemParametersInfoW, SM_CXSCREEN, SM_CYSCREEN, SPI_GETWORKAREA,
-        SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+        GetSystemMetrics, SystemParametersInfoW, SM_CXSCREEN, SM_CYSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
     };
 
     /// Full screen dims + the taskbar's reserved height (screen − work area). A side-docked
@@ -124,6 +124,14 @@ mod win {
             let count = folder_view
                 .ItemCount(SVGIO_ALLVIEW)
                 .map_err(|e| PortError::Io(format!("ItemCount: {e}")))?;
+            // GetItemPosition returns coordinates in the desktop ListView's client space, whose
+            // origin (0,0) is the VIRTUAL-desktop top-left, not the primary monitor's. When another
+            // monitor sits above/left of the primary the virtual origin is negative, so a primary
+            // icon at real (13,2) reads as (13, 2 - SM_YVIRTUALSCREEN). Shift back to primary-relative
+            // coords (what the mirror + geometry use) by adding the virtual origin; both are 0 on a
+            // single-monitor desktop, so this is a no-op there. [WINDOWS-VERIFY closed: real 2nd monitor]
+            let vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
+            let vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
             let mut slots = Vec::with_capacity(count as usize);
             for i in 0..count {
                 let pidl: *mut ITEMIDLIST = match folder_view.Item(i) {
@@ -141,7 +149,7 @@ mod win {
                     if name.is_empty() {
                         return None;
                     }
-                    Some(DesktopIconSlot { name, x: pos.x, y: pos.y })
+                    Some(DesktopIconSlot { name, x: pos.x + vx, y: pos.y + vy })
                 })();
                 CoTaskMemFree(Some(pidl as *const _));
                 if let Some(s) = slot {

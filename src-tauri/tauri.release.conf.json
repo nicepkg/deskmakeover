@@ -2,7 +2,10 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "windows": {
-      "signCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File \"sign-windows.ps1\" \"%1\""
+      "signCommand": {
+        "cmd": "powershell",
+        "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "sign-windows.ps1", "%1"]
+      }
     }
   }
 }

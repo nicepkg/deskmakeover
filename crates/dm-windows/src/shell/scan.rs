@@ -245,14 +245,31 @@ fn reunify_wrapper(lnk_path: &str) -> Option<DesktopItem> {
 fn read_icon_source(kind: ItemKind, path: &str) -> Option<IconRef> {
     match kind {
         ItemKind::Shortcut => shell_link::read_icon_location(path).ok().flatten().map(|(loc, idx)| {
-            let source_kind = if loc.to_lowercase().ends_with(".ico") {
-                IconSourceKind::File
-            } else {
-                IconSourceKind::ExecutableResource
-            };
-            IconRef { kind: source_kind, location: loc, index: idx }
+            IconRef { kind: icon_ref_kind(&loc), location: loc, index: idx }
         }),
+        // A `.url`'s icon is its `[InternetShortcut]` `IconFile` (a `.ico`/`.exe` on disk) — read it
+        // straight so extraction honours the REAL game/app icon via `icon_resource_image`, instead
+        // of falling through to the shell's generic internet-shortcut render (owner report
+        // 2026-07-15: Steam `.url` icons showed a tiny generic glyph). Encoding-aware because Steam
+        // writes these files as UTF-16 LE. An absent/unreadable IconFile → None → shell fallback.
+        ItemKind::UrlShortcut => std::fs::read(path)
+            .ok()
+            .and_then(|bytes| {
+                crate::textfmt::parse_internet_shortcut_icon(&crate::textfmt::decode_ini_text_bytes(&bytes))
+            })
+            .filter(|(loc, _)| !loc.trim().is_empty())
+            .map(|(loc, idx)| IconRef { kind: icon_ref_kind(&loc), location: loc, index: idx }),
         _ => None,
+    }
+}
+
+/// Classifies an icon location by extension: a `.ico` is a plain image File, anything else
+/// (`.exe`/`.dll`) an executable resource whose `index` selects the frame.
+fn icon_ref_kind(location: &str) -> IconSourceKind {
+    if location.to_lowercase().ends_with(".ico") {
+        IconSourceKind::File
+    } else {
+        IconSourceKind::ExecutableResource
     }
 }
 

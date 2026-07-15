@@ -61,10 +61,13 @@ impl ItemStateReader for WindowsStateReader {
                     self.exec.run(move || shell_link::read_icon_location(&p))??.unwrap_or_default();
                 Ok(SurfaceState::IconRef { path, index }.fingerprint())
             }
-            // `.url`: the `[InternetShortcut]` `IconFile`/`IconIndex`.
+            // `.url`: the `[InternetShortcut]` `IconFile`/`IconIndex`. Decoded encoding-aware —
+            // Steam writes these as UTF-16 LE, which read_to_string rejected outright, dropping the
+            // whole shortcut to non-styleable (owner report 2026-07-15).
             ItemKind::UrlShortcut => {
+                let text = textfmt::decode_ini_text_bytes(&read_bytes(&target.path)?);
                 let (path, index) =
-                    textfmt::parse_internet_shortcut_icon(&read_text(&target.path)?).unwrap_or_default();
+                    textfmt::parse_internet_shortcut_icon(&text).unwrap_or_default();
                 Ok(SurfaceState::IconRef { path, index }.fingerprint())
             }
             // Folder: the `desktop.ini` `IconResource` path/index (BOM-tolerant parse) PLUS the
@@ -196,16 +199,6 @@ fn read_desktop_ini(folder_path: &str) -> PortResult<Vec<u8>> {
 fn read_bytes(path: &str) -> PortResult<Vec<u8>> {
     match std::fs::read(path) {
         Ok(bytes) => Ok(bytes),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            Err(PortError::NotFound(path.to_string()))
-        }
-        Err(e) => Err(PortError::Io(e.to_string())),
-    }
-}
-
-fn read_text(path: &str) -> PortResult<String> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => Ok(text),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             Err(PortError::NotFound(path.to_string()))
         }

@@ -142,6 +142,45 @@ fn main() {
         println!("[INFO] no styleable item on the desktop to extract/fingerprint");
     }
 
+    // 7. `.url` (UrlShortcut) styleability — the encoding-regression check (owner report
+    //    2026-07-15: Steam writes `.url` as UTF-16 LE; the old UTF-8 read_to_string errored, so
+    //    read_fingerprint failed → degraded → styleable:false → the tile ignored every config
+    //    change). Reproduce scan.rs's EXACT `styleable` derivation per `.url` item.
+    let url_items: Vec<_> =
+        items.iter().filter(|i| i.kind == dm_domain::ItemKind::UrlShortcut).collect();
+    if url_items.is_empty() {
+        println!("\n[INFO] no `.url` items on this desktop to check");
+    } else {
+        println!("\n== `.url` styleability (Steam UTF-16 regression) ==");
+        let extractor = WindowsIconSourceExtractor::new(exec.clone());
+        let reader = WindowsStateReader::new(exec.clone());
+        for item in url_items {
+            let target =
+                ItemTarget { id: item.id.clone(), kind: item.kind, path: item.path.clone() };
+            let fp = reader.read_fingerprint(&target);
+            let extract = extractor.extract(item, None);
+            // scan.rs: degraded_reason is Some when the fingerprint is unreadable OR extract fails;
+            // styleable = can_style() && degraded_reason.is_none().
+            let degraded = fp.is_err() || extract.is_err();
+            let styleable = item.can_style() && !degraded;
+            let tag = if styleable { "PASS" } else { "FAIL" };
+            println!(
+                "[{tag}] {}  styleable={}  fingerprint={}  extract={}  icon_ref={:?}",
+                item.name,
+                styleable,
+                match &fp {
+                    Ok(_) => "ok".to_string(),
+                    Err(e) => format!("ERR({e:?})"),
+                },
+                match &extract {
+                    Ok(imgs) => format!("{}img", imgs.len()),
+                    Err(e) => format!("ERR({e:?})"),
+                },
+                item.icon.as_ref().map(|r| format!("{}#{}", r.location, r.index)),
+            );
+        }
+    }
+
     println!("\n== done ==");
 }
 

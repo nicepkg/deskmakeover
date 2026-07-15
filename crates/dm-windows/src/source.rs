@@ -172,12 +172,12 @@ fn fit_content_to_canvas(rgba: Vec<u8>, w: u32, h: u32) -> Vec<u8> {
 /// Parses a captured `desktop.ini`'s folder-icon reference into `(location, index)`, covering
 /// BOTH forms the shell honours: the modern `IconResource=path,index` and the classic
 /// `IconFile=path` + `IconIndex=n` pair (codex icons2-🔴3 sub-point — the old parser saw only
-/// `IconResource`). Decoding is UTF-8 → UTF-16LE(BOM) → lossy, so a non-UTF-8 `desktop.ini`
-/// still yields its icon path. Section headers are ignored; the `[.ShellClassInfo]` keys are
-/// unique enough that a flat key scan is faithful.
+/// `IconResource`). Decoding goes through the ONE shared file-text decoder (BOM-aware UTF-16/UTF-8),
+/// so a non-UTF-8 `desktop.ini` still yields its icon path. Section headers are ignored; the
+/// `[.ShellClassInfo]` keys are unique enough that a flat key scan is faithful.
 #[cfg(any(windows, test))]
 fn parse_desktop_ini_icon_ref(bytes: &[u8]) -> Option<(String, i32)> {
-    let text = decode_ini_text(bytes);
+    let text = crate::textfmt::decode_ini_text_bytes(bytes);
     let mut icon_file: Option<String> = None;
     let mut icon_index: i32 = 0;
     for line in text.lines() {
@@ -197,26 +197,6 @@ fn parse_desktop_ini_icon_ref(bytes: &[u8]) -> Option<(String, i32)> {
         }
     }
     icon_file.map(|f| (f, icon_index))
-}
-
-/// Best-effort text decode for a captured `desktop.ini`: UTF-8 (BOM-stripped), else UTF-16LE
-/// (BOM), else lossy UTF-8.
-#[cfg(any(windows, test))]
-fn decode_ini_text(bytes: &[u8]) -> String {
-    if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
-        if let Ok(s) = std::str::from_utf8(rest) {
-            return s.to_string();
-        }
-    }
-    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
-        let u16s: Vec<u16> =
-            rest.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
-        return String::from_utf16_lossy(&u16s);
-    }
-    match std::str::from_utf8(bytes) {
-        Ok(s) => s.to_string(),
-        Err(_) => String::from_utf8_lossy(bytes).into_owned(),
-    }
 }
 
 /// Resolves a possibly-RELATIVE `desktop.ini` icon path against its folder. `%ENV%` and
@@ -452,7 +432,10 @@ mod win {
     /// which resolves the original TARGET's icon exactly as the desktop did before we styled it.
     fn original_from_file_bytes(item: &DesktopItem, bytes: &[u8]) -> Option<DecodedImage> {
         if item.kind == ItemKind::UrlShortcut {
-            let text = String::from_utf8_lossy(bytes);
+            // Encoding-aware (Steam writes `.url` as UTF-16 LE): a lossy UTF-8 read produced mojibake,
+            // the section was never found, and the icon silently fell through to the shell's generic
+            // render (owner report 2026-07-15).
+            let text = crate::textfmt::decode_ini_text_bytes(bytes);
             if let Some((loc, idx)) = crate::textfmt::parse_internet_shortcut_icon(&text) {
                 if let Some(img) = icon_resource_image(&loc, idx).ok().flatten() {
                     return Some(img);

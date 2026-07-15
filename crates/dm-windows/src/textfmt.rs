@@ -15,6 +15,97 @@ fn strip_bom(s: &str) -> &str {
     s.strip_prefix('\u{feff}').unwrap_or(s)
 }
 
+#[derive(Clone, Copy)]
+enum Utf16Endian {
+    Little,
+    Big,
+}
+
+/// Decodes the raw bytes of a Windows INI-style text file (`.url` internet shortcut, `desktop.ini`)
+/// into a `String`, honouring the byte-order mark that names its encoding. This is the ONE
+/// file-text decoder the `.url` reader/writer, the folder `desktop.ini` reader, and the source
+/// extractor all share, so no read path can regress into assuming UTF-8.
+///
+/// Windows tools disagree wildly on how they encode these files: **Steam (and other game
+/// launchers) write `.url` shortcuts as UTF-16 LE**; Explorer writes UTF-8 (with or without a BOM);
+/// legacy tools wrote the system ANSI code page. `std::fs::read_to_string` assumes UTF-8 and ERRORS
+/// on any UTF-16 form — the leading `0xFF` of a UTF-16 LE BOM is not a legal UTF-8 byte — which
+/// made every Steam-created `.url` read as unreadable and therefore non-styleable (owner report
+/// 2026-07-15, three Steam `.url` icons ignoring every config change).
+///
+/// Detection order: UTF-8 BOM → UTF-16 LE BOM → UTF-16 BE BOM → BOM-less UTF-16 (interleaved-NUL
+/// heuristic — real INI text has no NUL bytes, so a slice riddled with them on one byte parity is
+/// UTF-16 of that endianness) → strict UTF-8 → lossy UTF-8. The returned string never carries a
+/// leading U+FEFF, so the existing per-line [`strip_bom`] stays defensive rather than required.
+pub fn decode_ini_text_bytes(bytes: &[u8]) -> String {
+    if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        return utf8_or_lossy(rest);
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+        return decode_utf16(rest, Utf16Endian::Little);
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
+        return decode_utf16(rest, Utf16Endian::Big);
+    }
+    // No BOM. A slice riddled with NULs is BOM-less UTF-16 (a NUL is legal UTF-8, so `from_utf8`
+    // would otherwise silently accept UTF-16 LE ASCII as a string full of NUL chars) — sniff that
+    // FIRST, then trust UTF-8, then decode lossily so a genuinely mixed-encoding file still yields
+    // its ASCII keys and paths.
+    if let Some(endian) = sniff_bomless_utf16(bytes) {
+        return decode_utf16(bytes, endian);
+    }
+    utf8_or_lossy(bytes)
+}
+
+fn utf8_or_lossy(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => String::from_utf8_lossy(bytes).into_owned(),
+    }
+}
+
+fn decode_utf16(bytes: &[u8], endian: Utf16Endian) -> String {
+    let units: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|c| match endian {
+            Utf16Endian::Little => u16::from_le_bytes([c[0], c[1]]),
+            Utf16Endian::Big => u16::from_be_bytes([c[0], c[1]]),
+        })
+        .collect();
+    let s = String::from_utf16_lossy(&units);
+    // A BOM-less slice can still open with a U+FEFF unit; strip a single leading one so the result
+    // is clean text regardless of how it was detected.
+    s.strip_prefix('\u{feff}').map(str::to_string).unwrap_or(s)
+}
+
+/// Detects BOM-less UTF-16 by its interleaved-NUL signature: ASCII/CJK INI text is essentially
+/// NUL-free as UTF-8, but ASCII-heavy UTF-16 is ~half NUL, clustered on one byte parity (the
+/// zero high byte). Requires ≥ a quarter of the bytes to be NUL before committing, and names the
+/// endianness from which parity holds them (LE → high byte at ODD indices, BE → EVEN).
+fn sniff_bomless_utf16(bytes: &[u8]) -> Option<Utf16Endian> {
+    if bytes.len() < 2 {
+        return None;
+    }
+    let (mut even_nul, mut odd_nul) = (0usize, 0usize);
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == 0 {
+            if i % 2 == 0 {
+                even_nul += 1;
+            } else {
+                odd_nul += 1;
+            }
+        }
+    }
+    if (even_nul + odd_nul) * 4 < bytes.len() {
+        return None; // < 25% NUL → ordinary single-byte text, not UTF-16-of-ASCII
+    }
+    match odd_nul.cmp(&even_nul) {
+        std::cmp::Ordering::Greater => Some(Utf16Endian::Little),
+        std::cmp::Ordering::Less => Some(Utf16Endian::Big),
+        std::cmp::Ordering::Equal => None,
+    }
+}
+
 /// Upserts `key=value` inside the `[InternetShortcut]` section (case-insensitive), replacing any
 /// existing occurrences in place and inserting at the section end otherwise. Exact port of the
 /// oracle upsert.
@@ -80,8 +171,11 @@ pub fn desktop_ini_content(icon_path: &str) -> String {
 /// Reads the `IconResource=path,index` back out of a `desktop.ini`'s bytes (BOM-tolerant) — the
 /// folder icon reference the reader fingerprints (P1-1). Returns `None` when absent.
 pub fn parse_desktop_ini_icon(bytes: &[u8]) -> Option<(String, i32)> {
-    let text = std::str::from_utf8(bytes).ok()?;
-    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    // Encoding-aware: a folder styled by another tool may carry a UTF-16 `desktop.ini`, which the
+    // old `from_utf8` read as "no icon" (a silent unstyled reading, one class softer than the `.url`
+    // fingerprint failure but the same root cause).
+    let text = decode_ini_text_bytes(bytes);
+    let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
     for line in text.lines() {
         if let Some(sep) = line.find('=') {
             if line[..sep].trim().eq_ignore_ascii_case("IconResource") {
@@ -259,5 +353,85 @@ mod tests {
     fn parse_internet_shortcut_icon_tolerates_a_leading_bom() {
         let text = "\u{feff}[InternetShortcut]\r\nURL=https://例子.test\r\nIconFile=C:\\gen\\a.ico\r\nIconIndex=0";
         assert_eq!(parse_internet_shortcut_icon(text), Some((r"C:\gen\a.ico".to_string(), 0)));
+    }
+
+    /// Encodes `text` as UTF-16 with a leading BOM, exactly how Steam writes a `.url`.
+    fn utf16_with_bom(text: &str, big_endian: bool) -> Vec<u8> {
+        let mut bytes = if big_endian { vec![0xFE, 0xFF] } else { vec![0xFF, 0xFE] };
+        for unit in text.encode_utf16() {
+            let pair = if big_endian { unit.to_be_bytes() } else { unit.to_le_bytes() };
+            bytes.extend_from_slice(&pair);
+        }
+        bytes
+    }
+
+    #[test]
+    fn decodes_a_real_steam_url_shortcut_which_is_utf16_le() {
+        // The exact shape of a Steam desktop `.url` (owner box, 2026-07-15): a `[{GUID}]` prop
+        // section, then `[InternetShortcut]` with a `steam://rungameid/...` URL and an `IconFile`
+        // pointing at Steam's icon cache — the whole file written as UTF-16 LE with a BOM. Read as
+        // UTF-8 this failed outright, marking the icon non-styleable.
+        let content = "[{000214A0-0000-0000-C000-000000000046}]\r\nProp3=19,0\r\n[InternetShortcut]\r\nIDList=\r\nIconIndex=0\r\nURL=steam://rungameid/1868140\r\nIconFile=D:\\apps\\steam\\steam\\games\\ac24c6922f55c7dd7ab535f871c9adff300e6feb.ico\r\n";
+        let bytes = utf16_with_bom(content, false);
+        // The first byte is 0xFF — never legal UTF-8, which is exactly why read_to_string errored.
+        assert_eq!(bytes[0], 0xFF);
+        let text = decode_ini_text_bytes(&bytes);
+        assert_eq!(
+            parse_internet_shortcut_icon(&text),
+            Some((r"D:\apps\steam\steam\games\ac24c6922f55c7dd7ab535f871c9adff300e6feb.ico".to_string(), 0))
+        );
+    }
+
+    #[test]
+    fn decode_ini_text_bytes_covers_every_encoding_the_shell_emits() {
+        let body = "[InternetShortcut]\r\nURL=https://例子.test\r\nIconFile=C:\\图标\\a.ico\r\nIconIndex=3\r\n";
+        let expected = Some((r"C:\图标\a.ico".to_string(), 3));
+        // UTF-16 LE + BOM (Steam), UTF-16 BE + BOM, UTF-8 + BOM, and plain UTF-8 all decode equal.
+        for bytes in [
+            utf16_with_bom(body, false),
+            utf16_with_bom(body, true),
+            {
+                let mut b = vec![0xEF, 0xBB, 0xBF];
+                b.extend_from_slice(body.as_bytes());
+                b
+            },
+            body.as_bytes().to_vec(),
+        ] {
+            assert_eq!(parse_internet_shortcut_icon(&decode_ini_text_bytes(&bytes)), expected);
+        }
+    }
+
+    #[test]
+    fn decode_ini_text_bytes_sniffs_bomless_utf16_le() {
+        // Some writers omit the BOM. ASCII-in-UTF-16LE is half NUL on odd bytes — a NUL is legal
+        // UTF-8, so `from_utf8` would otherwise accept it as a NUL-riddled string and the parse
+        // would miss the section. The sniffer catches it.
+        let body = "[InternetShortcut]\r\nURL=x\r\nIconFile=C:\\a.ico\r\nIconIndex=0\r\n";
+        let mut bytes = Vec::new();
+        for unit in body.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        assert_ne!(bytes[1], 0xFE, "no BOM in this fixture");
+        assert_eq!(
+            parse_internet_shortcut_icon(&decode_ini_text_bytes(&bytes)),
+            Some((r"C:\a.ico".to_string(), 0))
+        );
+    }
+
+    #[test]
+    fn decode_ini_text_bytes_leaves_ordinary_utf8_untouched() {
+        // Plain ASCII/UTF-8 (the common case) must not be misfired into the UTF-16 path — it has no
+        // NUL bytes, so the sniffer declines and the strict UTF-8 read wins.
+        let plain = "[InternetShortcut]\r\nURL=https://x\r\n";
+        assert_eq!(decode_ini_text_bytes(plain.as_bytes()), plain);
+    }
+
+    #[test]
+    fn parse_desktop_ini_icon_decodes_a_utf16_folder_ini() {
+        // A folder another tool styled can carry a UTF-16 `desktop.ini`; the old from_utf8 read it
+        // as "no icon". Now it decodes.
+        let content = "[.ShellClassInfo]\r\nIconResource=C:\\图标\\folder.ico,2\r\nConfirmFileOp=0\r\n";
+        let bytes = utf16_with_bom(content, false);
+        assert_eq!(parse_desktop_ini_icon(&bytes), Some((r"C:\图标\folder.ico".to_string(), 2)));
     }
 }

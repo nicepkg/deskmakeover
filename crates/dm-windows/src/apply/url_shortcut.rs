@@ -4,14 +4,21 @@
 
 use dm_domain::{PortError, PortResult};
 
-use crate::textfmt::internet_shortcut_upsert;
+use crate::textfmt::{decode_ini_text_bytes, internet_shortcut_upsert};
 
 /// Points a `.url` at `icon_path`/`index` by upserting `IconFile`/`IconIndex` in its
 /// `[InternetShortcut]` section, preserving the rest of the file. Mirrors `Apply`.
 ///
+/// The read is encoding-aware (Steam writes `.url` as UTF-16 LE, which `read_to_string` rejected —
+/// the same defect that made these shortcuts non-styleable). The rewrite normalizes to UTF-8: the
+/// shell reads any encoding, the reader now decodes any encoding so the read-back fingerprint still
+/// matches, and restore replays the captured original bytes verbatim, so the original encoding is
+/// never lost.
+///
 /// [WINDOWS-VERIFY] runtime (filesystem semantics).
 pub fn apply(url_path: &str, icon_path: &str, index: i32) -> PortResult<()> {
-    let text = std::fs::read_to_string(url_path).map_err(|e| io(url_path, e))?;
+    let bytes = std::fs::read(url_path).map_err(|e| io(url_path, e))?;
+    let text = decode_ini_text_bytes(&bytes);
     let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
     internet_shortcut_upsert(&mut lines, "IconFile", icon_path).map_err(PortError::Io)?;
     internet_shortcut_upsert(&mut lines, "IconIndex", &index.to_string()).map_err(PortError::Io)?;

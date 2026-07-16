@@ -145,6 +145,12 @@ export class IconCompositor {
         ;(msg.bitmap as ImageBitmap).close()
         return
       }
+      // The want is SATISFIED — clear it. A lingering want that still equals the
+      // styleKey turned every post-LRU-eviction getTile for this slot into a
+      // permanent null (no re-dispatch): the original render is the worst case —
+      // its styleKey never varies, so once its style was evicted, hold-to-compare
+      // showed the current pixels forever ("对比原图没反应", owner 2026-07-16).
+      this.wanted.delete(flight.slot)
       this.storeInCache(msg.id, `${flight.epoch}|${flight.styleKey}`, msg.bitmap)
       this.notify()
       return

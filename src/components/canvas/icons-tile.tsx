@@ -99,8 +99,11 @@ export const IconTile = React.memo(function IconTile({
   const reduced = useReducedMotion()
   // Scope feedback (ADR-0017 D5 hard requirement): while a type row is being
   // edited, icons OUTSIDE that type dim so the edit's reach is unmistakable.
+  // Compare/peek SUSPENDS the veil (owner 2026-07-16): hold-to-compare means
+  // "show me the true original" — originals under a 0.28-opacity ghost read
+  // as the eye button doing nothing.
   const editingBucket = useIcons((s) => s.editingBucket)
-  const dimmed = editingBucket !== null && kindBucket(item.kind) !== editingBucket
+  const dimmed = !showOriginal && !peeking && editingBucket !== null && kindBucket(item.kind) !== editingBucket
   const canvasRef = useTileBitmap(item, config, showOriginal || peeking, renderSize, renderTick, waveStamp)
   const lineHeight = Math.ceil(grid.labelFontPx * 1.35)
 

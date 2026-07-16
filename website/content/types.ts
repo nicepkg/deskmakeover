@@ -61,12 +61,8 @@ export interface Dict {
     specs: string[];
     sceneCaption: string;
     sceneAlt: string;
-    sceneBefore: string;
-    sceneAfter: string;
   };
   proof: SectionHead & {
-    beforeLabel: string;
-    afterLabel: string;
     dragHint: string;
     altBefore: string;
     altAfter: string;

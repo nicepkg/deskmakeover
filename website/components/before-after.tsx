@@ -32,14 +32,10 @@ function Layer({ id, alt, sizes }: { id: string; alt: string; sizes: string }) {
  * keyboard-accessible, no pointer math.
  */
 export function BeforeAfter({
-  beforeLabel,
-  afterLabel,
   dragHint,
   altBefore,
   altAfter,
 }: {
-  beforeLabel: string;
-  afterLabel: string;
   dragHint: string;
   altBefore: string;
   altAfter: string;
@@ -62,13 +58,6 @@ export function BeforeAfter({
         >
           <Layer id="desk-before" alt={altBefore} sizes={sizes} />
         </div>
-
-        <span className="pointer-events-none absolute left-4 top-4 border border-line bg-white/92 px-2.5 py-1 font-mono text-[11px] tracking-[0.14em] text-ink">
-          {beforeLabel}
-        </span>
-        <span className="pointer-events-none absolute right-4 top-4 border border-line bg-white/92 px-2.5 py-1 font-mono text-[11px] tracking-[0.14em] text-coral-ink">
-          {afterLabel}
-        </span>
 
         <input
           type="range"

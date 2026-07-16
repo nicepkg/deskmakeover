@@ -42,13 +42,7 @@ export function ProofSection({ dict }: { dict: Dict }) {
         <SectionHeader head={s} />
       </Reveal>
       <Reveal delay={80} className="mt-10">
-        <BeforeAfter
-          beforeLabel={s.beforeLabel}
-          afterLabel={s.afterLabel}
-          dragHint={s.dragHint}
-          altBefore={s.altBefore}
-          altAfter={s.altAfter}
-        />
+        <BeforeAfter dragHint={s.dragHint} altBefore={s.altBefore} altAfter={s.altAfter} />
       </Reveal>
     </section>
   );

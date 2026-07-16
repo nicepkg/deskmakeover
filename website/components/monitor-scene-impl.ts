@@ -13,7 +13,6 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 export interface MountOptions {
   before: string;
   after: string;
-  onPhase?: (phase: "before" | "after") => void;
 }
 
 const CORAL = new THREE.Color("#ff6f5e");
@@ -97,8 +96,10 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environment = envTex;
+  const envScene = new RoomEnvironment();
+  const envTarget = pmrem.fromScene(envScene, 0.04);
+  envScene.dispose();
+  scene.environment = envTarget.texture;
 
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60);
   const halfTan = () => Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
@@ -201,20 +202,42 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   // ── camera choreography ─────────────────────────────────────────
   const YAW_A = -0.42;
   const YAW_B = -0.05;
-  const LOOK_A = new THREE.Vector3(0, 1.32, 0);
-  // biased toward the icon-dense side of the desktop
-  const LOOK_B = new THREE.Vector3(-0.25, 1.59, 0.05);
+  const LOOK_A = new THREE.Vector3();
+  const LOOK_B = new THREE.Vector3();
   const POS_A = new THREE.Vector3();
   const POS_B = new THREE.Vector3();
   const camPos = new THREE.Vector3();
   const camLook = new THREE.Vector3();
 
+  // hosts can tune the composition: --dm-screen-cy places the screen's center
+  // as a fraction of canvas height (hero extends the canvas below the fold so
+  // the machine's body is never cropped); --dm-fill sets glass height fill.
+  const cssNum = (name: string, fallback: number) => {
+    const v = parseFloat(getComputedStyle(host).getPropertyValue(name));
+    return Number.isFinite(v) ? v : fallback;
+  };
+
   const frameCamera = () => {
+    // On a wide full-bleed stage the copy owns the left, so the whole
+    // composition trucks right (camera pans left by ox). Narrow hosts center.
+    const ht = halfTan();
+    const a = camera.aspect;
+    const isWideStage = a > 1.4;
+    const cy = cssNum("--dm-screen-cy", 0.5);
     // wide opener: whole product in frame whatever the host shape
-    const zA = Math.max(8.8, 2.3 / (halfTan() * camera.aspect));
-    POS_A.set(4.2, 2.6, zA);
-    // close state: the glass fills ~96% of the view height
-    const zB = 0.05 + 2.06 / 0.96 / (2 * halfTan());
+    const zA = Math.max(8.8, 2.3 / (ht * a));
+    const vhA = 2 * zA * ht;
+    const oxA = isWideStage ? 0.17 * (vhA * a) : 0;
+    const oyA = (0.5 - cy) * vhA * 0.6;
+    LOOK_A.set(-oxA, 1.32 - oyA, 0);
+    POS_A.set(4.2 - oxA, 2.6 - oyA, zA);
+    // close state: the glass fills --dm-fill of the canvas height
+    const fillH = cssNum("--dm-fill", isWideStage ? 0.9 : 0.96);
+    const vhB = 2.06 / fillH;
+    const zB = 0.05 + vhB / (2 * ht);
+    const oxB = isWideStage ? 0.13 * (vhB * a) : 0;
+    const oyB = (0.5 - cy) * vhB;
+    LOOK_B.set(-0.2 - oxB, 1.59 - oyB, 0.05);
     POS_B.set(LOOK_B.x + 0.1, LOOK_B.y, zB);
   };
   frameCamera();
@@ -237,8 +260,11 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   let targetPanY = 0;
   let panX = 0;
   let panY = 0;
+  // window-level: the copy floats above the canvas, so host-level events
+  // would go dead over half the stage
   const onPointer = (e: PointerEvent) => {
     const r = host.getBoundingClientRect();
+    if (r.width === 0) return;
     targetPanX = ((e.clientX - r.left) / r.width - 0.5) * 0.16;
     targetPanY = ((e.clientY - r.top) / r.height - 0.5) * -0.1;
   };
@@ -246,8 +272,8 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     targetPanX = 0;
     targetPanY = 0;
   };
-  host.addEventListener("pointermove", onPointer);
-  host.addEventListener("pointerleave", onLeave);
+  window.addEventListener("pointermove", onPointer, { passive: true });
+  document.documentElement.addEventListener("pointerleave", onLeave);
 
   let raf = 0;
   let running = false;
@@ -256,7 +282,6 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   let start = 0;
   let last = 0;
   let firstFrame = true;
-  let lastPhase: "before" | "after" = "before";
 
   // deterministic states for visual acceptance shots: ?dm3d=before|after|scan|wide
   const forced = new URLSearchParams(window.location.search).get("dm3d");
@@ -290,13 +315,7 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     group.position.y = Math.sin(t * 0.8) * 0.01 * (1 - s * 0.75);
 
     const wipeT = forcedWipe !== null ? 0 : Math.max(t - WIPE_DELAY, 0);
-    const wipe = forcedWipe ?? wipeAt(wipeT);
-    screenMat.uniforms.uWipe.value = wipe;
-    const phase = wipe >= 0.5 ? "after" : "before";
-    if (phase !== lastPhase) {
-      lastPhase = phase;
-      opts.onPhase?.(phase);
-    }
+    screenMat.uniforms.uWipe.value = forcedWipe ?? wipeAt(wipeT);
 
     renderer.render(scene, camera);
     if (firstFrame) {
@@ -347,11 +366,12 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     io.disconnect();
     ro.disconnect();
     document.removeEventListener("visibilitychange", onVis);
-    host.removeEventListener("pointermove", onPointer);
-    host.removeEventListener("pointerleave", onLeave);
+    window.removeEventListener("pointermove", onPointer);
+    document.documentElement.removeEventListener("pointerleave", onLeave);
     for (const g of [slab, glass, leg, foot, screen, shadow]) g.geometry.dispose();
     for (const m of [aluminum, glassWhite, screenMat, shadowMat]) m.dispose();
-    for (const x of [texBefore, texAfter, shadowTex, envTex]) x.dispose();
+    for (const x of [texBefore, texAfter, shadowTex]) x.dispose();
+    envTarget.dispose();
     pmrem.dispose();
     renderer.dispose();
     canvas.remove();

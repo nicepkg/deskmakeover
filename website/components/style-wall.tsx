@@ -7,7 +7,17 @@ import { Lightbox } from "@/components/zoomable";
 
 const SIZES = "(min-width: 1024px) 62vw, 92vw";
 
-function WallImage({ id, alt, active }: { id: string; alt: string; active: boolean }) {
+function WallImage({
+  id,
+  alt,
+  active,
+  onFadedOut,
+}: {
+  id: string;
+  alt: string;
+  active: boolean;
+  onFadedOut?: () => void;
+}) {
   const entry = img(id);
   const avif = entry.variants.map((v) => `${v.avif} ${v.w}w`).join(", ");
   const webp = entry.variants.map((v) => `${v.webp} ${v.w}w`).join(", ");
@@ -16,6 +26,7 @@ function WallImage({ id, alt, active }: { id: string; alt: string; active: boole
     <picture
       className={`absolute inset-0 transition-opacity duration-300 ${active ? "opacity-100" : "opacity-0"}`}
       aria-hidden={!active}
+      onTransitionEnd={active ? undefined : onFadedOut}
     >
       <source type="image/avif" srcSet={avif} sizes={SIZES} />
       <source type="image/webp" srcSet={webp} sizes={SIZES} />
@@ -92,30 +103,37 @@ export function StyleWall({
         </div>
       </div>
       <div className="order-1 min-w-0 lg:order-2 lg:col-span-8">
-        <div className="relative aspect-[16/9] overflow-hidden border border-line bg-white">
-          {[
-            styles.find((s) => s.key === frame.active),
-            styles.find((s) => s.key === frame.prev),
-          ]
-            .filter((s): s is StyleEntry => s !== undefined)
-            .map((s) => (
-              // prev renders last (on top) so it fades OUT over the new image
-              <WallImage
-                key={s.key}
-                id={`desk-${s.key}`}
-                alt={`${altPrefix} ${s.name}`}
-                active={s.key === active}
-              />
-            ))}
-          <button
-            type="button"
-            onClick={() => setZoomed(true)}
-            aria-label={zoomHint}
-            className="absolute bottom-3 right-3 z-10 cursor-zoom-in border border-line bg-white/92 px-2 py-1 font-mono text-[11px] tracking-[0.1em] text-ink-2 transition-colors hover:border-ink hover:text-ink"
-          >
+        <button
+          type="button"
+          onClick={() => setZoomed(true)}
+          aria-label={`${altPrefix} ${styles.find((s) => s.key === active)?.name ?? active} — ${zoomHint}`}
+          className="group relative block w-full cursor-zoom-in overflow-hidden border border-line bg-white transition-colors hover:border-ink-3"
+        >
+          <div className="relative aspect-[16/9]">
+            {[
+              styles.find((s) => s.key === frame.active),
+              styles.find((s) => s.key === frame.prev),
+            ]
+              .filter((s): s is StyleEntry => s !== undefined)
+              .map((s) => (
+                // prev renders last (on top) so it fades OUT over the new image
+                <WallImage
+                  key={s.key}
+                  id={`desk-${s.key}`}
+                  alt={`${altPrefix} ${s.name}`}
+                  active={s.key === active}
+                  onFadedOut={
+                    s.key === frame.prev
+                      ? () => setFrame((f) => (f.prev === s.key ? { ...f, prev: null } : f))
+                      : undefined
+                  }
+                />
+              ))}
+          </div>
+          <span className="pointer-events-none absolute bottom-3 right-3 border border-line bg-white/92 px-2 py-1 font-mono text-[11px] tracking-[0.1em] text-ink-3 opacity-0 transition-opacity group-hover:opacity-100">
             {zoomHint}
-          </button>
-        </div>
+          </span>
+        </button>
       </div>
       {zoomed ? (
         <Lightbox

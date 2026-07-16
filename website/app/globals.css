@@ -105,6 +105,47 @@ p {
   }
 }
 
+/* fullscreen image viewer on the native dialog top layer */
+dialog.dm-lightbox::backdrop {
+  background: rgba(252, 252, 253, 0.94);
+  backdrop-filter: blur(10px);
+  animation: dm-fade 220ms var(--ease-swift) both;
+}
+dialog.dm-lightbox[open] .dm-lightbox-img {
+  animation: dm-pop 300ms var(--ease-swift) both;
+}
+dialog.dm-lightbox[open] .dm-lightbox-bar {
+  animation: dm-rise 340ms var(--ease-swift) 80ms both;
+}
+@keyframes dm-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dm-pop {
+  from {
+    opacity: 0;
+    scale: 0.955;
+  }
+}
+@keyframes dm-rise {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog.dm-lightbox::backdrop,
+  dialog.dm-lightbox[open] .dm-lightbox-img,
+  dialog.dm-lightbox[open] .dm-lightbox-bar {
+    animation: none;
+  }
+}
+dialog.dm-lightbox button:focus-visible {
+  outline: 2px solid var(--color-coral);
+  outline-offset: 2px;
+}
+
 /* before/after wipe: the invisible range input drives the divider */
 .wipe-range {
   -webkit-appearance: none;

@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils'
 export function CalmPage() {
   const t = useT()
   const probed = useCalm((s) => s.probed)
+  const probeFailed = useCalm((s) => s.probeFailed)
   const op = useCalm((s) => s.op)
   const rows = useCalm((s) => s.rows)
   const excluded = useCalm((s) => s.excluded)
@@ -56,6 +57,8 @@ export function CalmPage() {
   // Windows before the W3 cert lab), the hero wears the guided-only face — honest words, no
   // CTA — instead of an eternal spinner + 「可以让 0 个界面安静下来」.
   const guidedFace = op === 'idle' && guidedOnlyFace(probed, rows)
+  // A rejected probe (host/IPC error) shows an honest retry hero, never a forever-spinner (B2).
+  const scanFailed = op === 'idle' && probeFailed && !probed
 
   // Honest hero phases: ready only with real candidates; synced only when our
   // verified writes exist AND nothing is still awaiting; awaiting gets its own
@@ -90,79 +93,102 @@ export function CalmPage() {
             would hard-code the starter count and lie the moment the user excludes a
             row or new controls land. The row schematics carry all the visuals. */}
         <div className="mb-6 flex items-center gap-6 rounded-2xl border border-hair bg-raised px-6 py-5">
-          <div className="min-w-0 flex-1">
-            {/* Typographic hierarchy (owner 2026-07-13): the count line IS the
-                page's message — large; everything explanatory shrinks and fades. */}
-            <p className="text-[18px] font-medium tracking-[-0.01em] text-t1">
-              {guidedFace
-                ? t('Calm_GuidedOnly_Head')
-                : quieted > 0
-                  ? format(t('Calm_Summary'), quieted)
-                  : format(t('Calm_CanQuiet'), candidates.length)}
-            </p>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-t3">
-              {guidedFace ? t('Calm_GuidedOnly_Sub') : t('Calm_HeroPromise')}
-            </p>
-            {/* HealthCheck re-propose (spec 08 §6): additive notice, never an
-                auto-replay — 重新关闭 runs the same verify pipeline, scoped to
-                the ACTIONABLE set (excluded rows are user-silenced). */}
-            {reopenedActionable.length > 0 && (
-              <p className="mt-2.5 flex items-center gap-2 text-[12.5px] font-medium text-t1">
-                <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-amber" />
-                {format(t('Calm_Notice_Reopened'), reopenedActionable.length)}
-                <ChipButton onClick={() => void useCalm.getState().applyAll(reopenedActionable)}>
-                  {t('Calm_Notice_ReClose')}
-                </ChipButton>
-              </p>
-            )}
-          </div>
-          <div className="w-[200px] shrink-0">
-            {/* Spec 08 §10: verified success is coral-ink on this page — the shared
-                synced teal would read as the banned green-family shield (codex R3 #5).
-                The guided-only face carries NO CTA (nothing one-click exists to run);
-                the guided rows below are the page's working surface. */}
-            {!guidedFace && (
-              <CtaButton
-                phase={phase}
-                onClick={() => setConfirmOpen(true)}
-                className={phase === 'synced' ? 'bg-coral/10 text-coral-ink' : undefined}
-              >
-                {ctaLabel}
-              </CtaButton>
-            )}
-            {/* Restore gates on live LEDGER rows, not the verified count. */}
-            {restorable > 0 && (
-              <button
-                type="button"
-                onClick={() => void useCalm.getState().restoreAll()}
-                className="mt-2 inline-flex w-full items-center justify-center gap-1 text-[12px] text-t3 transition-colors hover:text-t1"
-              >
-                <RotateCcw size={12} />
-                {t('Calm_Restore')}
-              </button>
-            )}
-          </div>
+          {scanFailed ? (
+            <>
+              <div className="min-w-0 flex-1">
+                <p className="text-[18px] font-medium tracking-[-0.01em] text-t1">{t('Calm_ScanFailed_Head')}</p>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-t3">{t('Calm_ScanFailed_Sub')}</p>
+              </div>
+              <div className="w-[200px] shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void useCalm.getState().probe()}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-chip px-4 py-2 text-[13px] font-medium text-t2 transition-colors hover:bg-raised-hov hover:text-t1"
+                >
+                  <RotateCcw size={13} />
+                  {t('Calm_ScanFailed_Retry')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="min-w-0 flex-1">
+                {/* Typographic hierarchy (owner 2026-07-13): the count line IS the
+                    page's message — large; everything explanatory shrinks and fades. */}
+                <p className="text-[18px] font-medium tracking-[-0.01em] text-t1">
+                  {guidedFace
+                    ? t('Calm_GuidedOnly_Head')
+                    : quieted > 0
+                      ? format(t('Calm_Summary'), quieted)
+                      : format(t('Calm_CanQuiet'), candidates.length)}
+                </p>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-t3">
+                  {guidedFace ? t('Calm_GuidedOnly_Sub') : t('Calm_HeroPromise')}
+                </p>
+                {/* HealthCheck re-propose (spec 08 §6): additive notice, never an
+                    auto-replay — 重新关闭 runs the same verify pipeline, scoped to
+                    the ACTIONABLE set (excluded rows are user-silenced). */}
+                {reopenedActionable.length > 0 && (
+                  <p className="mt-2.5 flex items-center gap-2 text-[12.5px] font-medium text-t1">
+                    <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-amber" />
+                    {format(t('Calm_Notice_Reopened'), reopenedActionable.length)}
+                    <ChipButton onClick={() => void useCalm.getState().applyAll(reopenedActionable)}>
+                      {t('Calm_Notice_ReClose')}
+                    </ChipButton>
+                  </p>
+                )}
+              </div>
+              <div className="w-[200px] shrink-0">
+                {/* Spec 08 §10: verified success is coral-ink on this page — the shared
+                    synced teal would read as the banned green-family shield (codex R3 #5).
+                    The guided-only face carries NO CTA (nothing one-click exists to run);
+                    the guided rows below are the page's working surface. */}
+                {!guidedFace && (
+                  <CtaButton
+                    phase={phase}
+                    onClick={() => setConfirmOpen(true)}
+                    className={phase === 'synced' ? 'bg-coral/10 text-coral-ink' : undefined}
+                  >
+                    {ctaLabel}
+                  </CtaButton>
+                )}
+                {/* Restore gates on live LEDGER rows, not the verified count. */}
+                {restorable > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void useCalm.getState().restoreAll()}
+                    className="mt-2 inline-flex w-full items-center justify-center gap-1 text-[12px] text-t3 transition-colors hover:text-t1"
+                  >
+                    <RotateCcw size={12} />
+                    {t('Calm_Restore')}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="flex flex-col gap-6">
-          {groups.oneClick.length > 0 && (
-            <Group label={t('Calm_Group_OneClick')} subtitle={t('Calm_Group_OneClick_Sub')}>
-              {groups.oneClick.map((id) => (
-                <OneClickRow key={id} id={id} oneClickIds={groups.oneClick} />
-              ))}
-            </Group>
-          )}
+        {!scanFailed && (
+          <div className="flex flex-col gap-6">
+            {groups.oneClick.length > 0 && (
+              <Group label={t('Calm_Group_OneClick')} subtitle={t('Calm_Group_OneClick_Sub')}>
+                {groups.oneClick.map((id) => (
+                  <OneClickRow key={id} id={id} oneClickIds={groups.oneClick} />
+                ))}
+              </Group>
+            )}
 
-          {groups.guided.length > 0 && (
-            <Group label={t('Calm_Group_Guided')} subtitle={t('Calm_Group_Guided_Sub')}>
-              {groups.guided.map((id) => (
-                <GuidedRow key={id} id={id} />
-              ))}
-            </Group>
-          )}
+            {groups.guided.length > 0 && (
+              <Group label={t('Calm_Group_Guided')} subtitle={t('Calm_Group_Guided_Sub')}>
+                {groups.guided.map((id) => (
+                  <GuidedRow key={id} id={id} />
+                ))}
+              </Group>
+            )}
 
-          {groups.held.length > 0 && <HeldGroup ids={groups.held} rows={rows} />}
-        </div>
+            {groups.held.length > 0 && <HeldGroup ids={groups.held} rows={rows} />}
+          </div>
+        )}
 
       {/* Explain before apply (spec 08 §4) — three lines, no dangling references. */}
       <ConfirmSheet

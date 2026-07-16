@@ -213,6 +213,7 @@ mod tests {
         calls: RefCell<Vec<String>>,
         fail_capture: bool,
         fail_set: bool,
+        fail_restore: bool,
     }
 
     impl FakeApplier {
@@ -250,6 +251,9 @@ mod tests {
         }
         fn restore(&self, snapshot: &WallpaperSnapshot) -> PortResult<()> {
             self.calls.borrow_mut().push(format!("restore {} monitors", snapshot.monitors.len()));
+            if self.fail_restore {
+                return Err(PortError::Com("restore boom".into()));
+            }
             Ok(())
         }
     }
@@ -313,6 +317,23 @@ mod tests {
         ops.apply_baked("m1", &png_b64()).unwrap();
         let captures = fake.calls().iter().filter(|c| *c == "capture").count();
         assert_eq!(captures, 1, "snapshot-once violated: {:?}", fake.calls());
+    }
+
+    #[test]
+    fn a_failed_restore_keeps_the_snapshot_so_the_desktop_stays_recoverable() {
+        // A3 regression (owner 2026-07-16): if the applier's restore fails (e.g. an empty-path clear
+        // on a solid-colour original monitor), restore("all") must NOT clear the snapshot — else the
+        // baked wallpaper stays on screen with no recovery anchor (reversibility violation).
+        let r = rig();
+        let fake = FakeApplier { fail_restore: true, ..Default::default() };
+        let ops = WallpaperOps::new(&fake, &r.store, &r.baked);
+        ops.apply_baked("m0", &png_b64()).unwrap(); // captures + saves the snapshot first
+        assert!(ops.restore("all").is_err(), "a failed restore must surface as Err");
+        assert_eq!(
+            r.store.load().unwrap(),
+            Some(original()),
+            "the snapshot must survive a failed restore so the user can retry",
+        );
     }
 
     #[test]

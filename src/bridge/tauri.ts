@@ -230,10 +230,13 @@ if (isTauri()) {
   // Wave 1 (bridge schema 8): the calm module's CalmBackend port now routes to the real Rust
   // decision core. In the browser / mock loop the store keeps its MockCalmBackend default.
   void (async () => {
-    const [{ TauriCalmBackend }, { setCalmBackend }] = await Promise.all([
+    const [{ TauriCalmBackend }, calmStore] = await Promise.all([
       import('./tauri-calm'),
       import('@/stores/calm'),
     ])
-    setCalmBackend(new TauriCalmBackend())
+    calmStore.setCalmBackend(new TauriCalmBackend())
+    // Close the boot race: if the user already entered 清爽 (probed against the fail-closed
+    // placeholder), re-probe now that the authoritative backend is in so real state replaces it.
+    if (calmStore.useCalm.getState().probed) void calmStore.useCalm.getState().probe()
   })()
 }

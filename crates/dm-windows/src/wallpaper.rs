@@ -163,10 +163,13 @@ fn restore_blocking(snapshot: &WallpaperSnapshot) -> PortResult<()> {
                 }
                 None => {
                     // Solid colour / slideshow frame at capture: clear our image so the restored
-                    // background colour shows through. Best-effort — exact clear semantics for an
-                    // empty path are [WINDOWS-VERIFY]; a rejected clear must not fail the restore.
+                    // background colour shows through. PROPAGATE a clear failure, exactly like the
+                    // Some case — a swallowed failure used to return Ok, and the 'all' caller then
+                    // deletes the snapshot, leaving the baked wallpaper on screen with NO way back
+                    // (reversibility violation). Failing here keeps the snapshot so restore can retry.
+                    // [WINDOWS-VERIFY] the exact empty-path clear semantics on a real desktop.
                     let empty = HSTRING::default();
-                    let _ = dw.SetWallpaper(PCWSTR(id.as_ptr()), PCWSTR(empty.as_ptr()));
+                    dw.SetWallpaper(PCWSTR(id.as_ptr()), PCWSTR(empty.as_ptr())).map_err(com)?;
                 }
             }
         }

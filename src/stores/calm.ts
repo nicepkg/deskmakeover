@@ -8,7 +8,7 @@ import {
   probeTransition,
   type CalmRowState,
 } from '@/lib/calm/states'
-import { MockCalmBackend, type CalmBackend } from '@/bridge/mock-calm'
+import { MockCalmBackend, UnavailableCalmBackend, type CalmBackend } from '@/bridge/mock-calm'
 import { format, t } from '@/lib/i18n'
 import { useToasts } from '@/stores/toasts'
 
@@ -17,7 +17,12 @@ import { useToasts } from '@/stores/toasts'
 // state change. One operation lock serializes probe/apply/restore (codex R1 #7).
 // Backend = the CalmBackend port; Wave 1 swaps in the Tauri implementation.
 
-let backend: CalmBackend = new MockCalmBackend()
+// Under Tauri, start FAIL-CLOSED (never the mock): a fast navigation to 清爽 before the async
+// TauriCalmBackend swap (bridge/tauri.ts) must never let the in-memory mock report writable recipes
+// and show fake "quieted" success (ADR-0023 D2, the owner's deceptive-UI cardinal sin). The browser
+// and test loops keep the mock default; tauri.ts installs the real backend and re-probes.
+const isTauriRuntime = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+let backend: CalmBackend = isTauriRuntime ? new UnavailableCalmBackend() : new MockCalmBackend()
 
 /** Wave-1 seam + test injection point. */
 export function setCalmBackend(b: CalmBackend) {
@@ -51,6 +56,8 @@ type CalmOp = 'idle' | 'probe' | 'apply' | 'restore'
 
 interface CalmState {
   probed: boolean
+  /** The last probe rejected (host/IPC error) — the page shows a retry instead of a forever-spinner. */
+  probeFailed: boolean
   /** One operation at a time — probe/apply/restore never interleave. */
   op: CalmOp
   rows: Record<CalmControlId, CalmRowState>
@@ -121,6 +128,7 @@ export const useCalm = create<CalmState>((set, get) => {
 
   return {
     probed: false,
+    probeFailed: false,
     op: 'idle',
     rows: initialRows(),
     excluded: loadExcluded(),
@@ -130,7 +138,7 @@ export const useCalm = create<CalmState>((set, get) => {
 
     probe: async () => {
       if (get().op !== 'idle') return
-      set({ op: 'probe' })
+      set({ op: 'probe', probeFailed: false })
       try {
         const probed = await backend.probe()
         set((s) => {
@@ -147,6 +155,11 @@ export const useCalm = create<CalmState>((set, get) => {
           excludedLoadFailed = false
           useToasts.getState().show(t('Calm_Toast_ExcludeLoadFailed'), 'warn')
         }
+      } catch {
+        // A rejected probe (host/IPC error) must not leave the hero spinning forever — surface it
+        // and let the page offer a retry (owner: no silent, forever-scanning dead UI).
+        set({ probeFailed: true })
+        useToasts.getState().show(t('Calm_Toast_ScanFailed'), 'warn')
       } finally {
         set({ op: 'idle' })
       }
@@ -296,7 +309,13 @@ export const useCalm = create<CalmState>((set, get) => {
 
     walkGuided: async (id) => {
       set({ walkedId: id })
-      await backend.openRoute(id)
+      try {
+        await backend.openRoute(id)
+      } catch {
+        // The ms-settings route did not launch — clear the walk token and say so, never a dead button.
+        set((s) => (s.walkedId === id ? { walkedId: null } : {}))
+        useToasts.getState().show(t('Calm_Toast_RouteFailed'), 'warn')
+      }
     },
 
     reProbeWalked: async () => {
@@ -308,7 +327,13 @@ export const useCalm = create<CalmState>((set, get) => {
         set({ walkedId: null })
         return
       }
-      const off = await backend.reProbeGuided(id)
+      let off: boolean | null
+      try {
+        off = await backend.reProbeGuided(id)
+      } catch {
+        // Background return-probe failed — keep walkedId so the next focus can retry; stay silent.
+        return
+      }
       // Re-check AFTER the await (codex R4 #4): a concurrent re-probe of the SAME
       // row may have landed first — writing confirmedOff twice is an illegal
       // transition, so only the probe that finds the row still pushing writes.

@@ -262,11 +262,15 @@ export function SettingsPage() {
                   <ActionButton
                     icon={<Bug size={12} />}
                     onClick={() =>
-                      void buildReport().then(async (report) => {
-                        await copyText(report)
-                        toast(t('Diag_Copied'), 'success')
-                        openExternal(issueUrl(report))
-                      })
+                      void buildReport()
+                        .then(async (report) => {
+                          // The full log rides the clipboard; if the copy failed the issue body
+                          // says "paste it here" but there's nothing to paste — say so honestly.
+                          const ok = await copyText(report)
+                          toast(ok ? t('Diag_Copied') : t('Diag_CopyFailed'), ok ? 'success' : 'warn')
+                          openExternal(issueUrl(report))
+                        })
+                        .catch(() => toast(t('Diag_CopyFailed'), 'warn'))
                     }
                   >
                     {t('Diag_Report')}
@@ -274,10 +278,12 @@ export function SettingsPage() {
                   <ActionButton
                     icon={<Mail size={12} />}
                     onClick={() =>
-                      void copyDiagnostics().then(() => {
-                        toast(t('Diag_Copied'), 'success')
-                        openExternal(mailtoUrl())
-                      })
+                      void copyDiagnostics()
+                        .then((ok) => {
+                          toast(ok ? t('Diag_Copied') : t('Diag_CopyFailed'), ok ? 'success' : 'warn')
+                          openExternal(mailtoUrl())
+                        })
+                        .catch(() => toast(t('Diag_CopyFailed'), 'warn'))
                     }
                   >
                     {t('Diag_Email')}

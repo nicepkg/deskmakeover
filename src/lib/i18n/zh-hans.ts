@@ -137,6 +137,11 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Calm_Toast_RestoredOne": "已恢复「{0}」",
   "Calm_Toast_RestoredSkipped": "已恢复 {0} 项，{1} 项你自己改过（未动）",
   "Calm_Toast_Unconfirmed": "没能确认这次的结果，正在重新检查",
+  "Calm_Toast_ScanFailed": "没能检查系统，点重试再试一次",
+  "Calm_Toast_RouteFailed": "没能打开那个 Windows 设置，请再试一次",
+  "Calm_ScanFailed_Head": "这次检查没有完成",
+  "Calm_ScanFailed_Sub": "读取系统时被打断了，点重试重新检查。",
+  "Calm_ScanFailed_Retry": "重新检查",
   "Calm_Tray": "系统托盘图标",
   "Calm_Tray_Desc": "挑出想显示的，其余收起",
   "Calm_Tray_Route": "我们会打开任务栏设置，调整后回来",
@@ -635,6 +640,10 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Toast_AutoFormatNeedsApply": "先完成一次「一键美颜」保存外观，再开启自动整理", // resident §2 precondition
   "Toast_NoHistoryYet": "还没有整理记录 · 每次「一键美颜」都会在这里记下一版", // tray history deep-link, empty state
   "Toast_OpenLinkFailed": "打开失败了，链接已在设置里，可手动访问", // opener rejection surfaced honestly
+  "Toast_WallpaperApplyFailed": "壁纸没能应用，什么都没有改动",
+  "Toast_WallpaperRestoreFailed": "壁纸没能还原，你的备份还在",
+  "Toast_WallpaperResetFailed": "没能恢复到原图，当前来源保持不变",
+  "Toast_DialogFailed": "没能打开文件选择器，请再试一次",
   "Toast_ResidentProposal": "发现 {0} 个新图标 · 将在确认或 2 小时后自动整理", // resident §2 item 4
   "Toast_ResidentApplied": "已自动整理 {0} 个新图标 · 托盘菜单可撤销", // resident batch applied
   "Toast_ResidentUndone": "已撤销 · {0} 个图标回到原来的样子", // resident undo (§13 level 2)

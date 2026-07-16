@@ -1,17 +1,18 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { CALM_CATALOG, type CalmControlId } from '../src/lib/calm/catalog'
 import type { CalmRowState } from '../src/lib/calm/states'
-import { MockCalmBackend } from '../src/bridge/mock-calm'
-import { countOwnedWrites, countQuieted, countRestorable, groupedRows, guidedOnlyFace, reopenedRows, setCalmBackend, useCalm } from '../src/stores/calm'
+import { MockCalmBackend, UnavailableCalmBackend, type CalmBackend } from '../src/bridge/mock-calm'
+import { applyCandidates, countOwnedWrites, countQuieted, countRestorable, groupedRows, guidedOnlyFace, reopenedRows, setCalmBackend, useCalm } from '../src/stores/calm'
 
 // Store behaviour tests over the CalmBackend mock (plan W0.3 + codex R1 fixes).
 // The mock's fake environment: starter slice certified, other automatic rows
 // fail-closed, guided rows walkable.
 
-function resetStore(backend: MockCalmBackend) {
+function resetStore(backend: CalmBackend) {
   setCalmBackend(backend)
   useCalm.setState({
     probed: false,
+    probeFailed: false,
     op: 'idle',
     rows: Object.fromEntries(CALM_CATALOG.map((c) => [c.id, 'unknown'])) as Record<CalmControlId, CalmRowState>,
     excluded: new Set(),
@@ -361,5 +362,63 @@ describe('calm store', () => {
     await useCalm.getState().applyAll()
     expect(useCalm.getState().rows).toEqual(before)
     expect(useCalm.getState().lastApply?.verified).toBe(3) // summary unchanged
+  })
+
+  test('a rejected probe surfaces probeFailed (retry), never an eternal spinner or a fake scan (B2)', async () => {
+    class ExplodingProbe extends MockCalmBackend {
+      override async probe(): Promise<never> {
+        throw new Error('ipc down')
+      }
+    }
+    resetStore(new ExplodingProbe({ latencyMs: 0 }))
+    await useCalm.getState().probe()
+    let s = useCalm.getState()
+    expect(s.probeFailed).toBe(true)
+    expect(s.probed).toBe(false) // never a fake "checked" state
+    expect(s.op).toBe('idle')
+    // A subsequent good probe clears the failure and loads real state.
+    setCalmBackend(new MockCalmBackend({ latencyMs: 0 }))
+    await useCalm.getState().probe()
+    s = useCalm.getState()
+    expect(s.probeFailed).toBe(false)
+    expect(s.probed).toBe(true)
+  })
+
+  test('a guided route that fails to launch clears the walk token, never a dead button (B2)', async () => {
+    class ExplodingRoute extends MockCalmBackend {
+      override async openRoute(): Promise<never> {
+        throw new Error('route did not launch')
+      }
+    }
+    resetStore(new ExplodingRoute({ latencyMs: 0 }))
+    await useCalm.getState().probe()
+    await useCalm.getState().walkGuided('widgets.feed') // must not throw
+    expect(useCalm.getState().walkedId).toBeNull() // cleared, not stuck pretending to walk
+  })
+
+  test('a failed guided return-probe keeps the walk token for the next focus retry (B2)', async () => {
+    class ExplodingReProbe extends MockCalmBackend {
+      override async reProbeGuided(): Promise<never> {
+        throw new Error('ipc down')
+      }
+    }
+    resetStore(new ExplodingReProbe({ latencyMs: 0 }))
+    await useCalm.getState().probe()
+    await useCalm.getState().walkGuided('taskbar.widgetsButton') // readable row → walkedId set
+    await useCalm.getState().reProbeWalked() // must not throw
+    expect(useCalm.getState().walkedId).toBe('taskbar.widgetsButton') // preserved to retry
+  })
+
+  test('the fail-closed placeholder backend (under Tauri, pre-swap) never offers a candidate or a fake apply (B1)', async () => {
+    // Boot-race regression (owner 2026-07-16): before the async TauriCalmBackend swap lands, the
+    // store must be fail-closed — a fast 清爽 entry must never apply against a mock and show fake
+    // "quieted" success (ADR-0023 D2, the deceptive-UI cardinal sin).
+    resetStore(new UnavailableCalmBackend())
+    await useCalm.getState().probe()
+    const s = useCalm.getState()
+    expect(applyCandidates(s.rows, s.excluded)).toEqual([]) // nothing writable exists
+    expect(groupedRows(s.rows).oneClick).toEqual([])
+    await useCalm.getState().applyAll() // a stated no-op, never a verified write
+    expect(countQuieted(useCalm.getState().rows)).toBe(0)
   })
 })

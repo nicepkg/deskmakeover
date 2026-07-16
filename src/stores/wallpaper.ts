@@ -411,9 +411,15 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
       if (!compositor) return
       const url = activeScreenSourceUrl(get().screens, get().activeScreenId)
       if (url) {
-        const response = await fetch(url)
-        const bitmap = await createImageBitmap(await response.blob())
-        compositor.setSource({ bitmap, width: bitmap.width, height: bitmap.height })
+        try {
+          const response = await fetch(url)
+          const bitmap = await createImageBitmap(await response.blob())
+          compositor.setSource({ bitmap, width: bitmap.width, height: bitmap.height })
+        } catch {
+          // Could not re-fetch/decode the original wallpaper — keep the current source, say so (B6).
+          useToasts.getState().show(t('Toast_WallpaperResetFailed'), 'warn')
+          return
+        }
       }
       const prev = get().sourceUrl
       setActive({ sourceName: null, sourceUrl: null })
@@ -517,6 +523,8 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
         toastOf(result)
         return result.ok
       } catch {
+        // A bake/bridge/resync exception must not read as a dead CTA — say nothing changed (B3).
+        useToasts.getState().show(t('Toast_WallpaperApplyFailed'), 'warn')
         return false
       } finally {
         set({ applying: false })
@@ -526,9 +534,14 @@ export const useWallpaper = create<WallpaperState>((set, get) => {
     restore: async () => {
       // Whole-desktop restore reverts the pre-first-apply snapshot (§B5); draft looks
       // survive, so dirty re-derives from them on the getScreens re-assemble.
-      const result = decodeWallpaperResult(await call('wallpaper.restore', { monitorId: 'all' }))
-      await syncFromHost()
-      toastOf(result)
+      try {
+        const result = decodeWallpaperResult(await call('wallpaper.restore', { monitorId: 'all' }))
+        await syncFromHost()
+        toastOf(result)
+      } catch {
+        // The restore call/resync threw — never a silent dead button; the backup is untouched (B3).
+        useToasts.getState().show(t('Toast_WallpaperRestoreFailed'), 'warn')
+      }
     },
 
     setComparing: (comparing) => set({ comparing }),

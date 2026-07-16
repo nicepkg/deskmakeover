@@ -135,6 +135,11 @@ export const en = {
   "Calm_Toast_RestoredOne": "Restored {0}",
   "Calm_Toast_RestoredSkipped": "Restored {0}; left {1} you changed yourself untouched",
   "Calm_Toast_Unconfirmed": "Could not confirm the result; rechecking now",
+  "Calm_Toast_ScanFailed": "Could not check the system; tap retry", // probe rejection surfaced honestly
+  "Calm_Toast_RouteFailed": "Could not open that Windows setting; try again", // guided route launch failed
+  "Calm_ScanFailed_Head": "The check did not finish",
+  "Calm_ScanFailed_Sub": "Reading your system got interrupted. Tap retry to check again.",
+  "Calm_ScanFailed_Retry": "Check again",
   "Calm_Tray": "System tray icons",
   "Calm_Tray_Desc": "Pick what shows; the rest tucks away",
   "Calm_Tray_Route": "We open the taskbar settings; adjust and come back",
@@ -633,6 +638,10 @@ export const en = {
   "Toast_AutoFormatNeedsApply": "Complete one Beautify to save a look first, then enable auto-format", // resident §2 precondition
   "Toast_NoHistoryYet": "No history yet · every Beautify records a version here", // tray history deep-link, empty state
   "Toast_OpenLinkFailed": "Could not open it — the link stays here in Settings", // opener rejection surfaced honestly
+  "Toast_WallpaperApplyFailed": "Could not apply the wallpaper; nothing was changed", // apply rejection surfaced honestly
+  "Toast_WallpaperRestoreFailed": "Could not restore the wallpaper; your backup is safe", // restore rejection surfaced honestly
+  "Toast_WallpaperResetFailed": "Could not reset to the original; the current source stays", // resetSource rejection
+  "Toast_DialogFailed": "Could not open the file picker; try again", // native dialog open/save rejection
   "Toast_ResidentProposal": "{0} new icon(s) found · formatted on confirm or in 2 hours", // resident §2 item 4
   "Toast_ResidentApplied": "{0} new icon(s) auto-formatted · undo from the tray menu", // resident batch applied
   "Toast_ResidentUndone": "Undone · {0} icon(s) back to their original look", // resident undo (§13 level 2)

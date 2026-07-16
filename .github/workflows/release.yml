@@ -38,6 +38,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify the tag matches the bundle version (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') { throw "tag '$tag' is not a vX.Y.Z release tag" }
+          $want = $tag.Substring(1)
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tauri = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($pkg -ne $want -or $tauri -ne $want) {
+            throw "tag $tag does not match versions (package.json=$pkg, tauri.conf.json=$tauri) — run 'bun run release' before tagging"
+          }
+          "tag $tag matches bundle version $want"
+
       - name: Preflight — toolchain (+ live signing session when signing)
         shell: pwsh
         run: |
@@ -56,6 +70,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Clean stale NSIS output (the self-hosted runner persists target/ between runs)
+        shell: pwsh
+        run: |
+          $nsis = Join-Path $PWD 'target/release/bundle/nsis'
+          if (Test-Path $nsis) { Remove-Item -Recurse -Force $nsis }
 
       - name: Build (Tauri signCommand signs the exe AND the NSIS installer when signing)
         shell: pwsh
@@ -79,6 +99,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $installer = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
-          if (-not $installer) { throw 'no NSIS installer produced' }
+          $installers = @(Get-ChildItem target/release/bundle/nsis/*-setup.exe)
+          if ($installers.Count -ne 1) { throw "expected exactly one NSIS installer, found $($installers.Count)" }
+          $installer = $installers[0]
+          $want = '${{ github.ref_name }}'.Substring(1)
+          if ($installer.Name -notmatch [regex]::Escape($want)) { throw "installer $($installer.Name) does not carry version $want" }
           gh release create "${{ github.ref_name }}" "$($installer.FullName)" --title "${{ github.ref_name }}" --generate-notes

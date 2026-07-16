@@ -177,8 +177,8 @@ bun run gen:bindings        # writes generated.ts (do NOT hand-edit that file)
 bun run check:bindings      # cargo test that fails if generated.ts is out of date
 ```
 
-Hand-written DTOs + the `BRIDGE_SCHEMA_VERSION` constant (currently **8**) live in
-`src/bridge/types.ts`; the wallpaper/icons/calm slices are already generated from `dm-contracts`.
+Hand-written DTOs + the `BRIDGE_SCHEMA_VERSION` constant (currently **9**) live in
+`src/bridge/types.ts`; the wallpaper/icons/calm/preset slices are already generated from `dm-contracts`.
 
 ---
 
@@ -210,10 +210,15 @@ not restated here.)
 
 ## 5. Build / Package
 
-> **The shipping artifact is the Tauri build (ADR-0019, M8 — NOT STARTED).** The real installer
-> will come from `bun run tauri build` (NSIS on Windows) bundling the Rust host + web + the
-> `dm-elevated` helper; signing/updater are open M8 work; version is `0.0.0` until the owner names
-> the first release. **None of it exists yet — nothing has shipped.**
+> **The shipping artifact is the Tauri build (ADR-0019, M8).** `bun run tauri build` produces a
+> working per-user NSIS installer (Windows) bundling the Rust host + web + the `dm-elevated` helper
+> (requireAdministrator manifest + WebView2 downloadBootstrapper). Authenticode signing CI is
+> validated end-to-end (Certum SimplySign + a self-hosted runner — `docs/signing-setup.md`), and
+> GitHub-hosted CI (`.github/workflows/ci.yml`) gates every push/PR. The bundle version is `0.1.0`
+> (`package.json` + `src-tauri/tauri.conf.json`; the Cargo workspace intentionally stays `0.0.0`,
+> `publish=false`). **Still open:** updater, `.dmpreset` file association, the owner cutting the
+> first `v*` tag, and the owner-supervised Windows write-surface verification (STATE.md). Nothing has
+> been tagged/released yet, but the packaging + signing path is proven.
 
 The old .NET/WPF publish path (single-file WPF exe, ElevatedHelper as a separate binary, the
 `publish.ps1` / `publish-win.mjs` scripts) was removed with the C# tree on 2026-07-14. The

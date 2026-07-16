@@ -73,15 +73,17 @@ fast with a clear message if the cert isn't in the store, so you never get a hal
 ### 4. Cut a release
 
 ```bash
-# One command: single-sources the version across package.json + tauri.conf.json + Cargo.toml,
-# commits, tags, and pushes (the tag fires this workflow):
-bun run release 0.1.0 --commit --tag --push
+# The version files already say 0.1.0, so the FIRST release just tags the current clean HEAD:
+bun run release 0.1.0 --tag --push
 
-# Or step by step:
-bun run release 0.1.0            # rewrite the version files only (review the diff)
-git commit -am "chore(release): v0.1.0"
-git tag v0.1.0 && git push origin main v0.1.0
+# A LATER release bumps + commits + tags + pushes in one shot:
+bun run release 0.2.0 --commit --tag --push
 ```
+
+`scripts/release.mjs` single-sources the version across `package.json` + `src-tauri/tauri.conf.json`
+(the Cargo workspace stays `0.0.0` — crates are `publish=false`), runs preflight (clean tree, branch
+`main`, the tag is free), then commits only the version files, tags, and pushes. The tag push fires
+this workflow, which re-verifies the tag equals the bundle version before building.
 
 The tag triggers `release.yml`: build → sign exe + installer → publish a GitHub Release with the
 signed `*-setup.exe`. `workflow_dispatch` (Actions tab → Run workflow) does the same minus the

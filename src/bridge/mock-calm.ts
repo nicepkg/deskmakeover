@@ -154,3 +154,31 @@ export class MockCalmBackend implements CalmBackend {
     return this.walked.has(id)
   }
 }
+
+/** Fail-closed placeholder used under Tauri UNTIL the real TauriCalmBackend finishes loading —
+ *  so a fast navigation to 清爽 before the async backend swap (bridge/tauri.ts) can NEVER apply
+ *  against the in-memory mock and show fake "quieted" success (ADR-0023 D2; the owner's deceptive-UI
+ *  cardinal sin). Writable rows report fail-closed (unsupported → held, no candidates), apply/restore
+ *  are honest no-ops, and guided routes stay inert until the real backend + a re-probe land. */
+export class UnavailableCalmBackend implements CalmBackend {
+  async probe(): Promise<CalmProbeRow[]> {
+    return CALM_CATALOG.map((c): CalmProbeRow =>
+      c.tier === 'guided' ? { id: c.id, state: 'pushing' } : { id: c.id, state: 'unsupported' },
+    )
+  }
+  async apply(ids: CalmControlId[]): Promise<CalmApplyRow[]> {
+    // No writable candidates exist while fail-closed, so this is effectively unreachable — but it
+    // must never report a write it did not perform.
+    return ids.map((id): CalmApplyRow => ({ id, outcome: 'skipped', reason: 'changed' }))
+  }
+  async restore(): Promise<CalmRestoreRow[]> {
+    return []
+  }
+  async restoreOne(id: CalmControlId): Promise<CalmRestoreRow> {
+    return { id, outcome: 'skippedDrift' }
+  }
+  async openRoute(): Promise<void> {}
+  async reProbeGuided(): Promise<boolean | null> {
+    return null
+  }
+}

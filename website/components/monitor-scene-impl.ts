@@ -306,6 +306,26 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     screenPanel.visible = true;
   }
 
+  // the original panel material carried the glass reflection the shader
+  // swap removed — reinstate it as a coincident clone of the panel mesh
+  // wearing near-mirror black glass that only contributes env streaks
+  const glassOverlayMat = new THREE.MeshPhysicalMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.06,
+    roughness: 0.04,
+    metalness: 0,
+    envMapIntensity: 1.5,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    side: THREE.DoubleSide,
+  });
+  const glassOverlay = screenPanel.clone();
+  glassOverlay.material = glassOverlayMat;
+  glassOverlay.renderOrder = 10;
+  screenPanel.parent?.add(glassOverlay);
+
   const shadowTex = contactShadowTexture();
   const shadowMat = new THREE.MeshBasicMaterial({
     map: shadowTex,
@@ -322,7 +342,7 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   // where the LEFT bezel width faces the lens — with a slight push-in.
   // The whole screen content stays inside the viewport once settled.
   const YAW_A = 0.45;
-  const YAW_B = -0.3;
+  const YAW_B = -0.42;
   const LOOK_A = new THREE.Vector3();
   const LOOK_B = new THREE.Vector3();
   const POS_A = new THREE.Vector3();
@@ -499,7 +519,7 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
       }
     });
     shadow.geometry.dispose();
-    for (const m of [screenMat, shadowMat]) m.dispose();
+    for (const m of [screenMat, shadowMat, glassOverlayMat]) m.dispose();
     for (const x of [texBefore, texAfter, shadowTex]) x.dispose();
     envTarget.dispose();
     pmrem.dispose();

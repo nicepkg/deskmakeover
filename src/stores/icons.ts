@@ -1041,14 +1041,27 @@ export const useIcons = create<IconsState>((set, get) => {
           // STYLED fingerprints, so a following apply would bind those as its CAS anchors, mismatch
           // the now-original desktop on every item, and style nothing (owner 2026-07-17: reset →
           // pick a preset → apply → 0 succeeded). Refresh the scan (fresh revision + original
-          // fingerprints) so the next apply's CAS matches. Keep the user's live draft so they can
-          // immediately re-apply. Best-effort: a failed refresh keeps the reverted view, and the
-          // host's revision fence still turns a stale apply into an honest "rescan", never silent.
+          // fingerprints) so the next apply's CAS matches. This post-restore scan is a REAL host
+          // round-trip, so it holds `scanInFlight` for its whole duration (single-flight: nothing
+          // else may start underneath it — codex R4/2026-07-17 P2), and it PRESERVES the user's live
+          // per-icon overrides + draft the same way the manual `rescan()` does (codex P1), so a
+          // keep/tint choice is not silently dropped before the re-apply. Best-effort: a failed
+          // refresh keeps the reverted view, and the host's revision fence still turns a stale apply
+          // into an honest "rescan", never a silent all-conflicts.
+          scanInFlight = true
           try {
+            const keepOverrides = new Map(
+              get()
+                .items.filter((i) => i.overrideMode !== null)
+                .map((i) => [i.id, { mode: i.overrideMode as 'keep' | 'tint', tint: i.overrideTint }]),
+            )
+            const wasDirty = get().state?.dirty ?? false
             const fetched = await fetchScan()
-            adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted))
+            adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted), keepOverrides, wasDirty)
           } catch (err) {
             console.error('post-restore rescan failed', err)
+          } finally {
+            scanInFlight = false
           }
         }
       } catch {

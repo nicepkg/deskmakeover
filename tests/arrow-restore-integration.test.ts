@@ -250,6 +250,60 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
     expect(useIcons.getState().overlayRestoring).toBe(false)
   })
 
+  // The reset reverts every icon to original, so a FOLLOWING apply must bind fresh (original)
+  // fingerprints — the restore therefore refreshes the scan on success. These pin that refresh's two
+  // contracts (owner 2026-07-17): it PRESERVES per-icon overrides, and it holds single-flight.
+  const scanItem = (id: string): IconItemDto => ({
+    id, label: id, kind: 'Shortcut', isShortcut: true, styleable: true, statusReason: null,
+    x: 0, y: 0, sourceUrls: [], overrideMode: null, overrideTint: null,
+  })
+
+  test('a full restore refreshes the scan and PRESERVES per-icon overrides (P1)', async () => {
+    setBridge(async (method) => {
+      if (method === 'icons.restore') return opResult({ applied: false })
+      if (method === 'icons.getPersisted') return persistedDto({ applied: false })
+      // The host scan carries NO override (overrides are a frontend concept); the refresh must
+      // re-apply the user's live override via keepOverrides, not drop it.
+      if (method === 'icons.scan') return { ...scanDto(5), items: [scanItem('a')] }
+      throw new Error(`unexpected ${method}`)
+    })
+    seedStore({ applied: true })
+    useIcons.setState({ revision: 1, items: [{ ...scanItem('a'), overrideMode: 'tint', overrideTint: '#3FB6A8' }] })
+
+    await useIcons.getState().restore()
+
+    expect(useIcons.getState().revision).toBe(5) // the post-restore scan advanced the revision
+    expect(useIcons.getState().items[0].overrideMode).toBe('tint') // and kept the override
+    expect(useIcons.getState().items[0].overrideTint).toBe('#3FB6A8')
+  })
+
+  test('the post-restore rescan holds scanInFlight so nothing starts underneath it (P2)', async () => {
+    const scan = deferred<IconScanDto>()
+    let scanStarted = false
+    let overlayCalls = 0
+    setBridge(async (method) => {
+      if (method === 'icons.restore') return opResult({ applied: false })
+      if (method === 'icons.getPersisted') return persistedDto({ applied: false })
+      if (method === 'icons.scan') { scanStarted = true; return scan.promise }
+      if (method === 'icons.restoreOverlay') { overlayCalls++; return opResult({ arrowOverlay: 'native' }) }
+      throw new Error(`unexpected ${method}`)
+    })
+    seedStore({ applied: true, arrowOverlay: 'hidden' })
+
+    const p = useIcons.getState().restore()
+    // The window: the restore RPC has returned (working cleared) but the post-restore scan is
+    // still in flight.
+    await waitUntil(() => scanStarted)
+    expect(useIcons.getState().state!.working).toBe(false) // proves we're past the restore RPC
+    // A concurrent host op here must be BLOCKED by scanInFlight — it never reaches the host.
+    await useIcons.getState().restoreOverlay()
+    expect(overlayCalls).toBe(0)
+
+    scan.resolve(scanDto(9))
+    await p
+    expect(useIcons.getState().revision).toBe(9)
+  })
+
   test('a transport rejection reports the restore-specific failure, never Toast_ApplyFailed (review P3-7)', async () => {
     __setBridgeForTests(((method: string) => {
       if (method === 'icons.restoreOverlay') return Promise.reject(new Error('bridge down'))

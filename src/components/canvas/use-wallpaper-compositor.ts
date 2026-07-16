@@ -120,6 +120,10 @@ export function useWallpaperCompositor({
       compositorRef.current = instance
       registerCompositor(instance)
       instance.onZoneMeta(setZoneMeta)
+      // The grid may have re-recorded (regridScreens) DURING the async create —
+      // adopt the store's current lattice so the first paint is never stale.
+      const currentGrid = useWallpaper.getState().state?.grid
+      if (currentGrid) instance.setGrid(currentGrid)
       const currentLook = useWallpaper.getState().look
       if (currentLook) instance.update(currentLook)
       loadedScreenRef.current = useWallpaper.getState().activeScreenId
@@ -147,6 +151,15 @@ export function useWallpaperCompositor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.grid.screenWidth, state?.grid.screenHeight, !!state, recoverNonce])
+
+  // Same-dims grid LATTICE refresh (icon scan → regridScreens re-records the true
+  // cell pitch after the compositor was created): push it into the live instance so
+  // zone panels track the same lattice the DOM overlay renders on. Without this the
+  // panels stayed on the boot fallback lattice and the selection ring drifted off
+  // them (owner report 2026-07-16). Dims changes recreate above instead.
+  React.useEffect(() => {
+    if (state?.grid) compositorRef.current?.setGrid(state.grid)
+  }, [state?.grid])
 
   // Swap the source on a SAME-dimension screen switch (a different-dimension switch
   // recreates above and that recreate already loads the right source). The

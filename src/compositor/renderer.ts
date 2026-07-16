@@ -178,6 +178,32 @@ export class WallpaperCompositor {
     this.invalidate()
   }
 
+  /** Adopt a refreshed grid LATTICE (cell pitch / inset / rows — same screen dims).
+   *  The icon scan re-records the true IFolderView pitch after boot (store
+   *  `regridScreens`), and the DOM zone overlay re-renders on the fresh grid
+   *  immediately — without this, the compositor kept painting zone panels on the
+   *  STALE boot lattice, so the selection ring (fresh grid) drifted off the panel,
+   *  worst at the bottom where the per-row error accumulates (owner report
+   *  2026-07-16: 选中框间距不等). A DIMS change still recreates the whole
+   *  compositor (the hook's effect key) — this handles only the same-dims case. */
+  setGrid(grid: WallpaperGridInfoDto): void {
+    const g = this.grid
+    if (grid.screenWidth !== g.screenWidth || grid.screenHeight !== g.screenHeight) return
+    if (
+      grid.cellWidth === g.cellWidth &&
+      grid.cellHeight === g.cellHeight &&
+      grid.inset === g.inset &&
+      grid.columns === g.columns &&
+      grid.rows === g.rows &&
+      grid.taskbarHeight === g.taskbarHeight &&
+      grid.iconPx === g.iconPx
+    ) {
+      return
+    }
+    this.grid = grid
+    this.invalidate()
+  }
+
   /** The zone whose title should hide (its DOM rename editor is open). */
   setRenamingZone(id: string | null): void {
     if (this.hiddenTitleId === id) return

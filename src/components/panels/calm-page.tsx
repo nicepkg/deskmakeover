@@ -407,12 +407,17 @@ function GuidedRow({ id }: { id: CalmControlId }) {
   const settled = state === 'confirmedOff' || state === 'userAttested'
   // Unreadable rows we walked: the app cannot know — ask, and record it as YOURS.
   const askAttest = walked && !control.readableState && state === 'pushing'
+  // A fail-closed automatic row we can only walk you to (never a real guided-tier row): its route
+  // hint is ALWAYS shown so the button reads as 「opens the official page」, not a fake auto-fix.
+  const walkFallback = control.tier !== 'guided'
   return (
     <RowShell
       control={control}
       state={state}
       caption={
-        walked && control.routeKey ? (
+        walkFallback && control.routeKey ? (
+          <p className="mt-1 text-[11.5px] text-t3">{t(control.routeKey)}</p>
+        ) : walked && control.routeKey ? (
           <p className="mt-1 text-[11.5px] text-t2">{t(control.routeKey)}</p>
         ) : undefined
       }

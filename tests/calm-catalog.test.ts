@@ -155,13 +155,31 @@ describe('calm catalog invariants', () => {
     expect(guided[0]?.id).toBe('widgets.feed')
   })
 
-  test('groupOf: writable rows fall to held only when the environment says so', () => {
-    const c = controlById('taskbar.search')
-    expect(groupOf(c, 'pushing')).toBe('oneClick')
-    expect(groupOf(c, 'verified')).toBe('oneClick')
-    expect(groupOf(c, 'external')).toBe('oneClick')
-    expect(groupOf(c, 'needsReconfirm')).toBe('oneClick')
-    for (const held of HELD_STATES) expect(groupOf(c, held)).toBe('held')
-    expect(groupOf(controlById('widgets.feed'), 'pushing')).toBe('guided')
+  test('groupOf: an uncertified automatic row we can walk to lands in guided, never a dead held row', () => {
+    // ADR-0023 D2 group 2 (owner 2026-07-16): a fail-closed automatic row whose official page we
+    // know is a WALK 「带你去系统里关的」, not a dead 「本版本不支持」 end. Certified → one-click;
+    // org-managed → held (the Settings toggle is greyed); routeless → held (nowhere to walk).
+    const search = controlById('taskbar.search') // carries a manual route
+    expect(groupOf(search, 'pushing')).toBe('oneClick')
+    expect(groupOf(search, 'verified')).toBe('oneClick')
+    expect(groupOf(search, 'external')).toBe('oneClick')
+    expect(groupOf(search, 'needsReconfirm')).toBe('oneClick')
+    expect(groupOf(search, 'unsupported')).toBe('guided') // uncertified but routable → walk
+    expect(groupOf(search, 'managed')).toBe('held') // policy-managed → we never fight policy
+
+    const sync = controlById('explorer.syncNotifications') // NO ms-settings page → routeless
+    for (const held of HELD_STATES) expect(groupOf(sync, held)).toBe('held')
+
+    expect(groupOf(controlById('widgets.feed'), 'pushing')).toBe('guided') // guided-tier always guided
+  })
+
+  test('every fail-closed automatic row with an official page is walkable (routeKey); the pageless one is not', () => {
+    // Frontend mirror of the Rust catalog's manual_route set — drift on either side must be caught.
+    const walkable = [
+      'start.recommendations', 'taskbar.search', 'taskbar.taskview', 'search.highlights',
+      'notifications.suggestions', 'notifications.welcome', 'notifications.finishSetup', 'settings.suggestions',
+    ] as const
+    for (const id of walkable) expect(controlById(id).routeKey, id).toBeTruthy()
+    expect(controlById('explorer.syncNotifications').routeKey).toBeFalsy() // no ms-settings page
   })
 })

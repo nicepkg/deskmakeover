@@ -49,6 +49,32 @@ describe('calm store', () => {
     expect(guidedOnlyFace(true, { ...failClosed, 'taskbar.search': 'reopened' })).toBe(false)
   })
 
+  test('a fail-closed automatic row with a known page is WALKABLE in the guided group, never a dead held row (owner 2026-07-16)', () => {
+    // The owner report: 任务栏搜索 / 任务视图 / 开始菜单推荐 / 搜索热点 showed 「本版本不支持」 though
+    // their official settings page is known. They must live in group 2 (带你去系统里关的), walkable —
+    // only the pageless sync-notifications row stays honestly held (ADR-0023 D2 group 2/3).
+    const failClosed = Object.fromEntries(
+      CALM_CATALOG.map((c) => [c.id, c.tier === 'guided' ? 'pushing' : 'unsupported']),
+    ) as Record<CalmControlId, CalmRowState>
+    const groups = groupedRows(failClosed)
+    expect(groups.oneClick).toEqual([])
+    for (const id of ['taskbar.search', 'taskbar.taskview', 'start.recommendations', 'search.highlights'] as CalmControlId[]) {
+      expect(groups.guided).toContain(id)
+    }
+    expect(groups.guided[0]).toBe('widgets.feed') // the opening act still leads the walk group
+    expect(groups.held).toEqual(['explorer.syncNotifications']) // only the pageless row stays held
+  })
+
+  test('walking an uncertified automatic fallback row opens its route and never fakes a confirmation', async () => {
+    // These rows are walkable but NOT ours: walking must open the route and leave the row honestly
+    // unsupported (never verified / confirmedOff — we cannot read it on this uncertified version).
+    await useCalm.getState().probe()
+    expect(useCalm.getState().rows['search.highlights']).toBe('unsupported') // fail-closed in the mock
+    await useCalm.getState().walkGuided('search.highlights') // must not throw
+    expect(useCalm.getState().rows['search.highlights']).toBe('unsupported') // still honest
+    expect(countQuieted(useCalm.getState().rows)).toBe(0) // never counted as ours
+  })
+
   test('managed rows land in group 3 as managed', async () => {
     resetStore(new MockCalmBackend({ latencyMs: 0, managed: ['taskbar.search'] }))
     await useCalm.getState().probe()

@@ -62,11 +62,14 @@ pub struct ForbiddenMutation {
     pub reason: &'static str,
 }
 
-/// A single documented `ms-settings:` / Widgets route for a guided setting.
+/// A single documented `ms-settings:` route. Carried by guided rows (no stable setter) AND by
+/// fail-closed automatic rows whose official settings page is known — until the W3 lab certifies
+/// a write, an automatic row still walks the user to the switch instead of dead-ending (ADR-0023
+/// D2 group 2 「带你去系统里关的」). URIs are `&'static` literals from THIS catalog only — the
+/// frontend never supplies one, so `open_route` has no injection surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManualRoute {
     SettingsPage(&'static str),
-    WidgetsBoardSettings,
 }
 
 /// One catalog entry: its id, tier, the mutations it establishes, guards, and effect verifier.
@@ -157,6 +160,8 @@ pub fn first_batch() -> Vec<TweakDescriptor> {
         ),
         reason: "would also disable Explorer Recent and Jump Lists",
     }];
+    // Settings › Personalization › Start › Show recommendations.
+    start.manual_route = Some(ManualRoute::SettingsPage("ms-settings:personalization-start"));
 
     let mut taskbar_search = automatic(
         "taskbar.search",
@@ -169,12 +174,16 @@ pub fn first_batch() -> Vec<TweakDescriptor> {
         "SearchOnTaskbarMode",
         "taskbar Search machine policy; observe only, different enum",
     )];
+    // Settings › Personalization › Taskbar › Search.
+    taskbar_search.manual_route = Some(ManualRoute::SettingsPage("ms-settings:taskbar"));
 
-    let taskbar_taskview = automatic(
+    let mut taskbar_taskview = automatic(
         "taskbar.taskview",
         hkcu_dword(EXPLORER_ADVANCED, "ShowTaskViewButton", 0),
         DelayedReadBackAndSettingsUi,
     );
+    // Settings › Personalization › Taskbar › Task view (same page as taskbar Search).
+    taskbar_taskview.manual_route = Some(ManualRoute::SettingsPage("ms-settings:taskbar"));
 
     let mut search_highlights = automatic(
         "search.highlights",
@@ -186,27 +195,36 @@ pub fn first_batch() -> Vec<TweakDescriptor> {
         "EnableDynamicContentInWSB",
         "Pro+ management policy; never overwrite or delete it",
     )];
+    // Settings › Privacy & security › Search permissions › Show search highlights.
+    search_highlights.manual_route = Some(ManualRoute::SettingsPage("ms-settings:search-permissions"));
 
-    let notif_suggestions = automatic(
+    let mut notif_suggestions = automatic(
         "notifications.suggestions",
         hkcu_dword(CONTENT_DELIVERY, "SubscribedContent-338389Enabled", 0),
         DelayedReadBackAndSettingsUi,
     );
-    let notif_welcome = automatic(
+    notif_suggestions.manual_route = Some(ManualRoute::SettingsPage("ms-settings:notifications"));
+    let mut notif_welcome = automatic(
         "notifications.welcome",
         hkcu_dword(CONTENT_DELIVERY, "SubscribedContent-310093Enabled", 0),
         DelayedReadBackAndSettingsUi,
     );
-    let finish_setup = automatic(
+    notif_welcome.manual_route = Some(ManualRoute::SettingsPage("ms-settings:notifications"));
+    let mut finish_setup = automatic(
         "notifications.finishSetup",
         hkcu_dword(USER_PROFILE_ENGAGEMENT, "ScoobeSystemSettingEnabled", 0),
         DelayedReadBackAndSettingsUi,
     );
-    let settings_suggestions = automatic(
+    finish_setup.manual_route = Some(ManualRoute::SettingsPage("ms-settings:notifications"));
+    let mut settings_suggestions = automatic(
         "settings.suggestions",
         hkcu_dword(CONTENT_DELIVERY, "SubscribedContent-338393Enabled", 0),
         DelayedReadBackAndSettingsUi,
     );
+    // Settings › Privacy & security › General › Show me suggested content in the Settings app.
+    settings_suggestions.manual_route = Some(ManualRoute::SettingsPage("ms-settings:privacy-general"));
+    // explorer.syncNotifications has NO ms-settings page (File Explorer Options › View), so it
+    // carries no route and stays honestly held until the W3 lab certifies a direct write.
     let explorer_sync = automatic(
         "explorer.syncNotifications",
         hkcu_dword(EXPLORER_ADVANCED, "ShowSyncProviderNotifications", 0),
@@ -225,7 +243,11 @@ pub fn first_batch() -> Vec<TweakDescriptor> {
         explorer_sync,
         // Guided rows — no stable setter; the app opens the route and never writes. Only the
         // taskbar Widgets button exposes a readable off/on state (mirrors the frontend catalog).
-        guided("widgets.feed", ManualRoute::WidgetsBoardSettings, false),
+        // The widgets board itself has no ms-settings deep link, so the feed row routes to the
+        // taskbar page (owner 2026-07-16). It opens a real window (the old inert Win+W caption did
+        // not); the row copy offers the taskbar Widgets entry and points to Win+W for the feed
+        // itself, and NEVER claims the taskbar toggle alone removes the feed (the board can persist).
+        guided("widgets.feed", ManualRoute::SettingsPage("ms-settings:taskbar"), false),
         guided("taskbar.widgetsButton", ManualRoute::SettingsPage("ms-settings:taskbar"), true),
         guided("lockscreen.status", ManualRoute::SettingsPage("ms-settings:lockscreen"), false),
         guided("tray.entries", ManualRoute::SettingsPage("ms-settings:taskbar"), false),
@@ -386,6 +408,34 @@ mod tests {
             assert!(descriptor.manual_route.is_some());
             assert!(descriptor.mutations.is_empty());
         }
+    }
+
+    #[test]
+    fn every_fail_closed_automatic_row_with_an_official_page_carries_a_walk_route() {
+        // ADR-0023 D2 group 2 (owner 2026-07-16): an uncertified automatic row must WALK the user
+        // to its official settings page, never dead-end at 「本版本不支持」. Only the pageless
+        // sync-notifications row keeps no route. A route never turns a row writable — the
+        // capability manifest still gates every write independently.
+        let catalog = TweakCatalog::first_batch().unwrap();
+        for id in [
+            "start.recommendations",
+            "taskbar.search",
+            "taskbar.taskview",
+            "search.highlights",
+            "notifications.suggestions",
+            "notifications.welcome",
+            "notifications.finishSetup",
+            "settings.suggestions",
+        ] {
+            let descriptor = catalog.descriptor(&SettingId::new(id)).unwrap();
+            assert_eq!(descriptor.tier, TweakTier::AutomaticCandidate, "{id}");
+            assert!(descriptor.manual_route.is_some(), "{id} must carry a walk route");
+        }
+        // No ms-settings page exists for File Explorer sync notices, so it stays routeless (held).
+        let sync = catalog
+            .descriptor(&SettingId::new("explorer.syncNotifications"))
+            .unwrap();
+        assert!(sync.manual_route.is_none());
     }
 
     #[test]

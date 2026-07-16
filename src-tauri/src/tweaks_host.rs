@@ -255,9 +255,10 @@ impl TweaksHost {
         Ok(restore_row(&id, outcome))
     }
 
-    /// Open a guided row's documented route. Real Windows launches the catalog's `ms-settings:`
-    /// page (spec 08 §5); `WidgetsBoardSettings` has no launchable URI (the Win+W board), so its
-    /// row caption carries the walk. The devhost only records the walk for its return-probe.
+    /// Open a row's documented route. Real Windows launches the catalog's `ms-settings:` page
+    /// (spec 08 §5) — for guided rows AND for fail-closed automatic rows whose official page is
+    /// known (ADR-0023 D2 group 2, owner 2026-07-16). A routeless row (e.g. sync notifications)
+    /// records the walk without a launch. The devhost only records the walk for its return-probe.
     pub fn open_route(&self, id: String) -> Result<(), String> {
         let mut state = self.lock()?;
         if let Some(launch) = self.launcher {
@@ -455,6 +456,44 @@ mod tests {
             host.re_probe_guided("taskbar.widgetsButton".into()).unwrap(),
             CalmGuidedProbeDto::Unreadable,
             "a walk alone must never read as a confirmation"
+        );
+    }
+
+    #[test]
+    fn open_route_launches_the_settings_page_for_widgets_feed_and_automatic_fallback_rows() {
+        // Regression (owner 2026-07-16): widgets.feed's route had no launch arm, so 「带我去关」
+        // opened nothing (a dead button); fail-closed automatic rows now carry a walk route the
+        // launcher must fire too. A thread-local recorder captures each launched URI — no window.
+        use std::cell::RefCell;
+        thread_local! {
+            static LAUNCHED: RefCell<Vec<String>> = RefCell::new(Vec::new());
+        }
+        fn record(uri: &str) -> Result<(), String> {
+            LAUNCHED.with(|l| l.borrow_mut().push(uri.to_string()));
+            Ok(())
+        }
+        let driver = TweakDriver::new(
+            TweakCatalog::first_batch().expect("valid catalog"),
+            fail_closed_manifest(),
+            devhost_registry(),
+            MemoryJournal::new(),
+            MemoryVerifier::new(),
+            MemoryProfileProbe::new(devhost_environment()),
+        );
+        let host = TweaksHost::with_driver(Box::new(driver), true, Some(record));
+
+        host.open_route("widgets.feed".into())
+            .expect("widgets.feed now launches a real page");
+        host.open_route("taskbar.search".into())
+            .expect("an automatic fallback row launches its page");
+        host.open_route("explorer.syncNotifications".into())
+            .expect("a routeless row records the walk without launching");
+
+        let launched = LAUNCHED.with(|l| l.borrow().clone());
+        assert_eq!(
+            launched,
+            vec!["ms-settings:taskbar".to_string(); 2],
+            "widgets.feed and taskbar.search both open the taskbar page; the routeless row opens nothing"
         );
     }
 }

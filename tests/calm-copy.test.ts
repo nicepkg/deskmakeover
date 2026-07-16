@@ -93,6 +93,18 @@ describe('calm copy gate', () => {
     expect(zhHans.Calm_Restore).toBe('恢复系统推送')
   })
 
+  test('manual-route copy names YOU as the actor — the app opens the page, never claims it flips the switch', () => {
+    // ADR-0023 D3 bans fake-capability claims (codex 2026-07-16): 带我去关 only ShellExecuteW's a
+    // settings page — the USER turns the setting off. Copy that reads 「我们…关掉」/「we…turn off」
+    // is a lie. Every route key must attribute the toggle to the reader (你 / yourself).
+    const routeKeys = calmKeys.filter((k) => k.endsWith('_Route'))
+    expect(routeKeys.length).toBeGreaterThanOrEqual(12)
+    for (const k of routeKeys) {
+      expect((zhHans[k as keyof typeof zhHans] as string).includes('你'), `zh ${k} must name 你 as the actor`).toBe(true)
+      expect(/yourself/i.test(en[k] as string), `en ${k} must name the reader as the actor`).toBe(true)
+    }
+  })
+
   test('the widgets family row names the whole family it attests (feed, hover, badges, announcements)', () => {
     const zhFamily = zhHans.Calm_WidgetsFeed_Desc + zhHans.Calm_WidgetsFeed_Route
     for (const part of ['资讯', '悬停', '角标', '公告']) {

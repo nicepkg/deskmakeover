@@ -371,10 +371,15 @@ export function countRestorable(rows: Record<CalmControlId, CalmRowState>): numb
   return CALM_CATALOG.filter((c) => RESTORABLE_LEDGER.has(rows[c.id])).length
 }
 
-/** Rows per page group, catalog order (widgets.feed leads guided by catalog order). */
+/** Rows per page group, catalog order. Within the guided group the true guided-tier rows lead
+ *  (widgets.feed stays the opening act — ADR-0023 D3), then the fail-closed automatic rows we can
+ *  only walk you to; a stable sort keeps catalog order inside each partition. */
 export function groupedRows(rows: Record<CalmControlId, CalmRowState>) {
   const groups: Record<CalmGroup, CalmControlId[]> = { oneClick: [], guided: [], held: [] }
   for (const c of CALM_CATALOG) groups[groupOf(c, rows[c.id])].push(c.id)
+  groups.guided.sort(
+    (a, b) => Number(controlById(b).tier === 'guided') - Number(controlById(a).tier === 'guided'),
+  )
   return groups
 }
 

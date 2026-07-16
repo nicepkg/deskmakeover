@@ -44,7 +44,10 @@ export interface CalmControl {
   starterSlice: boolean
   /** guided rows: can the app re-probe a readable off/on state after the walk? */
   readableState?: boolean
-  /** guided rows: the documented route (instruction copy key; URI wiring lands Wave 1). */
+  /** The documented route's on-row instruction copy. Present on guided rows AND on fail-closed
+   *  automatic rows whose official settings page is known — its presence is what makes an
+   *  uncertified automatic row a WALK (guided group) instead of a dead held row (see `groupOf`).
+   *  The actual `ms-settings:` URI lives in the Rust catalog only; `open_route` resolves it by id. */
   routeKey?: StringKey
 }
 
@@ -60,6 +63,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
     descKey: 'Calm_StartRecs_Desc',
     inDefaultPackage: true,
     starterSlice: true,
+    routeKey: 'Calm_StartRecs_Route',
   },
   {
     id: 'taskbar.search',
@@ -69,6 +73,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
     descKey: 'Calm_TaskbarSearch_Desc',
     inDefaultPackage: true,
     starterSlice: true,
+    routeKey: 'Calm_TaskbarSearch_Route',
   },
   {
     id: 'taskbar.taskview',
@@ -78,6 +83,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
     descKey: 'Calm_TaskView_Desc',
     inDefaultPackage: true,
     starterSlice: true,
+    routeKey: 'Calm_TaskView_Route',
   },
   // ---- automatic, next-in-line (enter the package as lab rows land; until then the
   //      probe reports them unsupported and they sit honestly in group 3) ----
@@ -89,6 +95,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
     descKey: 'Calm_SearchHighlights_Desc',
     inDefaultPackage: true,
     starterSlice: false,
+    routeKey: 'Calm_SearchHighlights_Route',
   },
   {
     id: 'notifications.suggestions',
@@ -98,6 +105,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
     descKey: 'Calm_NotifSuggestions_Desc',
     inDefaultPackage: true,
     starterSlice: false,
+    routeKey: 'Calm_NotifSuggestions_Route',
   },
   {
     id: 'notifications.welcome',
@@ -107,6 +115,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
     descKey: 'Calm_Welcome_Desc',
     inDefaultPackage: true,
     starterSlice: false,
+    routeKey: 'Calm_Welcome_Route',
   },
   {
     id: 'notifications.finishSetup',
@@ -116,6 +125,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
     descKey: 'Calm_FinishSetup_Desc',
     inDefaultPackage: true,
     starterSlice: false,
+    routeKey: 'Calm_FinishSetup_Route',
   },
   {
     id: 'settings.suggestions',
@@ -125,6 +135,7 @@ export const CALM_CATALOG: readonly CalmControl[] = [
     descKey: 'Calm_SettingsSuggestions_Desc',
     inDefaultPackage: true,
     starterSlice: false,
+    routeKey: 'Calm_SettingsSuggestions_Route',
   },
   {
     id: 'explorer.syncNotifications',
@@ -185,10 +196,15 @@ export const CALM_CATALOG: readonly CalmControl[] = [
 
 export type CalmGroup = 'oneClick' | 'guided' | 'held'
 
-/** Which of the three page groups a row renders in, given its probed state. */
+/** Which of the three page groups a row renders in, given its probed state.
+ *  A fail-closed automatic row (`unsupported`) whose official page we know is a WALK (guided
+ *  group 「带你去系统里关的」, ADR-0023 D2), never a dead held row. Policy-`managed` rows stay
+ *  held (the Settings toggle is greyed, so walking there is futile), and an uncertified row with
+ *  no known page (`explorer.syncNotifications`) has nowhere to walk, so it stays honestly held. */
 export function groupOf(control: CalmControl, state: CalmRowState): CalmGroup {
   if (control.tier === 'guided') return 'guided'
-  if (state === 'unsupported' || state === 'managed') return 'held'
+  if (state === 'managed') return 'held'
+  if (state === 'unsupported') return control.routeKey ? 'guided' : 'held'
   return 'oneClick'
 }
 

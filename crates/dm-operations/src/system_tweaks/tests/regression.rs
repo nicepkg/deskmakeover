@@ -161,7 +161,7 @@ fn the_catalog_rejects_a_guided_descriptor_with_a_mutation() {
             .clone()],
         policy_guards: vec![],
         forbidden_mutations: vec![],
-        manual_route: Some(ManualRoute::WidgetsBoardSettings),
+        manual_route: Some(ManualRoute::SettingsPage("ms-settings:taskbar")),
         effect_verifier: None,
         readable_state: Some(false),
     };

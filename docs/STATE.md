@@ -103,6 +103,21 @@ what is in flight, and what comes next.
 
 ## Recently shipped (one line each — detail in journal/CHANGELOG)
 
+- 2026-07-16 **清爽 walk-fallback round (owner report: widgets.feed 带我去关 dead + 「本版本不支持」
+  rows should be walkable)**: two real bugs fixed. (1) `widgets.feed` guided route was
+  `WidgetsBoardSettings` with no launch arm in `open_route` → dead button; now routes to
+  `ms-settings:taskbar`. (2) fail-closed automatic rows (uncertified pre-W3) were dumped in the dead
+  held group despite known official pages — against ADR-0023 D2 group 2's own promise. Fix: 8
+  automatic rows carry a `manual_route`/`routeKey`; `groupOf` sends unsupported+routable rows to the
+  guided (walk) group (managed → held, routeless `explorer.syncNotifications` → held); `groupedRows`
+  keeps guided-tier first so widgets.feed still leads. `open_route` is read-only (`ShellExecuteW` a
+  settings page) — never touches the fail-closed write manifest. Codex review: Request Changes → 2
+  honesty blockers (widgets.feed copy overclaimed "feed disappears"; all route copy claimed the APP
+  flips the switch) → fixed (copy names YOU as actor + a copy gate enforces it; widgets.feed copy
+  offers the taskbar entry AND points to Win+W for the feed, never claims the toggle kills it) →
+  **Approve**. +11 regression tests (bun 659 / tsc 0 / cargo dm-operations 220 / tweaks_host 4). NOTE
+  the owner's widgets.feed premise ("关掉小组件即移除资讯角标") was factually wrong (MS docs: Win+W
+  board persists) — resolved honestly; owner may still prefer pure Win+W instruction (see Open questions).
 - 2026-07-16 **Codex full-project review round (owner "叫codex全面审查…有问题则修复")**: 3 parallel
   codex passes (native/security · frontend/wiring · build/CI/release), ~17 findings triaged. FIXED +
   committed (08553c1 + 48f0513, all green): the whole "deceptive UI / dead button" class the owner
@@ -188,6 +203,13 @@ what is in flight, and what comes next.
   `src/index.css`. The DPR-snap (A1 sharpness) is deliberately NOT done — it would coarsen zoom density,
   which the owner prioritized keeping. If the mitigation proves insufficient on a specific laptop, A1
   remains the escalation.
+- **widgets.feed route target (owner 2026-07-16, partially reopened by codex).** Owner chose to route
+  the feed row to `ms-settings:taskbar` believing it removes the feed+badges in one step; codex + MS
+  docs proved that only hides the taskbar Widgets ENTRY (the Win+W board + feed persist). Shipped
+  honestly: the row opens the taskbar page AND its caption points to Win+W for the feed itself, never
+  claiming the taskbar toggle kills the feed. Open: owner may still prefer a pure Win+W instruction
+  (no window) for this row, or a real board deep-link if one is ever found. Non-blocking; current copy
+  is honest.
 - Release version number + name (release time).
 - Repo visibility: `nicepkg/deskmakeover` is PRIVATE — make public at release (the About card +
   免费开源 chip promise it).

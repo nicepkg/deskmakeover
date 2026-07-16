@@ -8,6 +8,7 @@
  */
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 
 export interface MountOptions {
   before: string;
@@ -136,9 +137,12 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   const loader = new THREE.TextureLoader();
   let texBefore: THREE.Texture;
   let texAfter: THREE.Texture;
+  // real studio HDRI (Poly Haven, CC0) — the same lighting the good Apple-style
+  // web renders use; the procedural softbox scene stays as a fallback
   const settled = await Promise.allSettled([
     loader.loadAsync(opts.before),
     loader.loadAsync(opts.after),
+    new RGBELoader().loadAsync("/img/studio.hdr"),
   ]);
   if (settled[0].status === "fulfilled" && settled[1].status === "fulfilled") {
     texBefore = settled[0].value;
@@ -147,6 +151,7 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     for (const s of settled) if (s.status === "fulfilled") s.value.dispose();
     throw new Error("monitor-scene: screen texture failed to load");
   }
+  const hdrTex = settled[2].status === "fulfilled" ? settled[2].value : null;
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -159,14 +164,21 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const envScene = studioEnvironment();
-  const envTarget = pmrem.fromScene(envScene, 0.02);
-  envScene.traverse((o) => {
-    if (o instanceof THREE.Mesh) {
-      o.geometry.dispose();
-      (o.material as THREE.Material).dispose();
-    }
-  });
+  let envTarget: THREE.WebGLRenderTarget;
+  if (hdrTex) {
+    hdrTex.mapping = THREE.EquirectangularReflectionMapping;
+    envTarget = pmrem.fromEquirectangular(hdrTex);
+    hdrTex.dispose();
+  } else {
+    const envScene = studioEnvironment();
+    envTarget = pmrem.fromScene(envScene, 0.02);
+    envScene.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        o.geometry.dispose();
+        (o.material as THREE.Material).dispose();
+      }
+    });
+  }
   scene.environment = envTarget.texture;
 
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60);
@@ -253,13 +265,6 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
       }
     `,
   });
-  // the recessed dark seam where the panel meets the glass — the junction
-  // detail that makes the front read as a real display, not a sticker
-  const seamMat = new THREE.MeshStandardMaterial({ color: 0x0b0c0e, roughness: 0.55 });
-  const seam = new THREE.Mesh(new THREE.PlaneGeometry(3.26, 1.86), seamMat);
-  seam.position.set(0, 1.59, 0.049);
-  group.add(seam);
-
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.8), screenMat);
   screen.position.set(0, 1.59, 0.0495);
   group.add(screen);
@@ -269,10 +274,10 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   const coverMat = new THREE.MeshPhysicalMaterial({
     color: 0x000000,
     transparent: true,
-    opacity: 0.06,
-    roughness: 0.06,
+    opacity: 0.04,
+    roughness: 0.05,
     metalness: 0,
-    envMapIntensity: 1.6,
+    envMapIntensity: 1.4,
     depthWrite: false,
   });
   const cover = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 2.07), coverMat);
@@ -322,13 +327,16 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     const oyA = (0.5 - cy) * vhA * 0.6;
     LOOK_A.set(-oxA, 1.32 - oyA, 0);
     POS_A.set(4.2 - oxA, 2.6 - oyA, zA);
-    // close state: the glass fills --dm-fill of the canvas height
+    // close state: the glass fills --dm-fill of the canvas height. On a wide
+    // stage the SCREEN'S LEFT EDGE anchors just right of the copy column —
+    // the icon side must stay fully visible; the right may bleed offstage.
     const fillH = cssNum("--dm-fill", isWideStage ? 0.9 : 0.96);
     const vhB = 2.06 / fillH;
+    const vwB = vhB * a;
     const zB = 0.05 + vhB / (2 * ht);
-    const oxB = isWideStage ? 0.13 * (vhB * a) : 0;
     const oyB = (0.5 - cy) * vhB;
-    LOOK_B.set(-0.2 - oxB, 1.59 - oyB, 0.05);
+    const lookX = isWideStage ? -1.6 - (0.47 - 0.5) * vwB : -0.2;
+    LOOK_B.set(lookX, 1.59 - oyB, 0.05);
     POS_B.set(LOOK_B.x + 0.1, LOOK_B.y, zB);
   };
   frameCamera();
@@ -459,8 +467,8 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     document.removeEventListener("visibilitychange", onVis);
     window.removeEventListener("pointermove", onPointer);
     document.documentElement.removeEventListener("pointerleave", onLeave);
-    for (const g of [slab, glass, leg, foot, seam, screen, cover, shadow]) g.geometry.dispose();
-    for (const m of [aluminum, glassWhite, seamMat, screenMat, coverMat, shadowMat]) m.dispose();
+    for (const g of [slab, glass, leg, foot, screen, cover, shadow]) g.geometry.dispose();
+    for (const m of [aluminum, glassWhite, screenMat, coverMat, shadowMat]) m.dispose();
     for (const x of [texBefore, texAfter, shadowTex, brushed]) x.dispose();
     envTarget.dispose();
     pmrem.dispose();

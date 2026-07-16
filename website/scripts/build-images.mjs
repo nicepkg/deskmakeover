@@ -95,6 +95,8 @@ async function main() {
 
   await copyFile(path.join(ghAssets, "social-card.png"), path.join(websiteRoot, "public/social-card.png"));
   await copyFile(path.join(ghAssets, "logo.png"), path.join(websiteRoot, "public/logo.png"));
+  // studio HDRI for the hero 3D lighting (Poly Haven studio_small_09, CC0)
+  await copyFile(path.join(websiteRoot, "assets-src/env/studio.hdr"), path.join(outDir, "studio.hdr"));
 
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 

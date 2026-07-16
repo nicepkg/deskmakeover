@@ -82,6 +82,30 @@ impl ItemStateReader for DeskReader<'_> {
     }
 }
 
+/// A4 test double: on its FIRST read of `path` it returns the pre-change fingerprint (so the first
+/// conflict check passes) and injects an external write as a side effect — modelling a concurrent
+/// Explorer/installer edit landing INSIDE the check-to-write window. The re-read before the restore
+/// must then observe the change.
+struct WindowRaceReader<'a> {
+    inner: DeskReader<'a>,
+    desk: &'a Desk,
+    path: String,
+    calls: Cell<u32>,
+}
+impl ItemStateReader for WindowRaceReader<'_> {
+    fn read_fingerprint(&self, target: &ItemTarget) -> PortResult<Fingerprint> {
+        let fp = self.inner.read_fingerprint(target)?; // the value THIS read observes
+        if target.path == self.path && self.calls.get() == 0 {
+            self.calls.set(1);
+            self.desk.surfaces.borrow_mut().insert(self.path.clone(), b"external-in-window".to_vec());
+        }
+        Ok(fp)
+    }
+    fn capture_anchor(&self, target: &ItemTarget) -> PortResult<RestoreAnchor> {
+        self.inner.capture_anchor(target)
+    }
+}
+
 struct DeskApplier<'a>(&'a Desk);
 impl IconApplier for DeskApplier<'_> {
     fn apply(&self, target: &ItemTarget, assets: &ApplyAssets) -> PortResult<Fingerprint> {
@@ -841,6 +865,42 @@ fn undo_never_clobbers_a_hand_edit_since_the_batch() {
     assert_eq!(
         w.desk.surfaces.borrow()[&items[0].path], b"user-custom",
         "the hand-edit survives the undo (never-clobber)"
+    );
+}
+
+#[test]
+fn undo_never_clobbers_a_change_that_lands_in_the_check_to_write_window() {
+    // A4 (owner 2026-07-16): the FIRST read matched the batch's applied fingerprint, but the icon
+    // changed BEFORE the restore write. The re-read immediately before the write must catch it and
+    // skip — never clobber a concurrent Explorer/installer edit that landed inside the window.
+    let items = vec![user_item("raced")];
+    let mut w = World::new(&items);
+    let mut rec = Reconciler::new();
+    let scanner = FakeScanner(items.clone());
+    let stable = ScriptedStability::default();
+    cycle(&mut w, &mut rec, &scanner, &ScriptedActivity::idle(), &stable, &style(), &silent_trust(), fresh(NOW));
+    let out = cycle_then_apply(&mut w, &mut rec, &scanner, &stable, &style());
+    assert_eq!(out.applied.len(), 1);
+
+    let desk = w.desk.clone();
+    let path = items[0].path.clone();
+    let reader = WindowRaceReader { inner: DeskReader(&desk), desk: &desk, path: path.clone(), calls: Cell::new(0) };
+    let applier = DeskApplier(&desk);
+    let ports = ReconcilerPorts {
+        scanner: &FakeScanner(Vec::new()),
+        extractor: &FakeExtractor,
+        reader: &reader,
+        applier: &applier,
+        assets: &w.assets,
+        activity: &ScriptedActivity::idle(),
+        stability: &ScriptedStability::default(),
+    };
+    let undone = rec.restore_batch(&ports, &out.applied_snapshot, &mut w.journal, &mut w.ledger).unwrap();
+    assert_eq!(undone.conflicts, vec![ItemId::from_raw("raced")], "an in-window change → conflict, never clobber");
+    assert!(undone.restored.is_empty());
+    assert_eq!(
+        w.desk.surfaces.borrow()[&path], b"external-in-window",
+        "the change that landed in the window survives the undo"
     );
 }
 

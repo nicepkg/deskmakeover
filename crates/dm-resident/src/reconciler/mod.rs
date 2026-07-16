@@ -543,6 +543,23 @@ impl Reconciler {
                 out.conflicts.push(id.clone()); // hand-edited since the batch — never clobber
                 continue;
             }
+            // A4 (owner 2026-07-16): re-read immediately before the write to shrink the check-then-act
+            // window as far as a non-atomic shell API allows. A true CAS across the icon file + the
+            // registry is infeasible, so an external write in the microseconds between this re-read and
+            // the restore below is a documented, owner-accepted residual — but this closes the wider
+            // window between the decision reads above and the mutation.
+            match ports.reader.read_fingerprint(&entry.target) {
+                Ok(f) if f != target.applied_fingerprint => {
+                    out.conflicts.push(id.clone()); // changed since the first read — never clobber
+                    continue;
+                }
+                Ok(_) => {}
+                // Vanished/unreadable inside the window — do not restore over an unknown state.
+                Err(_) => {
+                    out.skipped.push(id.clone());
+                    continue;
+                }
+            }
             match ports.applier.restore(&entry.target, &entry.original_anchor) {
                 Ok(()) => out.restored.push(id.clone()),
                 Err(e) => out.errors.push(format!("restore {}: {e}", id.as_str())),

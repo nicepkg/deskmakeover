@@ -77,7 +77,15 @@ pub fn validate_overlay_path(path: &str) -> Result<(), String> {
 /// container structurally via [`validate_ico`].
 pub fn read_capped_ico(path: &Path) -> Result<Vec<u8>, String> {
     use std::io::Read;
-    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut file = open_no_follow(path)?;
+    // A2 (closes the [WINDOWS-VERIFY, NOT YET CLOSED] gap on validate_overlay_path): a syntactic
+    // drive-absolute check cannot prove LOCALITY — an intermediate junction or a mapped drive letter
+    // (`Z:` → `\\server\share`) can redirect the open to a UNC/remote target and make the elevated
+    // helper read (or authenticate to) a place it must never touch. Verify the OPENED handle's final
+    // resolved path is a local FIXED disk before reading a byte. [WINDOWS-VERIFY] the junction /
+    // mapped-drive cases on the box; the local classification is host-tested.
+    #[cfg(windows)]
+    assert_local_fixed_path(&file)?;
     let meta = file.metadata().map_err(|e| e.to_string())?;
     if !meta.is_file() {
         return Err("overlay --file is not a regular file".to_string());
@@ -90,6 +98,79 @@ pub fn read_capped_ico(path: &Path) -> Result<Vec<u8>, String> {
     check_size(bytes.len() as u64)?;
     validate_ico(&bytes)?;
     Ok(bytes)
+}
+
+/// Open for read WITHOUT following a final-component reparse point (junction/symlink), so a link
+/// planted AS the target opens the link object (which then fails the `is_file` check) rather than its
+/// target. Intermediate junctions are still resolved by the OS, but [`assert_local_fixed_path`]
+/// catches any resulting remote redirect. Non-Windows keeps the plain open (host test builds only).
+#[cfg(windows)]
+fn open_no_follow(path: &Path) -> Result<std::fs::File, String> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0)
+        .open(path)
+        .map_err(|e| e.to_string())
+}
+#[cfg(not(windows))]
+fn open_no_follow(path: &Path) -> Result<std::fs::File, String> {
+    std::fs::File::open(path).map_err(|e| e.to_string())
+}
+
+/// Reject an open handle whose final resolved path is not a LOCAL FIXED disk (A2). Two checks that
+/// a syntactic path test cannot make: `GetFinalPathNameByHandleW` reveals a junction redirect as the
+/// `\\?\UNC\...` form ([`is_local_dos_path`] rejects it), and `GetDriveTypeW` rejects a mapped drive
+/// letter that resolved to a network share (`DRIVE_REMOTE`) even when it kept its `X:` form.
+#[cfg(windows)]
+fn assert_local_fixed_path(file: &std::fs::File) -> Result<(), String> {
+    use std::os::windows::io::AsRawHandle;
+
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::Storage::FileSystem::{
+        GetDriveTypeW, GetFinalPathNameByHandleW, FILE_NAME_NORMALIZED, GETFINALPATHNAMEBYHANDLE_FLAGS,
+        VOLUME_NAME_DOS,
+    };
+    // Win32 DRIVE_FIXED; windows-rs 0.61 does not surface it as a const, and GetDriveTypeW returns u32.
+    const DRIVE_FIXED: u32 = 3;
+
+    let handle = HANDLE(file.as_raw_handle() as _);
+    let mut buf = vec![0u16; 32768]; // the NT max path length — long paths must not truncate
+    let flags = GETFINALPATHNAMEBYHANDLE_FLAGS(FILE_NAME_NORMALIZED.0 | VOLUME_NAME_DOS.0);
+    // SAFETY: `handle` is a live read handle owned by `file`; `buf` outlives the call.
+    let len = unsafe { GetFinalPathNameByHandleW(handle, &mut buf, flags) };
+    if len == 0 || len as usize >= buf.len() {
+        return Err("could not resolve the overlay --file final path".to_string());
+    }
+    let resolved = String::from_utf16_lossy(&buf[..len as usize]);
+    if !is_local_dos_path(&resolved) {
+        return Err(format!("overlay --file resolves to a non-local path: {resolved:?}"));
+    }
+    // Probe the resolved volume (`\\?\X:\` → `X:\`): a mapped network drive is DRIVE_REMOTE.
+    let root: Vec<u16> = format!("{}:\\", &resolved[4..5]).encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: `root` is a NUL-terminated wide string that outlives the call.
+    let dtype = unsafe { GetDriveTypeW(PCWSTR(root.as_ptr())) };
+    if dtype != DRIVE_FIXED {
+        return Err(format!("overlay --file is not on a local fixed disk (drive type {dtype}): {resolved:?}"));
+    }
+    Ok(())
+}
+
+/// Pure classifier for a `GetFinalPathNameByHandleW`(VOLUME_NAME_DOS) result: true ONLY for a local
+/// DOS drive path `\\?\X:\...`. The `\\?\UNC\...` form is a remote (junction/UNC) redirect. Host-
+/// testable so the security-relevant decision is unit-covered on any platform (A2).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn is_local_dos_path(resolved: &str) -> bool {
+    let b = resolved.as_bytes();
+    if resolved.len() < 7 || &resolved[..4] != r"\\?\" {
+        return false; // GetFinalPathNameByHandleW always returns the \\?\ prefix
+    }
+    if resolved.len() >= 8 && resolved[4..8].eq_ignore_ascii_case("UNC\\") {
+        return false; // \\?\UNC\server\share\... — remote
+    }
+    b[4].is_ascii_alphabetic() && b[5] == b':' && b[6] == b'\\'
 }
 
 #[cfg(test)]
@@ -135,6 +216,19 @@ mod tests {
         assert!(validate_overlay_path("").is_err(), "empty");
         assert!(validate_overlay_path(r"C:\ProgramData\DeskMakeover\overlay.ico").is_ok());
         assert!(validate_overlay_path("C:/ProgramData/DeskMakeover/overlay.ico").is_ok(), "forward slashes normalise");
+    }
+
+    #[test]
+    fn is_local_dos_path_rejects_remote_redirects_and_accepts_local_drives() {
+        // A2: the security-relevant classification of a resolved final path. A junction that lands on
+        // a share resolves to the \\?\UNC\ form; a genuine local file to \\?\X:\ .
+        assert!(is_local_dos_path(r"\\?\C:\ProgramData\DeskMakeover\overlay.ico"));
+        assert!(is_local_dos_path(r"\\?\Z:\overlay.ico")); // a drive letter that resolved to a local path
+        assert!(!is_local_dos_path(r"\\?\UNC\attacker\share\overlay.ico"), "junction/UNC redirect");
+        assert!(!is_local_dos_path(r"\\?\unc\attacker\share\overlay.ico"), "case-insensitive UNC");
+        assert!(!is_local_dos_path(r"C:\ProgramData\overlay.ico"), "resolved paths always carry the prefix");
+        assert!(!is_local_dos_path(""));
+        assert!(!is_local_dos_path(r"\\?\"));
     }
 
     #[test]

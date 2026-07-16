@@ -103,6 +103,17 @@ what is in flight, and what comes next.
 
 ## Recently shipped (one line each — detail in journal/CHANGELOG)
 
+- 2026-07-16 **Open-source readiness round (owner "准备开源")**: README revamp (English +
+  README.zh-CN, hero screenshot from the mock UI, badges, features/install/build/architecture) +
+  LICENSE (MIT) / CONTRIBUTING / SECURITY / CODE_OF_CONDUCT + issue forms & PR template (blank
+  issues kept on so the in-app diagnostics deep-link survives). NEW `.github/workflows/ci.yml`
+  (GitHub-hosted: ubuntu web gates + portable icon-core tests + wasm/build; windows-latest full
+  `cargo test --workspace` + unsigned tauri build artifact) — the **signed** release stays
+  self-hosted (Certum cert is bound to the signing PC; GitHub instances can't sign). NEW
+  `scripts/release.mjs` (`bun run release`) single-sources the version across
+  package.json/tauri.conf.json/Cargo.toml (corrects the 0.0.0 workspace drift on bump) → optional
+  commit/tag/push. GitHub repo About set (description/homepage→releases/15 topics). CHANGELOG
+  de-staled. Commit bc2c302. Owner still owns: going public + cutting the first `v*` tag.
 - 2026-07-16 **Clean-system + links + grid/polish ship round (owner "欺骗性纯 UI/点了没反应")** →
   journal 2026-07 for the full record. Headlines: 清爽 backend was the devhost fake on ALL platforms
   → Windows now runs the real WinregBackend/profile ports under a FAIL-CLOSED manifest (no write pre-W3,

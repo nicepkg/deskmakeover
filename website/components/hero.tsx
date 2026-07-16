@@ -24,8 +24,8 @@ export function Hero({ dict }: { dict: Dict }) {
             fold so the machine's lower body stands into the next screen —
             never cropped by the section edge. */}
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 -bottom-[16vh] hidden lg:block"
-          style={{ "--dm-screen-cy": "0.4", "--dm-fill": "0.56" } as React.CSSProperties}
+          className="pointer-events-none absolute inset-x-0 top-0 bottom-0 hidden lg:block"
+          style={{ "--dm-screen-cy": "0.47", "--dm-fill": "0.44" } as React.CSSProperties}
         >
           {scene}
         </div>
@@ -36,7 +36,7 @@ export function Hero({ dict }: { dict: Dict }) {
         />
 
         <div className="relative z-10 mx-auto max-w-[1200px] px-5 md:px-8">
-          <div className="grid min-h-[calc(100svh-3.5rem)] items-center gap-10 py-10 lg:grid-cols-12 lg:gap-6">
+          <div className="grid min-h-[calc(100svh-3.5rem-3.25rem)] items-center gap-10 py-10 lg:grid-cols-12 lg:gap-6">
             <div className="lg:col-span-5">
               <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-coral-ink">
                 {h.eyebrow}
@@ -87,7 +87,7 @@ export function Hero({ dict }: { dict: Dict }) {
  */
 export function SpecStrip({ dict }: { dict: Dict }) {
   return (
-    <div className="relative z-10 border-y border-line lg:mt-[8vh]">
+    <div className="relative z-10 border-y border-line">
       <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-x-8 gap-y-2 px-5 py-4 font-mono text-[11px] tracking-[0.14em] text-ink-3 md:px-8">
         {dict.hero.specs.map((s) => (
           <span key={s}>{s}</span>

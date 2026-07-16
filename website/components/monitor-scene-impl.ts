@@ -217,12 +217,12 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     }
   });
   if (!panel) throw new Error("monitor-scene: screen panel not found in device model");
-  const panelBox = new THREE.Box3().setFromObject(panel);
+  const screenPanel: THREE.Mesh = panel;
+  const panelBox = new THREE.Box3().setFromObject(screenPanel);
   const PANEL_W = panelBox.max.x - panelBox.min.x;
   const PANEL_H = panelBox.max.y - panelBox.min.y;
   const PANEL_C = panelBox.getCenter(new THREE.Vector3());
-  const PANEL_Z = panelBox.max.z + 0.004;
-  panel.visible = false;
+  const PANEL_Z = panelBox.max.z;
 
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
   for (const t of [texBefore, texAfter]) {
@@ -264,9 +264,47 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
       }
     `,
   });
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_W, PANEL_H), screenMat);
-  screen.position.set(PANEL_C.x, PANEL_C.y, PANEL_Z);
-  group.add(screen);
+  // The panel mesh's OWN geometry hosts the shader — flush by definition,
+  // tilt included. Its UVs are rebuilt from the geometry data: the thin local
+  // axis is the normal; of the two in-plane axes, the more world-vertical one
+  // becomes v, oriented so u+ runs world-right and v=1 is the top.
+  {
+    const geo = screenPanel.geometry as THREE.BufferGeometry;
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox!;
+    const ext = [bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z];
+    const mins = [bb.min.x, bb.min.y, bb.min.z];
+    const thin = ext.indexOf(Math.min(...ext));
+    const inPlane = [0, 1, 2].filter((a) => a !== thin);
+    const worldDir = (axis: number) => {
+      const v = new THREE.Vector3();
+      v.setComponent(axis, 1);
+      return v.transformDirection(screenPanel.matrixWorld);
+    };
+    const d0 = worldDir(inPlane[0]);
+    const d1 = worldDir(inPlane[1]);
+    const [uAx, vAx] =
+      Math.abs(d0.y) > Math.abs(d1.y) ? [inPlane[1], inPlane[0]] : [inPlane[0], inPlane[1]];
+    const uFlip = worldDir(uAx).x < 0;
+    const vFlip = worldDir(vAx).y < 0;
+    const pos = geo.getAttribute("position");
+    const uv = new Float32Array(pos.count * 2);
+    const p = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      p.set(pos.getX(i), pos.getY(i), pos.getZ(i));
+      let u = (p.getComponent(uAx) - mins[uAx]) / ext[uAx];
+      let v = (p.getComponent(vAx) - mins[vAx]) / ext[vAx];
+      if (uFlip) u = 1 - u;
+      if (vFlip) v = 1 - v;
+      uv[2 * i] = u;
+      uv[2 * i + 1] = v;
+    }
+    geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    screenMat.side = THREE.DoubleSide;
+    (screenPanel.material as THREE.Material).dispose();
+    screenPanel.material = screenMat;
+    screenPanel.visible = true;
+  }
 
   const shadowTex = contactShadowTexture();
   const shadowMat = new THREE.MeshBasicMaterial({
@@ -279,9 +317,12 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   shadow.position.y = 0.001;
   scene.add(shadow);
 
-  // ── camera choreography ─────────────────────────────────────────
-  const YAW_A = -0.42;
-  const YAW_B = -0.09;
+  // ── camera choreography: the machine simply TURNS — opening on the
+  // RIGHT side's thickness (edge-on), swinging through frontal, settling
+  // where the LEFT bezel width faces the lens — with a slight push-in.
+  // The whole screen content stays inside the viewport once settled.
+  const YAW_A = 0.45;
+  const YAW_B = -0.3;
   const LOOK_A = new THREE.Vector3();
   const LOOK_B = new THREE.Vector3();
   const POS_A = new THREE.Vector3();
@@ -298,32 +339,27 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   };
 
   const frameCamera = () => {
-    // On a wide full-bleed stage the copy owns the left, so the whole
-    // composition trucks right (camera pans left by ox). Narrow hosts center.
+    // One composition, two distances: the end state fits the ENTIRE panel
+    // inside the canvas (--dm-fill of its height), parked on the right of a
+    // wide stage / centered on a narrow one; the opener is the same framing
+    // pulled back ~12% so the entrance reads as a turn with a slight push-in.
     const ht = halfTan();
     const a = camera.aspect;
     const isWideStage = a > 1.4;
     const cy = cssNum("--dm-screen-cy", 0.5);
-    // wide opener: whole product in frame whatever the host shape
-    const zA = Math.max(8.8, 2.3 / (ht * a));
-    const vhA = 2 * zA * ht;
-    const oxA = isWideStage ? 0.17 * (vhA * a) : 0;
-    const oyA = (0.5 - cy) * vhA * 0.6;
-    LOOK_A.set(-oxA, PANEL_C.y - 0.18 - oyA, 0);
-    POS_A.set(4.2 - oxA, PANEL_C.y + 1.1 - oyA, zA);
-    // close state: the panel fills --dm-fill of the canvas height. On a wide
-    // stage the SCREEN'S LEFT EDGE anchors just right of the copy column —
-    // the icon side must stay fully visible; the right may bleed offstage.
-    const fillH = cssNum("--dm-fill", isWideStage ? 0.9 : 0.96);
-    const vhB = PANEL_H / fillH;
+    const fillH = cssNum("--dm-fill", isWideStage ? 0.62 : 0.8);
+    // never crop the panel horizontally: back off to whichever fit is farther
+    // (1.25 covers the yaw-projected near edge plus the bezel)
+    const vhB = Math.max(PANEL_H / fillH, (PANEL_W * 1.25) / (0.96 * a));
     const vwB = vhB * a;
     const zB = PANEL_Z + vhB / (2 * ht);
     const oyB = (0.5 - cy) * vhB;
-    const lookX = isWideStage
-      ? PANEL_C.x - PANEL_W / 2 - (0.47 - 0.5) * vwB
-      : PANEL_C.x - 0.2;
-    LOOK_B.set(lookX, PANEL_C.y - oyB, PANEL_Z);
-    POS_B.set(LOOK_B.x + 0.1, LOOK_B.y, zB);
+    // machine center rendered at 66% of a wide stage, centered otherwise
+    const ox = isWideStage ? (0.72 - 0.5) * vwB : 0;
+    LOOK_B.set(PANEL_C.x - ox, PANEL_C.y - oyB, PANEL_Z);
+    POS_B.set(LOOK_B.x, LOOK_B.y, zB);
+    LOOK_A.copy(LOOK_B);
+    POS_A.set(POS_B.x, POS_B.y, PANEL_Z + (zB - PANEL_Z) * 1.12);
   };
   frameCamera();
 
@@ -462,7 +498,7 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
         mat.dispose();
       }
     });
-    for (const g of [screen, shadow]) g.geometry.dispose();
+    shadow.geometry.dispose();
     for (const m of [screenMat, shadowMat]) m.dispose();
     for (const x of [texBefore, texAfter, shadowTex]) x.dispose();
     envTarget.dispose();

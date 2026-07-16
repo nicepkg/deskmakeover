@@ -47,12 +47,16 @@ Assets via wrangler, auto-deployed from CI.
   chin, stand and foot stand into screen two over a transparent background — never
   cropped by a section edge. The mono spec strip belongs to screen two, below the
   machine (`SpecStrip`, `lg:mt-[44vh]`), keeping screen one a clean stage.
-- **Materials must read as a real product, not a toy.** Real studio HDRI
-  (Poly Haven studio_small_09 1k, CC0, `assets-src/env/studio.hdr` → RGBELoader →
-  PMREM) is the light source — the standard setup for Apple-style device renders;
-  a procedural softbox scene remains as fallback. Satin anisotropic aluminum with
-  a subtle brushed roughness map; one continuous cover-glass sheet with faint
-  environment streaks over panel AND bezel. No dark panel seam (owner-rejected).
+- **The device is a real scanned model, not procedural geometry.** Hero device:
+  "Apple Studio Display" by alboxer2000_, CC-BY-4.0, sourced via Sketchfab
+  (`assets-src/model/studio-display.glb`, ~1.5 MB, quantized + WebP textures,
+  GLTFLoader). Attribution is REQUIRED and lives in the site footer — never remove
+  it while the model ships. The GLB's emissive-white panel (largest such mesh) is
+  hidden and replaced by the wipe-shader plane, sized from its bounding box; the
+  camera choreography reads panel dimensions from the model at runtime.
+- **Lighting.** Real studio HDRI (Poly Haven brown_photostudio_02 1k, CC0,
+  `assets-src/env/studio.hdr` → RGBELoader → PMREM, yaw 90°); a procedural softbox
+  scene remains as fallback. `?dm3drot=<deg>` spins the HDRI for design review.
 - **The icon side leads the frame.** The close framing anchors the screen's LEFT
   edge beside the copy column: the icon-dense side is always fully visible, the
   right side may bleed offstage; the machine stays small enough that screen two

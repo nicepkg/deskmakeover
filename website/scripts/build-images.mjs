@@ -95,8 +95,14 @@ async function main() {
 
   await copyFile(path.join(ghAssets, "social-card.png"), path.join(websiteRoot, "public/social-card.png"));
   await copyFile(path.join(ghAssets, "logo.png"), path.join(websiteRoot, "public/logo.png"));
-  // studio HDRI for the hero 3D lighting (Poly Haven studio_small_09, CC0)
+  // studio HDRI for the hero 3D lighting (Poly Haven brown_photostudio_02, CC0)
   await copyFile(path.join(websiteRoot, "assets-src/env/studio.hdr"), path.join(outDir, "studio.hdr"));
+  // hero device model: "Apple Studio Display" by alboxer2000_, CC-BY-4.0
+  // (https://sketchfab.com/3d-models/apple-studio-display-f56b9892c6b941168f64bc8323c98875)
+  await copyFile(
+    path.join(websiteRoot, "assets-src/model/studio-display.glb"),
+    path.join(outDir, "studio-display.glb"),
+  );
 
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 

@@ -7,8 +7,8 @@
  * monitor-scene.tsx; this module never runs on the server.
  */
 import * as THREE from "three";
-import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
+import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export interface MountOptions {
   before: string;
@@ -16,6 +16,8 @@ export interface MountOptions {
 }
 
 const CORAL = new THREE.Color("#ff6f5e");
+/** production HDRI yaw — tuned so the key light rakes across the front glass */
+const ENV_ROT_DEG = 90;
 
 /** easeInOutQuint — the silky dolly */
 const inOutQuint = (x: number) =>
@@ -88,33 +90,6 @@ function studioEnvironment(): THREE.Scene {
   return s;
 }
 
-/** Fine horizontal streaks — brushed metal under anisotropic reflections. */
-function brushedRoughnessTexture(): THREE.CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 512;
-  const g = c.getContext("2d")!;
-  g.fillStyle = "rgb(100,100,100)";
-  g.fillRect(0, 0, 512, 512);
-  for (let i = 0; i < 1800; i++) {
-    const y = Math.random() * 512;
-    const v = 90 + Math.floor(Math.random() * 26);
-    g.strokeStyle = `rgba(${v},${v},${v},0.3)`;
-    g.lineWidth = 0.75;
-    const x = Math.random() * 512;
-    const len = 60 + Math.random() * 220;
-    g.beginPath();
-    g.moveTo(x, y);
-    g.lineTo(x + len, y);
-    g.stroke();
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = THREE.RepeatWrapping;
-  t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(1.5, 1.5);
-  return t;
-}
-
 function contactShadowTexture(): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = 256;
@@ -137,20 +112,33 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   const loader = new THREE.TextureLoader();
   let texBefore: THREE.Texture;
   let texAfter: THREE.Texture;
+  // design-review hook: ?dm3drot=<deg> spins the HDRI for lighting tuning
+  const params = new URLSearchParams(window.location.search);
   // real studio HDRI (Poly Haven, CC0) — the same lighting the good Apple-style
   // web renders use; the procedural softbox scene stays as a fallback
   const settled = await Promise.allSettled([
     loader.loadAsync(opts.before),
     loader.loadAsync(opts.after),
     new RGBELoader().loadAsync("/img/studio.hdr"),
-  ]);
+    new GLTFLoader().loadAsync("/img/studio-display.glb"),
+  ] as const);
+  const disposeSettled = () => {
+    if (settled[0].status === "fulfilled") settled[0].value.dispose();
+    if (settled[1].status === "fulfilled") settled[1].value.dispose();
+    if (settled[2].status === "fulfilled") settled[2].value.dispose();
+  };
   if (settled[0].status === "fulfilled" && settled[1].status === "fulfilled") {
     texBefore = settled[0].value;
     texAfter = settled[1].value;
   } else {
-    for (const s of settled) if (s.status === "fulfilled") s.value.dispose();
+    disposeSettled();
     throw new Error("monitor-scene: screen texture failed to load");
   }
+  if (settled[3].status !== "fulfilled") {
+    disposeSettled();
+    throw new Error("monitor-scene: device model failed to load");
+  }
+  const gltfModel: GLTF = settled[3].value;
   const hdrTex = settled[2].status === "fulfilled" ? settled[2].value : null;
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -180,6 +168,8 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     });
   }
   scene.environment = envTarget.texture;
+  const envRotDeg = parseFloat(params.get("dm3drot") ?? "");
+  scene.environmentRotation.set(0, THREE.MathUtils.degToRad(Number.isFinite(envRotDeg) ? envRotDeg : ENV_ROT_DEG), 0);
 
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60);
   const halfTan = () => Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
@@ -188,42 +178,51 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   key.position.set(3.5, 6, 4.5);
   scene.add(key);
 
-  // ── the display: thin aluminum slab, white glass front, wedge stand ──
+  // ── the display: a real Apple Studio Display scan ─────────────────
+  // "Apple Studio Display" by alboxer2000_ (sketchfab.com/alboxer2000_),
+  // CC-BY-4.0 — attribution lives in the site footer.
   const group = new THREE.Group();
   scene.add(group);
 
-  const brushed = brushedRoughnessTexture();
-  const aluminum = new THREE.MeshPhysicalMaterial({
-    color: 0xd8dce1,
-    metalness: 1,
-    roughness: 0.85,
-    roughnessMap: brushed,
-    anisotropy: 0.4,
+  const model = gltfModel.scene;
+  {
+    // normalize: face width → the world units the choreography expects,
+    // feet on y=0, depth centered for clean yaw
+    const raw = new THREE.Box3().setFromObject(model);
+    model.scale.setScalar(3.32 / (raw.max.x - raw.min.x));
+    model.updateMatrixWorld(true);
+    const scaled = new THREE.Box3().setFromObject(model);
+    model.position.y -= scaled.min.y;
+    model.position.z -= (scaled.min.z + scaled.max.z) / 2;
+    model.updateMatrixWorld(true);
+  }
+  group.add(model);
+
+  // the illuminated panel inside the GLB (emissive-white material) marks
+  // where OUR screen shader goes — take the LARGEST such surface, the model
+  // also carries small emissive bits (LED, port glow)
+  let panel: THREE.Mesh | undefined;
+  let panelArea = 0;
+  const candBox = new THREE.Box3();
+  const candSize = new THREE.Vector3();
+  model.traverse((o) => {
+    const m = o as THREE.Mesh;
+    const mat = m.material as THREE.MeshStandardMaterial | undefined;
+    if (!m.isMesh || !mat?.emissive || mat.emissive.getHex() !== 0xffffff) return;
+    candBox.setFromObject(m).getSize(candSize);
+    const area = candSize.x * candSize.y;
+    if (area > panelArea) {
+      panelArea = area;
+      panel = m;
+    }
   });
-  const glassWhite = new THREE.MeshPhysicalMaterial({
-    color: 0xf2f3f5,
-    metalness: 0,
-    roughness: 0.34,
-    clearcoat: 1,
-    clearcoatRoughness: 0.07,
-  });
-
-  const slab = new THREE.Mesh(new RoundedBoxGeometry(3.36, 2.14, 0.07, 6, 0.035), aluminum);
-  slab.position.set(0, 1.5, 0);
-  group.add(slab);
-
-  const glass = new THREE.Mesh(new RoundedBoxGeometry(3.3, 2.08, 0.02, 4, 0.01), glassWhite);
-  glass.position.set(0, 1.5, 0.038);
-  group.add(glass);
-
-  const leg = new THREE.Mesh(new RoundedBoxGeometry(0.64, 0.56, 0.045, 4, 0.02), aluminum);
-  leg.position.set(0, 0.22, -0.13);
-  leg.rotation.x = 0.3;
-  group.add(leg);
-
-  const foot = new THREE.Mesh(new RoundedBoxGeometry(0.68, 0.025, 0.46, 4, 0.012), aluminum);
-  foot.position.set(0, 0.0125, -0.02);
-  group.add(foot);
+  if (!panel) throw new Error("monitor-scene: screen panel not found in device model");
+  const panelBox = new THREE.Box3().setFromObject(panel);
+  const PANEL_W = panelBox.max.x - panelBox.min.x;
+  const PANEL_H = panelBox.max.y - panelBox.min.y;
+  const PANEL_C = panelBox.getCenter(new THREE.Vector3());
+  const PANEL_Z = panelBox.max.z + 0.004;
+  panel.visible = false;
 
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
   for (const t of [texBefore, texAfter]) {
@@ -265,24 +264,9 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
       }
     `,
   });
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.8), screenMat);
-  screen.position.set(0, 1.59, 0.0495);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_W, PANEL_H), screenMat);
+  screen.position.set(PANEL_C.x, PANEL_C.y, PANEL_Z);
   group.add(screen);
-
-  // one continuous sheet of cover glass over panel AND bezel: environment
-  // streaks run across the whole face, exactly like a real all-in-one
-  const coverMat = new THREE.MeshPhysicalMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0.04,
-    roughness: 0.05,
-    metalness: 0,
-    envMapIntensity: 1.4,
-    depthWrite: false,
-  });
-  const cover = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 2.07), coverMat);
-  cover.position.set(0, 1.5, 0.0505);
-  group.add(cover);
 
   const shadowTex = contactShadowTexture();
   const shadowMat = new THREE.MeshBasicMaterial({
@@ -297,7 +281,7 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
 
   // ── camera choreography ─────────────────────────────────────────
   const YAW_A = -0.42;
-  const YAW_B = -0.05;
+  const YAW_B = -0.09;
   const LOOK_A = new THREE.Vector3();
   const LOOK_B = new THREE.Vector3();
   const POS_A = new THREE.Vector3();
@@ -325,18 +309,20 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     const vhA = 2 * zA * ht;
     const oxA = isWideStage ? 0.17 * (vhA * a) : 0;
     const oyA = (0.5 - cy) * vhA * 0.6;
-    LOOK_A.set(-oxA, 1.32 - oyA, 0);
-    POS_A.set(4.2 - oxA, 2.6 - oyA, zA);
-    // close state: the glass fills --dm-fill of the canvas height. On a wide
+    LOOK_A.set(-oxA, PANEL_C.y - 0.18 - oyA, 0);
+    POS_A.set(4.2 - oxA, PANEL_C.y + 1.1 - oyA, zA);
+    // close state: the panel fills --dm-fill of the canvas height. On a wide
     // stage the SCREEN'S LEFT EDGE anchors just right of the copy column —
     // the icon side must stay fully visible; the right may bleed offstage.
     const fillH = cssNum("--dm-fill", isWideStage ? 0.9 : 0.96);
-    const vhB = 2.06 / fillH;
+    const vhB = PANEL_H / fillH;
     const vwB = vhB * a;
-    const zB = 0.05 + vhB / (2 * ht);
+    const zB = PANEL_Z + vhB / (2 * ht);
     const oyB = (0.5 - cy) * vhB;
-    const lookX = isWideStage ? -1.6 - (0.47 - 0.5) * vwB : -0.2;
-    LOOK_B.set(lookX, 1.59 - oyB, 0.05);
+    const lookX = isWideStage
+      ? PANEL_C.x - PANEL_W / 2 - (0.47 - 0.5) * vwB
+      : PANEL_C.x - 0.2;
+    LOOK_B.set(lookX, PANEL_C.y - oyB, PANEL_Z);
     POS_B.set(LOOK_B.x + 0.1, LOOK_B.y, zB);
   };
   frameCamera();
@@ -467,9 +453,18 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     document.removeEventListener("visibilitychange", onVis);
     window.removeEventListener("pointermove", onPointer);
     document.documentElement.removeEventListener("pointerleave", onLeave);
-    for (const g of [slab, glass, leg, foot, screen, cover, shadow]) g.geometry.dispose();
-    for (const m of [aluminum, glassWhite, screenMat, coverMat, shadowMat]) m.dispose();
-    for (const x of [texBefore, texAfter, shadowTex, brushed]) x.dispose();
+    model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      m.geometry.dispose();
+      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+        for (const v of Object.values(mat)) if (v instanceof THREE.Texture) v.dispose();
+        mat.dispose();
+      }
+    });
+    for (const g of [screen, shadow]) g.geometry.dispose();
+    for (const m of [screenMat, shadowMat]) m.dispose();
+    for (const x of [texBefore, texAfter, shadowTex]) x.dispose();
     envTarget.dispose();
     pmrem.dispose();
     renderer.dispose();

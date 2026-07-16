@@ -73,9 +73,14 @@ fast with a clear message if the cert isn't in the store, so you never get a hal
 ### 4. Cut a release
 
 ```bash
-# bump version in src-tauri/tauri.conf.json + Cargo.toml first, then:
-git tag v0.1.0
-git push origin v0.1.0
+# One command: single-sources the version across package.json + tauri.conf.json + Cargo.toml,
+# commits, tags, and pushes (the tag fires this workflow):
+bun run release 0.1.0 --commit --tag --push
+
+# Or step by step:
+bun run release 0.1.0            # rewrite the version files only (review the diff)
+git commit -am "chore(release): v0.1.0"
+git tag v0.1.0 && git push origin main v0.1.0
 ```
 
 The tag triggers `release.yml`: build → sign exe + installer → publish a GitHub Release with the

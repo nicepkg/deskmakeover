@@ -1,0 +1,79 @@
+name: ci
+
+# Continuous integration on GitHub-hosted runners (the signed *release* stays on the
+# self-hosted signing PC — see release.yml + docs/signing-setup.md).
+#
+#   web    (ubuntu)  — lint, type-check, web tests, the portable icon-core Rust tests,
+#                      the WASM preview artifact, and the Vite production build. Fast + cheap.
+#   native (windows) — the full Rust workspace tests (incl. the Windows-only dm-windows crate)
+#                      and an unsigned Tauri build, uploaded as an installable artifact.
+#
+# NOTE: Windows minutes bill at 2x on private repos. The value fully lands once the repo is
+# public (unlimited minutes); until then this runs on pushes to main + PRs only.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Rust toolchain (pinned by rust-toolchain.toml, + wasm target)
+        run: rustup show      # bootstraps the pinned channel/target from rust-toolchain.toml
+      - uses: Swatinem/rust-cache@v2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Portable icon-core Rust tests
+        run: cargo test -p dm-icon-core -p dm-icon-codec
+
+      - name: Build the WASM preview artifact
+        run: bun run wasm
+
+      - name: Type-check + web tests
+        run: |
+          bunx tsc -b
+          bun test
+
+      - name: Web production build
+        run: bun run build
+
+  native:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Rust toolchain (pinned by rust-toolchain.toml)
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Rust workspace tests (incl. dm-windows)
+        run: cargo test --workspace
+
+      - name: Tauri build (unsigned NSIS installer)
+        run: bunx tauri build
+
+      - name: Upload the unsigned installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: deskmakeover-setup-unsigned
+          path: target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error

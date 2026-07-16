@@ -15,7 +15,8 @@
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "tauri:build": "tauri build",
     "gen:bindings": "cargo run -p deskmakeover-desktop --bin gen-bindings --features bindgen",
-    "check:bindings": "cargo test -p deskmakeover-desktop --test bindings"
+    "check:bindings": "cargo test -p deskmakeover-desktop --test bindings",
+    "release": "bun scripts/release.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.2",

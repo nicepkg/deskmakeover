@@ -1,10 +1,12 @@
 # Changelog
 
-All notable changes to DeskMakeover. Dates are ISO-8601.
+All notable changes to DeskMakeover. The format follows
+[Keep a Changelog](https://keepachangelog.com/); dates are ISO-8601.
 
-> **Nothing has been released yet.** `Directory.Build.props` and the Web package are both
-> `0.0.0`; the owner names the first version at release time. Until then the entry below is
-> `Unreleased`, and the authoritative moving picture lives in `docs/STATE.md` + `docs/journal/`.
+> **Nothing has been released yet.** The version is `0.1.0` (root `package.json` +
+> `src-tauri/tauri.conf.json`), staged for the first tagged release. Cut one with
+> `bun run release <version> --commit --tag --push` (see `docs/signing-setup.md`). The
+> authoritative moving picture lives in `docs/STATE.md` + `docs/journal/`.
 
 ## Unreleased
 

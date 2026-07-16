@@ -1,0 +1,23 @@
+name: Feature request / 功能建议
+description: Suggest an idea or improvement / 提一个想法或改进
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem / 你遇到的问题
+      description: What are you trying to do that DeskMakeover makes hard or impossible? / 你想做什么,而现在很难或做不到?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea / 你的想法
+      description: What would you like it to do? / 你希望它怎么做?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives / 你试过的替代方案
+      description: Anything you tried or considered. / 你考虑或尝试过的其它做法。

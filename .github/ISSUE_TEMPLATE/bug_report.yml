@@ -1,0 +1,53 @@
+name: Bug report / 报告问题
+description: Something is broken or behaves unexpectedly / 有东西坏了或行为不对
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. In-app, **Settings → 反馈问题** copies a full diagnostic report to
+        your clipboard — please paste it below. / 应用内 **设置 → 反馈问题** 会把完整诊断日志复制到
+        剪贴板,请贴到下方。
+  - type: input
+    id: version
+    attributes:
+      label: DeskMakeover version / 版本
+      description: Shown next to the app name in Settings. / 在设置里应用名旁边。
+      placeholder: e.g. 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version / Windows 版本
+      placeholder: e.g. Windows 11 23H2 (x64)
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened / 发生了什么
+      description: What did you expect, and what happened instead? / 你期望什么,实际发生了什么?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic report / 诊断日志
+      description: Paste the report from Settings → 复制诊断日志. / 粘贴 设置 → 复制诊断日志 的内容。
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / 截图
+      description: Drag images in if they help. / 有帮助的话把截图拖进来。

@@ -1,0 +1,7 @@
+# Keep blank issues enabled: the in-app "反馈问题" button deep-links to
+# issues/new?body=<diagnostic report>, which needs the blank-issue route.
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability / 安全漏洞
+    url: https://github.com/nicepkg/deskmakeover/security/advisories/new
+    about: Please report security issues privately, not as a public issue. / 安全问题请私下报告,不要开公开 issue。

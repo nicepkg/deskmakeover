@@ -97,12 +97,31 @@ what is in flight, and what comes next.
 - **The Windows-runtime gate** — READ half now CLOSED (2026-07-15): the app boots on a real Win11
   box, the WebView2 bridge routes, startup recovery + STA COM run, and the read-only `[WINDOWS-VERIFY]`
   surface (scan/topology/geometry/extraction/fingerprint/known-folders) passes (`verify_readonly`).
-  WRITE half still PENDING + owner-supervised: icon-bake apply/restore, elevated overlay HKLM+UAC,
-  wallpaper apply/restore, kill-point battery, resident auto-format loop, calm W3, M1 spikes 1/2/3/5.
-  This write surface is now the dominant ship risk.
+  WRITE half still PENDING + owner-supervised: icon-bake apply/restore (user-desktop + the NEW
+  elevated Public-Desktop/ProgramData path — code-complete + codex-approved 2026-07-16, on-box UAC
+  verify pending), elevated overlay HKLM+UAC (now also signature-pinned), wallpaper apply/restore,
+  kill-point battery, resident auto-format loop, calm W3, M1 spikes 1/2/3/5. This write surface is
+  now the dominant ship risk.
 
 ## Recently shipped (one line each — detail in journal/CHANGELOG)
 
+- 2026-07-16 **Elevated apply/restore WIRED (owner "更新桌面还是不行 / 我要所有图标都可修改 / 必须提权")**:
+  the main app now routes privileged shared items (`C:\Users\Public\Desktop\*.lnk` — Chrome et al.,
+  ACL-protected → unelevated Access-Denied → the whole batch rolled back) through the `dm-elevated`
+  helper, ONE UAC per batch, in the SAME durable journal+ledger+recovery envelope (so a privileged
+  item is as reversible + crash-safe as a user-desktop one). New `ElevatedIconApplier` port; commit
+  partitions by scope + `apply_privileged_batch` (derived `ItemApplied` fp journaled before the helper
+  → scope-aware recovery ADOPTS a helper-styled item forward instead of a doomed unelevated restore);
+  reset batches the privileged restores. A1/C3 `signing.rs` gate: verify + PIN (deny-write/delete
+  handle held across `runas`); dev-unsigned bypass compiled ONLY into debug builds. Plan
+  `docs/plans/2026-07-16-elevated-desktop-items-wiring.md`. **codex 3 passes → APPROVE** (fixed P1-1
+  one-read CAS anchor, P1-2 terminal-less-on-failure, P1-3 debug-only bypass, P1-4 verify→launch pin,
+  P1/P2-reset-confirm). +12 tests, all Rust gates green (workspace 734). ⚠️ **[WINDOWS-VERIFY] ON-BOX**:
+  (a) the live UAC apply/restore of a real Public-Desktop `.lnk`; (b) that the `FILE_SHARE_READ` pin
+  does NOT block the elevated launch; (c) an UNSIGNED dev build refuses the helper unless
+  `DESKMAKEOVER_ALLOW_UNSIGNED_HELPER=1` is set (or use a signed build). Follow-ups: privileged
+  `.url`/folder kinds still conflict; signer-subject pinning; per-machine install; combine the
+  desktop-items + overlay UACs into one.
 - 2026-07-16 **清爽 walk-fallback round (owner report: widgets.feed 带我去关 dead + 「本版本不支持」
   rows should be walkable)**: two real bugs fixed. (1) `widgets.feed` guided route was
   `WidgetsBoardSettings` with no launch arm in `open_route` → dead button; now routes to
@@ -215,10 +234,11 @@ what is in flight, and what comes next.
   免费开源 chip promise it).
 - Signing entity/name for the OV certificate (release gate).
 - Distribution channel (direct download + pinned comment reply).
-- **Elevated-helper hardening deferred to the on-box write-surface pass (codex 2026-07-16):**
-  **A1** — verify `dm-elevated.exe`'s Authenticode signer in `run_helper` BEFORE the `runas`
-  ShellExecuteExW (the per-user install dir is user-writable, so a swapped exe would run elevated;
-  DLL planting is already closed by `+crt-static`). **C3** — confirm Tauri actually signs the
-  `externalBin` sidecar; if not, add an explicit sidecar sign + `Get-AuthenticodeSignature` Valid
-  gate to `release.yml`. A1 depends on C3. Both are [WINDOWS-VERIFY]. (A2 path-redirect + A4 CAS
-  window were fixed 2026-07-16; A1/C3 need the on-box signed build to implement+verify.)
+- **Elevated-helper hardening — A1 IMPLEMENTED 2026-07-16, on-box verify pending.** `signing.rs`
+  `PinnedHelper::open_verified` now runs before EVERY `runas` (overlay + desktop-items): open the
+  helper deny-write/delete, `WinVerifyTrust` the open handle, hold it across `ShellExecuteExW`
+  (closes the verify→launch TOCTOU). **[WINDOWS-VERIFY] on the signed box**: (1) that a signed helper
+  passes + the `FILE_SHARE_READ` pin does NOT block the elevated launch; (2) **C3** — confirm Tauri
+  actually signs the `externalBin` sidecar (else add an explicit sidecar sign + `Get-AuthenticodeSignature`
+  Valid gate to release.yml); the dev-unsigned bypass is debug-only. Residual follow-ups: signer-SUBJECT
+  pinning (needs the finalized OV cert subject) + a per-machine (admin-protected) install location.

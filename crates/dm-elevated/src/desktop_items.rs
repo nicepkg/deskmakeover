@@ -133,6 +133,42 @@ pub fn restore(items: &[RestoreItem], writer: &dyn DesktopWriter) -> Result<usiz
     Ok(done.len())
 }
 
+/// Classified exit codes the desktop-items verbs return, so the unelevated launcher can turn an
+/// elevated failure into a human reason WITHOUT the helper writing any caller-named file (codex
+/// 2026-07-17 P1). Pure over the batch error string, host-tested.
+pub const EXIT_GENERIC: u8 = 3;
+pub const EXIT_TARGET_CHANGED: u8 = 10;
+pub const EXIT_ACCESS_DENIED: u8 = 11;
+pub const EXIT_VALIDATION: u8 = 12;
+
+/// Map a batch error message to its exit-code category. Ordered most-specific first: a
+/// CAS-mismatch ("changed since scan", the owner-box re-apply case) and an access denial are the
+/// two the launcher gives a tailored, actionable message; validation/unsupported-input rejections
+/// collapse to one code; anything else is generic.
+pub fn classify_failure(err: &str) -> u8 {
+    let e = err.to_ascii_lowercase();
+    if e.contains("changed since scan") {
+        EXIT_TARGET_CHANGED
+    } else if e.contains("access denied")
+        || e.contains("access is denied")
+        || e.contains("os error 5")
+        || e.contains("拒绝访问")
+    {
+        EXIT_ACCESS_DENIED
+    } else if e.contains("not a regular file")
+        || e.contains("exceeds the")
+        || e.contains("header")
+        || e.contains("not valid utf-8")
+        || e.contains("outside")
+        || e.contains("not yet supported")
+        || e.contains("is not a")
+    {
+        EXIT_VALIDATION
+    } else {
+        EXIT_GENERIC
+    }
+}
+
 /// Win32 codes meaning "another process transiently holds the file" — mirrors the main app's
 /// `dm_windows::durable` set: ERROR_ACCESS_DENIED (5, also what an AV-held replace surfaces as),
 /// ERROR_SHARING_VIOLATION (32), ERROR_LOCK_VIOLATION (33), ERROR_UNABLE_TO_REMOVE_REPLACED /
@@ -405,7 +441,9 @@ mod windows_writer {
     }
 
     /// Read the manifest file itself capped + local-fixed (it is untrusted, so bound its size and
-    /// refuse a redirected read just like every other file the helper opens).
+    /// refuse a redirected read just like every other file the helper opens). READ-ONLY — the
+    /// helper NEVER writes to a caller-named path (the failure reason travels back as a
+    /// classified exit code, not a written report; codex 2026-07-17 P1).
     fn read_manifest(path: &str) -> Result<String, String> {
         let bytes = read_capped_file(Path::new(path))?;
         String::from_utf8(bytes).map_err(|_| "manifest is not valid UTF-8".into())
@@ -417,6 +455,25 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
     use std::collections::HashMap;
+
+    #[test]
+    fn classify_failure_maps_each_batch_error_family_to_its_exit_code() {
+        // The owner-box re-apply case → a tailored "rescan and retry" code, not generic.
+        assert_eq!(
+            classify_failure("target changed since scan, refusing to clobber: C:\\...\\Chrome.lnk"),
+            EXIT_TARGET_CHANGED
+        );
+        // Access denials, in the forms the writers surface (COM/os error / localized).
+        assert_eq!(classify_failure("write failed for X: COM error: Access is denied. (0x80070005)"), EXIT_ACCESS_DENIED);
+        assert_eq!(classify_failure("write X: 拒绝访问。 (os error 5)"), EXIT_ACCESS_DENIED);
+        // Validation / unsupported-input rejections collapse to one code.
+        assert_eq!(classify_failure("not a regular file: C:\\x"), EXIT_VALIDATION);
+        assert_eq!(classify_failure("manifest is not valid UTF-8"), EXIT_VALIDATION);
+        assert_eq!(classify_failure("desktop-item target is outside every privileged root: ..."), EXIT_VALIDATION);
+        assert_eq!(classify_failure("elevated write for Folder is not yet supported"), EXIT_VALIDATION);
+        // Anything unrecognised stays generic.
+        assert_eq!(classify_failure("some unexpected internal error"), EXIT_GENERIC);
+    }
 
     #[test]
     fn transient_hresult_covers_the_structured_storage_family_ipersistfile_reports() {

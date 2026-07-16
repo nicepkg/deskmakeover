@@ -298,6 +298,11 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Icons_PeekHint": "按住查看原图标", // PENDING-RESX
   "Icons_SizeHonesty": "应用后位置由 Windows 重新排列", // PENDING-RESX
   "Icons_Unstyleable": "此图标由 Windows 管理，无法修改", // PENDING-RESX
+  "Icons_Reason_RepairPending": "待修复：上次操作未完成，刷新后重试", // PENDING-RESX
+  "Icons_Reason_Unreadable": "图标状态读取失败", // PENDING-RESX
+  "Icons_Reason_StyledResidue": "美化残留：原始图标记录缺失，已跳过以免在旧样式上叠加", // PENDING-RESX
+  "Icons_Reason_ExtractFailed": "图标读取失败：{0}", // PENDING-RESX
+  "Icons_Reason_TooMany": "图标过多：已达本次扫描的预览内存预算，部分图标暂无预览", // PENDING-RESX
   "Ink_Auto": "自动",
   "Ink_Black": "黑",
   "Ink_White": "白",

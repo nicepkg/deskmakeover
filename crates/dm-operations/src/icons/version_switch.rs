@@ -270,15 +270,37 @@ fn bake_and_apply(
             pinned_seed: None,
         });
     }
-    match TxnDriver::new(ports.reader, ports.applier, ports.assets).apply(txn.next_id(), requests, journal, ledger) {
-        Ok(outcome) => Ok(outcome), // committed/rolled_back/error all carried on the outcome
-        Err(e) => {
-            // A bare driver Err = a durable journal fault; there is no ApplyOutcome to carry. Record
-            // it distinctly (not "package") so the caller knows the desktop MAY have been mutated.
-            errors.push(format!("driver: {e}"));
-            Ok(ApplyOutcome { desktop_mutated: true, ..Default::default() })
+    // Per-item transactions, mirroring `commit_apply` (owner 2026-07-17): one item hitting a
+    // transient fault (an Explorer/AV hold on the live Desktop) must not roll the whole SWITCH
+    // back — that batch-abort is exactly what the owner saw as "the first switch didn't replace
+    // the folder". A bare driver Err (possibly torn journal) stops the loop; later items were
+    // never journaled and stay untouched.
+    let driver = TxnDriver::new(ports.reader, ports.applier, ports.assets);
+    let mut folded = ApplyOutcome::default();
+    for req in requests {
+        match driver.apply(txn.next_id(), vec![req], journal, ledger) {
+            Ok(one) => {
+                folded.committed.extend(one.committed);
+                folded.conflicts.extend(one.conflicts);
+                folded.rolled_back.extend(one.rolled_back);
+                folded.healed.extend(one.healed);
+                folded.desktop_mutated |= one.desktop_mutated;
+                folded.error = match (folded.error.take(), one.error) {
+                    (Some(a), Some(b)) => Some(format!("{a}; {b}")),
+                    (a, b) => a.or(b),
+                };
+            }
+            Err(e) => {
+                // A bare driver Err = a durable journal fault; keep what already committed and
+                // record it distinctly (not "package") so the caller knows the desktop MAY have
+                // been mutated.
+                errors.push(format!("driver: {e}"));
+                folded.desktop_mutated = true;
+                break;
+            }
         }
     }
+    Ok(folded)
 }
 
 #[cfg(test)]

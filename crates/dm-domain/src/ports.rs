@@ -29,16 +29,19 @@ pub trait ItemStateReader {
     /// location). The operations layer threads the returned icon location to the elevated helper as
     /// its compare-and-swap anchor: because it comes from the SAME read as the accepted fingerprint, a
     /// value the preflight rejected can never be handed to the helper as "expected" (trust-first,
-    /// §P1-1). `None` for the icon means either a non-shortcut kind (its surface is not a single icon
-    /// location) or a shortcut with no explicit icon location; both are safe — only the privileged
-    /// SHORTCUT elevated path consumes the icon, and `None` maps to `("", 0)`, matching the helper's
-    /// empty `GetIconLocation` read. The default is `(read_fingerprint, None)`; the Windows reader
-    /// overrides it to surface the shortcut icon location from the fingerprint's own read.
+    /// §P1-1). The second element is EVERY live icon location the surface carries — one for a
+    /// shortcut/`.url`/folder/System item, all THREE registry values for the Recycle Bin (a
+    /// partial write can leave OUR asset in `empty`/`full` while `default` is still original, so a
+    /// single representative location under-reports styled residue — codex 2026-07-17 P1), empty
+    /// for a kind with no icon-location surface. Only the privileged SHORTCUT elevated path
+    /// consumes the FIRST location as its CAS anchor; the provenance guards consume them all. The
+    /// default is `(read_fingerprint, [])`; the Windows reader overrides per kind, each mirroring
+    /// its `read_fingerprint` arm so the two can never disagree.
     fn read_styleable_surface(
         &self,
         target: &ItemTarget,
-    ) -> PortResult<(Fingerprint, Option<(String, i32)>)> {
-        Ok((self.read_fingerprint(target)?, None))
+    ) -> PortResult<(Fingerprint, Vec<(String, i32)>)> {
+        Ok((self.read_fingerprint(target)?, Vec::new()))
     }
 }
 
@@ -81,6 +84,17 @@ pub trait AssetStore {
 
     /// Deletes any stored asset whose hash is not in `live`.
     fn gc(&self, live: &[String]) -> PortResult<()>;
+
+    /// Whether `path` points INTO this store — i.e. the file is one of our own generated assets.
+    /// This is the provenance oracle for "styled residue": a desktop item whose live icon location
+    /// resolves into the store is wearing OUR output, so that state must never be captured as "the
+    /// true original" or extracted as a bake source (owner rule 2026-07-17: 任何时候都基于最原始的
+    /// 图标计算 — a lost ledger row must degrade honestly, never compound Style(Style(orig))).
+    /// Default `false` for stores with no path identity (test fakes opt in explicitly).
+    fn contains_path(&self, path: &str) -> bool {
+        let _ = path;
+        false
+    }
 }
 
 /// Enumerates the desktop (user + public) into classified items (oracle: `DesktopScanner`).
@@ -138,6 +152,15 @@ pub trait DesktopGeometryReader {
 /// (oracle: `ExplorerRefresh.NotifyIconsChanged` → `SHChangeNotify`).
 pub trait ExplorerRefresher {
     fn notify_icons_changed(&self) -> PortResult<()>;
+
+    /// Per-item shell notification for one just-written desktop item. The global association
+    /// refresh does NOT make Explorer re-read a FOLDER's `desktop.ini` — its custom icon stays
+    /// cached until a directory-scoped update event, which the owner saw as "the folder lags one
+    /// apply behind" (2026-07-17). Default no-op for platforms/fakes without a shell.
+    fn notify_item_changed(&self, path: &str, is_dir: bool) -> PortResult<()> {
+        let _ = (path, is_dir);
+        Ok(())
+    }
 }
 
 /// The privileged global shortcut-overlay verb pair (ADR-0021), invoked out-of-process via the

@@ -136,7 +136,7 @@ impl ItemStateReader for WindowsStateReader {
     fn read_styleable_surface(
         &self,
         target: &ItemTarget,
-    ) -> PortResult<(Fingerprint, Option<(String, i32)>)> {
+    ) -> PortResult<(Fingerprint, Vec<(String, i32)>)> {
         match target.kind {
             // A shortcut's fingerprint IS its icon location, so read the location ONCE and return BOTH
             // — the elevated CAS anchor and the fingerprint can then never disagree (§P1-1). A UWP
@@ -147,11 +147,69 @@ impl ItemStateReader for WindowsStateReader {
                 let (path, index) =
                     self.exec.run(move || shell_link::read_icon_location(&p))??.unwrap_or_default();
                 let fingerprint = SurfaceState::IconRef { path: path.clone(), index }.fingerprint();
-                Ok((fingerprint, Some((path, index))))
+                Ok((fingerprint, vec![(path, index)]))
             }
-            // Every other kind: the full per-kind fingerprint, no single icon-location CAS anchor (they
-            // are never routed to the elevated shortcut helper).
-            _ => Ok((self.read_fingerprint(target)?, None)),
+            // The other icon-reference kinds also expose their live icon location(s) — the
+            // styled-residue provenance check needs them (a live location inside OUR asset store is
+            // this app's output; with no trustworthy anchor it must never be recaptured as "the
+            // original" or re-extracted as a bake source — owner report 2026-07-17, a folder
+            // compounding Style(Style(orig)) after its ledger row was lost). Each read mirrors the
+            // corresponding `read_fingerprint` arm, reading the location(s) ONCE.
+            ItemKind::UrlShortcut => {
+                let text = textfmt::decode_ini_text_bytes(&read_bytes(&target.path)?);
+                let (path, index) =
+                    textfmt::parse_internet_shortcut_icon(&text).unwrap_or_default();
+                let fingerprint = SurfaceState::IconRef { path: path.clone(), index }.fingerprint();
+                Ok((fingerprint, vec![(path, index)]))
+            }
+            ItemKind::Folder => {
+                pathcheck::require_dir(&target.path)?;
+                let icon = textfmt::parse_desktop_ini_icon(&read_desktop_ini(&target.path)?).unwrap_or_default();
+                let owned_attr_bits = attrs::get(&target.path)? & fp::FOLDER_OWNED_ATTR_BITS;
+                let location = icon.clone();
+                Ok((SurfaceState::Folder { icon, owned_attr_bits }.fingerprint(), vec![location]))
+            }
+            ItemKind::System => {
+                let a = system::read_current(&system::parse_clsid(&target.path)?)?;
+                let (path, index) = a.value.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                let fingerprint = SurfaceState::IconRef { path: path.clone(), index }.fingerprint();
+                Ok((fingerprint, vec![(path, index)]))
+            }
+            // RegularFile: the companion WRAPPER's icon is the live location — a wrapper pointing
+            // into our asset store with no ledger row is styled residue like any other kind (codex
+            // R3 P1: the guard was blind here). No wrapper → empty location (never "ours").
+            ItemKind::RegularFile => {
+                let owned_attr_bits = attrs::get(&target.path)? & fp::OWNED_ATTR_BITS;
+                let wrapper_path = file_wrapper::wrapper_path(&target.path);
+                let wrapper = if pathcheck::path_exists(&wrapper_path)? {
+                    let w = wrapper_path.clone();
+                    let id = self.exec.run(move || shell_link::read_wrapper_identity(&w))??;
+                    Some(WrapperSurface {
+                        icon: id.icon.unwrap_or_default(),
+                        target: id.target,
+                        working_dir: id.working_dir,
+                    })
+                } else {
+                    None
+                };
+                let location = wrapper.as_ref().map(|w| w.icon.clone()).unwrap_or_default();
+                Ok((SurfaceState::RegularFile { wrapper, owned_attr_bits }.fingerprint(), vec![location]))
+            }
+            // RecycleBin: a multi-value surface — ALL THREE registry values are returned, so a
+            // PARTIAL write (our asset already in `empty`/`full` while `default` is still the
+            // original) is visible to the provenance guards (codex 2026-07-17 P1: a single
+            // representative location under-reported exactly that residue).
+            ItemKind::RecycleBin => {
+                let a = recyclebin::read_current()?;
+                let default = a.default.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                let empty = a.empty.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                let full = a.full.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                let locations = vec![default.clone(), empty.clone(), full.clone()];
+                Ok((SurfaceState::RecycleBin { default, empty, full }.fingerprint(), locations))
+            }
+            ItemKind::Unsupported => {
+                Err(PortError::Unsupported(format!("fingerprint for {:?}", target.kind)))
+            }
         }
     }
 
@@ -226,6 +284,64 @@ fn read_bytes(path: &str) -> PortResult<Vec<u8>> {
             Err(PortError::NotFound(path.to_string()))
         }
         Err(e) => Err(PortError::Io(e.to_string())),
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use crate::com::StaExecutor;
+    use std::sync::Arc;
+
+    fn reader() -> WindowsStateReader {
+        WindowsStateReader::new(Arc::new(StaExecutor::spawn().unwrap()))
+    }
+
+    fn target(kind: ItemKind, path: &str) -> ItemTarget {
+        ItemTarget { id: dm_domain::ItemId::from_raw("t"), kind, path: path.to_string() }
+    }
+
+    #[test]
+    fn url_styleable_surface_reports_the_live_icon_location_and_a_matching_fingerprint() {
+        // The styled-residue provenance check consumes the location; it must be the SAME state the
+        // fingerprint hashes (one read, never two disagreeing ones).
+        let dir = tempfile::tempdir().unwrap();
+        let url = dir.path().join("site.url");
+        std::fs::write(&url, "[InternetShortcut]\r\nURL=https://x\r\nIconFile=C:\\gen\\a.ico\r\nIconIndex=3\r\n").unwrap();
+        let r = reader();
+        let t = target(ItemKind::UrlShortcut, &url.to_string_lossy());
+        let (fp, loc) = r.read_styleable_surface(&t).unwrap();
+        assert_eq!(loc, vec![(r"C:\gen\a.ico".to_string(), 3)]);
+        assert_eq!(fp, r.read_fingerprint(&t).unwrap(), "surface and fingerprint reads agree");
+    }
+
+    #[test]
+    fn folder_styleable_surface_reports_the_desktop_ini_icon_and_a_matching_fingerprint() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("styled-folder");
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::write(
+            folder.join("desktop.ini"),
+            "[.ShellClassInfo]\r\nIconResource=C:\\gen\\f.ico,0\r\nConfirmFileOp=0\r\n",
+        )
+        .unwrap();
+        let r = reader();
+        let t = target(ItemKind::Folder, &folder.to_string_lossy());
+        let (fp, loc) = r.read_styleable_surface(&t).unwrap();
+        assert_eq!(loc, vec![(r"C:\gen\f.ico".to_string(), 0)]);
+        assert_eq!(fp, r.read_fingerprint(&t).unwrap(), "surface and fingerprint reads agree");
+    }
+
+    #[test]
+    fn an_unstyled_folder_surface_is_an_empty_location_not_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("plain");
+        std::fs::create_dir(&folder).unwrap();
+        let r = reader();
+        let t = target(ItemKind::Folder, &folder.to_string_lossy());
+        let (fp, loc) = r.read_styleable_surface(&t).unwrap();
+        assert_eq!(loc, vec![(String::new(), 0)], "no desktop.ini → empty location");
+        assert_eq!(fp, r.read_fingerprint(&t).unwrap());
     }
 }
 

@@ -267,6 +267,17 @@ impl IconHost {
         changed
     }
 
+    /// Read-only: whether the machine already wears overlay signature `sig` (per the install
+    /// marker). Used to SKIP the elevated overlay verb — and its UAC prompt — on a repeat apply
+    /// (owner 2026-07-17: "why does every apply ask for TWO authorizations?"). The marker is this
+    /// app's own record of its last install; if the registry was tampered with out-of-band, the
+    /// arrow settings pane still reinstalls explicitly.
+    pub(super) fn overlay_install_is(&self, sig: &str) -> bool {
+        std::fs::read_to_string(&self.overlay_install_marker)
+            .map(|prev| prev.trim() == sig)
+            .unwrap_or(false)
+    }
+
     pub(super) fn ops(&self) -> IconOps<'_> {
         IconOps::new(
             IconPlatform::new(&*self.reader, &*self.applier, &self.assets),

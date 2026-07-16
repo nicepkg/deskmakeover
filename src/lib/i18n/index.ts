@@ -60,3 +60,19 @@ export function t(key: StringKey): string {
 export function format(template: string, ...args: (string | number)[]): string {
   return template.replace(/\{(\d+)\}/g, (_, i) => String(args[Number(i)] ?? ''))
 }
+
+/** Reactive localizer for a HOST-emitted status reason: a stable i18n key, optionally `\t`-joined
+ *  with one interpolation arg (e.g. `"Icons_Reason_ExtractFailed\t<detail>"`). The host has no
+ *  locale, so it ships the KEY and the frontend localizes here. Falls back to the raw text for an
+ *  unrecognized key so a newly-added host reason still shows something rather than blank. */
+export function useHostReason(): (raw: string) => string {
+  const lang = useI18n((s) => s.lang)
+  return (raw) => {
+    const sep = raw.indexOf('\t')
+    const key = sep < 0 ? raw : raw.slice(0, sep)
+    const arg = sep < 0 ? undefined : raw.slice(sep + 1)
+    const template = (tables[lang] as Record<string, string>)[key]
+    if (!template) return raw
+    return arg !== undefined ? format(template, arg) : template
+  }
+}

@@ -163,6 +163,7 @@ impl LookHistoryStore {
             Err(_) => Vec::new(),
         };
         normalize_pins(&mut all);
+        dedupe_ids(&mut all);
         all
     }
 
@@ -178,6 +179,7 @@ impl LookHistoryStore {
             Ok(bytes) => {
                 let mut all: Vec<LookVersion> = serde_json::from_slice(&bytes).unwrap_or_default();
                 normalize_pins(&mut all);
+                dedupe_ids(&mut all);
                 Ok(all)
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
@@ -200,6 +202,26 @@ impl LookHistoryStore {
 /// converging (and let a `push` return `Added` while silently dropping the new entry). Keeps the pin
 /// flag on only the newest [`MAX_PINS`] pinned entries (newest-first order) and un-pins the older
 /// extras.
+/// Every entry's `id` must be UNIQUE — the UI selects and `switch_to_version` looks up BY id, so a
+/// collision silently resolves to the oldest match (owner box 2026-07-17: three looks all carried
+/// `look-1` because the id was minted from a txn counter that resets when the journal checkpoints;
+/// "switch to 浮光" applied 方圆). The newest entry keeps its id; older duplicates are re-suffixed
+/// deterministically with their timestamp (and an index if even that collides), so every load —
+/// read or mutation — observes the same healed ids.
+fn dedupe_ids(all: &mut [LookVersion]) {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (i, v) in all.iter_mut().enumerate() {
+        if !seen.insert(v.id.clone()) {
+            let mut healed = format!("{}-{}", v.id, v.created_at);
+            if seen.contains(&healed) {
+                healed = format!("{}-{}", healed, i);
+            }
+            seen.insert(healed.clone());
+            v.id = healed;
+        }
+    }
+}
+
 fn normalize_pins(all: &mut [LookVersion]) {
     let mut kept = 0usize;
     for v in all.iter_mut() {
@@ -243,6 +265,31 @@ mod tests {
 
     fn ver(id: &str, ts: i64, n: i64) -> LookVersion {
         LookVersion::new(id, ts, style(n))
+    }
+
+    #[test]
+    fn duplicate_ids_are_healed_on_load_so_lookup_never_resolves_to_the_wrong_look() {
+        // Owner box 2026-07-17: three looks all carried `look-1` (the id was minted from a txn
+        // counter that resets when the journal checkpoints). Every id-keyed lookup then resolved
+        // to the OLDEST match — "switch to 浮光" applied 方圆's recipe. On load the newest keeps
+        // its id; older collisions are re-suffixed, so `get(id)` is unambiguous.
+        let (_dir, store) = store();
+        // Write a raw file with three colliding ids, newest-first (as the store stores them).
+        let raw = serde_json::to_vec_pretty(&vec![
+            ver("look-1", 300, 3),
+            ver("look-1", 200, 2),
+            ver("look-1", 100, 1),
+        ])
+        .unwrap();
+        std::fs::write(store.path(), raw).unwrap();
+
+        let all = store.all();
+        let ids: Vec<&str> = all.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids.len(), 3, "no entry is dropped");
+        assert_eq!(ids.iter().collect::<std::collections::HashSet<_>>().len(), 3, "ids are now unique");
+        assert_eq!(ids[0], "look-1", "the newest keeps the clean id");
+        // The newest look-1 resolves to recipe 3, not the oldest.
+        assert_eq!(store.get("look-1").unwrap().icon_style, style(3));
     }
 
     #[test]

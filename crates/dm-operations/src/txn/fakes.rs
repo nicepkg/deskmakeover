@@ -49,6 +49,10 @@ pub struct World {
     /// requested asset's fingerprint yet writes some other state (models an O→A→B no-op-on-reapply
     /// or a stale writer). The driver's verify must reject it (P1-4).
     wrong_write: HashSet<String>,
+    /// Live icon locations by target path, reported by `read_styleable_surface` — models the real
+    /// reader exposing where an item's icon currently points (the styled-residue provenance input).
+    /// A Vec so a multi-value surface (Recycle Bin's default/empty/full) can be modelled.
+    live_icons: HashMap<String, Vec<(String, i32)>>,
 }
 
 impl World {
@@ -89,6 +93,22 @@ impl World {
     /// requested asset's fingerprint (the driver's verify must catch the mismatch).
     pub fn wrong_write(&mut self, path: &str) {
         self.wrong_write.insert(path.to_string());
+    }
+
+    /// Sets the (single) live icon location `read_styleable_surface` reports for `target_path` —
+    /// models a desktop item whose icon currently points at `icon_path` (e.g. one of OUR generated
+    /// assets, the styled-residue scenario).
+    pub fn set_live_icon(&mut self, target_path: &str, icon_path: &str) {
+        self.live_icons.insert(target_path.to_string(), vec![(icon_path.to_string(), 0)]);
+    }
+
+    /// Sets MULTIPLE live icon locations for `target_path` — models a multi-value surface (the
+    /// Recycle Bin's default/empty/full) whose PARTIAL write left our asset in only some of them.
+    pub fn set_live_icons(&mut self, target_path: &str, icon_paths: &[&str]) {
+        self.live_icons.insert(
+            target_path.to_string(),
+            icon_paths.iter().map(|p| (p.to_string(), 0)).collect(),
+        );
     }
 
     /// Clears injected apply/restore faults (simulates a transient condition clearing before a
@@ -183,6 +203,15 @@ impl ItemStateReader for FakePlatform {
             Some(bytes) => Ok(Fingerprint::of_bytes(&bytes)),
             None => Err(PortError::NotFound(target.path.clone())),
         }
+    }
+
+    fn read_styleable_surface(
+        &self,
+        target: &ItemTarget,
+    ) -> PortResult<(Fingerprint, Vec<(String, i32)>)> {
+        let fingerprint = self.read_fingerprint(target)?;
+        let locations = self.world.borrow().live_icons.get(&target.path).cloned().unwrap_or_default();
+        Ok((fingerprint, locations))
     }
 
     fn capture_anchor(&self, target: &ItemTarget) -> PortResult<RestoreAnchor> {
@@ -399,6 +428,11 @@ pub struct FakeElevatedIconApplier {
     /// skipping an item whose live icon no longer matches (a user re-edit during the UAC prompt): it
     /// still exits 0, but leaves that target untouched.
     restore_skips: RefCell<Vec<String>>,
+    /// The `(target_path, expect_icon)` CAS anchor the ops layer threaded into each applied item —
+    /// the real helper compares this against the live location before writing, so a wrong value
+    /// (e.g. a stale scan location on a re-apply) makes the real helper refuse (owner box
+    /// 2026-07-17). Recorded so a test can assert which anchor the ops layer chose.
+    apply_expects: RefCell<Vec<(String, String)>>,
 }
 
 #[allow(dead_code)]
@@ -411,7 +445,19 @@ impl FakeElevatedIconApplier {
             applied: RefCell::new(Vec::new()),
             restored: RefCell::new(Vec::new()),
             restore_skips: RefCell::new(Vec::new()),
+            apply_expects: RefCell::new(Vec::new()),
         }
+    }
+
+    /// The `expect_icon` CAS anchor the ops layer threaded for `target_path` on the most recent
+    /// apply, if any. A re-apply must anchor on the LEDGER's last-applied asset, not the stale scan.
+    pub fn expect_for(&self, target_path: &str) -> Option<String> {
+        self.apply_expects
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(p, _)| p == target_path)
+            .map(|(_, e)| e.clone())
     }
 
     /// Sets the outcome the next `apply`/`restore` returns (Declined models a UAC cancel; Failed a
@@ -446,6 +492,13 @@ impl ElevatedIconApplier for FakeElevatedIconApplier {
     }
 
     fn apply(&self, items: &[ElevatedApplyItem]) -> PortResult<ElevatedOutcome> {
+        // Record the CAS anchor the ops layer chose for every item, ALWAYS (even on a non-Applied
+        // outcome) — a test asserts a re-apply anchors on the ledger asset, not the stale scan.
+        for it in items {
+            self.apply_expects
+                .borrow_mut()
+                .push((it.target.path.clone(), it.expect_icon.clone()));
+        }
         let outcome = self.outcome.borrow().clone();
         if outcome == ElevatedOutcome::Applied {
             let mut world = self.world.borrow_mut();

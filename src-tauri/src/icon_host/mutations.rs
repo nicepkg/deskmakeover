@@ -8,7 +8,7 @@ use dm_operations::icons::{
     MAX_APPLY_MASTERS, MAX_LABEL_BYTES, MAX_MASTER_B64_BYTES, MAX_SESSION_B64_BYTES,
     MAX_STYLE_JSON_BYTES,
 };
-use dm_operations::IconApplySession;
+use dm_operations::{IconApplySession, LedgerStore as _};
 
 use super::dto::parse_style;
 use super::export::now_secs;
@@ -167,14 +167,33 @@ impl IconHost {
         // so an intervening rescan cannot swap the CAS anchors (codex R2-Block 1). Split the guard
         // into disjoint field borrows so the ops call can hold &mut of several at once.
         let IconMutState { ledger, journal, history, txn, session_scan, op_epoch, .. } = &mut *st;
-        let look_id = format!("look-{}", txn.peek());
         let created_at = now_secs();
+        // The id must be GLOBALLY unique: the txn counter alone resets when the journal
+        // checkpoints across restarts, which minted three different looks as `look-1` — every
+        // id-keyed lookup (UI selection, switch_to_version) then resolved to the OLDEST match,
+        // i.e. "the second apply wore the first apply's icons" (owner box 2026-07-17). The
+        // timestamp+counter pair cannot repeat across restarts.
+        let look_id = format!("look-{}-{}", created_at, txn.peek());
         let outcome = self
             .ops()
             .commit_apply(session, style, label, look_id, created_at, session_scan, &restore_ids, &self.scope_roots, self.elevated(), txn, journal, ledger, history)
             .map_err(|e| e.to_string())?;
         // This apply mutated the desktop → bump the epoch so any concurrent stale apply rejects.
         *op_epoch += 1;
+        // Per-item shell notifications (below) need each touched item's (path, is-folder) — capture
+        // from the session scan BEFORE it is cleared. A folder's custom icon only refreshes on a
+        // directory-scoped SHCNE_UPDATEDIR (owner 2026-07-17: the folder lagged one apply behind).
+        // ROLLED-BACK items are included too: the desktop was written then restored, so Explorer may
+        // have cached the transient styled icon and the global refresh does not clear a folder's
+        // (codex 2026-07-17 P2).
+        let touched_paths: Vec<(String, bool)> = outcome
+            .committed
+            .iter()
+            .chain(outcome.reverted.iter())
+            .chain(outcome.rolled_back.iter())
+            .filter_map(|id| session_scan.iter().find(|s| &s.item.id == id))
+            .map(|s| (s.item.path.clone(), s.item.kind == dm_domain::ItemKind::Folder))
+            .collect();
         session_scan.clear();
         // FENCE the scan revision when the ops demand it (codex R9-#1): a stale poison row was healed
         // (dropped) this round — or a driver bare-Err left the heal set unknown — so a same-revision
@@ -207,28 +226,42 @@ impl IconHost {
         // the op is NOT a clean success. Mirrors the full-restore path's `overlay_failed` handling.
         let mut overlay_incomplete = false;
         if committed_any {
-            match self
-                .overlay
-                .apply(dm_domain::OverlayStyle::Transparent, &self.overlay_ico.to_string_lossy())
-            {
-                Ok(OverlayOutcome::Applied) => {
-                    if let Err(e) = self.set_arrow(ArrowOverlayDto::Hidden) {
-                        overlay_incomplete = true;
-                        log::warn!("icons apply: arrow overlay installed but its state was not persisted: {e}");
-                    } else if self.overlay_install_changed(&format!("hidden:{}", self.overlay_ico_sha)) {
-                        // The effective overlay CHANGED (a native→hidden transition, or the overlay asset
-                        // content changed across an app update) — Explorer caches Shell Icons\29 at
-                        // startup, so reload it or the ugly native arrow / a stale overlay keeps showing
-                        // (owner report 2026-07-16). A repeat apply of the same overlay does NOT flicker.
-                        self.refresh_shell_icon_overlay();
+            // Skip the elevated overlay verb — and its UAC prompt — when the machine already wears
+            // this exact overlay (owner 2026-07-17: every apply asked for TWO authorizations; the
+            // second was this unconditional reinstall). The arrow state must also already be
+            // persisted as Hidden, or the marker alone could mask a lost arrow record.
+            let overlay_sig = format!("hidden:{}", self.overlay_ico_sha);
+            let already_installed = self.overlay_install_is(&overlay_sig)
+                && *self.arrow_overlay.lock().unwrap() == ArrowOverlayDto::Hidden;
+            if !already_installed {
+                match self
+                    .overlay
+                    .apply(dm_domain::OverlayStyle::Transparent, &self.overlay_ico.to_string_lossy())
+                {
+                    Ok(OverlayOutcome::Applied) => {
+                        if let Err(e) = self.set_arrow(ArrowOverlayDto::Hidden) {
+                            overlay_incomplete = true;
+                            log::warn!("icons apply: arrow overlay installed but its state was not persisted: {e}");
+                        } else if self.overlay_install_changed(&overlay_sig) {
+                            // The effective overlay CHANGED (a native→hidden transition, or the overlay asset
+                            // content changed across an app update) — Explorer caches Shell Icons\29 at
+                            // startup, so reload it or the ugly native arrow / a stale overlay keeps showing
+                            // (owner report 2026-07-16). A repeat apply of the same overlay does NOT flicker.
+                            self.refresh_shell_icon_overlay();
+                        }
                     }
-                }
-                other => {
-                    overlay_incomplete = true;
-                    log::warn!("icons apply: arrow overlay not installed ({other:?}) — native arrow remains");
+                    other => {
+                        overlay_incomplete = true;
+                        log::warn!("icons apply: arrow overlay not installed ({other:?}) — native arrow remains");
+                    }
                 }
             }
             let _ = self.refresher.notify_icons_changed();
+        }
+        // Item-scoped refresh for every icon this apply actually touched (styled OR reverted): a
+        // folder needs SHCNE_UPDATEDIR or Explorer keeps showing its cached desktop.ini icon.
+        for (path, is_dir) in &touched_paths {
+            let _ = self.refresher.notify_item_changed(path, *is_dir);
         }
         // A finalize step failed AFTER the desktop committed (codex R3-Block 4): log the detail for
         // the operator, surface a generic "applied but finalize incomplete" toast, and return ok:false
@@ -301,6 +334,18 @@ impl IconHost {
         let _op_gate = self.op_gate.lock().unwrap();
         let mut st = self.mut_state.lock().unwrap();
         let IconMutState { ledger, history, journal, op_epoch, .. } = &mut *st;
+        // Capture each styled row's (id, path, is-folder) BEFORE the reset drops the rows — the
+        // per-item shell notifications below need the paths (a reverted folder only refreshes on a
+        // directory-scoped SHCNE_UPDATEDIR, owner 2026-07-17).
+        let row_paths: Vec<(dm_domain::ItemId, String, bool)> = ledger
+            .all()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|e| {
+                let is_dir = e.target.kind == dm_domain::ItemKind::Folder;
+                (e.item, e.target.path, is_dir)
+            })
+            .collect();
         let outcome = self
             .ops()
             // §14 privileged-scope roots + the elevated applier — a Public Desktop / ProgramData row
@@ -310,6 +355,11 @@ impl IconHost {
             .map_err(|e| e.to_string())?;
         // A reset is a mutation → bump the epoch so a concurrent in-flight apply rejects.
         *op_epoch += 1;
+        let restored_paths: Vec<(String, bool)> = row_paths
+            .into_iter()
+            .filter(|(id, ..)| outcome.restored.contains(id))
+            .map(|(_, path, is_dir)| (path, is_dir))
+            .collect();
         let dto = self.to_persisted_dto_locked(&outcome.stores);
         let skipped = outcome.skipped.len();
         let degraded = outcome.degraded;
@@ -353,6 +403,11 @@ impl IconHost {
             }
         }
         let _ = self.refresher.notify_icons_changed();
+        // Item-scoped refresh for every reverted icon — a folder's restored (default) icon only
+        // shows once Explorer re-reads the directory (SHCNE_UPDATEDIR).
+        for (path, is_dir) in &restored_paths {
+            let _ = self.refresher.notify_item_changed(path, *is_dir);
+        }
         // A finalize step failed after some icons already reverted (codex R3-Block 4): log the detail,
         // return ok:false + a repair toast + the authoritative state. Surface the trust-first skips, or
         // the arrow-restore failure — never a blanket ok:true. Priority: arrow fault → finalize

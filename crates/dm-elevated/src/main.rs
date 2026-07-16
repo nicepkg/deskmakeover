@@ -3,8 +3,11 @@
 //! It is a `requireAdministrator` helper whose ENTIRE job is the global shortcut-overlay verb
 //! pair. There are no arbitrary commands and no scripting; the fixed verb set is parsed by
 //! [`args`], the overlay ICO is validated by [`guards`], and the registry work lives in
-//! [`overlay`]. Exit codes mirror the oracle `ElevatedHelper/Program.cs`: 0 success, 2 an
-//! unknown/rejected verb, 3 an operation failure.
+//! [`overlay`]. Exit codes: 0 success, 2 an unknown/rejected verb, 3 a generic operation failure.
+//! The desktop-items verbs additionally CLASSIFY the failure into a code the unelevated launcher
+//! maps back to a human reason (`runas` has no stderr pipe, and writing a report file would be a
+//! caller-controlled elevated write — codex 2026-07-17 P1): 10 = a target changed since the scan
+//! (rescan + retry), 11 = access denied, 12 = a validation / unsupported-input rejection.
 //!
 //! The `requireAdministrator` elevation is applied at packaging (M8) via an external
 //! `dm-elevated.exe.manifest`, so this crate has no resource-compiling build script and
@@ -47,10 +50,10 @@ fn main() -> ExitCode {
         }
         args::Command::RestoreOverlay => finish(overlay::restore()),
         args::Command::ApplyDesktopItems { manifest } => {
-            finish(desktop_items::run_apply_file(&manifest))
+            finish_desktop_items(desktop_items::run_apply_file(&manifest))
         }
         args::Command::RestoreDesktopItems { manifest } => {
-            finish(desktop_items::run_restore_file(&manifest))
+            finish_desktop_items(desktop_items::run_restore_file(&manifest))
         }
         args::Command::Unknown(verb) => {
             eprintln!("Unsupported helper operation: {verb}");
@@ -65,6 +68,20 @@ fn finish(result: Result<(), String>) -> ExitCode {
         Err(e) => {
             eprintln!("Helper operation failed: {e}");
             ExitCode::from(3)
+        }
+    }
+}
+
+/// Like [`finish`] but maps a desktop-items batch failure to a CLASSIFIED exit code the unelevated
+/// launcher turns back into a human reason — the only failure channel across `runas` that is not a
+/// caller-controlled elevated write (codex 2026-07-17 P1). The reason is still printed for an
+/// interactive/log run; only the CODE crosses the process boundary.
+fn finish_desktop_items(result: Result<(), String>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("Helper desktop-items operation failed: {e}");
+            ExitCode::from(desktop_items::classify_failure(&e))
         }
     }
 }

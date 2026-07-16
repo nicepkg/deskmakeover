@@ -164,6 +164,12 @@ pub struct IconApplyOutcome {
     /// Currently-styled icons the user set to 「保留原样」 that this apply reverted to their original.
     pub reverted: Vec<ItemId>,
     pub conflicts: Vec<ItemId>,
+    /// Items the driver MUTATED then walked back to their original because their own per-item txn
+    /// faulted. The desktop was TOUCHED (a folder's `desktop.ini` written then restored), so the
+    /// host must still fire a per-item shell refresh — Explorer may have cached the transient
+    /// styled icon, and a folder's icon only refreshes on a directory-scoped event (codex
+    /// 2026-07-17 P2).
+    pub rolled_back: Vec<ItemId>,
     /// True when the styling batch entered its mutation phase and then rolled back / abandoned — the
     /// desktop WAS touched even though nothing committed (codex R5-#1). The host uses it so a rollback
     /// is never reported as "nothing changed"; a clean preflight failure leaves it false.
@@ -312,6 +318,7 @@ impl<'a> IconOps<'a> {
                 committed: Vec::new(),
                 reverted: Vec::new(),
                 conflicts: Vec::new(),
+                rolled_back: Vec::new(),
                 desktop_mutated: !recovery.aborted.is_empty(),
                 intent_persisted: false,
                 // Recovery moved the desktop or left uncertain state → the cached scan is stale; fence it.
@@ -501,6 +508,7 @@ impl<'a> IconOps<'a> {
                 committed: apply.committed,
                 reverted,
                 conflicts,
+                rolled_back: std::mem::take(&mut apply.rolled_back),
                 // A driver bare-Err can escape only from a journal-append fault, which may be AFTER
                 // the desktop mutated — treat it as possibly-changed so the host never says
                 // "nothing changed" (codex R5-#1). The `degraded` path already routes it there.
@@ -604,6 +612,7 @@ impl<'a> IconOps<'a> {
             committed: apply.committed,
             reverted,
             conflicts,
+            rolled_back: apply.rolled_back,
             desktop_mutated: apply.desktop_mutated,
             intent_persisted,
             requires_rescan: !apply.healed.is_empty(),
@@ -697,8 +706,18 @@ impl<'a> IconOps<'a> {
                 asset: asset.clone(),
                 empty: None,
             })?;
-            let (expect_icon, expect_index) =
-                expects.get(req.target.id.as_str()).cloned().unwrap_or_default();
+            // The helper's CAS anchor. A RE-APPLY must expect the icon WE LAST APPLIED (the ledger
+            // row's asset path — the driver's own re-apply CAS semantics), NOT the scan-captured
+            // location: the host deliberately does not fence the scan after a successful apply, so
+            // a second apply from the same snapshot carries pre-first-apply locations and the
+            // helper (correctly) refuses them — the owner-box "target changed since scan" exit-3
+            // loop (2026-07-17). `prepare_batch` already CAS-verified live == last_applied for
+            // every proceeding re-apply item, so the row's asset path IS the live location. A
+            // fresh item keeps the scan-observed anchor, threaded unchanged (§P1-1).
+            let (expect_icon, expect_index) = match ledger.get(&req.target.id)? {
+                Some(row) => (row.asset.path.clone(), 0),
+                None => expects.get(req.target.id.as_str()).cloned().unwrap_or_default(),
+            };
             items.push(ElevatedApplyItem {
                 target: req.target.clone(),
                 asset_path: asset.path.clone(),

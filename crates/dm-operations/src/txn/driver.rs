@@ -295,8 +295,10 @@ impl<'p> TxnDriver<'p> {
         req: &ApplyRequest,
         ledger: &mut dyn LedgerStore,
     ) -> Result<PrepareVerdict> {
-        let current = match self.reader.read_fingerprint(&req.target) {
-            Ok(fp) => fp,
+        // ONE read yields the CAS fingerprint AND the live icon location(s) — the latter feeds the
+        // styled-residue provenance check below at no extra read cost.
+        let (current, live_icons) = match self.reader.read_styleable_surface(&req.target) {
+            Ok(read) => read,
             Err(PortError::NotFound(_)) => return Ok(PrepareVerdict::Conflict), // item gone → skip
             Err(e) => return Err(e.into()),
         };
@@ -331,6 +333,20 @@ impl<'p> TxnDriver<'p> {
             .unwrap_or(req.expected_fingerprint);
         if current != expected {
             return Ok(PrepareVerdict::Conflict); // external modification → visible, never overwritten
+        }
+
+        // STYLED-RESIDUE GUARD (owner rule 2026-07-17: 任何时候都基于最原始的图标计算): a FRESH
+        // item — no ledger row — ANY of whose live icon locations resolves into OUR OWN asset
+        // store is wearing this app's output with the original's record LOST (a crash/fault window
+        // dropped the row while the desktop write survived). ANY, not the first: a Recycle Bin
+        // whose partial write left our asset in `empty`/`full` while `default` is still original is
+        // still residue (codex 2026-07-17 P1). Capturing that state as "the true original" would
+        // poison the anchor forever: restore would "restore" to the styled state, and every
+        // re-style would compound Style(Style(orig)). Fail closed as an honest conflict instead.
+        if existing.is_none()
+            && live_icons.iter().any(|(path, _)| self.assets.contains_path(path))
+        {
+            return Ok(PrepareVerdict::Conflict);
         }
 
         // The true original is pinned from the ledger on re-apply, captured fresh otherwise.

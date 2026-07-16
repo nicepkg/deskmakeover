@@ -868,6 +868,76 @@ fn one_items_re_apply_fault_only_reverts_that_item_and_flags_the_desktop_mutated
     );
     assert!(f.ledger.get(&a.id).unwrap().is_some(), "a keeps its ledger row");
     assert!(f.ledger.get(&b.id).unwrap().is_none(), "b's row was dropped with its rollback");
+    // The rolled-back item is REPORTED (codex 2026-07-17 P2): the host fires a per-item shell
+    // refresh for it so a folder written-then-restored does not keep Explorer's cached styled icon.
+    assert!(out.rolled_back.contains(&b.id), "b's rollback is reported so the host refreshes it");
+}
+
+#[test]
+fn styled_residue_with_a_lost_ledger_row_is_refused_not_recaptured_as_the_original() {
+    // Owner report 2026-07-17 (the folder compounding): a fault window dropped an item's ledger
+    // row while the desktop kept wearing our style. The next apply then saw a "fresh" item whose
+    // live state IS our output: without the provenance guard it would capture the styled state as
+    // "the true original" (poisoning restore forever) and bake Style(Style(orig)). The guard must
+    // refuse it as an honest conflict — 任何时候都基于最原始的图标计算.
+    let mut f = Fixture::new();
+    let folder = item("folder", ItemKind::Folder);
+    f.seed(&folder, b"orig-folder");
+    f.apply(&[("folder", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[folder.clone()]);
+    let row = f.ledger.get(&folder.id).unwrap().expect("styled");
+    let styled_asset_path = row.asset.path.clone();
+    let styled_bytes_on_desktop = f.world.borrow().get(&folder.path).unwrap();
+
+    // The lost-row window: the row vanishes AFTER the journal was checkpointed (so recovery's
+    // journal-based row rebuild — which covers the pre-checkpoint window — has nothing to rebuild
+    // from), the desktop stays styled, and the live icon location points INTO our asset store.
+    f.ledger.remove(&folder.id).unwrap();
+    f.journal = VecJournal::new();
+    f.world.borrow_mut().set_live_icon(&folder.path, &styled_asset_path);
+    assert!(
+        f.assets.contains_path(&styled_asset_path),
+        "provenance oracle recognizes our asset: {styled_asset_path}"
+    );
+
+    let out = f.apply(&[("folder", 0, [9, 9, 9, 255])], style(2), "B", "v2", &[folder.clone()]);
+
+    assert!(out.committed.is_empty(), "the residue is never re-styled");
+    assert!(out.conflicts.contains(&folder.id), "refused as an honest conflict");
+    assert_eq!(
+        f.world.borrow().get(&folder.path).unwrap(),
+        styled_bytes_on_desktop,
+        "the desktop state is untouched"
+    );
+    assert!(
+        f.ledger.get(&folder.id).unwrap().is_none(),
+        "no row was created — the styled state was NOT pinned as an original"
+    );
+}
+
+#[test]
+fn a_multi_value_partial_styled_residue_is_refused_even_if_the_first_location_looks_original() {
+    // codex 2026-07-17 P1: a Recycle-Bin-shaped multi-value surface whose PARTIAL write left our
+    // asset in a NON-first location (empty/full) while the first (default) is still original must
+    // STILL be refused — a guard that only checked the representative location would capture the
+    // mixed registry state as "the true original" and restore-to-styled forever.
+    let mut f = Fixture::new();
+    let bin = item("bin", ItemKind::Shortcut); // Shortcut kind keeps the fake apply path simple
+    f.seed(&bin, b"orig-bin");
+    f.apply(&[("bin", 0, [1, 1, 1, 255])], style(1), "A", "v1", &[bin.clone()]);
+    let styled_asset = f.ledger.get(&bin.id).unwrap().unwrap().asset.path.clone();
+
+    // Lost row + post-checkpoint; the live surface has the ORIGINAL first, OUR asset second.
+    f.ledger.remove(&bin.id).unwrap();
+    f.journal = VecJournal::new();
+    f.world
+        .borrow_mut()
+        .set_live_icons(&bin.path, &[r"C:\Windows\original.ico", &styled_asset]);
+
+    let out = f.apply(&[("bin", 0, [9, 9, 9, 255])], style(2), "B", "v2", &[bin.clone()]);
+
+    assert!(out.committed.is_empty(), "the partial residue is never re-styled");
+    assert!(out.conflicts.contains(&bin.id), "refused as an honest conflict");
+    assert!(f.ledger.get(&bin.id).unwrap().is_none(), "the mixed state was NOT pinned as an original");
 }
 
 #[test]
@@ -1325,6 +1395,37 @@ fn an_elevated_batch_styles_a_public_desktop_item_alongside_a_user_one_and_both_
     assert_eq!(elev.restored_paths(), vec![shared.path.clone()]);
     assert_eq!(f.world.borrow().get(&shared.path).unwrap(), b"orig-chrome", "privileged item back to original");
     assert!(f.ledger.get(&shared.id).unwrap().is_none(), "its ledger row is dropped");
+}
+
+#[test]
+fn re_applying_a_privileged_item_anchors_its_cas_on_the_ledger_asset_not_the_stale_scan() {
+    // Owner box 2026-07-17: a SECOND apply (no rescan) of a public-desktop shortcut fed the helper
+    // the SCAN-observed original location as the CAS anchor, but the live `.lnk` already wore our
+    // FIRST asset — so the helper refused ("target changed since scan", exit 3) and every re-apply
+    // failed. A re-apply must anchor on the LEDGER's last-applied asset (== the live location),
+    // exactly the driver's own re-apply CAS semantics.
+    let mut f = Fixture::new();
+    let scope = public_desktop_scope();
+    let elev = FakeElevatedIconApplier::new(f.world.clone());
+    let shared = pub_item("chrome");
+    f.seed(&shared, b"orig-chrome");
+
+    f.apply_scoped(&[("chrome", 0, [1, 2, 3, 255])], style(1), "v1", &[shared.clone()], &scope, Some(&elev));
+    let asset_v1 = f.ledger.get(&shared.id).unwrap().unwrap().asset.path.clone();
+
+    // Second apply, a different style, NO rescan in between — the classic re-apply.
+    f.apply_scoped(&[("chrome", 0, [9, 9, 9, 255])], style(2), "v2", &[shared.clone()], &scope, Some(&elev));
+
+    // The helper was told to expect the FIRST asset (what the desktop currently wears), NOT the
+    // original scan location — so the real helper's CAS passes instead of refusing.
+    assert_eq!(
+        elev.expect_for(&shared.path),
+        Some(asset_v1),
+        "the re-apply CAS anchor is the ledger's last-applied asset, not the stale scan location",
+    );
+    // And it actually re-styled (committed), not conflicted.
+    let row = f.ledger.get(&shared.id).unwrap().unwrap();
+    assert!(row.asset.path.ends_with(".ico"), "the second style committed a fresh asset");
 }
 
 #[test]

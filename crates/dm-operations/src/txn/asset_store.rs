@@ -102,6 +102,25 @@ impl AssetStore for FsAssetStore {
         Ok(Path::new(&asset.path).is_file())
     }
 
+    fn contains_path(&self, path: &str) -> bool {
+        // Textual prefix containment, matching how our own writers reference assets: every apply
+        // points the desktop item at `root().join(hash.ico).to_string_lossy()`, so a live icon
+        // location that is OUR output is exactly `<root><sep><name>`. Compared case-insensitively
+        // with both separators normalized (Windows paths are case-insensitive and writers may emit
+        // either slash). No canonicalization: a symlink alias of the root was never a path we
+        // wrote, and resolving through the filesystem would make a pure provenance check fallible.
+        fn norm(s: &str) -> String {
+            s.replace('/', "\\").to_lowercase()
+        }
+        let root = norm(&self.root.to_string_lossy());
+        if root.is_empty() {
+            return false;
+        }
+        let path = norm(path);
+        path.strip_prefix(&root)
+            .is_some_and(|rest| rest.starts_with('\\') && rest.len() > 1)
+    }
+
     fn gc(&self, live: &[String]) -> PortResult<()> {
         // Ownership boundary (ADR-0020 data-loss red-line): refuse to collect THROUGH a symlinked
         // root, so a mispointed/hijacked root can never let gc delete files outside the store's own
@@ -239,6 +258,25 @@ mod tests {
         }
         // Nothing escaped the root.
         assert!(!store.root().parent().unwrap().join("evil.ico").exists());
+    }
+
+    #[test]
+    fn contains_path_recognizes_our_assets_and_rejects_everything_else() {
+        let (_dir, store) = store();
+        let asset = store.put("ownhash", b"x").unwrap();
+        // The exact path our writers point desktop items at IS recognized.
+        assert!(store.contains_path(&asset.path), "our own asset path is ours");
+        // Case- and separator-insensitive (Windows filesystems + mixed-slash writers).
+        assert!(store.contains_path(&asset.path.to_uppercase()));
+        assert!(store.contains_path(&asset.path.replace('\\', "/")));
+        // Not ours: outside the root, the root itself, a sibling dir sharing the root as a string
+        // prefix, and a relative name.
+        assert!(!store.contains_path("C:\\Windows\\System32\\shell32.dll"));
+        assert!(!store.contains_path(&store.root().to_string_lossy()));
+        let sibling = format!("{}-evil\\x.ico", store.root().to_string_lossy());
+        assert!(!store.contains_path(&sibling), "a string-prefix sibling dir is NOT ours");
+        assert!(!store.contains_path("x.ico"));
+        assert!(!store.contains_path(""));
     }
 
     #[test]

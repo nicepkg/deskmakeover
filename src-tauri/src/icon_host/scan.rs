@@ -118,8 +118,11 @@ impl IconHost {
             // elevated helper's CAS anchor can never disagree with the accepted fingerprint (§P1-1).
             let read = self.reader.read_styleable_surface(&item.target());
             let unreadable = read.is_err();
-            let (fingerprint, cas_icon) =
-                read.unwrap_or_else(|_| (dm_domain::Fingerprint::of_bytes(b""), None));
+            let (fingerprint, live_locations) =
+                read.unwrap_or_else(|_| (dm_domain::Fingerprint::of_bytes(b""), Vec::new()));
+            // The elevated helper's CAS anchor is the FIRST (representative) location; the residue
+            // guard below scans ALL of them (a Recycle Bin's default/empty/full).
+            let cas_icon = live_locations.first().cloned();
             // Journal-incomplete items have unknowable live provenance — never anchor-substitute,
             // never offer for styling; show the live pixels with an honest reason.
             let provenance_unknown = unknown_provenance.contains(item.id.as_str());
@@ -131,6 +134,21 @@ impl IconHost {
                     .filter(|(last_applied, _)| last_applied == &fingerprint)
                     .map(|(_, anchor)| anchor)
             };
+            // STYLED-RESIDUE GUARD (owner rule 2026-07-17: 任何时候都基于最原始的图标计算): ANY live
+            // icon location points INTO OUR OWN asset store, yet no trustworthy original anchor
+            // exists (the ledger row was lost in a fault window, or the live state drifted off
+            // `last_applied`). Those pixels are this app's OUTPUT — extracting them as "the source"
+            // would bake Style(Style(orig)) on the next apply (the owner-observed folder
+            // compounding). Extraction still runs so the user SEES the current (styled) icon; apply
+            // authority is withheld. Checked across ALL locations so a Recycle Bin partial write is
+            // caught (codex 2026-07-17 P1).
+            let styled_residue = original.is_none()
+                && !provenance_unknown
+                && !unreadable
+                && {
+                    use dm_domain::AssetStore as _;
+                    live_locations.iter().any(|(p, _)| self.assets.contains_path(p))
+                };
             // Past the per-scan source budget → serve this item without a preview (codex R2 B-5). NOT
             // silent: log once so a truncated scan is visible, never mistaken for full coverage.
             if source_bytes >= SCAN_SOURCE_BUDGET && !budget_logged {
@@ -141,7 +159,7 @@ impl IconHost {
                 budget_logged = true;
             }
             let (urls, extract_err) = if source_bytes >= SCAN_SOURCE_BUDGET {
-                (Vec::new(), Some("图标过多：已达本次扫描的预览内存预算，部分图标暂无预览".to_string()))
+                (Vec::new(), Some("Icons_Reason_TooMany".to_string()))
             } else {
                 match self.extractor.extract(&item, original) {
                     Ok(sources) => {
@@ -162,13 +180,20 @@ impl IconHost {
                         }
                         (urls, None)
                     }
-                    Err(e) => (Vec::new(), Some(format!("图标读取失败：{e}"))),
+                    // Key `\t` arg: the frontend localizes the key and interpolates the detail.
+                    Err(e) => (Vec::new(), Some(format!("Icons_Reason_ExtractFailed\t{e}"))),
                 }
             };
+            // i18n: emit a STABLE KEY the frontend localizes, never host-side text (the host has no
+            // locale — the old raw-Chinese strings broke for an English user). A key that needs an
+            // interpolation arg (the extract error detail) is `\t`-joined with it; the frontend
+            // splits key + arg and looks the key up in its i18n table.
             let degraded_reason = if provenance_unknown {
-                Some("待修复：上次操作未完成，刷新后重试".to_string())
+                Some("Icons_Reason_RepairPending".to_string())
             } else if unreadable {
-                Some("图标状态读取失败".to_string())
+                Some("Icons_Reason_Unreadable".to_string())
+            } else if styled_residue {
+                Some("Icons_Reason_StyledResidue".to_string())
             } else {
                 extract_err
             };

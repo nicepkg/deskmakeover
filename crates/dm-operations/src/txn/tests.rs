@@ -1898,7 +1898,7 @@ fn default_styleable_surface_returns_the_fingerprint_and_no_icon() {
     let a = target("A");
     seed(&world, &a, b"orig-A");
     let plat = FakePlatform::new(world);
-    let (fp, icon) = plat.read_styleable_surface(&a).unwrap();
+    let (fp, icons) = plat.read_styleable_surface(&a).unwrap();
     assert_eq!(fp, plat.read_fingerprint(&a).unwrap(), "default surface fingerprint == read_fingerprint");
-    assert_eq!(icon, None, "the default surfaces no icon-location CAS anchor");
+    assert!(icons.is_empty(), "the default surfaces no icon-location CAS anchor");
 }

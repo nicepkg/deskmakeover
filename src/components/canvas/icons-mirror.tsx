@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { useCanvasView } from '@/lib/canvas-view'
 import { useDevicePixelRatio } from '@/lib/use-dpr'
 import { displaySize, useIcons } from '@/stores/icons'
-import { format, useT } from '@/lib/i18n'
+import { format, useHostReason, useT } from '@/lib/i18n'
 import type { IconItemDto } from '@/bridge/types'
 import { BUCKET_NAME_KEY, kindBucket } from '@/lib/kind-policy'
 import { cn } from '@/lib/utils'
@@ -23,6 +23,7 @@ type Menu =
 
 export function IconsMirror() {
   const t = useT()
+  const hostReason = useHostReason()
   const state = useIcons((s) => s.state)
   const scanExhausted = useIcons((s) => s.scanExhausted)
   const items = useIcons((s) => s.items)
@@ -166,7 +167,7 @@ export function IconsMirror() {
                 renderTick={renderTick}
                 waveKind={waveKind}
                 waveStamp={waveStamp}
-                unstyleableTip={item.styleable ? null : (item.statusReason !== 'MOCK-HOST-REASON' && item.statusReason) || t('Icons_Unstyleable')}
+                unstyleableTip={item.styleable ? null : (item.statusReason && item.statusReason !== 'MOCK-HOST-REASON' ? hostReason(item.statusReason) : t('Icons_Unstyleable'))}
                 peekTip={t('Icons_PeekHint')}
                 onMenu={(x, y) => setMenu({ kind: 'tile', item, x, y })}
               />

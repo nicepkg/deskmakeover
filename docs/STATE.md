@@ -45,6 +45,29 @@ what is in flight, and what comes next.
 
 ## Active work (in flight)
 
+- **Apply/switch reliability round 2 (2026-07-17) — owner-reported: folder never changes, 2nd
+  apply reuses 1st icons, double UAC, i18n.** Root causes + fixes, all tested:
+  (1) **look-id collision** — the id was minted from a txn counter that RESETS on journal
+  checkpoint, so 3 looks all became `look-1`; every id-keyed lookup (UI switch, switch_to_version)
+  resolved to the OLDEST → "switch applied the wrong look / 2nd apply reused 1st". Fixed:
+  globally-unique id (created_at+counter) + load-time `dedupe_ids` heal of existing collisions.
+  (2) **folder lag** — a folder's desktop.ini icon only refreshes on a directory-scoped
+  SHCNE_UPDATEDIR; we sent only the global SHCNE_ASSOCCHANGED (no-op for folders). Fixed:
+  `ExplorerRefresher::notify_item_changed` per touched item (committed+reverted+rolled_back),
+  UPDATEDIR for folders. (3) **exit-3 loop on public desktop** — the elevated re-apply fed the
+  helper the STALE scan location as CAS expect; now takes it from the ledger's last-applied asset.
+  (4) **double UAC** — every apply unconditionally reinstalled the overlay; now skipped when the
+  marker already records the same signature AND the arrow is Hidden. (5) **i18n** — scan.rs emitted
+  raw-Chinese status_reason; now emits stable `Icons_Reason_*` keys (`\t`-arg), frontend
+  `useHostReason()` localizes (en/zh tables). (6) version_switch bake now per-item txns.
+  codex R1–R4 all fixed (STG_E_* HRESULT classifier; per-item-txn conflict merge; RegularBin/
+  RecycleBin provenance any-of; folder-rollback refresh); R5 sole P1 (elevated arbitrary-file
+  truncation via the manifest-as-report write) fixed by ELIMINATING the report file — failure
+  reason now crosses `runas` as a CLASSIFIED EXIT CODE (10 target-changed / 11 access-denied /
+  12 validation), helper writes NOTHING caller-named. codex R6 verdict PENDING. Tests: ops 265
+  (un-gated) · windows 113 · domain 58 · elevated 57 · tsc clean · app boots + shown to owner.
+  UNCOMMITTED.
+
 - **Apply reliability — transient-lock retry + per-item transactions (2026-07-17).** On-box
   incident: every apply died at a RANDOM item mid-batch (journal: txn died between AssetWritten
   and ItemApplied, e.g. at Raft.url) and rolled the WHOLE batch back — owner saw "apply randomly
@@ -54,12 +77,22 @@ what is in flight, and what comes next.
   dm-elevated set_icon/write_bytes same retry; commit_apply now runs EACH user-desktop item as its
   OWN txn (blast radius = the one file; driver/journal grammar unchanged). Driver failure reason
   now names the failing file; mutations.rs logs the batch error server-side; scan keeps a
-  debug-level not-styleable log. codex R1 REQUEST-CHANGES both fixed: P1 IPersistFile sharing
-  conflicts are STG_E_* HRESULTs (0x8003_0005/20/21) not 0x8007xxxx → full-HRESULT classifier
-  (host-tested) + retry on the helper's read_icon too; P2 the bare-Err early return dropped the
-  per-item `apply.conflicts` → merged + regression. Tests: ops 260 (3 new regressions) ·
-  windows 110 (real 150ms exclusive-lock retry) · elevated 56. codex R2 verdict PENDING; owner
-  re-test pending. UNCOMMITTED.
+  debug-level not-styleable log. codex R1 REQUEST-CHANGES both fixed (STG_E_* HRESULT classifier;
+  bare-Err conflicts merge), codex R2 APPROVE, committed 57a2826. Owner re-test pending.
+- **Styled-residue provenance guards (2026-07-17, owner: folder compounded Style(Style(orig)) across
+  two switches).** Root cause: a fault window dropped the folder's ledger row while the desktop kept
+  our style (journal already checkpointed → recovery's row-rebuild had nothing); the next scan then
+  extracted LIVE styled pixels as "the source" and a fresh apply captured styled state as "the true
+  original" (poisoned restore + compounding). Owner rule: 任何时候都基于最原始的图标计算. FIX =
+  provenance oracle `AssetStore::contains_path` (FsAssetStore textual-prefix impl) + two guards:
+  driver `prepare_item` refuses a fresh item whose live icon resolves into OUR asset store (honest
+  conflict, never captured as original); host scan degrades the same case (美化残留, source_ok=false
+  blocks apply). `read_styleable_surface` now returns the live icon location for Url/Folder/System
+  too (one read, surface==fingerprint agreement tested on-box). Residual (follow-up): recovery's
+  never-clobber preserved-arm can still DROP a row for our own half-landed write (fingerprint
+  drift) — damage now contained by the guards (honest skip, no compounding, no anchor poison), but
+  extending is_ours to assets-dir provenance would self-heal instead of skip. codex R3 verdict
+  PENDING. UNCOMMITTED.
 
 - **Icons round — reset lens · panel P-B/H-A · preset packages · File shape · Comet mark
   (2026-07-15).** Owner-disposed 7 decisions; binding record

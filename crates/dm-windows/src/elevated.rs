@@ -113,10 +113,26 @@ impl WindowsElevatedIconApplier {
             let _ = CloseHandle(info.hProcess);
             match read {
                 Ok(()) if exit_code == 0 => Ok(ElevatedOutcome::Applied),
-                Ok(()) => Ok(ElevatedOutcome::Failed(format!("helper exit code {exit_code}"))),
+                // ERROR_CANCELLED can also surface as an exit code (not just a launch error) on some
+                // UAC-cancel paths — treat it as Declined, not a failure.
+                Ok(()) if exit_code == ERROR_CANCELLED.0 => Ok(ElevatedOutcome::Declined),
+                Ok(()) => Ok(ElevatedOutcome::Failed(classify_helper_exit(exit_code))),
                 Err(e) => Err(PortError::Com(format!("GetExitCodeProcess failed: {e}"))),
             }
         }
+    }
+}
+
+/// Turn the helper's CLASSIFIED exit code into a human reason (the only failure channel across
+/// `runas` — no stderr pipe, and a written report would be a caller-controlled elevated write,
+/// codex 2026-07-17 P1). Mirrors `dm_elevated::desktop_items`'s taxonomy; keeps the raw code so an
+/// unrecognised value is still diagnosable.
+fn classify_helper_exit(code: u32) -> String {
+    match code {
+        10 => "a shared-desktop shortcut changed since the scan — rescan and retry (exit 10)".to_string(),
+        11 => "access denied writing a shared-desktop item (exit 11)".to_string(),
+        12 => "the helper rejected the request as invalid or unsupported (exit 12)".to_string(),
+        other => format!("helper exit code {other}"),
     }
 }
 

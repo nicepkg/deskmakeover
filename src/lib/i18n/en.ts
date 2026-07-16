@@ -296,6 +296,11 @@ export const en = {
   "Icons_PeekHint": "Hold to peek at the original", // PENDING-RESX
   "Icons_SizeHonesty": "Windows rearranges positions after applying", // PENDING-RESX
   "Icons_Unstyleable": "Windows manages this icon; it can't be changed", // PENDING-RESX
+  "Icons_Reason_RepairPending": "Pending repair: the last operation didn't finish — refresh and retry", // PENDING-RESX
+  "Icons_Reason_Unreadable": "Couldn't read this icon's state", // PENDING-RESX
+  "Icons_Reason_StyledResidue": "Styled residue: the original-icon record is missing, so it was skipped to avoid stacking on the old style", // PENDING-RESX
+  "Icons_Reason_ExtractFailed": "Couldn't read the icon: {0}", // PENDING-RESX
+  "Icons_Reason_TooMany": "Too many icons: this scan's preview budget is used up, so some icons have no preview", // PENDING-RESX
   "Ink_Auto": "Auto",
   "Ink_Black": "Black",
   "Ink_White": "White",

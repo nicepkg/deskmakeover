@@ -103,6 +103,19 @@ what is in flight, and what comes next.
 
 ## Recently shipped (one line each — detail in journal/CHANGELOG)
 
+- 2026-07-16 **Codex full-project review round (owner "叫codex全面审查…有问题则修复")**: 3 parallel
+  codex passes (native/security · frontend/wiring · build/CI/release), ~17 findings triaged. FIXED +
+  committed (08553c1 + 48f0513, all green): the whole "deceptive UI / dead button" class the owner
+  hates — calm boot fail-closed placeholder backend closing the mock-race fake-success (B1), calm
+  probe/route rejection honesty (B2), wallpaper apply/restore/resetSource failure toasts (B3/B6),
+  preset dialog error handling (B4), diagnostics false-"copied" (B5); wallpaper restore reversibility
+  (A3, empty-path clear now propagates so the snapshot survives a failed restore); release tooling
+  (first-release-can't-run, preflight, no Cargo churn, tag==version gate, stale-installer selection,
+  doc drift C1/C2/C4/C5/C6/C7); and two owner-selected security-write-path fixes — elevated overlay
+  junction/mapped-drive redirect closed (A2, GetFinalPathNameByHandleW + DRIVE_FIXED) and the undo
+  CAS check-then-act window narrowed (A4). +8 regression tests. DEFERRED to the on-box write-surface
+  pass (owner call): A1 (verify dm-elevated Authenticode signer before runas) + C3 (prove the sidecar
+  is signed) — see Open questions.
 - 2026-07-16 **Open-source readiness round (owner "准备开源")**: README revamp (English +
   README.zh-CN, hero screenshot from the mock UI, badges, features/install/build/architecture) +
   LICENSE (MIT) / CONTRIBUTING / SECURITY / CODE_OF_CONDUCT + issue forms & PR template (blank
@@ -180,3 +193,10 @@ what is in flight, and what comes next.
   免费开源 chip promise it).
 - Signing entity/name for the OV certificate (release gate).
 - Distribution channel (direct download + pinned comment reply).
+- **Elevated-helper hardening deferred to the on-box write-surface pass (codex 2026-07-16):**
+  **A1** — verify `dm-elevated.exe`'s Authenticode signer in `run_helper` BEFORE the `runas`
+  ShellExecuteExW (the per-user install dir is user-writable, so a swapped exe would run elevated;
+  DLL planting is already closed by `+crt-static`). **C3** — confirm Tauri actually signs the
+  `externalBin` sidecar; if not, add an explicit sidecar sign + `Get-AuthenticodeSignature` Valid
+  gate to `release.yml`. A1 depends on C3. Both are [WINDOWS-VERIFY]. (A2 path-redirect + A4 CAS
+  window were fixed 2026-07-16; A1/C3 need the on-box signed build to implement+verify.)

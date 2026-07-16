@@ -10,10 +10,16 @@ All notable changes to DeskMakeover. The format follows
 
 ## Unreleased
 
-v3 "Premium Flat" (ADR-0013), web-first. The visible UI is a WebView2 + React app that renders
-its own preview and bake pixels (CPU TypeScript icons, Pixi wallpaper); C# keeps window / source
-decode / ICO packaging / shell write / backup-restore. Native host integration (bridge schema 3)
-and release packaging are still pending (tracked as "F8" in STATE.md).
+v3 "Premium Flat" (ADR-0013), web-first. The visible UI is a React app in the system WebView
+(WebView2); a Rust workspace owns everything native — `dm-icon-core` is the one pixel truth
+(the same code renders the WASM live preview and bakes final icons natively), `dm-windows`
+talks to the shell, `dm-operations` owns snapshot / apply / restore, `dm-resident` keeps the
+look reconciled from the tray, and `dm-elevated` is the whitelisted privileged helper. The
+desktop shell runs on real Windows 10/11 and `tauri build` produces a working per-user NSIS
+installer (CI + release workflows live in `.github/workflows/`; Authenticode signing is an
+owner-gated release blocker); the write surface is completing its on-device verification pass
+(see `docs/ship-readiness.md`). The C#/WPF host that carried earlier prototypes is fully
+retired (see Superseded history below).
 
 ### Icons module
 - One-tap beautify over a live desktop-mirror canvas (real wallpaper + observed icon positions),
@@ -43,7 +49,7 @@ and release packaging are still pending (tracked as "F8" in STATE.md).
 ### Engineering
 - Warm coral `#FF6F5E` is the only UI accent (blue/violet banned, test-gated); reviewed
   exemptions: OS-authentic depictions + the multicolour celebration confetti.
-- WYSIWYG: the preview pixels are the bake pixels (same web code at native resolution).
+- WYSIWYG: preview and bake share the same `dm-icon-core` Rust renderer (WASM in the preview, native in the bake).
 - No dashes in user-facing copy; files ≤ 500 lines; bug fixes ship regression tests.
 
 ---

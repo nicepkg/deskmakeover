@@ -227,10 +227,27 @@ pub fn parse_desktop_ini_icon(bytes: &[u8]) -> Option<(String, i32)> {
     None
 }
 
-/// `desktop.ini` bytes with a leading UTF-8 BOM so non-ASCII icon paths are honoured.
+/// `desktop.ini` bytes as **UTF-16 LE with a BOM** — the encoding Windows Explorer actually
+/// honours for a folder's custom icon.
+///
+/// A UTF-8-BOM `desktop.ini` (what this wrote before) is SILENTLY IGNORED by Explorer: the shell's
+/// INI parser reads the leading `EF BB BF` as three garbage leading characters on the first line,
+/// so `[.ShellClassInfo]` never matches its section header and the whole file is discarded — the
+/// folder falls back to the default manila icon while the `.lnk` items around it (which never touch
+/// desktop.ini) style fine. This was the owner-visible "the folder never gets styled" bug
+/// (2026-07-17), root-caused by a clean A/B on the live desktop: the SAME icon + SAME asset + SAME
+/// `SHChangeNotify` shows the custom icon when the file is UTF-16 LE and the default icon when it is
+/// UTF-8-BOM. The proven-good reference (`D:\shells\...\Set-FolderCustomIcon`) writes
+/// `Set-Content -Encoding Unicode`, i.e. UTF-16 LE — matched here.
+///
+/// The reader ([`parse_desktop_ini_icon`] → [`decode_ini_text_bytes`]) already decodes UTF-16 LE,
+/// so the read-back fingerprint still matches; restore replays the captured original bytes, so the
+/// original encoding is never lost.
 pub fn desktop_ini_bytes(icon_path: &str) -> Vec<u8> {
-    let mut bytes = vec![0xEF, 0xBB, 0xBF];
-    bytes.extend_from_slice(desktop_ini_content(icon_path).as_bytes());
+    let mut bytes = vec![0xFF, 0xFE]; // UTF-16 LE BOM
+    for unit in desktop_ini_content(icon_path).encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
     bytes
 }
 
@@ -334,8 +351,17 @@ mod tests {
     }
 
     #[test]
-    fn desktop_ini_bytes_lead_with_utf8_bom() {
-        assert_eq!(&desktop_ini_bytes("x.ico")[..3], &[0xEF, 0xBB, 0xBF]);
+    fn desktop_ini_bytes_are_utf16_le_which_explorer_honours() {
+        // Explorer SILENTLY IGNORES a UTF-8-BOM desktop.ini (the `EF BB BF` breaks the
+        // `[.ShellClassInfo]` section match) → the folder shows the default icon. It parses UTF-16
+        // LE, which the proven-good reference writes. Regression for the 2026-07-17 "folder never
+        // styles" bug.
+        let bytes = desktop_ini_bytes("x.ico");
+        assert_eq!(&bytes[..2], &[0xFF, 0xFE], "UTF-16 LE BOM, not UTF-8");
+        // The section header is present as UTF-16 LE (each ASCII char is <byte>,0x00).
+        assert_eq!(&bytes[2..6], &[0x5B, 0x00, 0x2E, 0x00], "'[.' encoded UTF-16 LE");
+        // And the reader round-trips it (encoding-aware decode).
+        assert_eq!(parse_desktop_ini_icon(&bytes), Some(("x.ico".to_string(), 0)));
     }
 
     #[test]

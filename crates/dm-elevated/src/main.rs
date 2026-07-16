@@ -11,7 +11,9 @@
 //! cross-checks cleanly for `x86_64-pc-windows-msvc` on the host.
 
 mod args;
+mod desktop_items;
 mod guards;
+mod manifest;
 mod overlay;
 mod secure_dir;
 
@@ -44,6 +46,12 @@ fn main() -> ExitCode {
             finish(overlay::apply(style, file.as_deref()))
         }
         args::Command::RestoreOverlay => finish(overlay::restore()),
+        args::Command::ApplyDesktopItems { manifest } => {
+            finish(desktop_items::run_apply_file(&manifest))
+        }
+        args::Command::RestoreDesktopItems { manifest } => {
+            finish(desktop_items::run_restore_file(&manifest))
+        }
         args::Command::Unknown(verb) => {
             eprintln!("Unsupported helper operation: {verb}");
             ExitCode::from(2)

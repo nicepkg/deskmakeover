@@ -119,12 +119,14 @@ fn open_no_follow(path: &Path) -> Result<std::fs::File, String> {
     std::fs::File::open(path).map_err(|e| e.to_string())
 }
 
-/// Reject an open handle whose final resolved path is not a LOCAL FIXED disk (A2). Two checks that
-/// a syntactic path test cannot make: `GetFinalPathNameByHandleW` reveals a junction redirect as the
-/// `\\?\UNC\...` form ([`is_local_dos_path`] rejects it), and `GetDriveTypeW` rejects a mapped drive
-/// letter that resolved to a network share (`DRIVE_REMOTE`) even when it kept its `X:` form.
+/// Reject an open handle whose final resolved path is not a LOCAL FIXED disk (A2), returning that
+/// resolved `\\?\X:\...` path on success. Two checks a syntactic path test cannot make:
+/// `GetFinalPathNameByHandleW` reveals a junction redirect as the `\\?\UNC\...` form
+/// ([`is_local_dos_path`] rejects it), and `GetDriveTypeW` rejects a mapped drive letter that
+/// resolved to a network share (`DRIVE_REMOTE`) even when it kept its `X:` form. The resolved path
+/// is canonical (no `..`, junctions collapsed), so a caller can safely confine it to a root.
 #[cfg(windows)]
-fn assert_local_fixed_path(file: &std::fs::File) -> Result<(), String> {
+fn resolve_local_fixed_path(file: &std::fs::File, what: &str) -> Result<String, String> {
     use std::os::windows::io::AsRawHandle;
 
     use windows::core::PCWSTR;
@@ -142,20 +144,91 @@ fn assert_local_fixed_path(file: &std::fs::File) -> Result<(), String> {
     // SAFETY: `handle` is a live read handle owned by `file`; `buf` outlives the call.
     let len = unsafe { GetFinalPathNameByHandleW(handle, &mut buf, flags) };
     if len == 0 || len as usize >= buf.len() {
-        return Err("could not resolve the overlay --file final path".to_string());
+        return Err(format!("could not resolve the {what} final path"));
     }
     let resolved = String::from_utf16_lossy(&buf[..len as usize]);
     if !is_local_dos_path(&resolved) {
-        return Err(format!("overlay --file resolves to a non-local path: {resolved:?}"));
+        return Err(format!("{what} resolves to a non-local path: {resolved:?}"));
     }
     // Probe the resolved volume (`\\?\X:\` → `X:\`): a mapped network drive is DRIVE_REMOTE.
     let root: Vec<u16> = format!("{}:\\", &resolved[4..5]).encode_utf16().chain(std::iter::once(0)).collect();
     // SAFETY: `root` is a NUL-terminated wide string that outlives the call.
     let dtype = unsafe { GetDriveTypeW(PCWSTR(root.as_ptr())) };
     if dtype != DRIVE_FIXED {
-        return Err(format!("overlay --file is not on a local fixed disk (drive type {dtype}): {resolved:?}"));
+        return Err(format!("{what} is not on a local fixed disk (drive type {dtype}): {resolved:?}"));
+    }
+    Ok(resolved)
+}
+
+#[cfg(windows)]
+fn assert_local_fixed_path(file: &std::fs::File) -> Result<(), String> {
+    resolve_local_fixed_path(file, "overlay --file").map(|_| ())
+}
+
+/// The no-follow open, exposed for the desktop-items batch's other privileged reads (`.lnk` bytes,
+/// staged originals, the manifest itself) — a final-component junction opens the link object, not
+/// its target.
+#[cfg(windows)]
+pub fn open_file_no_follow(path: &Path) -> Result<std::fs::File, String> {
+    open_no_follow(path)
+}
+
+/// Assert an open handle resolves to a local FIXED disk (the resolved path is discarded). `what`
+/// names the file in the error message. For non-ICO privileged reads where only the yes/no matters.
+#[cfg(windows)]
+pub fn assert_handle_local_fixed(file: &std::fs::File, what: &str) -> Result<(), String> {
+    resolve_local_fixed_path(file, what).map(|_| ())
+}
+
+/// Confirm a desktop-item TARGET the elevated helper is about to write is a real local file whose
+/// canonical path sits UNDER one of `roots` (the Public/All-Users desktop or the ProgramData staging
+/// root). This is the LPE gate for `apply|restore-desktop-items`: the manifest is untrusted, so the
+/// helper must independently prove the destination is a place the unelevated app legitimately could
+/// not write — never an arbitrary caller-named path like `System32\...`. Opens without following a
+/// final-component reparse point, resolves the true path (junctions/`..`/mapped drives collapsed),
+/// asserts local-fixed, then confines it to a root. `roots` are the callers' already-resolved
+/// `\\?\X:\...` known-folder paths. [WINDOWS-VERIFY] the live junction/mapped-drive cases on the box.
+#[cfg(windows)]
+pub fn confirm_target_under_root(path: &std::path::Path, roots: &[String]) -> Result<(), String> {
+    let file = open_no_follow(path)?;
+    let meta = file.metadata().map_err(|e| e.to_string())?;
+    if !meta.is_file() {
+        return Err(format!("desktop-item target is not a regular file: {}", path.display()));
+    }
+    let resolved = resolve_local_fixed_path(&file, "desktop-item target")?;
+    if !is_under_resolved_root(&resolved, roots) {
+        return Err(format!("desktop-item target is outside every privileged root: {resolved:?}"));
     }
     Ok(())
+}
+
+/// Pure confinement policy: is `resolved` (a canonical `\\?\X:\...` path from
+/// `GetFinalPathNameByHandleW`) strictly INSIDE one of `roots` (each also a resolved `\\?\X:\...`
+/// path)? Component-wise + Windows case-insensitive, so `...\PublicDesktop2\x` can never pass as a
+/// child of `...\PublicDesktop`. Both sides are already OS-canonical (no `..`, no junctions), so a
+/// straight component-prefix test is sound. Host-testable — the security decision is unit-covered.
+pub fn is_under_resolved_root(resolved: &str, roots: &[String]) -> bool {
+    let target = split_components(resolved);
+    if target.is_empty() {
+        return false;
+    }
+    roots.iter().any(|root| {
+        let r = split_components(root);
+        // STRICTLY inside (a child), never the root itself: target must be longer AND share the
+        // whole root prefix component-for-component.
+        !r.is_empty() && target.len() > r.len() && r.iter().zip(&target).all(|(a, b)| a == b)
+    })
+}
+
+/// Split a `\\?\...` path into lowercased path components, dropping the `\\?\` marker and any empty
+/// segments. No `..` folding is needed — inputs are OS-resolved canonical paths.
+fn split_components(path: &str) -> Vec<String> {
+    path.strip_prefix(r"\\?\")
+        .unwrap_or(path)
+        .split(['\\', '/'])
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_ascii_lowercase())
+        .collect()
 }
 
 /// Pure classifier for a `GetFinalPathNameByHandleW`(VOLUME_NAME_DOS) result: true ONLY for a local
@@ -229,6 +302,29 @@ mod tests {
         assert!(!is_local_dos_path(r"C:\ProgramData\overlay.ico"), "resolved paths always carry the prefix");
         assert!(!is_local_dos_path(""));
         assert!(!is_local_dos_path(r"\\?\"));
+    }
+
+    #[test]
+    fn is_under_resolved_root_confines_the_elevated_helper_to_privileged_roots() {
+        let public = r"\\?\C:\Users\Public\Desktop".to_string();
+        let programdata = r"\\?\C:\ProgramData\DeskMakeover".to_string();
+        let roots = vec![public, programdata];
+        // A real Public-desktop shortcut and a ProgramData staged icon are inside.
+        assert!(is_under_resolved_root(r"\\?\C:\Users\Public\Desktop\Chrome.lnk", &roots));
+        assert!(is_under_resolved_root(r"\\?\C:\ProgramData\DeskMakeover\assets\a.ico", &roots));
+        // Case-insensitive (Windows).
+        assert!(is_under_resolved_root(r"\\?\c:\users\public\desktop\chrome.lnk", &roots));
+        // The LPE targets an elevated write must never reach.
+        assert!(!is_under_resolved_root(r"\\?\C:\Windows\System32\evil.dll", &roots));
+        assert!(!is_under_resolved_root(r"\\?\C:\Users\Public\Documents\x.lnk", &roots), "sibling dir");
+        // A prefix that is not a component boundary must not pass (Desktop2 is not under Desktop).
+        assert!(!is_under_resolved_root(r"\\?\C:\Users\Public\Desktop2\x.lnk", &roots));
+        // The root itself is not a child (we only ever write ITEMS inside it).
+        assert!(!is_under_resolved_root(r"\\?\C:\Users\Public\Desktop", &roots));
+        // A UNC redirect never carries the local `\\?\X:\` shape resolve_local_fixed_path requires.
+        assert!(!is_under_resolved_root(r"\\?\UNC\server\share\Chrome.lnk", &roots));
+        assert!(!is_under_resolved_root("", &roots));
+        assert!(!is_under_resolved_root(r"\\?\C:\x", &[]));
     }
 
     #[test]

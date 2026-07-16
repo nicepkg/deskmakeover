@@ -36,6 +36,12 @@ pub enum Command {
     Version,
     ApplyOverlay { style: Style, file: Option<String> },
     RestoreOverlay,
+    /// Batch-write desktop-item icons that the unelevated app could not (a Public/All-Users desktop
+    /// `.lnk`, folder `desktop.ini`, etc.). The single arg is a MANIFEST file path; the helper reads
+    /// it, independently validates every target (never trusting the manifest), and writes atomically.
+    ApplyDesktopItems { manifest: String },
+    /// Restore those same protected targets to their captured originals (the reverse batch).
+    RestoreDesktopItems { manifest: String },
     /// An unknown or non-whitelisted verb → rejected (exit 2).
     Unknown(String),
 }
@@ -55,7 +61,38 @@ pub fn parse(args: &[String]) -> Command {
         "apply-overlay" => parse_apply_overlay(&args[1..]),
         "restore-overlay" if args.len() == 1 => Command::RestoreOverlay,
         "restore-overlay" => Command::Unknown("restore-overlay takes no arguments".into()),
+        "apply-desktop-items" => parse_desktop_items(true, &args[1..]),
+        "restore-desktop-items" => parse_desktop_items(false, &args[1..]),
         other => Command::Unknown(other.to_string()),
+    }
+}
+
+/// Strict `apply|restore-desktop-items` grammar: only `--manifest <value>`, exactly once, with a
+/// non-flag, non-empty value. Everything else refuses (exit 2). The manifest's CONTENT is validated
+/// later by the batch itself — this only guards the command line.
+fn parse_desktop_items(apply: bool, rest: &[String]) -> Command {
+    let verb = if apply { "apply-desktop-items" } else { "restore-desktop-items" };
+    let mut manifest: Option<String> = None;
+    let mut i = 0;
+    while i < rest.len() {
+        match rest[i].to_ascii_lowercase().as_str() {
+            "--manifest" => {
+                let Some(val) = rest.get(i + 1).filter(|v| !is_flag(v) && !v.trim().is_empty()) else {
+                    return Command::Unknown(format!("{verb}: --manifest needs a value"));
+                };
+                if manifest.is_some() {
+                    return Command::Unknown(format!("{verb}: duplicate --manifest"));
+                }
+                manifest = Some(val.trim().to_string());
+                i += 2;
+            }
+            other => return Command::Unknown(format!("{verb}: unexpected argument {other:?}")),
+        }
+    }
+    match manifest {
+        Some(manifest) if apply => Command::ApplyDesktopItems { manifest },
+        Some(manifest) => Command::RestoreDesktopItems { manifest },
+        None => Command::Unknown(format!("{verb}: --manifest is required")),
     }
 }
 
@@ -191,5 +228,33 @@ mod tests {
         for bogus in ["", "custom;drop", "reg", "REFINED_MARK", "../x"] {
             assert_eq!(Style::parse(bogus), None, "{bogus} must not parse");
         }
+    }
+
+    #[test]
+    fn desktop_items_verbs_require_exactly_one_manifest() {
+        assert_eq!(
+            parse(&argv(&["apply-desktop-items", "--manifest", r"C:\tmp\m.txt"])),
+            Command::ApplyDesktopItems { manifest: r"C:\tmp\m.txt".into() }
+        );
+        assert_eq!(
+            parse(&argv(&["restore-desktop-items", "--manifest", r"C:\tmp\m.txt"])),
+            Command::RestoreDesktopItems { manifest: r"C:\tmp\m.txt".into() }
+        );
+        // Strict privilege-boundary grammar: missing/empty/dangling/duplicate/surplus all refuse.
+        assert!(matches!(parse(&argv(&["apply-desktop-items"])), Command::Unknown(_)), "missing --manifest");
+        assert!(matches!(parse(&argv(&["apply-desktop-items", "--manifest"])), Command::Unknown(_)), "dangling");
+        assert!(matches!(parse(&argv(&["apply-desktop-items", "--manifest", ""])), Command::Unknown(_)), "empty");
+        assert!(
+            matches!(parse(&argv(&["apply-desktop-items", "--manifest", "a", "--manifest", "b"])), Command::Unknown(_)),
+            "duplicate"
+        );
+        assert!(
+            matches!(parse(&argv(&["restore-desktop-items", "--manifest", "a", "surplus"])), Command::Unknown(_)),
+            "surplus positional"
+        );
+        assert!(
+            matches!(parse(&argv(&["apply-desktop-items", "--evil", "x"])), Command::Unknown(_)),
+            "unknown flag"
+        );
     }
 }

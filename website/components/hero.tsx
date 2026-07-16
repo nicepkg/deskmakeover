@@ -36,7 +36,7 @@ export function Hero({ dict }: { dict: Dict }) {
         />
 
         <div className="relative z-10 mx-auto max-w-[1200px] px-5 md:px-8">
-          <div className="grid min-h-[calc(100svh-3.5rem-4rem)] items-center gap-10 py-10 lg:grid-cols-12 lg:gap-6">
+          <div className="grid min-h-[calc(100svh-3.5rem)] items-center gap-10 py-10 lg:grid-cols-12 lg:gap-6">
             <div className="lg:col-span-5">
               <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-coral-ink">
                 {h.eyebrow}
@@ -77,14 +77,22 @@ export function Hero({ dict }: { dict: Dict }) {
         </div>
       </div>
 
-      {/* transparent: the machine passes behind this line */}
-      <div className="relative z-10 border-t border-line">
-        <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-x-8 gap-y-2 px-5 py-4 font-mono text-[11px] tracking-[0.14em] text-ink-3 md:px-8">
-          {h.specs.map((s) => (
-            <span key={s}>{s}</span>
-          ))}
-        </div>
-      </div>
     </section>
+  );
+}
+
+/**
+ * The mono spec line belongs to screen two: on desktop it waits below the
+ * machine's stand (which crosses the fold), keeping screen one pure stage.
+ */
+export function SpecStrip({ dict }: { dict: Dict }) {
+  return (
+    <div className="relative z-10 border-y border-line lg:mt-[44vh]">
+      <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-x-8 gap-y-2 px-5 py-4 font-mono text-[11px] tracking-[0.14em] text-ink-3 md:px-8">
+        {dict.hero.specs.map((s) => (
+          <span key={s}>{s}</span>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { Dict } from "@/content/types";
 import { SiteNav } from "@/components/site-nav";
-import { Hero } from "@/components/hero";
+import { Hero, SpecStrip } from "@/components/hero";
 import {
   ProofSection,
   LooksSection,
@@ -17,6 +17,7 @@ export function Landing({ dict }: { dict: Dict }) {
       <SiteNav dict={dict} />
       <main>
         <Hero dict={dict} />
+        <SpecStrip dict={dict} />
         <ProofSection dict={dict} />
         <LooksSection dict={dict} />
         <ZonesSection dict={dict} />

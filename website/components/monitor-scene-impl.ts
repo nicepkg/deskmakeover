@@ -8,7 +8,6 @@
  */
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 export interface MountOptions {
   before: string;
@@ -49,6 +48,70 @@ function wipeAt(t: number): number {
     local -= phase.dur;
   }
   return 0;
+}
+
+/**
+ * Product-shot studio for the IBL: a mid-gray room with one big softbox
+ * upper-left, a tall rim strip on the right and a low front fill. The long
+ * rectangular highlights these paint on aluminum edges and glass are what
+ * separates a rendered product from a toy.
+ */
+function studioEnvironment(): THREE.Scene {
+  const s = new THREE.Scene();
+  const room = new THREE.Mesh(
+    new THREE.BoxGeometry(30, 30, 30),
+    new THREE.MeshBasicMaterial({ color: 0x62666d, side: THREE.BackSide }),
+  );
+  s.add(room);
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(30, 30),
+    new THREE.MeshBasicMaterial({ color: 0x2e3136 }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -14.9;
+  s.add(floor);
+
+  const softbox = (w: number, h: number, intensity: number, pos: [number, number, number]) => {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color().setScalar(intensity) }),
+    );
+    m.position.set(...pos);
+    m.lookAt(0, 0, 0);
+    s.add(m);
+  };
+  softbox(13, 9, 5.5, [-9, 10, 7]); // key: big and high, upper-left front
+  softbox(2.2, 15, 9, [13, 3, -5]); // rim: tall thin strip, right rear
+  softbox(9, 4, 1.6, [3, 1, 14]); // fill: low front
+  softbox(6, 6, 2.2, [0, 14.5, 0]); // top
+  return s;
+}
+
+/** Fine horizontal streaks — brushed metal under anisotropic reflections. */
+function brushedRoughnessTexture(): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 512;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "rgb(100,100,100)";
+  g.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 1800; i++) {
+    const y = Math.random() * 512;
+    const v = 90 + Math.floor(Math.random() * 26);
+    g.strokeStyle = `rgba(${v},${v},${v},0.3)`;
+    g.lineWidth = 0.75;
+    const x = Math.random() * 512;
+    const len = 60 + Math.random() * 220;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + len, y);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(1.5, 1.5);
+  return t;
 }
 
 function contactShadowTexture(): THREE.CanvasTexture {
@@ -96,9 +159,14 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const envScene = new RoomEnvironment();
-  const envTarget = pmrem.fromScene(envScene, 0.04);
-  envScene.dispose();
+  const envScene = studioEnvironment();
+  const envTarget = pmrem.fromScene(envScene, 0.02);
+  envScene.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      o.geometry.dispose();
+      (o.material as THREE.Material).dispose();
+    }
+  });
   scene.environment = envTarget.texture;
 
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60);
@@ -112,20 +180,23 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   const group = new THREE.Group();
   scene.add(group);
 
+  const brushed = brushedRoughnessTexture();
   const aluminum = new THREE.MeshPhysicalMaterial({
-    color: 0xdfe3e7,
-    metalness: 0.9,
-    roughness: 0.32,
+    color: 0xd8dce1,
+    metalness: 1,
+    roughness: 0.85,
+    roughnessMap: brushed,
+    anisotropy: 0.4,
   });
   const glassWhite = new THREE.MeshPhysicalMaterial({
-    color: 0xf5f6f8,
+    color: 0xf2f3f5,
     metalness: 0,
-    roughness: 0.22,
-    clearcoat: 0.8,
-    clearcoatRoughness: 0.2,
+    roughness: 0.34,
+    clearcoat: 1,
+    clearcoatRoughness: 0.07,
   });
 
-  const slab = new THREE.Mesh(new RoundedBoxGeometry(3.36, 2.14, 0.07, 4, 0.035), aluminum);
+  const slab = new THREE.Mesh(new RoundedBoxGeometry(3.36, 2.14, 0.07, 6, 0.035), aluminum);
   slab.position.set(0, 1.5, 0);
   group.add(slab);
 
@@ -177,16 +248,36 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
         float scanning = step(0.0005, uWipe) * step(uWipe, 0.9995);
         float line = 1.0 - smoothstep(0.0, 0.004, abs(vUv.x - uWipe));
         c = mix(c, uCoral, line * scanning);
-        float sheen = (1.0 - smoothstep(0.0, 0.22, abs(vUv.x * 0.5 + vUv.y * 0.86 - 0.66))) * 0.03;
-        c += sheen;
         gl_FragColor = vec4(c, 1.0);
         #include <colorspace_fragment>
       }
     `,
   });
+  // the recessed dark seam where the panel meets the glass — the junction
+  // detail that makes the front read as a real display, not a sticker
+  const seamMat = new THREE.MeshStandardMaterial({ color: 0x0b0c0e, roughness: 0.55 });
+  const seam = new THREE.Mesh(new THREE.PlaneGeometry(3.26, 1.86), seamMat);
+  seam.position.set(0, 1.59, 0.049);
+  group.add(seam);
+
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.8), screenMat);
   screen.position.set(0, 1.59, 0.0495);
   group.add(screen);
+
+  // one continuous sheet of cover glass over panel AND bezel: environment
+  // streaks run across the whole face, exactly like a real all-in-one
+  const coverMat = new THREE.MeshPhysicalMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.06,
+    roughness: 0.06,
+    metalness: 0,
+    envMapIntensity: 1.6,
+    depthWrite: false,
+  });
+  const cover = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 2.07), coverMat);
+  cover.position.set(0, 1.5, 0.0505);
+  group.add(cover);
 
   const shadowTex = contactShadowTexture();
   const shadowMat = new THREE.MeshBasicMaterial({
@@ -368,9 +459,9 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     document.removeEventListener("visibilitychange", onVis);
     window.removeEventListener("pointermove", onPointer);
     document.documentElement.removeEventListener("pointerleave", onLeave);
-    for (const g of [slab, glass, leg, foot, screen, shadow]) g.geometry.dispose();
-    for (const m of [aluminum, glassWhite, screenMat, shadowMat]) m.dispose();
-    for (const x of [texBefore, texAfter, shadowTex]) x.dispose();
+    for (const g of [slab, glass, leg, foot, seam, screen, cover, shadow]) g.geometry.dispose();
+    for (const m of [aluminum, glassWhite, seamMat, screenMat, coverMat, shadowMat]) m.dispose();
+    for (const x of [texBefore, texAfter, shadowTex, brushed]) x.dispose();
     envTarget.dispose();
     pmrem.dispose();
     renderer.dispose();

@@ -48,7 +48,7 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 
 <br/>
 
-<table>
+<table align="center">
 <tr>
   <td align="center"><img src=".github/assets/preset-squircle.webp" width="250" alt="方圆" /><br/><b>方圆</b><br/><sub>一枚方圆，各有其形</sub></td>
   <td align="center"><img src=".github/assets/preset-blueprint.webp" width="250" alt="蓝图" /><br/><b>蓝图</b><br/><sub>一整套工程蓝图</sub></td>

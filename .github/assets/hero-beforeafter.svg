@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1672 990" width="1672" height="990" role="img" aria-label="A cluttered default Windows desktop is beautified into clean squircle icons with one click, then fully restored">
   <defs>
-    <clipPath id="card"><rect x="36" y="36" width="1600" height="900" rx="16"/></clipPath>
+    <clipPath id="card"><rect x="36" y="36" width="1600" height="900" rx="28"/></clipPath>
     <linearGradient id="feather" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#fff"/>
       <stop offset="0.975" stop-color="#fff"/>
@@ -65,7 +65,7 @@
     }
   </style>
 
-  <g filter="url(#cardShadow)"><rect x="36" y="36" width="1600" height="900" rx="16" fill="#0b0f19"/></g>
+  <g filter="url(#cardShadow)"><rect x="36" y="36" width="1600" height="900" rx="28" fill="#0b0f19"/></g>
 
   <g class="anim-stack">
     <g clip-path="url(#card)">
@@ -131,5 +131,5 @@
     </g>
   </g>
 
-  <rect x="36.5" y="36.5" width="1599" height="899" rx="15.5" fill="none" stroke="#ffffff" stroke-opacity="0.14"/>
+  <rect x="36.5" y="36.5" width="1599" height="899" rx="27.5" fill="none" stroke="#ffffff" stroke-opacity="0.14"/>
 </svg>

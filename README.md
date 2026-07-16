@@ -48,7 +48,7 @@ Each one hand-tuned on a real desktop. Pick one, click once, every icon puts it 
 
 <br/>
 
-<table>
+<table align="center">
 <tr>
   <td align="center"><img src=".github/assets/preset-squircle.webp" width="250" alt="Squircle preset" /><br/><b>Squircle</b><br/><sub>continuous corners</sub></td>
   <td align="center"><img src=".github/assets/preset-blueprint.webp" width="250" alt="Blueprint preset" /><br/><b>Blueprint</b><br/><sub>monochrome ink</sub></td>

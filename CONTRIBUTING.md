@@ -2,6 +2,17 @@
 
 Thanks for your interest. This guide gets you from a fresh clone to a mergeable pull request.
 
+## Ways to contribute
+
+You don't need a Windows box for most of it:
+
+- **React UI** — the whole web half runs in a browser against a mock backend (`bun run dev`), on any OS.
+- **Rust core** — `dm-icon-core` / `dm-icon-codec` / `dm-operations` are portable and unit-tested; only `dm-windows` needs Windows.
+- **Docs & localization** — the README pair (EN / zh-CN) and `docs/` always welcome fixes; edit both READMEs in the same PR so they stay in lockstep.
+- **Windows compatibility testing** — real-machine reports (version, apply result, reboot persistence, restore result) are gold for a pre-1.0 desktop app.
+
+Check the [good first issues](https://github.com/nicepkg/deskmakeover/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22), and for anything large, open an issue to discuss before writing a big PR.
+
 ## Getting set up
 
 You need [**Bun**](https://bun.sh) ≥ 1.1 and the Rust toolchain pinned in

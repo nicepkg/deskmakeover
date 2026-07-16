@@ -21,44 +21,24 @@
   <img src=".github/assets/hero-beforeafter.svg" width="880" alt="A cluttered default Windows desktop is beautified into clean squircle icons with one click, then fully restored" />
 </a>
 
+DeskMakeover turns a cluttered Windows desktop into something calm and deliberate.<br/>Preview first, apply when you're happy. Change your mind? One click brings it all back.
+
 </div>
 
-<br/>
+## ↩️ You can always go back
 
-DeskMakeover turns a cluttered Windows desktop into something that looks calm and deliberate. It restyles your desktop icons, and it lets you draw zones onto your wallpaper to group them. You see the result before anything changes, and if you don't like it, one click brings back exactly what you had.
+Want to tidy your desktop but scared of breaking it? That "can't get it back" fear is the first thing we solved:
 
-<details>
-<summary>📑 Table of contents</summary>
-
-- [This is what your desktop could look like](#%EF%B8%8F-this-is-what-your-desktop-could-look-like)
-- [First, the thing people worry about most](#%EF%B8%8F-first-the-thing-people-worry-about-most)
-- [Nine looks built in](#-nine-looks-built-in)
-- [Make every part yours](#-make-every-part-yours)
-- [Save it. Share it.](#-save-it-share-it)
-- [Draw zones on your wallpaper](#%EF%B8%8F-draw-zones-on-your-wallpaper-so-icons-stop-piling-up)
-- [Install](#-how-to-install) · [FAQ](#-questions-people-ask) · [How it works](#%EF%B8%8F-how-it-works)
-
-</details>
-
-## 🖥️ This is what your desktop could look like
-
-The picture above starts as a desktop most of us know: icons crammed together, little arrows everywhere, tiring to look at. One click later it's the same PC, the same icons, the same wallpaper, just wearing a different look. There's no magic in between. You pick and adjust it yourself, and watch it change.
-
-## ↩️ First, the thing people worry about most
-
-Plenty of people want to tidy up their desktop but don't dare, in case they break something and can't get it back. That "can't get it back" part is the first thing we solved.
-
-Before it changes anything, DeskMakeover saves a full copy of your desktop as it is now, like taking a photo of it first: icons, arrows, wallpaper, all kept exactly. After that you can try whatever you want. To go back to the start, click restore, and it looks just like you never touched it. So even a bad experiment leaves you free to walk it back.
-
-It runs only on your computer. No account to sign up for, nothing uploaded anywhere. What your desktop looks like stays between you and your screen.
-
-And you never type commands or touch any technical settings. You do three things: pick, preview, and apply when you're happy.
+- **It backs everything up first**, like taking a photo of your desktop: icons, arrows, wallpaper, kept exactly
+- **One-click restore**, back to just how it was
+- **Runs only on your computer**: no account, no upload, nothing online
+- **Nothing technical to touch**: pick, preview, click. That's the whole job
 
 <div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
 
 ## ✨ Nine looks built in
 
-Nine looks come built in, each one hand-tuned on a real desktop. Pick one, click once, and every icon puts it on. Here is the same folder wearing all nine:
+Each one hand-tuned on a real desktop. Pick one, click once, every icon puts it on. The same folder, nine ways:
 
 <div align="center">
 <img src=".github/assets/specimen-nine-styles.webp" width="880" alt="One folder icon rendered in all nine DeskMakeover styles" />
@@ -68,7 +48,7 @@ Nine looks come built in, each one hand-tuned on a real desktop. Pick one, click
 
 <br/>
 
-<table>
+<table align="center">
 <tr>
   <td align="center"><img src=".github/assets/preset-squircle.webp" width="250" alt="Squircle preset" /><br/><b>Squircle</b><br/><sub>continuous corners</sub></td>
   <td align="center"><img src=".github/assets/preset-blueprint.webp" width="250" alt="Blueprint preset" /><br/><b>Blueprint</b><br/><sub>monochrome ink</sub></td>
@@ -88,57 +68,38 @@ Nine looks come built in, each one hand-tuned on a real desktop. Pick one, click
 
 ## 🎨 Make every part yours
 
-<table>
-<tr>
-<td width="55%" valign="middle">
+The nine are a starting point. Eleven icon shapes, plus coloring, plates, finishes, and shortcut marks, each adjustable on its own. Thousands of combinations:
 
-The nine are a starting point, not the whole story. You can adjust every part yourself: eleven icon shapes to choose from, plus the coloring, the plate behind each icon, the surface finish, and the style of that little shortcut mark. Apps, folders, and plain files can each look different.
+- Apps, folders, and plain files can each wear their own look
+- Hold to compare with the original, right-click to restyle a single icon, undo and redo freely
 
-It adds up to thousands of combinations, enough to build a desktop that's just yours.
-
-While you preview, hold to compare with the original. Right-click any single icon to change just that one. Changed your mind mid-way? Step back and forward through your edits.
-
-</td>
-<td width="45%" align="center">
-  <img src=".github/assets/feature-combine.webp" width="380" alt="The style controls: shape, coloring, plate, finish, and shortcut mark, each adjustable" />
-</td>
-</tr>
-</table>
+<div align="center">
+<img src=".github/assets/feature-combine.webp" width="760" alt="The zoomed live preview beside the full control panel: shape, coloring, plate, finish, and shortcut mark" />
+<br/>
+<sub>The live preview zoomed in on the left; every axis adjustable on the right.</sub>
+</div>
 
 ## 🧩 Save it. Share it.
 
-<table>
-<tr>
-<td width="45%" align="center">
-  <img src=".github/assets/feature-stylepack.webp" width="360" alt="The style library: nine built-in looks with save, export, and import controls" />
-</td>
-<td width="55%" valign="middle">
-
-Once you land on a combination you love, keep it. Save it as one of your own styles and reuse it with a click.
-
-You can also export it as a file and send it to a friend. They import the file and get your exact look. Style packs other people made work the same way. A good-looking desktop is easy to pass around.
-
-</td>
-</tr>
-</table>
-
-## 🗂️ Draw zones on your wallpaper so icons stop piling up
-
-The more icons pile up, the more they blur into one crowd, and finding anything takes a while. You can draw translucent zones right onto your wallpaper, say one for work and one for fun, and group related icons together.
-
-Drag each zone where you want it and size it however you like. There are five materials and four title styles, and you can dim the wallpaper a little to make the zones stand out. Your original wallpaper is backed up, so removing the zones is one click away.
+Landed on a combination you love? Save it as your own style and reuse it with a click. Export it as a file for a friend, or import style packs other people made.
 
 <div align="center">
-<img src=".github/assets/feature-zones.webp" width="880" alt="The zone editor: a light and a dark zone laid out on the wallpaper, free to move and resize" />
+<img src=".github/assets/feature-stylepack.webp" width="440" alt="The style library with save, export, and import controls" />
+</div>
+
+## 🗂️ Draw zones on your wallpaper
+
+Icons piling into one big crowd? Draw translucent zones onto the wallpaper, one for work, one for fun. Drag them anywhere, size them however, five materials and four title styles, or lay down a ready-made layout template in one click. Your wallpaper is backed up; removing zones is one click.
+
+<div align="center">
+<img src=".github/assets/feature-zones.webp" width="760" alt="Three template zones laid out on the wallpaper: Apps, Work, and a dark Doing zone" />
 </div>
 
 ## ✂️ The little shortcut arrow: swap it or remove it
 
-That little arrow in the corner of every shortcut is something a lot of people find ugly. You can swap it for a cleaner mark, or remove it entirely.
+Find that arrow ugly? Swap it for a cleaner mark, or remove it. The app does it for you; Windows asks once for permission and you click allow. Backed up first, one click brings it back.
 
-The app handles this for you, so you never do anything technical yourself. When you remove the arrow, Windows shows one confirmation box asking if you allow it, and you click allow. It's backed up first, so if you want the arrow back, one click restores it.
-
-> One more thing: the built-in Calm helper can quiet some of Windows' noisier defaults. It asks you before every change, and every change can be turned back.
+> There's also a built-in Calm helper that quiets some of Windows' noisier defaults. It asks before every change, and every change can be turned back.
 
 <div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
 
@@ -152,48 +113,56 @@ The app handles this for you, so you never do anything technical yourself. When 
 
 ## 📦 How to install
 
-The first proper installer is still being prepared, and it will appear on the [Releases](https://github.com/nicepkg/deskmakeover/releases) page when it's ready. The steps will be simple: download the setup file and double-click it. It installs just for your account, and opens ready to use.
+The first installer is being prepared and will land on the [Releases](https://github.com/nicepkg/deskmakeover/releases) page. Then it's: download, double-click, done. It installs just for your account.
 
-If Windows shows a blue "Windows protected your PC" screen, don't worry. It doesn't mean the app has a virus. Windows is just cautious with newer software that not many people have downloaded yet. Click **More info**, then **Run anyway**. Once more people have installed it, that screen stops appearing.
+> If Windows shows a blue "Windows protected your PC" screen, don't worry. It's not a virus warning, just Windows being cautious with newer software. Click **More info**, then **Run anyway**.
 
-It runs on Windows 10 (version 1809 or newer) and Windows 11, 64-bit.
+Runs on Windows 10 (1809 or newer) and Windows 11, 64-bit.
 
 ## 💬 Questions people ask
 
 **Can it break my PC, or leave me stuck?**
-It backs up your desktop before it changes anything, and every change can be undone with one click, back to exactly how it was. This is the thing we guard most, so you can experiment freely and always take it back.
+It backs up your desktop before changing anything, and every change is one click to undo, back to exactly how it was. Experiment freely.
 
 **Will it slow my PC down?**
-Not in any way you'd notice. The heavy work happens once, when you hit apply. The rest of the time it just sits quietly, and if Windows ever resets your desktop to its defaults, it puts your look back for you.
+Not noticeably. The heavy work happens once when you hit apply; the rest of the time it sits quietly, and puts your look back if Windows resets the desktop.
 
 **Will it survive a restart?**
-Yes. Your restyled icons are real image files, so they don't disappear when you reboot. If a big Windows update resets some settings, you re-apply with one click, or restore the original.
+Yes. Restyled icons are real image files. If a big Windows update resets some settings, re-apply with one click, or restore.
 
-**Is it free, and does anything get uploaded?**
-It's completely free and open source. It runs only on your computer, needs no account, and never sends your desktop or anything else online.
+**Is it free? Does anything get uploaded?**
+Completely free and open source. Runs only on your computer, no account, nothing sent anywhere.
 
-**I'm not great with computers. Can I figure it out?**
-Yes. You pick a look, check the preview, and apply when you're happy. No commands, no technical settings. If you change your mind, restore is always one click away.
+**I'm not great with computers. Can I use it?**
+Yes. Pick a look, check the preview, click apply. No commands, no technical settings, and restore is always one click away.
 
-> **Straight talk:** this is still beta, the first installer is on the way, and there will be rough edges. It makes your icons and wallpaper zones look better; it isn't a full theme for all of Windows. Don't expect one-click perfection, but whatever you try, you can always take it back with one click.
+> **Straight talk:** this is beta, the first installer is on the way, and there will be rough edges. It styles your icons and wallpaper zones; it isn't a full theme for all of Windows. Don't expect one-click perfection, but whatever you try, one click takes it back.
 
 <div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
 
-## 🏗️ How it works
+## 🏗️ Architecture and tech choices
 
-DeskMakeover is a **Tauri 2 + Rust** desktop app with a **React** UI rendered in the system WebView (WebView2 on Windows). The pixels are owned by one Rust icon core:
+DeskMakeover is a **Tauri 2 + Rust** desktop app with a **React 19 + TypeScript** UI rendered in the system WebView (WebView2). The pixels are owned by one Rust icon core:
 
 ```
 React UI  ──(generated bridge, tauri-specta)──▶  Rust host
   │                                                 │
   │  live preview + design controls                ├─ dm-icon-core   one pixel truth (WASM preview + native bake)
   │  WYSIWYG canvas (Pixi wallpaper)                ├─ dm-windows     shell / registry / desktop geometry
-  └─ mock backend for browser dev                   ├─ dm-operations  snapshot · apply · restore
+  └─ mock backend for browser dev                   ├─ dm-operations  snapshot · apply · restore (SQLite ledger)
                                                      ├─ dm-resident    background tray + reconciler
                                                      └─ dm-elevated    tiny whitelisted privileged helper
 ```
 
-The bridge contract is generated from the `dm-contracts` crate and locked by a bindings test in CI, so the TypeScript and Rust sides stay in sync. The preview pixels and the applied pixels come from the same `dm-icon-core` renderer (WASM in the preview, native in the bake), so WYSIWYG holds by construction. Hiding the native shortcut arrow swaps one Shell Icons registry value through the whitelisted elevated helper; like every other change it is snapshotted first and restored exactly. The web half runs standalone against a mock backend, which is why most of the UI is built and tested in a browser loop. The full picture lives in [`docs/development.md`](docs/development.md) and the design specs under [`docs/specs/`](docs/specs).
+**Why these choices:**
+
+- **Tauri 2 over Electron**: the UI runs in the system's own WebView2, no bundled Chromium, so the installer and memory footprint stay an order of magnitude smaller.
+- **One Rust icon core**: `dm-icon-core` renders the live preview (compiled to WASM) and bakes the final icons (native) from the same code. Preview pixels are the applied pixels by construction, not by luck.
+- **Generated contracts**: the TS↔Rust bridge is generated from `dm-contracts` and locked by a bindings test in CI, so the two sides can't drift.
+- **Web-first dev loop**: the UI develops against a mock backend in a browser (`bun run dev`, 600+ tests on bun), no Windows box needed; the Windows side only does shell writes, snapshot/restore, tray reconciling, and elevation.
+- **Reversibility as an architectural constraint**: every write goes through `dm-operations`' snapshot + transaction ledger. Hiding the native shortcut arrow is the elevated helper swapping one Shell Icons registry value, snapshotted first and restored exactly like everything else.
+
+The full picture lives in [`docs/development.md`](docs/development.md) and the design specs under [`docs/specs/`](docs/specs).
 
 ## 🛠️ For developers
 
@@ -207,11 +176,11 @@ bun run dev          # web UI against a mock backend — any OS, browser + hot r
 bun run tauri:dev    # full desktop app (Windows) — compiles the Rust host, opens the window
 ```
 
-The full dev runbook (dev modes, tests, the Tauri loop, packaging, signing) lives in [`docs/development.md`](docs/development.md); local builds are always unsigned and work anywhere.
+The full dev runbook (dev modes, tests, packaging, signing) lives in [`docs/development.md`](docs/development.md); local builds are always unsigned and work anywhere.
 
 ## 🤝 Contributing
 
-Contributions to the React UI, the Rust core, documentation, localization, and Windows compatibility testing are all welcome — most of the UI can be built and tested in a browser without a Windows box. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and the house rules, and check the [good first issues](https://github.com/nicepkg/deskmakeover/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Security reports go through [`SECURITY.md`](SECURITY.md).
+The React UI, the Rust core, docs, localization, and Windows compatibility testing all welcome help; most of the UI develops in a browser. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [good first issues](https://github.com/nicepkg/deskmakeover/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Security reports go through [`SECURITY.md`](SECURITY.md).
 
 ## 📄 License
 

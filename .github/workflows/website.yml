@@ -35,8 +35,11 @@ jobs:
       - name: Build static export
         run: bun run build
 
+      # org secrets only reach public repos on a free-plan org; the deploy
+      # arms itself automatically once the repo goes public (or a repo-level
+      # secret is added). Until then CI builds and skips the deploy.
       - name: Deploy to Cloudflare (production)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && secrets.CLOUDFLARE_API_TOKEN != ''
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -47,7 +50,7 @@ jobs:
           wranglerVersion: "4"
 
       - name: Upload PR preview version
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false && secrets.CLOUDFLARE_API_TOKEN != ''
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

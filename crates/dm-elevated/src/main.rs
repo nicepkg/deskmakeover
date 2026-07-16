@@ -19,6 +19,7 @@ mod guards;
 mod manifest;
 mod overlay;
 mod secure_dir;
+mod session;
 
 use std::process::ExitCode;
 
@@ -54,6 +55,17 @@ fn main() -> ExitCode {
         }
         args::Command::RestoreDesktopItems { manifest } => {
             finish_desktop_items(desktop_items::run_restore_file(&manifest))
+        }
+        args::Command::ServeSession { pipe, client_pid } => {
+            // The session server runs until the launching app exits (then it force-exits itself).
+            // Reaching here with an Ok is the app-died path; an Err is a fatal setup failure.
+            match session::run_serve_session(&pipe, client_pid) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("session server failed: {e}");
+                    ExitCode::from(3)
+                }
+            }
         }
         args::Command::Unknown(verb) => {
             eprintln!("Unsupported helper operation: {verb}");

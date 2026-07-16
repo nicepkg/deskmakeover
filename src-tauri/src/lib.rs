@@ -115,19 +115,24 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
             .ok()
             .and_then(|p| p.parent().map(|d| d.join("dm-elevated.exe")))
             .unwrap_or_else(|| data_dir.join("dm-elevated.exe"));
+        // ONE shared session-scoped elevated channel for BOTH the overlay and the desktop-items
+        // helper, so the whole app authorizes elevation once per launch (owner 2026-07-17). Each
+        // consumer falls back to a per-op `runas` if the session cannot be established.
+        let session = Arc::new(dm_windows::SessionElevated::new(helper.clone()));
         let ports = IconHostPorts {
             scanner: Arc::new(dm_windows::WindowsScanner::new(exec.clone())),
             extractor: Arc::new(dm_windows::WindowsIconSourceExtractor::new(exec.clone())),
             reader: Arc::new(dm_windows::WindowsStateReader::new(exec.clone())),
             applier: Arc::new(dm_windows::WindowsIconApplier::new(exec.clone())),
-            overlay: Arc::new(dm_windows::WindowsOverlayControl::new(helper.clone())),
+            overlay: Arc::new(dm_windows::WindowsOverlayControl::new(helper.clone(), session.clone())),
             refresher: Arc::new(dm_windows::WindowsExplorerRefresher),
             // Privileged shared items (Public Desktop / ProgramData `.lnk`s) style through the same
-            // signed helper (its own verb pair), one UAC per batch. Staging (manifest + original
-            // bytes) lives under the app data dir; the helper reads it capped + re-validates.
+            // signed helper (its own verb pair), now over the shared session. Staging (manifest +
+            // original bytes) lives under the app data dir; the helper reads it capped + re-validates.
             elevated: Some(Arc::new(dm_windows::WindowsElevatedIconApplier::new(
                 helper,
                 data_dir.join("elevated-staging"),
+                session,
             ))),
             geometry: Arc::new(dm_windows::WindowsDesktopGeometry::new(exec)),
         };

@@ -39,6 +39,9 @@ windows = { version = "0.61", features = [
     "Win32_System_Memory",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_LibraryLoader",
+    # Session-scoped elevated helper client (session_channel.rs): WaitNamedPipeW to wait for the
+    # server's pipe after the one launch-time UAC (owner 2026-07-17 "authorize once per app launch").
+    "Win32_System_Pipes",
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",

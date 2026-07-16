@@ -7,6 +7,7 @@
 //! signed on-box build. The manifest text generation is host-testable and unit-tested below.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use dm_domain::{
     ElevatedApplyItem, ElevatedIconApplier, ElevatedOutcome, ElevatedRestoreItem, Fingerprint,
@@ -19,6 +20,7 @@ use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLE
 
 use crate::cmdline::quote_arg;
 use crate::fingerprint_surface::expected_after_apply;
+use crate::session_channel::{SessionElevated, SessionSend};
 use crate::signing::PinnedHelper;
 
 const MANIFEST_HEADER: &str = "dm-desktop-items\t1";
@@ -33,11 +35,14 @@ pub struct WindowsElevatedIconApplier {
     /// dir the helper reads capped. The helper independently re-confirms every target + icon, so this
     /// staging area being user-writable is not a trust boundary (the manifest is untrusted input).
     staging_dir: PathBuf,
+    /// The shared session-scoped elevated channel (one UAC per app launch). Tried first; on an
+    /// establish failure `run_verb` falls back to a per-op `runas` so elevation never breaks.
+    session: Arc<SessionElevated>,
 }
 
 impl WindowsElevatedIconApplier {
-    pub fn new(helper_path: PathBuf, staging_dir: PathBuf) -> Self {
-        Self { helper_path, staging_dir }
+    pub fn new(helper_path: PathBuf, staging_dir: PathBuf, session: Arc<SessionElevated>) -> Self {
+        Self { helper_path, staging_dir, session }
     }
 
     /// Writes the batch manifest (untrusted input the helper re-validates) to the staging dir.
@@ -59,11 +64,22 @@ impl WindowsElevatedIconApplier {
     /// The gate PINS the on-disk helper with a deny-write / deny-delete handle held ACROSS the launch,
     /// so the verified image cannot be swapped between the check and `ShellExecuteExW` (§P1-4 TOCTOU).
     fn run_verb(&self, verb: &str, manifest: &Path) -> PortResult<ElevatedOutcome> {
-        // A1/C3: open + verify + hold the helper. `_pin` lives to the end of this scope — past the
-        // `ShellExecuteExW` below — so no other process can replace the file in the window.
+        // Session path FIRST (one UAC per app launch). On an establish failure fall back to a
+        // per-op `runas` so elevation degrades gracefully, never breaks (owner 2026-07-17).
+        let manifest_str = manifest.to_string_lossy();
+        match self.session.send(&[verb, "--manifest", &manifest_str]) {
+            Ok(SessionSend::Declined) => return Ok(ElevatedOutcome::Declined),
+            Ok(SessionSend::Ran { code: 0, .. }) => return Ok(ElevatedOutcome::Applied),
+            Ok(SessionSend::Ran { code, message }) => {
+                return Ok(ElevatedOutcome::Failed(format!("{}: {message}", classify_helper_exit(code as u32))))
+            }
+            // Expected while the session path is gated off; a genuine establish failure with it
+            // enabled is still captured, just at debug (the per-op fallback below is the safe path).
+            Err(e) => log::debug!("elevated session unavailable ({e}); using per-op runas"),
+        }
+        // Fallback: A1/C3 pin + verify held across the launch (§P1-4 TOCTOU).
         let _pin = PinnedHelper::open_verified(&self.helper_path)?;
-        let params =
-            format!("{verb} --manifest {}", quote_arg(&manifest.to_string_lossy()));
+        let params = format!("{verb} --manifest {}", quote_arg(&manifest_str));
         self.run_helper(&params)
     }
 

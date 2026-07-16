@@ -42,6 +42,13 @@ pub enum Command {
     ApplyDesktopItems { manifest: String },
     /// Restore those same protected targets to their captured originals (the reverse batch).
     RestoreDesktopItems { manifest: String },
+    /// Run as a SESSION-SCOPED elevated server: create the named pipe `pipe`, accept ONLY the
+    /// unelevated app process `client_pid` (verified via `GetNamedPipeClientProcessId`), and execute
+    /// the SAME whitelisted verbs above — one UAC per app launch instead of one per operation
+    /// (owner 2026-07-17). Every request string is re-parsed through THIS grammar, so the pipe grants
+    /// no capability the CLI does not. The server exits when `client_pid` dies (never a lingering
+    /// elevated process).
+    ServeSession { pipe: String, client_pid: u32 },
     /// An unknown or non-whitelisted verb → rejected (exit 2).
     Unknown(String),
 }
@@ -63,8 +70,65 @@ pub fn parse(args: &[String]) -> Command {
         "restore-overlay" => Command::Unknown("restore-overlay takes no arguments".into()),
         "apply-desktop-items" => parse_desktop_items(true, &args[1..]),
         "restore-desktop-items" => parse_desktop_items(false, &args[1..]),
+        "serve-session" => parse_serve_session(&args[1..]),
         other => Command::Unknown(other.to_string()),
     }
+}
+
+/// Strict `serve-session` grammar: `--pipe <name>` and `--client-pid <u32>`, each exactly once,
+/// each with a non-flag, non-empty value; `client-pid` must parse as a non-zero u32. Anything else
+/// refuses (exit 2). The pipe NAME is a single path segment the server suffixes onto `\\.\pipe\`
+/// (never interpolated elsewhere); a value containing a separator or `..` is rejected here so it
+/// can never escape the pipe namespace.
+fn parse_serve_session(rest: &[String]) -> Command {
+    let mut pipe: Option<String> = None;
+    let mut client_pid: Option<u32> = None;
+    let mut i = 0;
+    while i < rest.len() {
+        match rest[i].to_ascii_lowercase().as_str() {
+            "--pipe" => {
+                let Some(val) = rest.get(i + 1).filter(|v| !is_flag(v) && !v.trim().is_empty()) else {
+                    return Command::Unknown("serve-session: --pipe needs a value".into());
+                };
+                if pipe.is_some() {
+                    return Command::Unknown("serve-session: duplicate --pipe".into());
+                }
+                let name = val.trim();
+                if !is_safe_pipe_name(name) {
+                    return Command::Unknown("serve-session: --pipe is not a safe single segment".into());
+                }
+                pipe = Some(name.to_string());
+                i += 2;
+            }
+            "--client-pid" => {
+                let Some(val) = rest.get(i + 1).filter(|v| !is_flag(v)) else {
+                    return Command::Unknown("serve-session: --client-pid needs a value".into());
+                };
+                if client_pid.is_some() {
+                    return Command::Unknown("serve-session: duplicate --client-pid".into());
+                }
+                match val.trim().parse::<u32>() {
+                    Ok(p) if p != 0 => client_pid = Some(p),
+                    _ => return Command::Unknown("serve-session: --client-pid must be a non-zero u32".into()),
+                }
+                i += 2;
+            }
+            other => return Command::Unknown(format!("serve-session: unexpected argument {other:?}")),
+        }
+    }
+    match (pipe, client_pid) {
+        (Some(pipe), Some(client_pid)) => Command::ServeSession { pipe, client_pid },
+        _ => Command::Unknown("serve-session: --pipe and --client-pid are both required".into()),
+    }
+}
+
+/// A safe named-pipe leaf: non-empty, only `[A-Za-z0-9._-]`, no separators / `..` so it stays one
+/// segment under `\\.\pipe\`.
+fn is_safe_pipe_name(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
 /// Strict `apply|restore-desktop-items` grammar: only `--manifest <value>`, exactly once, with a
@@ -228,6 +292,31 @@ mod tests {
         for bogus in ["", "custom;drop", "reg", "REFINED_MARK", "../x"] {
             assert_eq!(Style::parse(bogus), None, "{bogus} must not parse");
         }
+    }
+
+    #[test]
+    fn serve_session_requires_a_safe_pipe_and_a_nonzero_pid() {
+        assert_eq!(
+            parse(&argv(&["serve-session", "--pipe", "dm-abc123", "--client-pid", "4242"])),
+            Command::ServeSession { pipe: "dm-abc123".into(), client_pid: 4242 }
+        );
+        // Strict privilege-boundary grammar.
+        assert!(matches!(parse(&argv(&["serve-session"])), Command::Unknown(_)), "both required");
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x"])), Command::Unknown(_)), "pid required");
+        assert!(matches!(parse(&argv(&["serve-session", "--client-pid", "1"])), Command::Unknown(_)), "pipe required");
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "0"])), Command::Unknown(_)), "pid nonzero");
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "-1"])), Command::Unknown(_)), "pid u32");
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "notnum"])), Command::Unknown(_)), "pid numeric");
+        // Pipe name must be a safe single segment — no path escape into the pipe namespace.
+        for bad in [r"..\evil", r"a\b", "a/b", "", ".", "..", "has space", "semi;colon"] {
+            assert!(
+                matches!(parse(&argv(&["serve-session", "--pipe", bad, "--client-pid", "5"])), Command::Unknown(_)),
+                "pipe {bad:?} must be rejected"
+            );
+        }
+        // Duplicates + surplus refuse.
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "a", "--pipe", "b", "--client-pid", "5"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "a", "--client-pid", "5", "surplus"])), Command::Unknown(_)));
     }
 
     #[test]

@@ -36,6 +36,8 @@ mod elevated;
 #[cfg(windows)]
 mod overlay;
 #[cfg(windows)]
+mod session_channel;
+#[cfg(windows)]
 mod refresh;
 #[cfg(windows)]
 pub mod shell;
@@ -64,6 +66,8 @@ pub use com::StaExecutor;
 pub use elevated::WindowsElevatedIconApplier;
 #[cfg(windows)]
 pub use overlay::WindowsOverlayControl;
+#[cfg(windows)]
+pub use session_channel::SessionElevated;
 #[cfg(windows)]
 pub use refresh::WindowsExplorerRefresher;
 #[cfg(windows)]

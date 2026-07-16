@@ -4,6 +4,7 @@
 //! `dm-elevated` crate (ADR-0021 §5: the overlay verb pair is the only v1 privileged surface).
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use dm_domain::{OverlayControl, OverlayOutcome, OverlayStyle, PortError, PortResult};
 use windows::core::{HSTRING, PCWSTR};
@@ -11,16 +12,34 @@ use windows::Win32::Foundation::{CloseHandle, ERROR_CANCELLED, WAIT_OBJECT_0};
 use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
 
 use crate::cmdline::quote_arg;
+use crate::session_channel::{SessionElevated, SessionSend};
 use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
 
 /// Invokes the elevated helper to apply/restore the global overlay.
 pub struct WindowsOverlayControl {
     helper_path: PathBuf,
+    /// The shared session-scoped elevated channel (one UAC per app launch); falls back to per-op
+    /// `runas` on an establish failure.
+    session: Arc<SessionElevated>,
 }
 
 impl WindowsOverlayControl {
-    pub fn new(helper_path: PathBuf) -> Self {
-        Self { helper_path }
+    pub fn new(helper_path: PathBuf, session: Arc<SessionElevated>) -> Self {
+        Self { helper_path, session }
+    }
+
+    /// Try the session channel first, mapping its result to an [`OverlayOutcome`]; `None` = the
+    /// session could not be established and the caller should fall back to a per-op `runas`.
+    fn via_session(&self, argv: &[&str]) -> Option<OverlayOutcome> {
+        match self.session.send(argv) {
+            Ok(SessionSend::Declined) => Some(OverlayOutcome::Declined),
+            Ok(SessionSend::Ran { code: 0, .. }) => Some(OverlayOutcome::Applied),
+            Ok(SessionSend::Ran { .. }) => Some(OverlayOutcome::Failed),
+            Err(e) => {
+                log::debug!("elevated session unavailable ({e}); overlay uses per-op runas");
+                None
+            }
+        }
     }
 
     /// Resolves `dm-elevated.exe` beside the current executable — the install dir (per-user
@@ -30,13 +49,13 @@ impl WindowsOverlayControl {
     /// so no `VCRUNTIME140.dll` search-order hijack is possible (development.md §6.1).
     ///
     /// [WINDOWS-VERIFY] runtime.
-    pub fn beside_current_exe() -> PortResult<Self> {
+    pub fn beside_current_exe(session: Arc<SessionElevated>) -> PortResult<Self> {
         let dir = std::env::current_exe()
             .map_err(|e| PortError::Io(e.to_string()))?
             .parent()
             .ok_or_else(|| PortError::Io("current exe has no parent directory".to_string()))?
             .to_path_buf();
-        Ok(Self { helper_path: dir.join("dm-elevated.exe") })
+        Ok(Self { helper_path: dir.join("dm-elevated.exe"), session })
     }
 
     fn run_helper(&self, params: &str) -> PortResult<OverlayOutcome> {
@@ -106,18 +125,20 @@ impl OverlayControl for WindowsOverlayControl {
             OverlayStyle::Transparent => "transparent",
             OverlayStyle::Custom => "custom",
         };
-        // ELEV-3: encode the path per CommandLineToArgvW rules so the ELEVATED helper parses it as
-        // exactly one `--file` argument — a crafted path (embedded quote / trailing backslash) must
-        // never inject extra tokens into the privileged command line. The style arg is a fixed
-        // literal and needs no quoting.
-        self.run_helper(&format!(
-            "apply-overlay --style {style_arg} --file {}",
-            quote_arg(ico_path)
-        ))
+        // Session channel first; the argv form the elevated grammar parses is the same tokens the
+        // per-op `runas` command line carries. Fall back to `runas` (ELEV-3: quote_arg encodes the
+        // path per CommandLineToArgvW so a crafted path cannot inject tokens into the command line).
+        if let Some(outcome) = self.via_session(&["apply-overlay", "--style", style_arg, "--file", ico_path]) {
+            return Ok(outcome);
+        }
+        self.run_helper(&format!("apply-overlay --style {style_arg} --file {}", quote_arg(ico_path)))
     }
 
     /// [WINDOWS-VERIFY] runtime.
     fn restore(&self) -> PortResult<OverlayOutcome> {
+        if let Some(outcome) = self.via_session(&["restore-overlay"]) {
+            return Ok(outcome);
+        }
         self.run_helper("restore-overlay")
     }
 }

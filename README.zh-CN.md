@@ -110,9 +110,9 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 ## 🎛️ 走进工作台
 
 <div align="center">
-<img src=".github/assets/app-studio.webp" width="880" alt="DeskMakeover 主窗口：左边是桌面实时镜像，右边是设计控制面板" />
+<img src=".github/assets/app-studio.webp" width="880" alt="DeskMakeover 主窗口的壁纸标签页：左边实时镜像上是分区，右边是材质、配色和标题样式" />
 <br/>
-<sub>右边挑外观，左边看着真实桌面实时换装，满意了按下美化。</sub>
+<sub>每个标签页都是这个用法：右边调整，左边的真实桌面实时跟着变。</sub>
 </div>
 
 ## 📦 怎么安装

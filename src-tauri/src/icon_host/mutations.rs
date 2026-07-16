@@ -215,6 +215,12 @@ impl IconHost {
                     if let Err(e) = self.set_arrow(ArrowOverlayDto::Hidden) {
                         overlay_incomplete = true;
                         log::warn!("icons apply: arrow overlay installed but its state was not persisted: {e}");
+                    } else if self.overlay_install_changed(&format!("hidden:{}", self.overlay_ico_sha)) {
+                        // The effective overlay CHANGED (a native→hidden transition, or the overlay asset
+                        // content changed across an app update) — Explorer caches Shell Icons\29 at
+                        // startup, so reload it or the ugly native arrow / a stale overlay keeps showing
+                        // (owner report 2026-07-16). A repeat apply of the same overlay does NOT flicker.
+                        self.refresh_shell_icon_overlay();
                     }
                 }
                 other => {
@@ -327,6 +333,9 @@ impl IconHost {
                             // Fail-safe: the arrow IS native on the machine; a lost marker only costs an
                             // extra idempotent restore next launch (codex R2 B-3), not a reset failure.
                             log::warn!("icons reset: arrow restored but its state was not persisted: {e}");
+                        } else if self.overlay_install_changed("native") {
+                            // hidden→native transition: reload Explorer so the arrow actually comes back.
+                            self.refresh_shell_icon_overlay();
                         }
                     }
                     _ => overlay_failed = true,

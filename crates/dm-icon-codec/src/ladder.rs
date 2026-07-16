@@ -67,10 +67,13 @@ mod tests {
         "b8c580a2f7bc4509ccfd44d9bae625df37a59e8f663017166419d607768c681d";
     const CHECKER256_ICO_SHA256: &str =
         "1401770a5bac81ef40340b399083a6a56f1b67396db46b8958d563a9a9950ff2";
+    // Alpha-derived AND mask (2026-07-16 overlay black-block fix): the disc has fully transparent
+    // pixels outside its radius, so its mask (and hash) changed; the fully-transparent overlay's did
+    // too. The opaque gradient/checker are byte-unchanged (no alpha-0 pixel → mask still all-zero).
     const DISC256_ICO_SHA256: &str =
-        "7ddabb467f7188490b7e733608018b6c1def6b4717c211e23baf58010b89df70";
+        "883e14c4150b91991de776dc32fa2cba13cffb1c4969607b0a9026c820fc6308";
     const TRANSPARENT_ICO_SHA256: &str =
-        "ca6bd521db4f4dd582b78770570bbc101c915f1749adbb52593144d018c9a816";
+        "9bdadf1a36b17a32167b7ff5ff69cd16d24ee7a40b06de86b52a57e702b6e57f";
 
     fn gradient(size: usize) -> Raster {
         // A deterministic, non-uniform source that exercises every channel + the alpha
@@ -134,8 +137,9 @@ mod tests {
         let entries = parse(&asset.bytes).expect("valid transparent ICO");
         let sizes: Vec<i32> = entries.iter().map(|e| e.dib_width).collect();
         assert_eq!(sizes, vec![16, 20, 24, 32, 48, 256]);
-        // Every payload byte (headers aside) is zero: fully transparent black frames.
-        // Cheap proof: the whole-file hash is stable and the frames decode as declared.
+        // The COLOR pixels are all zero (transparent black), but the AND MASK is now all-ONES
+        // (every pixel marked transparent) so the shortcut overlay renders invisible, not a black
+        // block. Byte-level mask coverage is in `ico::tests`; here the hash pins the whole file.
         assert_eq!(asset.content_hash.len(), 64);
     }
 

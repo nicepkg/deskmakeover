@@ -116,6 +116,14 @@ pub struct IconHost {
     /// The materialized transparent overlay ICO the elevated helper points the registry at (the
     /// helper rejects an empty/absent path — codex Block 5).
     overlay_ico: PathBuf,
+    /// The content hash of `overlay_ico` — the overlay's install signature. On apply the effective
+    /// overlay is `hidden:<sha>`; if it differs from what was last installed (a native→hidden
+    /// transition OR an asset content change across an app update), Explorer is reloaded so the
+    /// `Shell Icons\29` overlay — which Explorer caches at startup — actually takes visual effect.
+    overlay_ico_sha: String,
+    /// Persists the last-installed overlay signature (`hidden:<sha>` / `native`), so a repeat apply
+    /// of the SAME overlay never flickers the desktop, yet a changed one always refreshes.
+    overlay_install_marker: PathBuf,
     /// Active user-profile count (host truth; >1 makes the machine-wide arrow disclosure
     /// non-skippable). The dev host reports a single user.
     active_user_profiles: u32,
@@ -137,9 +145,14 @@ impl IconHost {
         scope: ScopeRoots,
     ) -> Self {
         // Materialize the transparent overlay ICO once (best-effort) so the elevated helper always
-        // has a real path to validate + copy into ProgramData (codex Block 5).
+        // has a real path to validate + copy into ProgramData (codex Block 5). Its content hash is the
+        // overlay's install signature: if it changes across an app update (e.g. the 2026-07-16 AND-mask
+        // black-block fix), the next apply reloads Explorer even without a native↔hidden transition.
         let overlay_ico = data_dir.join("overlay-transparent.ico");
-        let _ = std::fs::write(&overlay_ico, dm_icon_codec::transparent_ico().bytes);
+        let overlay_asset = dm_icon_codec::transparent_ico();
+        let overlay_ico_sha = overlay_asset.content_hash;
+        let _ = std::fs::write(&overlay_ico, &overlay_asset.bytes);
+        let overlay_install_marker = data_dir.join("overlay-installed.txt");
         // Resume the persisted arrow state (default Native) — the overlay is machine-wide + survives
         // process restarts, so a fresh process must not forget an installed overlay.
         let arrow_marker = data_dir.join("arrow-overlay.txt");
@@ -179,6 +192,8 @@ impl IconHost {
             arrow_overlay: Mutex::new(arrow),
             arrow_marker,
             overlay_ico,
+            overlay_ico_sha,
+            overlay_install_marker,
             active_user_profiles,
             export_fallback_dir: data_dir.join("exports"),
             // The §14 privileged-scope roots (see the field doc). `Unprivileged` on the dev host;
@@ -209,6 +224,47 @@ impl IconHost {
     /// live generation then the prior one so a swap→adopt handoff never 404s (codex R3-Major 5).
     pub fn png_for(&self, key: &str) -> Option<Vec<u8>> {
         self.sources.lock().unwrap().get(key)
+    }
+
+    /// Reloads the machine-wide shortcut-overlay icon (`HKLM ...\Shell Icons\29`) after it TRANSITIONS
+    /// between the transparent overlay and the native arrow. Explorer caches that value at STARTUP and
+    /// `SHChangeNotify` does NOT reload it, so a fresh apply writes the transparent `.ico` yet the ugly
+    /// native arrow keeps showing until Explorer restarts (owner report 2026-07-16). This is the
+    /// standard shortcut-arrow-tweak refresh; it runs ONLY on a native↔transparent transition (≈once
+    /// per makeover / reset), never on a repeat apply, so the desktop flickers at most once. Best-effort
+    /// — a refresh fault never fails the op. The conditional restart avoids a stray Explorer window if
+    /// the shell auto-respawns. [WINDOWS-VERIFY] runtime.
+    pub(super) fn refresh_shell_icon_overlay(&self) {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            let _ = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; \
+                     Start-Sleep -Milliseconds 700; \
+                     if (-not (Get-Process -Name explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }",
+                ])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+        }
+    }
+
+    /// Records the effective overlay signature just installed (`hidden:<sha>` / `native`) and returns
+    /// whether it DIFFERS from the previously-installed one — i.e. whether Explorer must reload for
+    /// the change to become visible. A repeat apply of the SAME overlay returns false (no flicker); a
+    /// native↔hidden transition OR an overlay-asset content change (e.g. the black-block fix) returns
+    /// true. Best-effort persistence: a lost marker only costs one extra (idempotent) refresh.
+    pub(super) fn overlay_install_changed(&self, sig: &str) -> bool {
+        let prev = std::fs::read_to_string(&self.overlay_install_marker).unwrap_or_default();
+        let changed = prev.trim() != sig;
+        if changed {
+            let _ = std::fs::write(&self.overlay_install_marker, sig);
+        }
+        changed
     }
 
     pub(super) fn ops(&self) -> IconOps<'_> {

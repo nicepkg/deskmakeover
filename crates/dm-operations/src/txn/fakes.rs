@@ -395,6 +395,10 @@ pub struct FakeElevatedIconApplier {
     outcome: RefCell<ElevatedOutcome>,
     applied: RefCell<Vec<String>>,
     restored: RefCell<Vec<String>>,
+    /// Target paths the helper SKIPS on an `Applied` restore — models the real helper silently
+    /// skipping an item whose live icon no longer matches (a user re-edit during the UAC prompt): it
+    /// still exits 0, but leaves that target untouched.
+    restore_skips: RefCell<Vec<String>>,
 }
 
 #[allow(dead_code)]
@@ -406,6 +410,7 @@ impl FakeElevatedIconApplier {
             outcome: RefCell::new(ElevatedOutcome::Applied),
             applied: RefCell::new(Vec::new()),
             restored: RefCell::new(Vec::new()),
+            restore_skips: RefCell::new(Vec::new()),
         }
     }
 
@@ -413,6 +418,12 @@ impl FakeElevatedIconApplier {
     /// helper fault). A non-Applied outcome leaves the world untouched.
     pub fn set_outcome(&self, outcome: ElevatedOutcome) {
         *self.outcome.borrow_mut() = outcome;
+    }
+
+    /// Makes an `Applied` restore SKIP `path` (leave it untouched) — models the helper's CAS-skip of
+    /// an item the user re-edited during the UAC prompt, which still returns exit 0.
+    pub fn skip_restore(&self, path: &str) {
+        self.restore_skips.borrow_mut().push(path.to_string());
     }
 
     /// The target paths the helper styled (for assertions).
@@ -451,6 +462,10 @@ impl ElevatedIconApplier for FakeElevatedIconApplier {
         if outcome == ElevatedOutcome::Applied {
             let mut world = self.world.borrow_mut();
             for it in items {
+                // A skipped target is left exactly as it is (the helper's CAS-skip); the exit is still 0.
+                if self.restore_skips.borrow().iter().any(|p| p == &it.target.path) {
+                    continue;
+                }
                 world.put(&it.target.path, &it.original_bytes);
                 self.restored.borrow_mut().push(it.target.path.clone());
             }

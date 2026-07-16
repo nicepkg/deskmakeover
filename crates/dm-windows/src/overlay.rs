@@ -40,6 +40,9 @@ impl WindowsOverlayControl {
     }
 
     fn run_helper(&self, params: &str) -> PortResult<OverlayOutcome> {
+        // A1/C3 (§P1-4): verify + PIN the helper (deny-write/delete handle) across the launch, so a
+        // swapped binary in the user-writable install dir cannot run elevated. Held to end of scope.
+        let _pin = crate::signing::PinnedHelper::open_verified(&self.helper_path)?;
         let verb = HSTRING::from("runas");
         let file = HSTRING::from(self.helper_path.as_os_str());
         let parameters = HSTRING::from(params);

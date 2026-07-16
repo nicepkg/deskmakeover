@@ -41,14 +41,20 @@ Mirrors `TxnDriver`'s durability, batched around one helper call:
 ```
 1. Phase-1 prepare per item (unprivileged, in-process): reuse the CAS + heal + anchor-capture
    logic (read_fingerprint == expected; capture_anchor → FileBytes). Conflict/HealedConflict skip.
+   The SCAN-observed icon location (== the accepted fingerprint) is threaded as the helper's CAS
+   anchor (`ElevatedApplyItem.expect_icon`), NEVER re-read (§P1-1) — trust-first, like the driver.
 2. journal TxnBegin{items}
 3. per item: assets.put(ico) ; journal AssetWritten{asset}
 4. per item: journal ItemApplied{ new_fingerprint = elevated.plan(item) }   ← DERIVED, pre-write
 5. elevated.apply(items)   ← ShellExecuteEx runas, ONE UAC; the helper CAS-re-checks + writes +
    atomically LIFO-rolls-back on any internal failure.
    • Applied  → journal TxnCommitted ; ledger.upsert(all) ; committed += all
-   • Declined → journal TxnRolledBack ; error = "elevation declined" (no ledger rows)
-   • Failed   → journal TxnRolledBack ; error = "elevated apply failed" (no ledger rows)
+   • Declined → journal TxnRolledBack ; items → conflicts (a UAC cancel NEVER started the helper,
+     so the desktop is provably untouched → a clean terminal is honest)
+   • Failed / port-Err → NO terminal (§P1-2): the helper's internal rollback is BEST-EFFORT, so a
+     residual styled item is possible; leaving the txn terminal-less lets the next op's recovery
+     inspect each live item and ADOPT FORWARD any residue (a `TxnRolledBack` would falsely say
+     "cleanly reverted" and strand a styled item untracked). error set + desktop_mutated=true.
 ```
 
 `plan()` derives the styled fingerprint WITHOUT writing (Shortcut ⇒ `IconRef{path,index:0}`),
@@ -80,16 +86,26 @@ items keep the existing unelevated restore.
 
 The §14 red-line arm (currently `skip`) collects privileged rows that are still ours into a batch;
 after the ledger walk, ONE `elevated.restore(batch)` (FileBytes replay of the original `.lnk`
-bytes, CAS-guarded so a user re-edit is left alone). Applied → `ledger.remove` + `restored`;
-Declined/Failed → keep the row + `skipped` + a note. `Unresolved`/unwired scope or a `None`
-elevated port → keep today's skip (fail-closed).
+bytes, CAS-guarded so a user re-edit is left alone). Applied → **per-item confirm** each is back at
+its original by a fresh fingerprint read BEFORE dropping its row (§P2-1 — the helper silently skips
+an item the user re-edited during the UAC prompt, and its exit code alone can't say which): original
+→ `ledger.remove` + `restored`; anything else → keep the row + `skipped`. Declined/Failed → keep the
+rows + `skipped` + a note. `Unresolved`/unwired scope or a `None` elevated port → keep today's skip
+(fail-closed).
 
-### Security — A1 + C3 signature gate
+### Security — A1 + C3 signature gate + pin
 
-Before EVERY `runas` (overlay AND desktop-items), verify `dm-elevated.exe`'s Authenticode signer
-(WinVerifyTrust) — the per-user install dir is user-writable, so a swapped helper would run
-elevated. Shared `guards::verify_trusted_helper(path)`; refuse the runas on an untrusted/unsigned
-signer. `[WINDOWS-VERIFY]` on the signed build.
+`signing.rs` `PinnedHelper::open_verified` runs before EVERY `runas` (overlay AND desktop-items):
+1. **open** the helper with a deny-write / deny-delete share (`FILE_SHARE_READ` only);
+2. **verify** THAT open handle's Authenticode signature (WinVerifyTrust,
+   `WINTRUST_ACTION_GENERIC_VERIFY_V2`) — tampered/untrusted/revoked ⇒ REFUSE (fail-closed);
+3. **hold** the handle across `ShellExecuteExW`, so the exact verified image cannot be swapped in
+   the verify→launch window (§P1-4 TOCTOU).
+
+The unsigned-helper dev bypass (`DESKMAKEOVER_ALLOW_UNSIGNED_HELPER`) is compiled ONLY into debug
+builds (`cfg(debug_assertions)`, §P1-3) — a shipped release build ignores it and always rejects an
+unsigned helper. `[WINDOWS-VERIFY]` on the signed build. Residual follow-ups: signer-subject pinning
+(needs the finalized OV cert subject) + a per-machine (admin-protected) install location.
 
 ## Ports / DTOs (dm-domain)
 

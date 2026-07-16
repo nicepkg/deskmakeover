@@ -128,7 +128,6 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
             elevated: Some(Arc::new(dm_windows::WindowsElevatedIconApplier::new(
                 helper,
                 data_dir.join("elevated-staging"),
-                exec.clone(),
             ))),
             geometry: Arc::new(dm_windows::WindowsDesktopGeometry::new(exec)),
         };

@@ -1248,8 +1248,45 @@ fn an_elevated_helper_failure_surfaces_as_an_error() {
 
     assert!(out.committed.is_empty(), "nothing committed on a helper failure");
     assert!(out.error.is_some(), "a real helper failure surfaces as an error (degraded toast)");
+    assert!(out.desktop_mutated, "a helper failure leaves the desktop possibly-changed (best-effort rollback)");
     assert!(f.ledger.get(&shared.id).unwrap().is_none());
-    assert_eq!(f.world.borrow().get(&shared.path).unwrap(), b"orig-chrome", "the helper rolled back — desktop original");
+    // §P1-2: the elevated batch must NOT journal a `TxnRolledBack` terminal on a helper failure — its
+    // rollback is best-effort, so the txn is left TERMINAL-LESS for crash recovery to inspect + adopt
+    // forward any residue (a `TxnRolledBack` would tell recovery "cleanly reverted" over possible residue).
+    let priv_txn = f.journal.records().iter().filter_map(|r| match r {
+        crate::txn::JournalRecord::ItemPrepared { txn, .. } => Some(*txn),
+        _ => None,
+    }).max().expect("the privileged txn journaled an ItemPrepared");
+    assert!(
+        !f.journal.records().iter().any(|r| matches!(r, crate::txn::JournalRecord::TxnRolledBack { txn } if *txn == priv_txn)),
+        "a failed elevated batch leaves the txn terminal-less (no TxnRolledBack) for recovery"
+    );
+}
+
+#[test]
+fn reset_keeps_the_row_of_a_privileged_item_the_helper_could_not_revert() {
+    // §P2-1: the helper silently SKIPS an item the user re-edited during the UAC prompt (still exit 0).
+    // The reset must CONFIRM each item is back to its original (a fresh fingerprint read) before dropping
+    // its ledger row — otherwise a user's edit would be left untracked (no row → the app forgets it).
+    let mut f = Fixture::new();
+    let scope = public_desktop_scope();
+    let elev = FakeElevatedIconApplier::new(f.world.clone());
+
+    let shared = pub_item("chrome");
+    f.seed(&shared, b"orig-chrome");
+    f.apply_scoped(&[("chrome", 0, [4, 5, 6, 255])], style(1), "v1", &[shared.clone()], &scope, Some(&elev));
+    assert!(f.ledger.get(&shared.id).unwrap().is_some(), "styled + ledgered");
+
+    // The helper will skip reverting chrome (models a UAC-window re-edit) → it stays styled, exit 0.
+    elev.skip_restore(&shared.path);
+    let reset = f.reset_scoped(&scope, Some(&elev));
+
+    assert!(reset.restored.is_empty(), "nothing confirmed reverted");
+    assert_eq!(reset.skipped, vec![shared.id.clone()], "the un-reverted item is a skip, not a false restore");
+    assert!(
+        f.ledger.get(&shared.id).unwrap().is_some(),
+        "its ledger row is KEPT (still tracked) — never dropped over an unconfirmed revert",
+    );
 }
 
 #[test]

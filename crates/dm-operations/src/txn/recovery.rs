@@ -411,10 +411,17 @@ fn abort_incomplete(
         // target is privileged-scope (Public Desktop / ProgramData), it can ONLY have been styled by
         // the ELEVATED helper, and the unelevated `applier` here can NEVER revert it (Access Denied) —
         // a doomed `restore` would degrade recovery forever (the exact wedge the on-box report hit).
-        // Since the desktop provably wears OUR style, ADOPT it FORWARD instead of rolling back: rebuild
+        // Since the desktop wears our applied style, ADOPT it FORWARD instead of rolling back: rebuild
         // the committed ledger row from the journal so desktop == ledger and the item stays reversible
-        // via the (now-wired) elevated reset path. This fires ONLY for `live == new_fingerprint`, so a
-        // user's own elevated edit (`live == other`) never reaches here — it was `preserve`d above.
+        // via the (now-wired) elevated reset path. This fires ONLY for `live == new_fingerprint`; any
+        // OTHER live state (a user's own elevated edit) was `preserve`d above.
+        //
+        // Provenance caveat (codex P2-review 🟡): `live == new_fingerprint` proves the desktop STATE,
+        // not authorship. The fingerprint here is only the shortcut's icon path/index, and that path is
+        // this app's SHA-256-named private asset — so a user independently pointing their `.lnk` at that
+        // exact generated ICO is not realistic, but it is not provably impossible. This is the same L1
+        // state-vs-authorship limit the rest of recovery documents (recovery:265); a durable
+        // per-item elevated-result nonce would close it and is the tracked follow-up.
         if scope.classify(&rec.target.path).is_some() {
             reconcile_committed_row(rec, id, ledger, outcome);
             continue;

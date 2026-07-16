@@ -24,10 +24,20 @@ use crate::item::ItemTarget;
 /// (written unelevated into the app's content-addressed store — the helper points the `.lnk` at it;
 /// the shell renders that icon in the USER's context, so no ProgramData copy is needed, unlike the
 /// machine-wide overlay).
+///
+/// `expect_icon`/`expect_index` are the item's icon location AS THE SCAN OBSERVED IT — the
+/// compare-and-swap anchor the operations layer already accepted at preflight (the fingerprint CAS).
+/// The helper refuses to write unless the live icon still matches, so a user's edit made between the
+/// scan and the (post-UAC) write is never clobbered — trust-first, exactly like the in-process
+/// driver. It is captured ONCE at scan and threaded UNCHANGED; the port must never re-read it (a
+/// re-read would silently accept a value the preflight did not, breaking trust-first). An empty
+/// `expect_icon` means the target had no explicit icon location at scan (`GetIconLocation` → "").
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElevatedApplyItem {
     pub target: ItemTarget,
     pub asset_path: String,
+    pub expect_icon: String,
+    pub expect_index: i32,
 }
 
 /// One item to revert through the elevated helper. `original_bytes` is the captured original `.lnk`

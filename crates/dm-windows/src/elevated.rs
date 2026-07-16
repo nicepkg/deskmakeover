@@ -7,7 +7,6 @@
 //! signed on-box build. The manifest text generation is host-testable and unit-tested below.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use dm_domain::{
     ElevatedApplyItem, ElevatedIconApplier, ElevatedOutcome, ElevatedRestoreItem, Fingerprint,
@@ -19,37 +18,26 @@ use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject}
 use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
 
 use crate::cmdline::quote_arg;
-use crate::com::StaExecutor;
 use crate::fingerprint_surface::expected_after_apply;
-use crate::shell::shell_link;
-use crate::signing::verify_trusted_helper;
+use crate::signing::PinnedHelper;
 
 const MANIFEST_HEADER: &str = "dm-desktop-items\t1";
 
-/// Invokes the elevated helper to style / revert privileged shared desktop items.
+/// Invokes the elevated helper to style / revert privileged shared desktop items. No COM: each row's
+/// compare-and-swap anchor is the scan-observed icon location the operations layer threads in
+/// (`ElevatedApplyItem::expect_icon`), never a re-read (§P1-1), so the helper writes only when the
+/// live target still matches what the app decided to style.
 pub struct WindowsElevatedIconApplier {
     helper_path: PathBuf,
     /// Where the (untrusted) manifest + staged original bytes are written — a LOCAL-FIXED, app-owned
     /// dir the helper reads capped. The helper independently re-confirms every target + icon, so this
     /// staging area being user-writable is not a trust boundary (the manifest is untrusted input).
     staging_dir: PathBuf,
-    /// The shared STA apartment for the COM icon-location read that builds each apply row's CAS anchor.
-    exec: Arc<StaExecutor>,
 }
 
 impl WindowsElevatedIconApplier {
-    pub fn new(helper_path: PathBuf, staging_dir: PathBuf, exec: Arc<StaExecutor>) -> Self {
-        Self { helper_path, staging_dir, exec }
-    }
-
-    /// The target's CURRENT icon location `(path, index)` — the apply row's compare-and-swap anchor.
-    /// `None` (no explicit icon location) maps to `("", 0)`; the helper's `GetIconLocation` returns
-    /// the empty string for the same target, so `"" == ""` correctly matches (the manifest permits an
-    /// empty `expect_icon`).
-    fn read_current_icon(&self, path: &str) -> PortResult<(String, i32)> {
-        let p = path.to_string();
-        let loc = self.exec.run(move || shell_link::read_icon_location(&p))??;
-        Ok(loc.unwrap_or_default())
+    pub fn new(helper_path: PathBuf, staging_dir: PathBuf) -> Self {
+        Self { helper_path, staging_dir }
     }
 
     /// Writes the batch manifest (untrusted input the helper re-validates) to the staging dir.
@@ -68,9 +56,12 @@ impl WindowsElevatedIconApplier {
     }
 
     /// Signature-gates the helper (A1/C3) then launches it with `verb --manifest <path>` via `runas`.
+    /// The gate PINS the on-disk helper with a deny-write / deny-delete handle held ACROSS the launch,
+    /// so the verified image cannot be swapped between the check and `ShellExecuteExW` (§P1-4 TOCTOU).
     fn run_verb(&self, verb: &str, manifest: &Path) -> PortResult<ElevatedOutcome> {
-        // A1/C3: never `runas` a helper that is not our valid, trusted signed binary (LPE guard).
-        verify_trusted_helper(&self.helper_path)?;
+        // A1/C3: open + verify + hold the helper. `_pin` lives to the end of this scope — past the
+        // `ShellExecuteExW` below — so no other process can replace the file in the window.
+        let _pin = PinnedHelper::open_verified(&self.helper_path)?;
         let params =
             format!("{verb} --manifest {}", quote_arg(&manifest.to_string_lossy()));
         self.run_helper(&params)
@@ -169,8 +160,9 @@ impl ElevatedIconApplier for WindowsElevatedIconApplier {
         let mut rows = Vec::with_capacity(items.len());
         for it in items {
             let kind = manifest_kind(it.target.kind)?;
-            let (expect_icon, expect_index) = self.read_current_icon(&it.target.path)?;
-            rows.push(apply_row(kind, &it.target.path, &it.asset_path, &expect_icon, expect_index));
+            // The CAS anchor is the SCAN-observed icon the operations layer threaded in — NEVER a
+            // re-read (§P1-1), so the helper refuses to clobber a value the preflight did not accept.
+            rows.push(apply_row(kind, &it.target.path, &it.asset_path, &it.expect_icon, it.expect_index));
         }
         let manifest = self.write_manifest("apply", &rows)?;
         self.run_verb("apply-desktop-items", &manifest)

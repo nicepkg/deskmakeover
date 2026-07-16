@@ -399,8 +399,10 @@ impl<'a> IconOps<'a> {
         let by_id: std::collections::HashMap<&str, &ScannedItem> =
             scan.iter().map(|s| (s.item.id.as_str(), s)).collect();
         let mut requests = Vec::with_capacity(packaged.len());
-        // The privileged shared items (Public Desktop / ProgramData) that ride ONE elevated batch.
-        let mut privileged: Vec<ApplyRequest> = Vec::new();
+        // The privileged shared items (Public Desktop / ProgramData) that ride ONE elevated batch,
+        // each paired with the scan-observed icon location — the trust-first CAS anchor the helper
+        // checks before writing (captured at scan, threaded UNCHANGED, never re-read: §P1-1).
+        let mut privileged: Vec<(ApplyRequest, (String, i32))> = Vec::new();
         // Hand-edited restore skips count as conflicts so an apply whose only intent was such a revert
         // reports a no-effect, not a clean success (codex R7-#3). Folded in before the driver so both
         // the driver-fault early-return and the normal path carry them.
@@ -430,7 +432,17 @@ impl<'a> IconOps<'a> {
             // write that always fails, then rolls the WHOLE user-desktop batch back (the on-box bug).
             if scope.classify(&req.target.path).is_some() {
                 if elevated.is_some() && is_elevatable_kind(req.target.kind) {
-                    privileged.push(req);
+                    // The scan-observed icon location (== the fingerprint the preflight will accept, since
+                    // a shortcut's fingerprint IS its icon location) is the helper's CAS anchor. `None`
+                    // (no explicit icon) → ("", 0); the helper's `GetIconLocation` reads "" for the same
+                    // target, so the `"" == ""` CAS matches.
+                    let expect = scanned
+                        .item
+                        .icon
+                        .as_ref()
+                        .map(|r| (r.location.clone(), r.index))
+                        .unwrap_or_default();
+                    privileged.push((req, expect));
                 } else {
                     conflicts.push(req.target.id.clone());
                 }
@@ -584,7 +596,7 @@ impl<'a> IconOps<'a> {
     /// the desktop original; a crash mid-helper is adopted forward per item by recovery.
     fn apply_privileged_batch(
         &self,
-        requests: Vec<ApplyRequest>,
+        requests: Vec<(ApplyRequest, (String, i32))>,
         elevated: &dyn ElevatedIconApplier,
         txn_id: u64,
         journal: &mut dyn JournalSink,
@@ -593,8 +605,17 @@ impl<'a> IconOps<'a> {
         let mut outcome = ApplyOutcome::default();
         let driver =
             TxnDriver::new(self.platform.reader, self.platform.applier, self.platform.assets);
+        // Split the scan-observed CAS anchors out (keyed by item id) before prepare consumes the
+        // requests; they are threaded UNCHANGED into each manifest row (never re-read — §P1-1).
+        let mut expects: std::collections::HashMap<String, (String, i32)> =
+            std::collections::HashMap::with_capacity(requests.len());
+        let mut plain: Vec<ApplyRequest> = Vec::with_capacity(requests.len());
+        for (req, expect) in requests {
+            expects.insert(req.target.id.as_str().to_string(), expect);
+            plain.push(req);
+        }
         // Phase 1 (CAS + anchor capture) — the SAME trust-first logic the in-process driver runs.
-        let prepared = match driver.prepare_batch(requests, ledger) {
+        let prepared = match driver.prepare_batch(plain, ledger) {
             Ok(p) => p,
             Err(e) => {
                 outcome.error = Some(format!("elevated apply preflight failed: {e}"));
@@ -643,9 +664,13 @@ impl<'a> IconOps<'a> {
                 asset: asset.clone(),
                 empty: None,
             })?;
+            let (expect_icon, expect_index) =
+                expects.get(req.target.id.as_str()).cloned().unwrap_or_default();
             items.push(ElevatedApplyItem {
                 target: req.target.clone(),
                 asset_path: asset.path.clone(),
+                expect_icon,
+                expect_index,
             });
             rows.push(PreparedRow {
                 target: req.target.clone(),
@@ -701,25 +726,32 @@ impl<'a> IconOps<'a> {
                 }
                 outcome.desktop_mutated = true;
             }
-            // A UAC cancel is a user CHOICE, not a failure: the helper never wrote, so the desktop is
-            // untouched. Report the items as conflicts (a retryable skip) — never a hard error, which
-            // would withhold the chosen style's ②③ persistence for the icons that DID apply.
+            // A UAC cancel is a user CHOICE, and it means the helper process NEVER STARTED
+            // (`ShellExecuteEx` → ERROR_CANCELLED), so the desktop is DEFINITELY untouched — a clean
+            // `TxnRolledBack` is honest here. Report the items as conflicts (a retryable skip), never a
+            // hard error, which would withhold the chosen style's ②③ persistence for the icons that DID
+            // apply.
             Ok(ElevatedOutcome::Declined) => {
                 journal.append(&JournalRecord::TxnRolledBack { txn: txn_id })?;
                 for it in &items {
                     outcome.conflicts.push(it.target.id.clone());
                 }
             }
-            // The helper ran and failed (a real problem — an untrusted-signer refusal, a write fault);
-            // it LIFO-rolled-back its own writes, so the desktop is original. Surface the error.
+            // The helper RAN and failed. Its internal rollback is BEST-EFFORT (a rollback write can
+            // itself fault), so the desktop state is UNCERTAIN — some items may still be styled (§P1-2).
+            // Do NOT journal a `TxnRolledBack` terminal (that would tell recovery "cleanly reverted,
+            // nothing to do" over possible residue, leaving a styled item untracked → irreversible).
+            // Leave the txn TERMINAL-LESS: the next operation's crash recovery inspects each live item
+            // and ADOPTS FORWARD any still-styled (privileged) one, dropping the untouched originals.
             Ok(ElevatedOutcome::Failed(e)) => {
-                journal.append(&JournalRecord::TxnRolledBack { txn: txn_id })?;
+                outcome.desktop_mutated = true;
                 outcome.error = Some(format!("elevated apply failed: {e}"));
             }
-            // The port itself faulted before/around the helper (could not stage or launch) — nothing
-            // was written. Roll the txn back and surface the error.
+            // The port faulted around the helper (launch/wait/exit-read) — the helper MAY have run and
+            // written. Same as Failed: leave the txn terminal-less for recovery, and treat the desktop
+            // as possibly-changed.
             Err(e) => {
-                journal.append(&JournalRecord::TxnRolledBack { txn: txn_id })?;
+                outcome.desktop_mutated = true;
                 outcome.error = Some(format!("elevated apply port error: {e}"));
             }
         }
@@ -826,8 +858,11 @@ impl<'a> IconOps<'a> {
         let mut restored = Vec::new();
         let mut skipped = Vec::new();
         // Privileged (Public Desktop / ProgramData) rows still wearing our style, collected here and
-        // reverted as ONE elevated batch after the walk (one UAC, not one per item).
-        let mut privileged_restores: Vec<ElevatedRestoreItem> = Vec::new();
+        // reverted as ONE elevated batch after the walk (one UAC, not one per item). Each carries its
+        // true-original fingerprint so, after the batch, a per-item re-read can CONFIRM the revert
+        // actually landed before its ledger row is dropped (§P2-1 — the helper silently skips an item
+        // the user re-edited during the UAC prompt, and its exit code alone can't say which).
+        let mut privileged_restores: Vec<(ElevatedRestoreItem, Fingerprint)> = Vec::new();
         for entry in ledger.all()? {
             match self.platform.reader.read_fingerprint(&entry.target) {
                 // The user deleted the icon: clear its row (its ICO becomes collectable below).
@@ -864,11 +899,14 @@ impl<'a> IconOps<'a> {
                     if scope.classify(&entry.target.path).is_some() {
                         match (elevated, is_elevatable_kind(entry.target.kind), &entry.original_anchor) {
                             (Some(_), true, RestoreAnchor::FileBytes { bytes }) => {
-                                privileged_restores.push(ElevatedRestoreItem {
-                                    target: entry.target.clone(),
-                                    original_bytes: bytes.clone(),
-                                    applied_icon: entry.asset.path.clone(),
-                                });
+                                privileged_restores.push((
+                                    ElevatedRestoreItem {
+                                        target: entry.target.clone(),
+                                        original_bytes: bytes.clone(),
+                                        applied_icon: entry.asset.path.clone(),
+                                    },
+                                    entry.original_fingerprint,
+                                ));
                             }
                             _ => skipped.push(entry.item),
                         }
@@ -896,29 +934,46 @@ impl<'a> IconOps<'a> {
         // above. Applied → drop each row + count restored; Declined (UAC cancel) → keep the rows + count
         // them skipped (retryable, no fault); Failed / port-Err → keep the rows + skipped + a note.
         if let (Some(elev), false) = (elevated, privileged_restores.is_empty()) {
-            match elev.restore(&privileged_restores) {
+            let items: Vec<ElevatedRestoreItem> =
+                privileged_restores.iter().map(|(it, _)| it.clone()).collect();
+            match elev.restore(&items) {
                 Ok(ElevatedOutcome::Applied) => {
-                    for it in &privileged_restores {
-                        if let Err(e) = ledger.remove(&it.target.id) {
-                            repair.push(format!("reset ledger remove {}: {e}", it.target.id.as_str()));
+                    // The helper reverted everything it COULD (it skips an item the user re-edited during
+                    // the UAC prompt), but its exit code doesn't say which. CONFIRM each per item by a
+                    // fresh (unprivileged) fingerprint read before dropping its row: back-to-original →
+                    // drop + restored; anything else (a skipped UAC-window re-edit) → keep the row +
+                    // skipped, so a user's edit is never left untracked (§P2-1).
+                    for (it, original_fp) in &privileged_restores {
+                        match self.platform.reader.read_fingerprint(&it.target) {
+                            Ok(fp) if fp == *original_fp => {
+                                if let Err(e) = ledger.remove(&it.target.id) {
+                                    repair.push(format!("reset ledger remove {}: {e}", it.target.id.as_str()));
+                                }
+                                restored.push(it.target.id.clone());
+                            }
+                            Ok(_) => skipped.push(it.target.id.clone()),
+                            Err(e) => {
+                                // Can't confirm → keep the row (still tracked) + count it skipped.
+                                repair.push(format!("reset confirm read {}: {e}", it.target.id.as_str()));
+                                skipped.push(it.target.id.clone());
+                            }
                         }
-                        restored.push(it.target.id.clone());
                     }
                 }
                 Ok(ElevatedOutcome::Declined) => {
-                    for it in &privileged_restores {
+                    for (it, _) in &privileged_restores {
                         skipped.push(it.target.id.clone());
                     }
                 }
                 Ok(ElevatedOutcome::Failed(e)) => {
                     repair.push(format!("elevated reset failed: {e}"));
-                    for it in &privileged_restores {
+                    for (it, _) in &privileged_restores {
                         skipped.push(it.target.id.clone());
                     }
                 }
                 Err(e) => {
                     repair.push(format!("elevated reset port error: {e}"));
-                    for it in &privileged_restores {
+                    for (it, _) in &privileged_restores {
                         skipped.push(it.target.id.clone());
                     }
                 }

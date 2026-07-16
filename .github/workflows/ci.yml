@@ -65,6 +65,12 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # src-tauri's build script resolves the externalBin sidecar at compile time, so it
+      # must be staged before anything (tests included) compiles deskmakeover-desktop.
+      # `bunx tauri build` re-runs this via beforeBuildCommand (build:ship) — harmless repeat.
+      - name: Stage the dm-elevated sidecar
+        run: bun scripts/stage-sidecar.mjs
+
       - name: Rust workspace tests (incl. dm-windows)
         run: cargo test --workspace
 

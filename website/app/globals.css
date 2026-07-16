@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+/*
+ * DeskMakeover website tokens.
+ * The desktop the app produces: cool paper neutrals, one coral accent
+ * ("saturation is an event" — docs/specs/02-visual-language.md).
+ */
+@theme {
+  --color-paper: oklch(99% 0.004 255);
+  --color-mist: oklch(97.5% 0.006 250);
+  --color-hairline: oklch(92% 0.008 250);
+  --color-ink: #2f363d;
+  --color-ink-soft: oklch(47% 0.016 252);
+  --color-coral: #ff6f5e;
+  --color-coral-deep: #f25c4b;
+  --color-coral-text: oklch(53% 0.16 28);
+  --color-cream: #fff7f3;
+
+  --font-sans:
+    var(--font-satoshi), ui-sans-serif, system-ui, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-display:
+    var(--font-satoshi), var(--font-zh-display), ui-sans-serif, system-ui,
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+
+  --radius-card: 20px;
+  --radius-btn: 12px;
+
+  --shadow-lift:
+    0 1px 2px rgb(47 54 61 / 0.06), 0 12px 32px -8px rgb(47 54 61 / 0.1);
+  --shadow-stage:
+    0 2px 6px rgb(47 54 61 / 0.05), 0 24px 64px -16px rgb(47 54 61 / 0.14);
+
+  --ease-glide: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-coral);
+  color: var(--color-cream);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* ————— scroll reveal (enhancement only: visible by default; JS arms
+   below-the-fold elements after hydration, IO reveals them) ————— */
+.reveal-armed {
+  opacity: 0;
+  transform: translateY(16px);
+}
+.reveal-armed.in-view {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.7s var(--ease-glide),
+    transform 0.7s var(--ease-glide);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+@media (prefers-reduced-motion: reduce), print {
+  .reveal-armed {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ————— hero transformation stage ————— */
+.stage {
+  container-type: inline-size;
+}
+.stage-after {
+  clip-path: inset(0 100% 0 0);
+}
+.stage.revealed .stage-after {
+  clip-path: inset(0 0 0 0);
+}
+.stage.scanning .stage-after {
+  transition: clip-path var(--scan-ms, 2000ms) cubic-bezier(0.45, 0.05, 0.25, 1);
+}
+.stage.restoring .stage-after {
+  transition: clip-path 420ms cubic-bezier(0.3, 0, 0.2, 1);
+}
+.stage.restoring .stage-frame {
+  animation: stage-settle 460ms var(--ease-glide);
+}
+@keyframes stage-settle {
+  0% {
+    transform: scale(1);
+  }
+  55% {
+    transform: scale(0.992);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.scanline {
+  position: absolute;
+  inset-block: -2%;
+  left: -6px;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    rgb(255 111 94 / 0.55),
+    var(--color-coral) 30%,
+    var(--color-coral-deep) 70%,
+    rgb(242 92 75 / 0.55)
+  );
+  box-shadow:
+    0 0 14px rgb(255 111 94 / 0.65),
+    0 0 44px rgb(255 111 94 / 0.35);
+  opacity: 0;
+  transform: translateX(0);
+}
+.stage.scanning .scanline {
+  opacity: 1;
+  transition: transform var(--scan-ms, 2000ms) cubic-bezier(0.45, 0.05, 0.25, 1);
+  transform: translateX(calc(100cqw + 6px));
+}
+.stage.restoring .scanline {
+  opacity: 1;
+  transition:
+    transform 420ms cubic-bezier(0.3, 0, 0.2, 1),
+    opacity 200ms linear 320ms;
+  transform: translateX(0);
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage .stage-after,
+  .stage .scanline,
+  .stage .stage-frame {
+    transition: none !important;
+    animation: none !important;
+  }
+  .scanline {
+    opacity: 0 !important;
+  }
+}

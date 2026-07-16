@@ -1,0 +1,53 @@
+name: website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - ".github/assets/**"
+      - ".github/workflows/website.yml"
+  pull_request:
+    paths:
+      - "website/**"
+      - ".github/workflows/website.yml"
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # prebuild regenerates public/img from ../.github/assets and verifies the
+      # committed zh display-font subset still covers every heading glyph
+      - name: Build static export
+        run: bun run build
+
+      - name: Deploy to Cloudflare (production)
+        if: github.event_name == 'push'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: website
+
+      - name: Upload PR preview version
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: website
+          command: versions upload

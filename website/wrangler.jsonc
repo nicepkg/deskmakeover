@@ -1,0 +1,19 @@
+{
+  // Cloudflare Workers Static Assets, assets-only (no Worker script): static
+  // requests are free and unmetered; the custom domain binds on deploy.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "deskmakeover-site",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./out",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "workers_dev": true,
+  // Custom domain: nicepkg.cn is not a zone in this Cloudflare account
+  // (verified 2026-07-17: only ai-peer.chat / cron-pulse.com / revra.dev /
+  // via-app.cn / xiaoming.app / xiaominglab.com). Re-enable once the zone
+  // question is resolved with the owner.
+  // "routes": [{ "pattern": "dm.nicepkg.cn", "custom_domain": true }]
+  "routes": []
+}

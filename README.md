@@ -43,7 +43,7 @@ Each one hand-tuned on a real desktop. Pick one, click once, every icon puts it 
 <div align="center">
 <img src=".github/assets/specimen-nine-styles.webp" width="880" alt="One folder icon rendered in all nine DeskMakeover styles" />
 <br/>
-<sub>Squircle · Porthole · Pixel Era · Creekstone · Scrapbook · Gleam · Die-Cut · Blueprint · Glaze</sub>
+<sub>Squircle · Blueprint · Pixel Era · Gleam · Glaze · Die-Cut · Porthole · Scrapbook · Creekstone</sub>
 </div>
 
 <br/>
@@ -51,18 +51,18 @@ Each one hand-tuned on a real desktop. Pick one, click once, every icon puts it 
 <table align="center">
 <tr>
   <td align="center"><img src=".github/assets/preset-squircle.webp" width="250" alt="Squircle preset" /><br/><b>Squircle</b><br/><sub>continuous corners</sub></td>
-  <td align="center"><img src=".github/assets/preset-porthole.webp" width="250" alt="Porthole preset" /><br/><b>Porthole</b><br/><sub>clean circles</sub></td>
+  <td align="center"><img src=".github/assets/preset-blueprint.webp" width="250" alt="Blueprint preset" /><br/><b>Blueprint</b><br/><sub>monochrome ink</sub></td>
   <td align="center"><img src=".github/assets/preset-pixel-era.webp" width="250" alt="Pixel Era preset" /><br/><b>Pixel Era</b><br/><sub>8-bit afternoon</sub></td>
 </tr>
 <tr>
-  <td align="center"><img src=".github/assets/preset-creekstone.webp" width="250" alt="Creekstone preset" /><br/><b>Creekstone</b><br/><sub>river-worn stone</sub></td>
-  <td align="center"><img src=".github/assets/preset-scrapbook.webp" width="250" alt="Scrapbook preset" /><br/><b>Scrapbook</b><br/><sub>pasted by hand</sub></td>
   <td align="center"><img src=".github/assets/preset-gleam.webp" width="250" alt="Gleam preset" /><br/><b>Gleam</b><br/><sub>brushed with light</sub></td>
+  <td align="center"><img src=".github/assets/preset-glaze.webp" width="250" alt="Glaze preset" /><br/><b>Glaze</b><br/><sub>cool porcelain</sub></td>
+  <td align="center"><img src=".github/assets/preset-die-cut.webp" width="250" alt="Die-Cut preset" /><br/><b>Die-Cut</b><br/><sub>sticker outlines</sub></td>
 </tr>
 <tr>
-  <td align="center"><img src=".github/assets/preset-die-cut.webp" width="250" alt="Die-Cut preset" /><br/><b>Die-Cut</b><br/><sub>sticker outlines</sub></td>
-  <td align="center"><img src=".github/assets/preset-blueprint.webp" width="250" alt="Blueprint preset" /><br/><b>Blueprint</b><br/><sub>monochrome ink</sub></td>
-  <td align="center"><img src=".github/assets/preset-glaze.webp" width="250" alt="Glaze preset" /><br/><b>Glaze</b><br/><sub>cool porcelain</sub></td>
+  <td align="center"><img src=".github/assets/preset-porthole.webp" width="250" alt="Porthole preset" /><br/><b>Porthole</b><br/><sub>clean circles</sub></td>
+  <td align="center"><img src=".github/assets/preset-scrapbook.webp" width="250" alt="Scrapbook preset" /><br/><b>Scrapbook</b><br/><sub>pasted by hand</sub></td>
+  <td align="center"><img src=".github/assets/preset-creekstone.webp" width="250" alt="Creekstone preset" /><br/><b>Creekstone</b><br/><sub>river-worn stone</sub></td>
 </tr>
 </table>
 

@@ -43,7 +43,7 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 <div align="center">
 <img src=".github/assets/specimen-nine-styles.webp" width="880" alt="同一个文件夹图标在九套风格下的样子" />
 <br/>
-<sub>方圆 · 圆窗 · 像素纪元 · 溪石 · 拼贴手帐 · 浮光 · 随形贴 · 蓝图 · 釉光</sub>
+<sub>方圆 · 蓝图 · 像素纪元 · 浮光 · 釉光 · 随形贴 · 圆窗 · 拼贴手帐 · 溪石</sub>
 </div>
 
 <br/>
@@ -51,18 +51,18 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 <table align="center">
 <tr>
   <td align="center"><img src=".github/assets/preset-squircle.webp" width="250" alt="方圆" /><br/><b>方圆</b><br/><sub>圆角连续，顺滑过渡</sub></td>
-  <td align="center"><img src=".github/assets/preset-porthole.webp" width="250" alt="圆窗" /><br/><b>圆窗</b><br/><sub>干净利落的圆形</sub></td>
+  <td align="center"><img src=".github/assets/preset-blueprint.webp" width="250" alt="蓝图" /><br/><b>蓝图</b><br/><sub>一整套工程蓝图</sub></td>
   <td align="center"><img src=".github/assets/preset-pixel-era.webp" width="250" alt="像素纪元" /><br/><b>像素纪元</b><br/><sub>回到八比特的下午</sub></td>
 </tr>
 <tr>
-  <td align="center"><img src=".github/assets/preset-creekstone.webp" width="250" alt="溪石" /><br/><b>溪石</b><br/><sub>溪水磨圆的石头</sub></td>
-  <td align="center"><img src=".github/assets/preset-scrapbook.webp" width="250" alt="拼贴手帐" /><br/><b>拼贴手帐</b><br/><sub>随手拼贴的一页</sub></td>
   <td align="center"><img src=".github/assets/preset-gleam.webp" width="250" alt="浮光" /><br/><b>浮光</b><br/><sub>原样的图标，掠过一层光</sub></td>
+  <td align="center"><img src=".github/assets/preset-glaze.webp" width="250" alt="釉光" /><br/><b>釉光</b><br/><sub>上过釉的冷瓷面</sub></td>
+  <td align="center"><img src=".github/assets/preset-die-cut.webp" width="250" alt="随形贴" /><br/><b>随形贴</b><br/><sub>沿轮廓裁开的贴纸</sub></td>
 </tr>
 <tr>
-  <td align="center"><img src=".github/assets/preset-die-cut.webp" width="250" alt="随形贴" /><br/><b>随形贴</b><br/><sub>沿轮廓裁开的贴纸</sub></td>
-  <td align="center"><img src=".github/assets/preset-blueprint.webp" width="250" alt="蓝图" /><br/><b>蓝图</b><br/><sub>一整套工程蓝图</sub></td>
-  <td align="center"><img src=".github/assets/preset-glaze.webp" width="250" alt="釉光" /><br/><b>釉光</b><br/><sub>上过釉的冷瓷面</sub></td>
+  <td align="center"><img src=".github/assets/preset-porthole.webp" width="250" alt="圆窗" /><br/><b>圆窗</b><br/><sub>干净利落的圆形</sub></td>
+  <td align="center"><img src=".github/assets/preset-scrapbook.webp" width="250" alt="拼贴手帐" /><br/><b>拼贴手帐</b><br/><sub>随手拼贴的一页</sub></td>
+  <td align="center"><img src=".github/assets/preset-creekstone.webp" width="250" alt="溪石" /><br/><b>溪石</b><br/><sub>溪水磨圆的石头</sub></td>
 </tr>
 </table>
 

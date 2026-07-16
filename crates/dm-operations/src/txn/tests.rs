@@ -388,6 +388,45 @@ fn a_user_edit_between_crash_and_restart_is_preserved_never_clobbered() {
 }
 
 #[test]
+fn recovery_never_writes_to_restore_an_already_original_protected_target() {
+    // Owner report 2026-07-16: a shared-desktop shortcut (`C:\Users\Public\Desktop\Chrome.lnk`)
+    // needs admin to write; an unelevated apply PREPARED it (anchored its original), then the `.lnk`
+    // write hit Access Denied, leaving the txn incomplete with the file STILL at its original. Every
+    // later apply first tries to recover this txn — and the OLD code wrote the original back, hitting
+    // the SAME Access Denied forever: recovery degraded, never checkpointed, and the whole feature
+    // wedged. Recovery must see the target is ALREADY its original and NEVER write, so the txn clears.
+    let world = World::shared();
+    let a = target("A"); // stands in for the protected Public-desktop `.lnk`
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    driver.apply(1, vec![request(&a, &world, "hashA")], &mut journal, &mut ledger).unwrap();
+
+    // Incomplete txn: prepared A, but the desktop write never landed — so the file is STILL at its
+    // original and no terminal record exists.
+    let records = incomplete_prepared_records(&journal);
+    world.borrow_mut().put(&a.path, b"orig-A"); // the failed write left it at the original
+    // The target is permanently unwritable (a Public-desktop `.lnk` for an unelevated process).
+    world.borrow_mut().fail_restore(&a.path);
+
+    let mut fresh = MemLedgerStore::new();
+    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+
+    // The fix: recovery saw live == original and SKIPPED the pointless (here impossible) restore
+    // write, so the un-writable target never faults recovery.
+    assert!(
+        out.degraded.is_empty(),
+        "recovery must not attempt a restore write on an already-original target: {:?}",
+        out.degraded
+    );
+    assert!(out.aborted.is_empty(), "nothing moved — the file was already its original");
+    assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A", "the desktop stays untouched");
+    // degraded empty ⇒ recover_from_journal checkpoints the txn ⇒ the wedge clears for good.
+}
+
+#[test]
 fn crash_after_write_before_journal_preserves_our_own_uncommitted_style() {
     // The one window L1 leaves (owner chose stop-at-L1 on 2026-07-14; the full close is the deferred
     // intended-fp L2, codex nc-review 🟠): a crash AFTER `applier.apply` mutated the desktop but BEFORE

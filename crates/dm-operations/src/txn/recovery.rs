@@ -387,6 +387,21 @@ fn abort_incomplete(
             outcome.preserved.push(id.clone());
             continue;
         }
+        // ALREADY at its true original (owner 2026-07-16): `is_ours` holds because the live surface is
+        // EITHER this txn's applied style OR its original. When it is already the original, the styling
+        // write never landed (crash / Access-Denied before the write), so the desktop is already
+        // correct — writing the original back is a POINTLESS restore. And that pointless write can
+        // itself FAIL forever on a permission-protected target (a `C:\Users\Public\Desktop\*.lnk` an
+        // unelevated apply can never write): the failed restore degrades, the txn never checkpoints,
+        // and every future apply/reset wedges on the un-clearable crash. So never write to restore a
+        // value that already matches: drop any stale row (a no-op for an incomplete txn that committed
+        // none) and move on — nothing moved, so this item is NOT counted as `aborted`.
+        if live == Some(rec.original_fingerprint) {
+            if let Err(e) = ledger.remove(id) {
+                outcome.degraded.push(format!("recover abort ledger remove {}: {e}", id.as_str()));
+            }
+            continue;
+        }
         // Best-effort (codex R4-Block 5): a restore/remove fault on one item must not bail with a bare
         // Err over the items this recovery already restored. Record it as degraded and press on;
         // restore is idempotent, so a later retry finishes the unreconciled items. The row is only

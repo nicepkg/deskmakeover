@@ -355,6 +355,15 @@ impl IconHost {
             .map_err(|e| e.to_string())?;
         // A reset is a mutation → bump the epoch so a concurrent in-flight apply rejects.
         *op_epoch += 1;
+        // FENCE the scan (mirrors switch_version + the apply's requires_rescan path). The reset
+        // reverted every icon to its original, so the cached scan — which still holds the PRE-reset
+        // STYLED fingerprints — is now stale. Without this fence a following apply binds those stale
+        // fingerprints as its CAS anchors, every one mismatches the now-original desktop, and the
+        // whole apply reports "nothing styled" (owner 2026-07-17: reset → pick a preset → apply → 0
+        // succeeded). Invalidating the scan forces a fresh rescan (original fingerprints) first.
+        st.scan_revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+        st.scan_valid = false;
+        st.scan.clear();
         let restored_paths: Vec<(String, bool)> = row_paths
             .into_iter()
             .filter(|(id, ..)| outcome.restored.contains(id))

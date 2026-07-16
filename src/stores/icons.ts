@@ -1035,7 +1035,22 @@ export const useIcons = create<IconsState>((set, get) => {
           }),
         })
         toastOf(result)
-        if (result.ok) set({ waveKind: 'settle', waveStamp: Date.now() })
+        if (result.ok) {
+          set({ waveKind: 'settle', waveStamp: Date.now() })
+          // The reset reverted every icon to its ORIGINAL; the cached scan still holds the pre-reset
+          // STYLED fingerprints, so a following apply would bind those as its CAS anchors, mismatch
+          // the now-original desktop on every item, and style nothing (owner 2026-07-17: reset →
+          // pick a preset → apply → 0 succeeded). Refresh the scan (fresh revision + original
+          // fingerprints) so the next apply's CAS matches. Keep the user's live draft so they can
+          // immediately re-apply. Best-effort: a failed refresh keeps the reverted view, and the
+          // host's revision fence still turns a stale apply into an honest "rescan", never silent.
+          try {
+            const fetched = await fetchScan()
+            adoptScan(fetched.scan, fetched.persisted, currentDraft() ?? draftFromPersisted(fetched.persisted))
+          } catch (err) {
+            console.error('post-restore rescan failed', err)
+          }
+        }
       } catch {
         const cur = get()
         if (cur.state) set({ state: { ...cur.state, working: false } })

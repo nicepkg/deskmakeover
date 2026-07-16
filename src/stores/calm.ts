@@ -383,12 +383,13 @@ export function groupedRows(rows: Record<CalmControlId, CalmRowState>) {
   return groups
 }
 
-/** §5 degraded honesty (ADR-0023 D2): TRUE when the probe found NO one-click writable row at
- *  all — the real-Windows stack ships fail-closed until the W3 cert lab certifies recipes, so
- *  every automatic candidate sits held. The hero must then wear the honest guided-only face:
- *  an eternal 「扫描中」 spinner (the pre-fix behavior) reads as a hang, and a 「可以让 0 个
- *  界面安静下来」 line reads as a bug. Quieted/reopened rows keep the normal hero (they carry
- *  real state worth summarizing). */
+/** ADR-0023 D2: TRUE when the probe found NO one-click writable row at all — the real-Windows
+ *  stack ships fail-closed until the W3 cert lab certifies recipes, so every automatic candidate
+ *  sits either walkable (guided group) or held. The page then HIDES the hero entirely (owner
+ *  2026-07-16): with nothing to one-click, an apology-for-absence block only steals attention —
+ *  the walk groups below are the whole page. (An eternal 「扫描中」 spinner would read as a hang
+ *  and a 「可以让 0 个界面安静下来」 line as a bug, so neither is shown either.) Quieted/reopened
+ *  rows keep the normal hero — they carry real state worth summarizing. */
 export function guidedOnlyFace(probed: boolean, rows: Record<CalmControlId, CalmRowState>): boolean {
   if (!probed) return false
   return (

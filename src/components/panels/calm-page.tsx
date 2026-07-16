@@ -91,82 +91,76 @@ export function CalmPage() {
     <FullPage title={t('Panel_CalmTitle')}>
         {/* Hero: dynamic words only (owner 2026-07-13) — a fixed establishing image
             would hard-code the starter count and lie the moment the user excludes a
-            row or new controls land. The row schematics carry all the visuals. */}
-        <div className="mb-6 flex items-center gap-6 rounded-2xl border border-hair bg-raised px-6 py-5">
-          {scanFailed ? (
-            <>
-              <div className="min-w-0 flex-1">
-                <p className="text-[18px] font-medium tracking-[-0.01em] text-t1">{t('Calm_ScanFailed_Head')}</p>
-                <p className="mt-1.5 text-[12px] leading-relaxed text-t3">{t('Calm_ScanFailed_Sub')}</p>
-              </div>
-              <div className="w-[200px] shrink-0">
+            row or new controls land. The row schematics carry all the visuals.
+            HIDDEN ENTIRELY in the guided-only state (owner 2026-07-16): with every
+            automatic row fail-closed there is nothing to one-click, so an
+            apology-for-absence block only steals attention — the walk groups below
+            are the whole page. A failed scan keeps its own retry hero. */}
+        {scanFailed ? (
+          <div className="mb-6 flex items-center gap-6 rounded-2xl border border-hair bg-raised px-6 py-5">
+            <div className="min-w-0 flex-1">
+              <p className="text-[18px] font-medium tracking-[-0.01em] text-t1">{t('Calm_ScanFailed_Head')}</p>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-t3">{t('Calm_ScanFailed_Sub')}</p>
+            </div>
+            <div className="w-[200px] shrink-0">
+              <button
+                type="button"
+                onClick={() => void useCalm.getState().probe()}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-chip px-4 py-2 text-[13px] font-medium text-t2 transition-colors hover:bg-raised-hov hover:text-t1"
+              >
+                <RotateCcw size={13} />
+                {t('Calm_ScanFailed_Retry')}
+              </button>
+            </div>
+          </div>
+        ) : guidedFace ? null : (
+          <div className="mb-6 flex items-center gap-6 rounded-2xl border border-hair bg-raised px-6 py-5">
+            <div className="min-w-0 flex-1">
+              {/* Typographic hierarchy (owner 2026-07-13): the count line IS the
+                  page's message — large; everything explanatory shrinks and fades. */}
+              <p className="text-[18px] font-medium tracking-[-0.01em] text-t1">
+                {quieted > 0
+                  ? format(t('Calm_Summary'), quieted)
+                  : format(t('Calm_CanQuiet'), candidates.length)}
+              </p>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-t3">{t('Calm_HeroPromise')}</p>
+              {/* HealthCheck re-propose (spec 08 §6): additive notice, never an
+                  auto-replay — 重新关闭 runs the same verify pipeline, scoped to
+                  the ACTIONABLE set (excluded rows are user-silenced). */}
+              {reopenedActionable.length > 0 && (
+                <p className="mt-2.5 flex items-center gap-2 text-[12.5px] font-medium text-t1">
+                  <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-amber" />
+                  {format(t('Calm_Notice_Reopened'), reopenedActionable.length)}
+                  <ChipButton onClick={() => void useCalm.getState().applyAll(reopenedActionable)}>
+                    {t('Calm_Notice_ReClose')}
+                  </ChipButton>
+                </p>
+              )}
+            </div>
+            <div className="w-[200px] shrink-0">
+              {/* Spec 08 §10: verified success is coral-ink on this page — the shared
+                  synced teal would read as the banned green-family shield (codex R3 #5). */}
+              <CtaButton
+                phase={phase}
+                onClick={() => setConfirmOpen(true)}
+                className={phase === 'synced' ? 'bg-coral/10 text-coral-ink' : undefined}
+              >
+                {ctaLabel}
+              </CtaButton>
+              {/* Restore gates on live LEDGER rows, not the verified count. */}
+              {restorable > 0 && (
                 <button
                   type="button"
-                  onClick={() => void useCalm.getState().probe()}
-                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-chip px-4 py-2 text-[13px] font-medium text-t2 transition-colors hover:bg-raised-hov hover:text-t1"
+                  onClick={() => void useCalm.getState().restoreAll()}
+                  className="mt-2 inline-flex w-full items-center justify-center gap-1 text-[12px] text-t3 transition-colors hover:text-t1"
                 >
-                  <RotateCcw size={13} />
-                  {t('Calm_ScanFailed_Retry')}
+                  <RotateCcw size={12} />
+                  {t('Calm_Restore')}
                 </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="min-w-0 flex-1">
-                {/* Typographic hierarchy (owner 2026-07-13): the count line IS the
-                    page's message — large; everything explanatory shrinks and fades. */}
-                <p className="text-[18px] font-medium tracking-[-0.01em] text-t1">
-                  {guidedFace
-                    ? t('Calm_GuidedOnly_Head')
-                    : quieted > 0
-                      ? format(t('Calm_Summary'), quieted)
-                      : format(t('Calm_CanQuiet'), candidates.length)}
-                </p>
-                <p className="mt-1.5 text-[12px] leading-relaxed text-t3">
-                  {guidedFace ? t('Calm_GuidedOnly_Sub') : t('Calm_HeroPromise')}
-                </p>
-                {/* HealthCheck re-propose (spec 08 §6): additive notice, never an
-                    auto-replay — 重新关闭 runs the same verify pipeline, scoped to
-                    the ACTIONABLE set (excluded rows are user-silenced). */}
-                {reopenedActionable.length > 0 && (
-                  <p className="mt-2.5 flex items-center gap-2 text-[12.5px] font-medium text-t1">
-                    <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-amber" />
-                    {format(t('Calm_Notice_Reopened'), reopenedActionable.length)}
-                    <ChipButton onClick={() => void useCalm.getState().applyAll(reopenedActionable)}>
-                      {t('Calm_Notice_ReClose')}
-                    </ChipButton>
-                  </p>
-                )}
-              </div>
-              <div className="w-[200px] shrink-0">
-                {/* Spec 08 §10: verified success is coral-ink on this page — the shared
-                    synced teal would read as the banned green-family shield (codex R3 #5).
-                    The guided-only face carries NO CTA (nothing one-click exists to run);
-                    the guided rows below are the page's working surface. */}
-                {!guidedFace && (
-                  <CtaButton
-                    phase={phase}
-                    onClick={() => setConfirmOpen(true)}
-                    className={phase === 'synced' ? 'bg-coral/10 text-coral-ink' : undefined}
-                  >
-                    {ctaLabel}
-                  </CtaButton>
-                )}
-                {/* Restore gates on live LEDGER rows, not the verified count. */}
-                {restorable > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => void useCalm.getState().restoreAll()}
-                    className="mt-2 inline-flex w-full items-center justify-center gap-1 text-[12px] text-t3 transition-colors hover:text-t1"
-                  >
-                    <RotateCcw size={12} />
-                    {t('Calm_Restore')}
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {!scanFailed && (
           <div className="flex flex-col gap-6">

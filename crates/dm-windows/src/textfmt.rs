@@ -5,12 +5,14 @@
 
 const INTERNET_SHORTCUT_SECTION: &str = "[InternetShortcut]";
 
-/// Strips a leading UTF-8 BOM. Windows Explorer writes `.url` (and `desktop.ini`) files
-/// with a BOM whenever their content has non-ASCII characters — routine for Chinese site
-/// names and paths, which is squarely this product's userbase. `str::trim` does NOT remove
-/// U+FEFF (it is Unicode category `Cf`, not `White_Space`), so a section header behind a BOM
-/// otherwise fails every `trim().eq_ignore_ascii_case(...)` match and the whole file reads as
-/// sectionless. The BOM only ever appears at byte 0, i.e. the start of the first line. (APPLY-1)
+/// Strips a leading U+FEFF BOM from an ALREADY-DECODED string. Various tools write `.url` and
+/// `desktop.ini` with a BOM when the content has non-ASCII characters (Chinese site names/paths,
+/// squarely this product's userbase); the byte-level decoder ([`decode_ini_text_bytes`]) already
+/// consumes the UTF-8/UTF-16 BOM, so this is the defensive final guard on the decoded text.
+/// `str::trim` does NOT remove U+FEFF (it is Unicode category `Cf`, not `White_Space`), so a
+/// section header behind a residual BOM would otherwise fail every
+/// `trim().eq_ignore_ascii_case(...)` match and the whole file would read as sectionless. The BOM
+/// only ever appears at char 0. (APPLY-1)
 fn strip_bom(s: &str) -> &str {
     s.strip_prefix('\u{feff}').unwrap_or(s)
 }

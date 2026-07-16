@@ -15,7 +15,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ConfigDto, IconItemDto, IconKind, IconKindBucket, TypeOverrides } from '@/bridge/types'
-import { BASE_CONFIGS, PRESET_TYPE_OVERRIDES } from '@/lib/icons-assemble'
 import { DEFAULT_KIND_POLICY, kindBucket } from '@/lib/kind-policy'
 import { appAccentSeed, resolveTypeConfig, typeHasFixedPlate } from '@/lib/type-config'
 import { computeHueSpread } from '@/icon-compositor/hue-spread'
@@ -25,10 +24,53 @@ import type { Raster } from '@/icon-compositor/raster'
 import { effectiveTileConfig } from '@/stores/icons'
 import { decodeSourceImage } from './source-decode'
 
-/** Preset card order (mock-desktop BASE_CONFIGS key order); spectrum is the
- *  factory default and Tier A's look. */
+/** The v2 preset lineup the FROZEN corpus was captured from — a historical
+ *  snapshot, deliberately DECOUPLED from the live collection (v3, owner-curated
+ *  2026-07-16, replaced these seven): re-capturing must reproduce the corpus
+ *  byte-identically, so these configs live here, not in icons-assemble. */
 export const PRESET_IDS = ['spectrum', 'glass', 'ink', 'white', 'stationery', 'pebble', 'ascast'] as const
 export type PresetId = (typeof PRESET_IDS)[number]
+
+export const ORACLE_BASE_CONFIGS: Record<PresetId, ConfigDto> = {
+  spectrum: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Halo', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
+  glass: { shape: 'Samsung', subject: 'Original', plateBand: 'Vivid', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Shadow', markColor: null, plateColor: null, size: 'Mid', filter: 'Glass' },
+  ink: { shape: 'Circle', subject: 'BlackWhite', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Arc', markColor: null, plateColor: '#F4F1EA', size: 'Mid', filter: 'None' },
+  white: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Ring', markColor: null, plateColor: '#FFFFFF', size: 'Mid', filter: 'None' },
+  stationery: { shape: 'Apple', subject: 'Original', plateBand: 'Quiet', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Satin', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
+  pebble: { shape: 'Pebble', subject: 'Original', plateBand: 'Quiet', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Shadow', markColor: null, plateColor: null, size: 'Mid', filter: 'Sticker' },
+  ascast: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Ring', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
+}
+
+export const ORACLE_TYPE_OVERRIDES: Record<PresetId, TypeOverrides> = {
+  spectrum: {
+    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: null, plateFallback: 'derived' } },
+    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
+  },
+  stationery: {
+    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#EAD6A8' } },
+    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
+  },
+  glass: {
+    Folder: { source: 'custom', patch: { shape: 'Samsung', plateColor: null, plateFallback: 'derived' } },
+    File: { source: 'custom', patch: { shape: 'Samsung', plateColor: '#FFFFFF' } },
+  },
+  pebble: {
+    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#EAD6A8' } },
+    File: { source: 'custom', patch: { shape: 'Teardrop', plateColor: '#E9E2D4' } },
+  },
+  ink: {
+    Folder: { source: 'custom', patch: { shape: 'Bookmark', plateColor: '#EDE8DC' } },
+    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#F4F1EA' } },
+  },
+  white: {
+    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#FFFFFF' } },
+    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#FFFFFF' } },
+  },
+  ascast: {
+    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: null, plateFallback: 'white' } },
+    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
+  },
+}
 
 // The real-icon pack: the committed dev-fixture SSoT (Microsoft system + brand art,
 // ADR-0015 D9 — lives in the repo, stripped from every ship).
@@ -133,7 +175,7 @@ export interface LookConfig {
 }
 
 export function lookOf(id: PresetId): LookConfig {
-  return { id, config: { ...BASE_CONFIGS[id] }, typeOverrides: structuredClone(PRESET_TYPE_OVERRIDES[id] ?? {}) }
+  return { id, config: { ...ORACLE_BASE_CONFIGS[id] }, typeOverrides: structuredClone(ORACLE_TYPE_OVERRIDES[id] ?? {}) }
 }
 
 /** Cross-icon hue spread for a look — a faithful mirror of stores/icons.ts

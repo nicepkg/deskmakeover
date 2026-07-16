@@ -17,12 +17,16 @@ export const DEFAULT_KIND_POLICY: KindPolicy = { App: true, Folder: true, File: 
 /** The bucket an icon kind belongs to, or null for Unsupported (ungoverned). */
 export function kindBucket(kind: IconKind): IconKindBucket | null {
   switch (kind) {
+    // Kind carries TARGET semantics (owner 2026-07-16, supersedes ADR-0017 D1's
+    // "regardless of target"): the scan resolves a .lnk's target and classifies
+    // by it — a shortcut to a folder arrives kind=Folder + isShortcut=true and
+    // walks the Folder ladder/policy while keeping the shortcut mark layer.
+    // A bare 'Shortcut' kind = unresolvable target (broken link) → App fallback.
     case 'Shortcut':
     case 'UrlShortcut':
     case 'AppxShortcut':
     // Bare .exe launchers are PROGRAMS to the user (ADR-0017 D1) — they
-    // bucket with App, never with documents. Mechanism semantics: shortcuts
-    // stay here regardless of target (owner override of the panel's 2:1).
+    // bucket with App, never with documents.
     case 'ExecutableFile':
     // System virtual items (Recycle Bin / This PC / Network / Control Panel)
     // are PROGRAMS in the user's mind (owner merge 2026-07-16) — same bucket,

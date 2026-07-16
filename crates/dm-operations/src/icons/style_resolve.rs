@@ -192,6 +192,17 @@ impl StyleRecipe {
         }
     }
 
+    /// True when the bucket's custom patch asserts its own SHAPE (TS
+    /// `typeAssertsShape`): the more specific assertion, so the uniform
+    /// shortcut shape yields to it (owner 2026-07-16).
+    fn type_asserts_shape(&self, bucket: Option<KindBucket>) -> bool {
+        let Some(bucket) = bucket else { return false };
+        self.override_for(bucket).is_some_and(|entry| {
+            entry.source == Some(OverrideSource::Custom)
+                && entry.patch.as_ref().is_some_and(|p| p.shape.is_some())
+        })
+    }
+
     /// The config an item of `kind` renders with under this recipe, or `None` when the item does
     /// not participate (kind-policy opt-out → keep original). Mirrors `effectiveTileConfig` for
     /// items with no per-icon override (the background item's definition).
@@ -209,8 +220,12 @@ impl StyleRecipe {
                 }
             }
         }
-        // The opt-in uniform shortcut shape rides ON TOP of the type ladder (ADR-0017 D5).
-        if is_shortcut {
+        // Shape precedence (owner 2026-07-16, TS `effectiveTileConfig` in lockstep):
+        // type patch shape > uniform shortcut shape > global shape. The opt-in
+        // shortcut uniform applies only when the item's bucket didn't assert its
+        // own shape — a folder/file shortcut keeps its type's shape and still
+        // renders the shortcut mark (that layer keys on `is_shortcut` alone).
+        if is_shortcut && !self.type_asserts_shape(bucket_of(kind)) {
             if let Some(shape) = cfg.shortcut_shape.clone() {
                 cfg.shape = shape;
             }
@@ -434,6 +449,38 @@ mod tests {
         assert_eq!(shortcut.shape, IconShape::Diamond, "shortcuts adopt the uniform shape");
         let folder = recipe.effective_config(ItemKind::Folder, false).unwrap().unwrap();
         assert_eq!(folder.shape, IconShape::Circle, "non-shortcuts keep the ladder shape");
+    }
+
+    #[test]
+    fn a_type_patch_shape_beats_the_uniform_shortcut_shape() {
+        // Shape precedence (owner 2026-07-16): type patch shape > uniform shortcut
+        // shape > global shape — one rule for every bucket. Kind carries TARGET
+        // semantics: a folder shortcut arrives as ItemKind::Folder + is_shortcut.
+        let mut cfg = base_config();
+        cfg["shortcutShape"] = json!("Diamond");
+        let s = style(json!({
+            "config": cfg,
+            "kindPolicy": {},
+            "typeOverrides": {
+                "Folder": { "source": "custom", "patch": { "shape": "Folder" } },
+                "App": { "source": "custom", "patch": { "shape": "Tile" } },
+                "File": { "source": "custom", "patch": { "tint": "#3FB6A8" } }
+            }
+        }));
+        let recipe = StyleRecipe::parse(&s).unwrap();
+        // A folder shortcut keeps the Folder type's shape, not the uniform.
+        let folder_lnk = recipe.effective_config(ItemKind::Folder, true).unwrap().unwrap();
+        assert_eq!(folder_lnk.shape, IconShape::Folder, "type shape wins over the uniform");
+        // The App bucket obeys the same precedence (owner: one rule everywhere).
+        let app_lnk = recipe.effective_config(ItemKind::Shortcut, true).unwrap().unwrap();
+        assert_eq!(app_lnk.shape, IconShape::Tile, "App type shape wins too");
+        // A patch WITHOUT a shape still yields to the uniform.
+        let file_lnk = recipe.effective_config(ItemKind::RegularFile, true).unwrap().unwrap();
+        assert_eq!(file_lnk.shape, IconShape::Diamond, "shape-less patch yields to the uniform");
+        assert_eq!(file_lnk.tint, 0x3FB6A8, "the rest of the patch still applies");
+        // Non-shortcut folders never take the uniform.
+        let folder = recipe.effective_config(ItemKind::Folder, false).unwrap().unwrap();
+        assert_eq!(folder.shape, IconShape::Folder);
     }
 
     #[test]

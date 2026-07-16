@@ -184,6 +184,48 @@ describe('effective tile config (override folding)', () => {
   })
 })
 
+// Target-resolved shortcuts (owner 2026-07-16): kind carries TARGET semantics
+// (a .lnk to a folder arrives kind=Folder + isShortcut=true), and shape
+// precedence is type patch shape > uniform shortcut shape > global shape —
+// one rule for every bucket. The mark layer keys on isShortcut alone.
+describe('target-resolved shortcuts × uniform shortcut shape', () => {
+  const uni: ConfigDto = { ...config, shortcutShape: 'Circle' }
+
+  test('a folder shortcut keeps its Folder type shape over the uniform', () => {
+    const overrides = { Folder: { source: 'custom' as const, patch: { shape: 'Bookmark' as const } } }
+    const eff = effectiveTileConfig(item('fl', { kind: 'Folder', isShortcut: true }), uni, DEFAULT_KIND_POLICY, overrides)
+    expect(eff.config.shape).toBe('Bookmark')
+  })
+
+  test('without a type shape the uniform shortcut shape applies', () => {
+    const eff = effectiveTileConfig(item('fl', { kind: 'Folder', isShortcut: true }), uni, DEFAULT_KIND_POLICY)
+    expect(eff.config.shape).toBe('Circle')
+  })
+
+  test('the App bucket obeys the same precedence (one rule everywhere)', () => {
+    const overrides = { App: { source: 'custom' as const, patch: { shape: 'Tile' as const } } }
+    const eff = effectiveTileConfig(item('a'), uni, DEFAULT_KIND_POLICY, overrides)
+    expect(eff.config.shape).toBe('Tile')
+  })
+
+  test('a type patch WITHOUT shape still yields to the uniform', () => {
+    const overrides = { File: { source: 'custom' as const, patch: { tint: '#3FB6A8' } } }
+    const eff = effectiveTileConfig(item('doc', { kind: 'RegularFile', isShortcut: true }), uni, DEFAULT_KIND_POLICY, overrides)
+    expect(eff.config.shape).toBe('Circle')
+    expect(eff.config.tint).toBe('#3FB6A8')
+  })
+
+  test('participation follows the target bucket: Folder opt-out silences a folder shortcut', () => {
+    const noFolders = { ...DEFAULT_KIND_POLICY, Folder: false }
+    expect(effectiveTileConfig(item('fl', { kind: 'Folder', isShortcut: true }), uni, noFolders).showOriginal).toBe(true)
+  })
+
+  test('non-shortcut items never take the uniform shortcut shape', () => {
+    const eff = effectiveTileConfig(item('f', { kind: 'Folder', isShortcut: false }), uni, DEFAULT_KIND_POLICY)
+    expect(eff.config.shape).toBe('Apple')
+  })
+})
+
 // A1: System Default is a RESET, not a style. Selecting it flips the working
 // design to bare (the mirror's show-original path) with NO host write; the CTA
 // crossing is a restore, and it is undoable + cleared by any real look edit.

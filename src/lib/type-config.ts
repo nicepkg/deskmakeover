@@ -37,6 +37,16 @@ export function typeIsCustom(overrides: TypeOverrides | undefined, bucket: IconK
   return !!entry && entry.source === 'custom' && !!entry.patch && Object.keys(entry.patch).length > 0
 }
 
+/** True when the bucket's custom patch asserts its own SHAPE. Shape precedence
+ *  (owner 2026-07-16, supersedes the unconditional swap): type patch shape >
+ *  uniform shortcut shape > global shape — a per-type shape is the more
+ *  specific user assertion, so the opt-in shortcut uniform yields to it. */
+export function typeAssertsShape(overrides: TypeOverrides | undefined, bucket: IconKindBucket | null): boolean {
+  if (!bucket) return false
+  const entry = overrides?.[bucket]
+  return !!entry && entry.source === 'custom' && entry.patch?.shape !== undefined
+}
+
 /** A type that PINS its plate colour exits the hue-spread pool — one hue
  *  authority per plate (ADR-0017 D3): the pool never fights a fixed plate. */
 export function typeHasFixedPlate(overrides: TypeOverrides | undefined, bucket: IconKindBucket | null): boolean {

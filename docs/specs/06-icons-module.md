@@ -172,17 +172,19 @@ now the certifying oracle for the Rust core, ADR-0019.)
     (rides the generated `dm-contracts` DTOs at bridge schema 8; F8/C# sync is void
     per ADR-0019). Marks are silhouette-aware on free-form icons; Card→Shadow
     (neutral drop shadow), Echo→Halo (silhouette outline).
-12. **Default look = 满彩 colour field (ADR-0016 + amendment, owner
-    2026-07-10).** **满彩 (Field)** is the factory-default COORDINATE (原彩 subject × a derived
-    plate), NOT a fourth subject mode (ADR-0018 two-axis); recipe v7 (designer-seat acceptance PASS)
-    lives in spec 02 §Default Composition. **Iron law: subject pixels are never
+12. **Default look = 方圆/squircle (Preset Collection v3, owner-curated
+    2026-07-16).** The factory default is the owner's hand-tuned 方圆 recipe
+    (Apple squircle × white fallback, Ring mark, Folder/File type shapes —
+    `docs/product/preset-collection-v3.md`). The 满彩 colour-field COORDINATE
+    (原彩 subject × a derived plate, ADR-0016/0018) remains a supported axis
+    position, no longer the default. **Iron law: subject pixels are never
     recoloured** (the knockout lane was built, owner-rejected, deleted);
     separation = coloured plates (one light line) + silhouette shadows/halos +
     the cross-icon hue-spread pass (worker-reported seeds → deterministic
     main-thread relaxation → `RenderOpts.fieldSeed` on renders AND bakes).
-    Preset lineup: **Preset Collection v2 — seven** (spectrum default · stationery · glass · pebble ·
-    ink · white · as-cast), superseding the earlier 默认/极简白/安静/原彩保真 four (see
-    `docs/product/preset-collection-v2.md` + spec 02); 玻璃 rim rework SHIPPED (T7). The
+    Preset lineup: **Collection v3 — nine, owner-curated** (方圆 default · 圆窗 ·
+    像素纪元 · 溪石 · 拼贴手帐 · 浮光 · 随形贴 · 蓝图 · 釉光), superseding the
+    v2 seven (`preset-collection-v2.md`, retired wholesale); 玻璃 rim rework SHIPPED (T7). The
     kindShapes boolean toggle was built (T5) and then SUPERSEDED by the
     per-type distinction system (§6.5, ADR-0017); kind colour families and
     the letter badge were built and owner-rejected (deleted). Still owed:
@@ -343,15 +345,19 @@ styling bounded by a findability envelope. Normative decisions in ADR-0017;
 contract facts here:
 
 - **Type space**: the 3 buckets × shortcut as an orthogonal modifier.
-  MECHANISM semantics (owner override): every shortcut kind (`Shortcut`,
-  `UrlShortcut`, `AppxShortcut`) buckets to App regardless of target; bare
-  `.exe` files join the App bucket (the Rust host classifies by extension at Windows
-  integration; the dev mock flags fixtures now); system virtual items
-  (RecycleBin/SystemIcon) joined App too (owner merge 2026-07-16 — the
-  separate System bucket and its grayscale demotion ladder are gone).
-  App's user-facing label becomes 程序.
+  TARGET semantics (owner 2026-07-16, supersedes the earlier "regardless of
+  target" mechanism override): `kind` describes WHAT the item is — the scan
+  resolves a `.lnk`'s target and classifies by it (target folder →
+  `kind=Folder`, target document → `kind=RegularFile`, target launcher /
+  unresolvable → `kind=Shortcut`) — while `isShortcut` independently records
+  linkness. A folder/file shortcut therefore walks its target bucket's type
+  ladder AND participation switch, and still wears the shortcut mark layer.
+  `UrlShortcut`/`AppxShortcut` and bare `Shortcut` bucket to App; bare `.exe`
+  files join the App bucket; system virtual items (RecycleBin/SystemIcon)
+  joined App too (owner merge 2026-07-16 — the separate System bucket and its
+  grayscale demotion ladder are gone). App's user-facing label becomes 程序.
   `isShortcut` includes `AppxShortcut` (bug fix — UWP shortcuts must wear
-  the mark).
+  the mark). [WINDOWS-VERIFY] the scan-side `.lnk` target resolution.
 - **Config model**: `ConfigDto.kindShapes` is DELETED. `IconsStateDto` (not
   ConfigDto) carries `typeOverrides: Partial<Record<Bucket, {source:
   'global' | 'custom'; patch?: TypePatch}>>`. Since ADR-0018 (two-axis colour)
@@ -367,13 +373,12 @@ contract facts here:
   low-saturation swatches; a fixed-plate type EXITS the hue-spread pool.
   The pool filters to icons whose resolved lane is the derived colour-field
   (原彩 subject with a derived plate, ADR-0018) and whose type has no fixed plate.
-- **Factory default (the saliency ladder)**: App=Apple squircle+derived field ·
-  Folder=Folder/Bookmark+derived · File=Tile+warm board · shortcut mark default
-  **None** (owner decree 2026-07-07 + the durable rule 「presets never carry a
-  shortcut mark」 — the distinction badge marks shortcuts, never a default
-  arrow; the 「快捷方式统一形状」 toggle also defaults OFF). Shape carries the
-  type split; the derived colour-field keeps per-icon identity. (The System
-  grayscale demotion died with the System→App merge, owner 2026-07-16.)
+- **Factory default (collection v3, owner-curated 2026-07-16)**: the 方圆/
+  squircle preset — App=Apple squircle+white fallback · Folder=Folder shape ·
+  File=File shape · Ring mark (`docs/product/preset-collection-v3.md` is the
+  lineup record; recipes are the owner's hand-tuned exports VERBATIM). The
+  「快捷方式统一形状」 toggle still defaults OFF and no preset ships one. (The
+  v2 saliency ladder + the System grayscale demotion are both retired.)
 - **Panel**: the Shape section's One-shape/By-type segmented is REMOVED;
   the type area is an accordion (one row per bucket: summary chip 名称·形
   状·显著性 + custom badge; expand-to-edit reusing the global controls;
@@ -385,7 +390,11 @@ contract facts here:
   while active).
 - **Composition invariant**: `style = resolve(bucket) + badge(isShortcut)`
   — the shortcut layer never supplies base shape/colour except via the
-  explicit uniform-shape toggle.
+  explicit uniform-shape toggle. **Shape precedence** (owner 2026-07-16): a
+  bucket's own custom shape > the uniform shortcut shape > the global shape —
+  the uniform applies only to shortcuts whose bucket didn't assert a shape
+  (one rule for all three buckets; `typeAssertsShape` in TS,
+  `type_asserts_shape` in `style_resolve.rs`, in lockstep).
 - **v2 parking lot** (recorded, not built): per-type hue BIAS over Field
   derivation · copy-once from another type · live follow-type chains.
 

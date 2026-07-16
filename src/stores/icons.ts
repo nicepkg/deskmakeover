@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { call } from '@/bridge/client'
 import type { ConfigDto, GridMetricsDto, IconItemDto, IconOpResultDto, IconPersistedDto, IconScanDto, IconsStateDto, IconKindBucket, KindPolicy, TypeOverrideEntry, TypeOverrides } from '@/bridge/types'
 import { DEFAULT_KIND_POLICY, kindBucket, kindParticipates } from '@/lib/kind-policy'
-import { appAccentSeed, resolveTypeConfig, typeHasFixedPlate } from '@/lib/type-config'
+import { appAccentSeed, resolveTypeConfig, typeAssertsShape, typeHasFixedPlate } from '@/lib/type-config'
 import { activePresetIdOf as activePresetIdOfRecipe, assembleIconsState, defaultRecipe, parseHistory, parseRecipe, SYSTEM_DEFAULT_CONFIG, type IconStyleRecipe } from '@/lib/icons-assemble'
 import { serializeIconLook } from '@/lib/icon-look'
 import { recordObservedGrid } from '@/lib/observed-grid'
@@ -233,12 +233,18 @@ export function effectiveTileConfig(
 ): { config: ConfigDto; showOriginal: boolean } {
   if (!item.styleable || item.overrideMode === 'keep') return { config, showOriginal: true }
   // ADR-0017 composition invariant: style = resolve(bucket) + shortcut layer.
-  // The type ladder resolves FIRST; the opt-in uniform shortcut shape rides on
-  // top of it; per-icon overrides stay the highest styling authority below
-  // styleable/keep.
-  const typed = resolveTypeConfig(config, typeOverrides, kindBucket(item.kind))
+  // The type ladder resolves FIRST. Shape precedence (owner 2026-07-16): a
+  // bucket's own custom shape BEATS the opt-in uniform shortcut shape — a
+  // folder/file shortcut walks its target's type ladder (kind carries target
+  // semantics) and keeps that type's shape; the shortcut uniform applies only
+  // when the bucket didn't assert one. Per-icon overrides stay the highest
+  // styling authority below styleable/keep.
+  const bucket = kindBucket(item.kind)
+  const typed = resolveTypeConfig(config, typeOverrides, bucket)
   const resolved =
-    item.isShortcut && typed.shortcutShape ? { ...typed, shape: typed.shortcutShape } : typed
+    item.isShortcut && typed.shortcutShape && !typeAssertsShape(typeOverrides, bucket)
+      ? { ...typed, shape: typed.shortcutShape }
+      : typed
   if (item.overrideMode === 'tint') {
     return { config: { ...resolved, subject: 'Mono', tint: item.overrideTint ?? resolved.tint }, showOriginal: false }
   }
@@ -293,13 +299,15 @@ function draftFromPersisted(p: IconPersistedDto): IconStyleRecipe {
 }
 
 const PRESET_NAME_KEYS: Record<string, StringKey> = {
-  spectrum: 'Preset_spectrum',
-  stationery: 'Preset_stationery',
-  glass: 'Preset_glass',
-  pebble: 'Preset_pebble',
-  ink: 'Preset_ink',
-  white: 'Preset_white',
-  ascast: 'Preset_ascast',
+  squircle: 'Preset_squircle',
+  porthole: 'Preset_porthole',
+  pixel: 'Preset_pixel',
+  creek: 'Preset_creek',
+  scrapbook: 'Preset_scrapbook',
+  gleam: 'Preset_gleam',
+  diecut: 'Preset_diecut',
+  blueprint: 'Preset_blueprint',
+  glaze: 'Preset_glaze',
 }
 
 /**

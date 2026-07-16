@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { ConfigDto, TypeOverrides } from '../src/bridge/types'
-import { resolveTypeConfig, typeHasFixedPlate, typeIsCustom, typeOverridesEqual } from '../src/lib/type-config'
+import { resolveTypeConfig, typeAssertsShape, typeHasFixedPlate, typeIsCustom, typeOverridesEqual } from '../src/lib/type-config'
 import { kindBucket } from '../src/lib/kind-policy'
 
 // The per-type resolve chain (ADR-0017 D2): pure merge, sparse overrides,
@@ -71,7 +71,10 @@ describe('kindBucket (ADR-0017 taxonomy)', () => {
     expect(kindBucket('RegularFile')).toBe('File')
   })
 
-  test('mechanism semantics: every shortcut kind buckets to App', () => {
+  test('bare shortcut kinds (unresolved / web / appx targets) bucket to App', () => {
+    // Kind carries TARGET semantics (owner 2026-07-16): a folder/file shortcut
+    // arrives kind=Folder/RegularFile from the scan. These are the launcher and
+    // fallback kinds — they stay App.
     expect(kindBucket('Shortcut')).toBe('App')
     expect(kindBucket('UrlShortcut')).toBe('App')
     expect(kindBucket('AppxShortcut')).toBe('App')
@@ -80,5 +83,16 @@ describe('kindBucket (ADR-0017 taxonomy)', () => {
   test('system virtual items merged into App (owner 2026-07-16)', () => {
     expect(kindBucket('RecycleBin')).toBe('App')
     expect(kindBucket('SystemIcon')).toBe('App')
+  })
+})
+
+describe('typeAssertsShape', () => {
+  test('true only for a custom entry whose patch asserts shape', () => {
+    expect(typeAssertsShape(LADDER, 'Folder')).toBe(true) // custom + shape
+    expect(typeAssertsShape(LADDER, 'App')).toBe(true)
+    expect(typeAssertsShape(LADDER, 'File')).toBe(false) // global follower
+    expect(typeAssertsShape({ File: { source: 'custom', patch: { tint: '#333333' } } }, 'File')).toBe(false) // custom, no shape
+    expect(typeAssertsShape(undefined, 'Folder')).toBe(false)
+    expect(typeAssertsShape(LADDER, null)).toBe(false) // bucketless
   })
 })

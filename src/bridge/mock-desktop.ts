@@ -187,6 +187,24 @@ interface PackEntry {
   kind: IconKind
   label: string
   sourceUrls: string[]
+  /** Force the link flag independent of kind — models a .lnk whose TARGET is a
+   *  folder/file (kind = target semantics, owner 2026-07-16). Absent = derive
+   *  from the shortcut kinds as before. */
+  isShortcut?: boolean
+}
+
+/** Synthetic target-resolved shortcuts (owner 2026-07-16): the real Windows
+ *  scan classifies a .lnk by its TARGET (folder → kind=Folder, document →
+ *  kind=RegularFile) while `isShortcut` stays true. The mock clones one folder
+ *  and one file entry so the Mac preview exercises that composition: type
+ *  ladder + policy from the target bucket, mark/uniform-shape from linkness. */
+function synthesizeTargetShortcuts(all: PackEntry[]): PackEntry[] {
+  const folder = all.find((e) => e.kind === 'Folder')
+  const file = all.find((e) => e.kind === 'RegularFile')
+  const clones: PackEntry[] = []
+  if (folder) clones.push({ ...folder, id: `${folder.id}-lnk`, label: `${folder.label} - 快捷方式`, isShortcut: true })
+  if (file) clones.push({ ...file, id: `${file.id}-lnk`, label: `${file.label} - 快捷方式`, isShortcut: true })
+  return [...all, ...clones]
 }
 
 let manifestPromise: Promise<PackEntry[]> | null = null
@@ -220,7 +238,7 @@ async function loadManifest(): Promise<PackEntry[]> {
         }
       }
       console.info(`[mock desktop] REAL icon pack: ${all.length} icons (scenario ${scenario})`)
-      return all
+      return synthesizeTargetShortcuts(all)
     }
     console.error(
       '[mock desktop] real icon pack missing — run `bun scripts/dev/fetch-real-icons.ts` (public/real-icons/ is the asset SSoT; no synthetic fallback)',
@@ -243,7 +261,7 @@ function toItem(entry: PackEntry, index: number, rows: number): IconItemDto {
     id: entry.id,
     label: entry.label,
     kind: entry.kind,
-    isShortcut: entry.kind === 'Shortcut' || entry.kind === 'UrlShortcut' || entry.kind === 'AppxShortcut',
+    isShortcut: entry.isShortcut ?? (entry.kind === 'Shortcut' || entry.kind === 'UrlShortcut' || entry.kind === 'AppxShortcut'),
     styleable,
     statusReason: styleable ? null : 'MOCK-HOST-REASON',
     x: MOCK_GRID.inset + col * MOCK_GRID.cellWidth,

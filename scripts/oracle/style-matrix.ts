@@ -6,9 +6,8 @@
 // at runtime against the live profile so pack drift fails loudly.
 
 import type { ConfigDto, FilterStyle, IconShape, MarkStyle } from '@/bridge/types'
-import { BASE_CONFIGS } from '@/lib/icons-assemble'
 import type { OracleSource } from './desktop-session'
-import { PRESET_IDS } from './desktop-session'
+import { ORACLE_BASE_CONFIGS, PRESET_IDS } from './desktop-session'
 
 /** A selected Tier B source + the classification category it fills (recorded in the
  *  manifest). Data-driven over the real pack — no hardcoded ids to drift. */
@@ -54,7 +53,7 @@ const CATEGORIES: Category[] = [
 /** The canonical Tier B default config (spectrum base): one axis varies per
  *  sweep, the rest hold here. Renders receive a RESOLVED config directly
  *  (no desktop type-ladder / hue-spread — that is Tier A/C territory). */
-export const TIER_B_DEFAULT: ConfigDto = { ...BASE_CONFIGS.spectrum, distinction: 'Mark', markStyle: 'Halo', markColor: null }
+export const TIER_B_DEFAULT: ConfigDto = { ...ORACLE_BASE_CONFIGS.spectrum, distinction: 'Mark', markStyle: 'Halo', markColor: null }
 
 const ALL_SHAPES: IconShape[] = ['Apple', 'Circle', 'Samsung', 'None', 'Bookmark', 'Lemon', 'Tile', 'Teardrop', 'Diamond', 'Flower', 'Pebble', 'Folder']
 const ALL_MARKS: MarkStyle[] = ['Glass', 'Shadow', 'Halo', 'Satin', 'Arc', 'Fold', 'Ring']
@@ -78,7 +77,7 @@ export function styleCells(): StyleCell[] {
     cells.push({ group, name, config: { ...d, ...over }, isShortcut, showOriginal })
 
   // 7 presets (global base config, no type-ladder) — plate/shape/subject/filter.
-  for (const id of PRESET_IDS) cells.push({ group: 'preset', name: id, config: { ...BASE_CONFIGS[id] }, isShortcut: false, showOriginal: false })
+  for (const id of PRESET_IDS) cells.push({ group: 'preset', name: id, config: { ...ORACLE_BASE_CONFIGS[id] }, isShortcut: false, showOriginal: false })
 
   // Each shape (holding default otherwise).
   for (const shape of ALL_SHAPES) add('shape', shape, { shape })

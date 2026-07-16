@@ -1,6 +1,8 @@
 # 预设套装 v2 · 首席设计师策展（Preset Collection v2）
 
-- Status: ✅ SHIPPED + ACCEPTED — historical curation record（Owner 直接下令 2026-07-10 全权策展；
+- Status: ⛔ SUPERSEDED by `preset-collection-v3.md`（Owner 亲手策展 9 套，2026-07-16）——
+  本文保留为 v2 历史策展记录；七套 v2 预设已整批退役（git remembers）
+- 原 Status: ✅ SHIPPED + ACCEPTED — historical curation record（Owner 直接下令 2026-07-10 全权策展；
   七套预设已落地并通过设计师验收，commits `b7dd226`/`f8eb20d`，详见 `docs/journal/2026-07.md`）
 - 依据：两轴颜色模型（`docs/product/two-axis-colour-spec.md` / ADR-0018）、纸色文件带（Owner PASS c080912）、暗棕文件夹判决（否）
 - 数据契约：`ConfigDto = { shape, subject, tint, monoStyle, plateColor, plateFallback, plateBand, shortcutShape, distinction, markStyle, markColor, size, filter }`；`TypePatch` 同字段可选，桶 = App/Folder/File（System 已并入 App，owner 2026-07-16）

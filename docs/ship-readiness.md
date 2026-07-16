@@ -238,6 +238,44 @@ Comet-marked icon it must match the WASM preview (byte-parity is the standing di
 `dm-operations` styleJson parser learned `"File"` / `"Comet"`, so a persisted ②③ recipe using them
 round-trips through the native resident path too.
 
+## Shortcut target resolution — `[WINDOWS-VERIFY]` work order (2026-07-16 round)
+
+**Owner decision (2026-07-16, supersedes ADR-0017 D1 "regardless of target"):** `kind` carries
+TARGET semantics — a `.lnk` to a folder is `kind=Folder` + `isShortcut=true`, to a document
+`kind=RegularFile` + `isShortcut=true` — so folder/file shortcuts walk their target bucket's type
+ladder AND participation switch while still wearing the shortcut mark. Shape precedence: type patch
+shape > uniform shortcut shape > global shape (one rule for all buckets).
+
+**Already done Mac-side (this round):** TS `effectiveTileConfig` + `typeAssertsShape`
+(`src/lib/type-config.ts`), Rust bake mirror `type_asserts_shape` + gated swap
+(`crates/dm-operations/src/icons/style_resolve.rs`, tests green), spec 06 §6.5 updated, mock
+synthesizes a folder-shortcut + file-shortcut (`src/bridge/mock-desktop.ts`). The style ladder is
+READY for target-resolved kinds — the scan just never produces them yet.
+
+**Windows-side work (dm-windows, blind spot — needs the box):**
+
+1. **Classify `.lnk` by TARGET** (`crates/dm-windows/src/classify.rs` currently maps `.lnk` →
+   `ItemKind::Shortcut` by extension alone). Resolve the link — the `IShellLink` wrapper already
+   exists (`crates/dm-windows/src/shell/shell_link.rs`, used by `source.rs` icon extraction; reuse
+   it, single truth) — then: target is a directory → `ItemKind::Folder`; target classifies as a
+   document → `ItemKind::RegularFile`; target is a launcher (`.exe` etc.) or resolution fails
+   (broken link) → `ItemKind::Shortcut` as today. NO-FLUSH rule: resolve with `SLR_NO_UI` and a
+   short timeout — a `.lnk` to an offline network share must not hang the scan.
+2. **Decouple linkness from kind.** `is_shortcut` is currently DERIVED as `kind.is_shortcut()`
+   (`src-tauri/src/icon_host/scan.rs:178`, `crates/dm-windows/src/source.rs:330`,
+   `dm_domain::ItemKind::is_shortcut`). Once a folder-shortcut arrives `kind=Folder`, that
+   derivation loses the mark and breaks source extraction. Carry linkness as its own field on the
+   scan item (set where the `.lnk`/`.url`/`.appx` extension is seen), and feed THAT to the DTO's
+   `isShortcut` + the `source.rs` shortcut lane. `kind.is_shortcut()` stays true for the bare
+   launcher kinds.
+3. **Observe on the box:** a desktop with (a) a shortcut to a folder, (b) a shortcut to a `.docx`,
+   (c) a normal app shortcut, (d) a broken `.lnk`: (a) counts under folders in 参与美化的类型, takes
+   the Folder type shape when one is set (uniform shortcut shape otherwise), wears the mark; (b)
+   same under files; (c) unchanged (App ladder + uniform + mark); (d) falls back to programs and
+   still styles. Unchecking folders 参与美化 must ALSO stop (a). Resident bake parity: after Apply,
+   the baked (a)/(b) match the preview (the `dm-operations` resolver already implements the
+   precedence — byte parity is the standing discipline).
+
 ## Packaging / release gaps (M8 — installer now builds; residuals below)
 
 - ✅ **Installer config DONE (2026-07-15)** — `tauri.conf.json` bundle: `targets:[nsis]`,
@@ -326,9 +364,12 @@ built to look busy. Only **Release identity** stays owner-only (it cannot be res
   decree 2026-07-07 + the durable rule 「presets never carry a shortcut mark」 win over the panel's
   badge-ON. Code already ships None everywhere (every base config `shortcutShape:null`;
   `shortcutShape` is not a `TYPE_PATCH_KEY` so a type override cannot re-add it). Now locked with a test.
-- **Preset collection v2** — ✅ **RESOLVED (`d1f507d`).** Factory lineup confirmed = the seven presets,
-  spectrum default (test-locked). Owed guards closed: fixed-plate silhouette-shadow regression
-  (STATE §-1a ①), retired-#65470D guard. Genuinely MOOT items disposed, not faked: the colour-migrate
+- **Preset collection v2** — ✅ RESOLVED (`d1f507d`), then **SUPERSEDED by collection v3
+  (owner-curated nine, 2026-07-16)**: the v2 seven retired wholesale, 方圆/squircle is the
+  factory default now (`docs/product/preset-collection-v3.md`, test-locked in
+  `tests/preset-factory-lineup.test.ts`; the oracle corpus keeps its frozen v2 snapshot inside
+  `scripts/oracle/desktop-session.ts`, decoupled from the live lineup). Owed guards closed at v2
+  resolution: fixed-plate silhouette-shadow regression (STATE §-1a ①), retired-#65470D guard. Genuinely MOOT items disposed, not faked: the colour-migrate
   test (the schema 3→4 migration already happened; no live mapping to test) and the folder-drift probe
   (folders derive by design now — see two-axis) are obsolete; alpha-plate is out of scope ("plumbing
   not algorithm"). spec 02/06 amended off the legacy `colorMode` model.

@@ -34,6 +34,13 @@ const OS_MIRROR_HEX_EXEMPT_PATHS = [join('components', 'canvas', 'taskbar-icons.
 // App-Store-subscription-success 礼花) — a full festive palette, not a UI accent.
 // One reviewed file; the coral-only rule still governs every real surface.
 const CELEBRATION_HEX_EXEMPT_PATHS = [join('components', 'common', 'confetti.tsx')]
+// Preset recipes are desktop CONTENT the user picks (owner-curated collection v3,
+// 2026-07-16: the 蓝图 mono ink), not app-chrome accent — same doctrine as the
+// 调色盘 spectrum exclusion. Scoped to the ONE data file AND the exact reviewed
+// hexes: any new blue in the recipes must be re-reviewed here, and app chrome
+// stays fully enforced everywhere.
+const PRESET_DATA_FILE = join('lib', 'icons-assemble.ts')
+const PRESET_DATA_HEXES = new Set(['#0F4F93'])
 
 const BANNED_CLASS = /\b(?:bg|text|border|ring|from|via|to|stroke|fill|outline|decoration|shadow)-(?:blue|indigo|violet|purple|sky|cyan|fuchsia)-\d{2,3}\b/g
 // Cool/neutral Tailwind grey families are banned in app chrome — the product palette
@@ -77,7 +84,11 @@ describe('banned colours (owner rule: coral only, never blue/violet)', () => {
       const hexSafe =
         OS_MIRROR_HEX_EXEMPT_PATHS.some((p) => file.includes(p)) ||
         CELEBRATION_HEX_EXEMPT_PATHS.some((p) => file.includes(p))
-      const hexHits = hexSafe ? [] : (text.match(HEX) ?? []).filter(isBannedHue)
+      const hexHits = hexSafe
+        ? []
+        : (text.match(HEX) ?? [])
+            .filter(isBannedHue)
+            .filter((h) => !(file.includes(PRESET_DATA_FILE) && PRESET_DATA_HEXES.has(h.toUpperCase())))
       expect(hexHits).toEqual([])
     })
   }

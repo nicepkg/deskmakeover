@@ -7,7 +7,7 @@ import { BASE_CONFIGS } from '../src/lib/icons-assemble'
 // Import candidates (spec 09 §5): package entries pass the ONE validator before
 // the preview sheet; junk payloads become per-entry failures, never crashes.
 
-const goodPayload = serializeIconLook({ config: BASE_CONFIGS.spectrum, typeOverrides: {} })
+const goodPayload = serializeIconLook({ config: BASE_CONFIGS.squircle, typeOverrides: {} })
 
 const readEntry = (over: Partial<PresetReadEntryDto['entry'] & object> = {}, thumb: string | null = null): PresetReadEntryDto => ({
   entry: {
@@ -43,7 +43,7 @@ describe('toImportCandidate', () => {
   })
 
   test('an unknown enum in the payload fails validation per-entry', () => {
-    const bad = JSON.stringify({ config: { ...BASE_CONFIGS.spectrum, shape: 'Hexagon' }, typeOverrides: {} })
+    const bad = JSON.stringify({ config: { ...BASE_CONFIGS.squircle, shape: 'Hexagon' }, typeOverrides: {} })
     const c = toImportCandidate(readEntry({ payloadJson: bad }))
     expect(c.recipe).toBeNull()
     expect(c.save).toBeNull()
@@ -59,9 +59,9 @@ describe('toImportCandidate', () => {
 
   test('an opt-in-exported kindPolicy round-trips through import (owner #4, codex F1)', () => {
     const policy = { App: true, Folder: false, File: true }
-    const withPolicy = serializeIconLook({ config: BASE_CONFIGS.ink, typeOverrides: {}, kindPolicy: policy })
+    const withPolicy = serializeIconLook({ config: BASE_CONFIGS.blueprint, typeOverrides: {}, kindPolicy: policy })
     const c = toImportCandidate(readEntry({ payloadJson: withPolicy }))
-    expect(c.recipe!.config.shape).toBe('Circle')
+    expect(c.recipe!.config.shape).toBe(BASE_CONFIGS.blueprint.shape)
     // The opted-in participation survives into the recipe AND the saved payload
     // (a bundled backup restores participation; a style-only preset would omit it).
     expect(c.recipe!.kindPolicy).toEqual(policy)
@@ -69,7 +69,7 @@ describe('toImportCandidate', () => {
   })
 
   test('a style-only payload carries NO kindPolicy (community preset stays orthogonal)', () => {
-    const styleOnly = serializeIconLook({ config: BASE_CONFIGS.ink, typeOverrides: {} })
+    const styleOnly = serializeIconLook({ config: BASE_CONFIGS.blueprint, typeOverrides: {} })
     const c = toImportCandidate(readEntry({ payloadJson: styleOnly }))
     expect(c.recipe!.kindPolicy).toBeUndefined()
     expect(JSON.parse(c.save!.payloadJson).kindPolicy).toBeUndefined()

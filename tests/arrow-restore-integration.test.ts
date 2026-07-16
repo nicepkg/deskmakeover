@@ -73,7 +73,7 @@ const seedState = (over: Partial<IconsStateDto> = {}): IconsStateDto => ({
   applied: false,
   dirty: false,
   styleableCount: 0,
-  config: { ...BASE_CONFIGS.spectrum },
+  config: { ...BASE_CONFIGS.squircle },
   activePresetId: null,
   presets: [],
   history: [],
@@ -189,7 +189,7 @@ describe('real mock through the store — the mock transitions are pinned', () =
     const sessionId = (await mockIconsCall('icons.applyBakedBegin', { revision: 1, count: 1 })) as string
     const res = (await mockIconsCall('icons.applyBakedCommit', {
       sessionId,
-      styleJson: JSON.stringify({ config: BASE_CONFIGS.spectrum, kindPolicy: {}, typeOverrides: {} }),
+      styleJson: JSON.stringify({ config: BASE_CONFIGS.squircle, kindPolicy: {}, typeOverrides: {} }),
       label: 'x',
     })) as IconOpResultDto
     expect(res.persisted.arrowOverlay).toBe('hidden')

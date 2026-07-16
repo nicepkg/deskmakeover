@@ -449,23 +449,24 @@ export const en = {
   "Preset_Horizon": "Horizon", // PENDING-RESX
   "Preset_FocusSplit": "Focus split", // PENDING-RESX
   "Preset_Totem": "Totem", // PENDING-RESX
-  "Preset_faithful": "True colour", // PENDING-RESX (ADR-0016 lineup)
-  "Preset_faithful_Desc": "Each icon's own plate, faithfully", // PENDING-RESX
-  "Preset_field": "Colour field", // PENDING-RESX (ADR-0016 default)
-  "Preset_spectrum": "Full Spectrum",
-  "Preset_spectrum_Desc": "Every colour in its place",
-  "Preset_stationery": "Warm Stationery",
-  "Preset_stationery_Desc": "A desk of kraft and manila",
-  "Preset_glass": "Liquid Glass",
-  "Preset_glass_Desc": "A screen of breathing glass",
-  "Preset_pebble": "Pebble Garden",
-  "Preset_pebble_Desc": "Smooth pebbles, no corners",
-  "Preset_ink": "Ink Wash",
-  "Preset_ink_Desc": "Black and white, all structure",
-  "Preset_white": "Clean White",
-  "Preset_white_Desc": "The quiet white board",
-  "Preset_ascast": "As-Cast",
-  "Preset_ascast_Desc": "Faithful plates, tidy outlines",
+  "Preset_squircle": "Squircle", // preset v3, owner-curated 2026-07-16
+  "Preset_squircle_Desc": "One squircle, every type its own shape",
+  "Preset_porthole": "Porthole",
+  "Preset_porthole_Desc": "Round apps; files keep their places",
+  "Preset_pixel": "Pixel Era",
+  "Preset_pixel_Desc": "An afternoon back in 8-bit",
+  "Preset_creek": "Creekstone",
+  "Preset_creek_Desc": "Stones rounded by the stream",
+  "Preset_scrapbook": "Scrapbook",
+  "Preset_scrapbook_Desc": "A page pasted together by hand",
+  "Preset_gleam": "Gleam",
+  "Preset_gleam_Desc": "Icons as they are, brushed with light",
+  "Preset_diecut": "Die-Cut",
+  "Preset_diecut_Desc": "Stickers cut along every outline",
+  "Preset_blueprint": "Blueprint",
+  "Preset_blueprint_Desc": "A full set of engineering drawings",
+  "Preset_glaze": "Glaze",
+  "Preset_glaze_Desc": "Cool porcelain under a glaze",
   "Preset_SystemDefault": "System default", // A1: reset escape hatch, first in the style deck
   "Preset_SystemDefault_Desc": "Back to the untouched original desktop",
   "Preset_CurrentCustom": "Custom",
@@ -495,7 +496,6 @@ export const en = {
   "Toast_PresetSaved": "Saved to the style library",
   "Toast_PresetExported": "Exported to",
   "Toast_PresetImportedN": "Imported {0} style(s)",
-  "Preset_field_Desc": "One shape · every brand's colour", // PENDING-RESX
   "Preset_minimal": "Minimal white", // PENDING-RESX
   "Preset_minimal_Desc": "The quiet white board", // PENDING-RESX
   "Preset_quiet": "Quiet pastel", // PENDING-RESX

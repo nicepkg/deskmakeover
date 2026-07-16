@@ -451,23 +451,24 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Preset_Horizon": "地平线",
   "Preset_FocusSplit": "聚焦分栏",
   "Preset_Totem": "图腾",
-  "Preset_faithful": "原彩保真", // PENDING-RESX (ADR-0016 lineup)
-  "Preset_faithful_Desc": "忠实还原每个图标的底色", // PENDING-RESX
-  "Preset_field": "满彩", // PENDING-RESX (ADR-0016 default)
-  "Preset_spectrum": "满彩", // PENDING-RESX (预设v2)
-  "Preset_spectrum_Desc": "满城彩色，各归其位", // PENDING-RESX
-  "Preset_stationery": "暖纸文具", // PENDING-RESX
-  "Preset_stationery_Desc": "一桌牛皮纸与马尼拉信封", // PENDING-RESX
-  "Preset_glass": "澄玻璃", // PENDING-RESX
-  "Preset_glass_Desc": "会呼吸的液态玻璃", // PENDING-RESX
-  "Preset_pebble": "卵石花园", // PENDING-RESX
-  "Preset_pebble_Desc": "一桌温润鹅卵石，没有尖角", // PENDING-RESX
-  "Preset_ink": "水墨宣", // PENDING-RESX
-  "Preset_ink_Desc": "一屏黑白见筋骨", // PENDING-RESX
-  "Preset_white": "极简白", // PENDING-RESX
-  "Preset_white_Desc": "白纸一张，只理形状", // PENDING-RESX
-  "Preset_ascast": "本色", // PENDING-RESX
-  "Preset_ascast_Desc": "原样保真，只理齐轮廓", // PENDING-RESX
+  "Preset_squircle": "方圆", // PENDING-RESX (预设v3 owner-curated)
+  "Preset_squircle_Desc": "一枚方圆，各有其形", // PENDING-RESX
+  "Preset_porthole": "圆窗", // PENDING-RESX
+  "Preset_porthole_Desc": "程序是圆窗，文件各安其位", // PENDING-RESX
+  "Preset_pixel": "像素纪元", // PENDING-RESX
+  "Preset_pixel_Desc": "回到八比特的下午", // PENDING-RESX
+  "Preset_creek": "溪石", // PENDING-RESX
+  "Preset_creek_Desc": "溪水磨圆的石头", // PENDING-RESX
+  "Preset_scrapbook": "拼贴手帐", // PENDING-RESX
+  "Preset_scrapbook_Desc": "一页随手拼贴的手帐", // PENDING-RESX
+  "Preset_gleam": "浮光", // PENDING-RESX
+  "Preset_gleam_Desc": "原样的图标，掠过一层光", // PENDING-RESX
+  "Preset_diecut": "随形贴", // PENDING-RESX
+  "Preset_diecut_Desc": "沿轮廓裁开的贴纸包", // PENDING-RESX
+  "Preset_blueprint": "蓝图", // PENDING-RESX
+  "Preset_blueprint_Desc": "一整套工程蓝图", // PENDING-RESX
+  "Preset_glaze": "釉光", // PENDING-RESX
+  "Preset_glaze_Desc": "上过釉的冷瓷面", // PENDING-RESX
   "Preset_SystemDefault": "系统默认",
   "Preset_SystemDefault_Desc": "回到未美化的原始桌面",
   "Preset_CurrentCustom": "自定义", // PENDING-RESX
@@ -497,7 +498,6 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Toast_PresetSaved": "已保存到风格库", // PENDING-RESX
   "Toast_PresetExported": "已导出", // PENDING-RESX
   "Toast_PresetImportedN": "已导入 {0} 个风格", // PENDING-RESX
-  "Preset_field_Desc": "统一外形 · 各自品牌色", // PENDING-RESX
   "Preset_minimal": "极简白", // PENDING-RESX
   "Preset_minimal_Desc": "安静的白色瓷砖", // PENDING-RESX
   "Preset_quiet": "安静", // PENDING-RESX

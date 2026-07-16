@@ -28,56 +28,60 @@ export interface IconStyleRecipe {
   typeOverrides: TypeOverrides
 }
 
-// ---- Preset collection v2 (chief-designer curation, owner order 2026-07-10) ----
-// Coordinate bookmarks in the subject × plate space (ADR-0018); docs/product/preset-collection-v2.md
-// is normative. Key order = card order (featured four above the 更多风格 fold).
+// ---- Preset collection v3 (OWNER-CURATED, hand-tuned exports 2026-07-16) ----
+// The owner built these nine on the live canvas and exported them as .dmpreset
+// packages; the values below are those recipes VERBATIM — do not "improve" them.
+// Replaces the chief-designer v2 lineup (spectrum/stationery/glass/pebble/ink/
+// white/ascast — retired, git remembers). Key order = card order.
+// The 蓝图 mono ink #0F4F93 + 釉光 plates #DDE6F2 are desktop CONTENT the user
+// picks, not app-chrome accent (banned-colors carries the reviewed exemption).
 export const BASE_CONFIGS: Record<string, ConfigDto> = {
-  spectrum: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Halo', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
-  glass: { shape: 'Samsung', subject: 'Original', plateBand: 'Vivid', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Shadow', markColor: null, plateColor: null, size: 'Mid', filter: 'Glass' },
-  ink: { shape: 'Circle', subject: 'BlackWhite', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Arc', markColor: null, plateColor: '#F4F1EA', size: 'Mid', filter: 'None' },
-  white: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Ring', markColor: null, plateColor: '#FFFFFF', size: 'Mid', filter: 'None' },
-  stationery: { shape: 'Apple', subject: 'Original', plateBand: 'Quiet', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Satin', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
-  pebble: { shape: 'Pebble', subject: 'Original', plateBand: 'Quiet', plateFallback: 'derived', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Shadow', markColor: null, plateColor: null, size: 'Mid', filter: 'Sticker' },
-  ascast: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Ring', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
+  squircle: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Ring', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
+  porthole: { shape: 'Circle', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Ring', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
+  pixel: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Comet', markColor: null, plateColor: null, size: 'Mid', filter: 'Pixel' },
+  creek: { shape: 'Pebble', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Shadow', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
+  scrapbook: { shape: 'Samsung', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Fold', markColor: null, plateColor: null, size: 'Mid', filter: 'Sticker' },
+  gleam: { shape: 'None', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Comet', markColor: null, plateColor: null, size: 'Mid', filter: 'Glass' },
+  diecut: { shape: 'None', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Comet', markColor: null, plateColor: null, size: 'Mid', filter: 'Sticker' },
+  blueprint: { shape: 'Samsung', subject: 'Mono', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#0F4F93', distinction: 'Mark', markStyle: 'Shadow', markColor: null, plateColor: null, size: 'Mid', filter: 'None' },
+  glaze: { shape: 'Apple', subject: 'Original', plateBand: 'Vivid', plateFallback: 'white', shortcutShape: null, monoStyle: 'Tonal', tint: '#FF6F5E', distinction: 'Mark', markStyle: 'Comet', markColor: '#FFFFFF', plateColor: null, size: 'Mid', filter: 'Gloss' },
 }
 
-// Per-preset type ladders (Preset Collection v2) — every set ships its own.
-// The System demotion entries (Circle+BlackWhite) died with the System→App
-// bucket merge (owner 2026-07-16): system virtual items now dress like the
-// programs they sit next to.
+// Per-preset type ladders (collection v3) — exactly as the owner exported them.
+// diecut + blueprint deliberately ship NONE (the global look covers every type).
 export const PRESET_TYPE_OVERRIDES: Record<string, TypeOverrides> = {
-  spectrum: {
-    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: null, plateFallback: 'derived' } },
-    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
+  squircle: {
+    Folder: { source: 'custom', patch: { shape: 'Folder' } },
+    File: { source: 'custom', patch: { shape: 'File' } },
   },
-  stationery: {
-    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#EAD6A8' } },
-    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
+  porthole: {
+    Folder: { source: 'custom', patch: { shape: 'Folder' } },
+    File: { source: 'custom', patch: { shape: 'Apple' } },
   },
-  glass: {
+  pixel: {
+    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#E7E7E5' } },
+    File: { source: 'custom', patch: { shape: 'File', plateColor: '#E7E7E5' } },
+  },
+  creek: {
     Folder: { source: 'custom', patch: { shape: 'Samsung', plateColor: null, plateFallback: 'derived' } },
-    File: { source: 'custom', patch: { shape: 'Samsung', plateColor: '#FFFFFF' } },
+    File: { source: 'custom', patch: { shape: 'Samsung' } },
   },
-  pebble: {
-    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#EAD6A8' } },
-    File: { source: 'custom', patch: { shape: 'Teardrop', plateColor: '#E9E2D4' } },
+  scrapbook: {
+    Folder: { source: 'custom', patch: { shape: 'Folder' } },
+    File: { source: 'custom', patch: { shape: 'Pebble', plateColor: '#E7E7E5' } },
   },
-  ink: {
-    Folder: { source: 'custom', patch: { shape: 'Bookmark', plateColor: '#EDE8DC' } },
-    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#F4F1EA' } },
+  gleam: {
+    Folder: { source: 'custom', patch: { shape: 'Folder' } },
+    File: { source: 'custom', patch: { shape: 'File' } },
   },
-  white: {
-    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#FFFFFF' } },
-    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#FFFFFF' } },
-  },
-  ascast: {
-    Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: null, plateFallback: 'white' } },
-    File: { source: 'custom', patch: { shape: 'Tile', plateColor: '#E9E2D4' } },
+  glaze: {
+    Folder: { source: 'custom', patch: { plateColor: '#DDE6F2', plateFallback: 'derived' } },
+    File: { source: 'custom', patch: { plateColor: '#DDE6F2' } },
   },
 }
 
-/** The factory default look (the spectrum preset) — used when no saved-style (②) exists yet. */
-export const DEFAULT_PRESET_ID = 'spectrum'
+/** The factory default look (方圆/Squircle — the owner's flagship) — used when no saved-style (②) exists yet. */
+export const DEFAULT_PRESET_ID = 'squircle'
 
 /** The SYSTEM-DEFAULT baseline (owner order 2026-07-15): selecting 系统默认 RESETS the draft to
  *  THIS config — the values every panel row's ⊘ already advertises while the card is active
@@ -158,7 +162,7 @@ export function iconGrid(size: ConfigDto['size'], metrics: GridMetricsDto = DEFA
   }
 }
 
-/** The factory-default recipe (spectrum) — the store's initial draft when ② is empty. */
+/** The factory-default recipe (方圆/squircle) — the store's initial draft when ② is empty. */
 export function defaultRecipe(kindPolicy: KindPolicy): IconStyleRecipe {
   return {
     config: { ...BASE_CONFIGS[DEFAULT_PRESET_ID] },

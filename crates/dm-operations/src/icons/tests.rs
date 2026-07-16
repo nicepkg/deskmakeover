@@ -820,11 +820,12 @@ fn an_all_conflicts_apply_never_writes_the_saved_style_or_history() {
 }
 
 #[test]
-fn a_rollback_with_no_keep_revert_still_flags_the_desktop_as_mutated() {
-    // codex R5-#1: re-styling already-styled icons where the styling batch then rolls back DID move the
-    // desktop (each icon was re-applied then restored to its true original), even though no keep-revert
-    // ran and nothing committed. `desktop_mutated` must be true so the host shows a partial-change
-    // repair toast, never "桌面没有改动".
+fn one_items_re_apply_fault_only_reverts_that_item_and_flags_the_desktop_mutated() {
+    // Per-item transactions (owner box 2026-07-16): re-styling already-styled icons where ONE
+    // item's apply faults must contain the damage to that item — the other icons keep their NEW
+    // style (previously the whole batch rolled back, which the owner saw as "apply randomly undid
+    // itself"). The faulted item is walked back to its TRUE original and `desktop_mutated` stays
+    // true (codex R5-#1) so the host shows a partial-change repair toast, never "桌面没有改动".
     let mut f = Fixture::new();
     let a = item("a", ItemKind::Shortcut);
     let b = item("b", ItemKind::Shortcut);
@@ -837,7 +838,8 @@ fn a_rollback_with_no_keep_revert_still_flags_the_desktop_as_mutated() {
         "v1",
         &[a.clone(), b.clone()],
     );
-    // Re-style both, but b's apply faults → the batch rolls back (a re-applied then restored to orig-a).
+    let a_styled_v1 = f.world.borrow().get(&a.path).unwrap();
+    // Re-style both, but b's apply faults → ONLY b's own txn rolls back (to its true original).
     f.world.borrow_mut().fail_apply(&b.path);
     let out = f.apply(
         &[("a", 0, [8, 8, 8, 255]), ("b", 0, [9, 9, 9, 255])],
@@ -847,15 +849,143 @@ fn a_rollback_with_no_keep_revert_still_flags_the_desktop_as_mutated() {
         &[a.clone(), b.clone()],
     );
 
-    assert!(out.error.is_some(), "the styling batch rolled back");
-    assert!(out.reverted.is_empty(), "no keep-revert ran — nothing was opted out");
-    assert!(out.committed.is_empty(), "nothing committed");
-    assert!(out.desktop_mutated, "the rollback moved the desktop → not 'nothing changed' (codex R5-#1)");
-    assert_eq!(
-        f.world.borrow().get(&a.path).unwrap(),
-        b"orig-a",
-        "the rolled-back item was restored to its TRUE original — a real desktop change from styled-v1",
+    assert!(out.error.is_some(), "b's fault is reported");
+    assert!(
+        out.error.as_ref().unwrap().contains(&b.path),
+        "the error NAMES the failing file: {:?}",
+        out.error
     );
+    assert!(out.reverted.is_empty(), "no keep-revert ran — nothing was opted out");
+    assert_eq!(out.committed, vec![ItemId::from_raw("a")], "a's re-style commits despite b's fault");
+    assert!(out.desktop_mutated, "b's walk-back moved the desktop → not 'nothing changed' (codex R5-#1)");
+    let a_now = f.world.borrow().get(&a.path).unwrap();
+    assert_ne!(a_now, b"orig-a".to_vec(), "a is NOT rolled back to original");
+    assert_ne!(a_now, a_styled_v1, "a wears the NEW style, not the old one");
+    assert_eq!(
+        f.world.borrow().get(&b.path).unwrap(),
+        b"orig-b",
+        "the faulted item was restored to its TRUE original",
+    );
+    assert!(f.ledger.get(&a.id).unwrap().is_some(), "a keeps its ledger row");
+    assert!(f.ledger.get(&b.id).unwrap().is_none(), "b's row was dropped with its rollback");
+}
+
+#[test]
+fn a_bare_journal_fault_mid_loop_still_reports_the_earlier_commits_and_conflicts() {
+    // codex 2026-07-17 P2: the per-item loop's bare-Err early return (a possibly-torn journal) must
+    // not swallow what the loop already established — A's CAS conflict and B's committed txn are
+    // real state the caller needs; C (whose TxnBegin append tore) and anything after stay untouched.
+    use crate::error::OperationError;
+    use crate::txn::journal::{JournalRecord, JournalSink};
+
+    /// Delegates to a `VecJournal` until `ok_appends` appends have landed, then every further
+    /// append fails as a Journal error — the driver's torn-journal signal.
+    struct FailAfterJournal {
+        inner: VecJournal,
+        ok_appends: usize,
+        appends: usize,
+    }
+    impl JournalSink for FailAfterJournal {
+        fn append(&mut self, record: &JournalRecord) -> crate::error::Result<()> {
+            if self.appends >= self.ok_appends {
+                return Err(OperationError::Journal("torn (test)".into()));
+            }
+            self.appends += 1;
+            self.inner.append(record)
+        }
+        fn read_all(&self) -> crate::error::Result<Vec<JournalRecord>> {
+            self.inner.read_all()
+        }
+    }
+
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    let b = item("b", ItemKind::Shortcut);
+    let c = item("c", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.seed(&b, b"orig-b");
+    f.seed(&c, b"orig-c");
+
+    let mut session = IconApplySession::begin(0, 3);
+    session.push("a", 0, master_b64([1, 1, 1, 255]));
+    session.push("b", 0, master_b64([2, 2, 2, 255]));
+    session.push("c", 0, master_b64([3, 3, 3, 255]));
+    let mut scanned = f.scanned(&[a.clone(), b.clone(), c.clone()]);
+    // A's scan-time CAS anchor is STALE → its own txn is a benign conflict (no journal records).
+    scanned[0].fingerprint = dm_domain::Fingerprint::of_bytes(b"stale-scan");
+    // B's txn appends 6 records (Begin/Prepared/AssetWritten/Applied/Verified/Committed) and
+    // commits; C's very first append (TxnBegin) then tears.
+    let mut journal = FailAfterJournal { inner: VecJournal::new(), ok_appends: 6, appends: 0 };
+    let fake = FakePlatform::new(f.world.clone());
+    let platform = IconPlatform::new(&fake, &fake, &f.assets);
+    let ops = IconOps::new(platform, &f.settings);
+    let out = ops
+        .commit_apply(
+            session,
+            style(1),
+            Some("A".into()),
+            "v1",
+            2,
+            &scanned,
+            &[],
+            &scope::ScopeRoots::Unprivileged,
+            None,
+            &mut f.txn,
+            &mut journal,
+            &mut f.ledger,
+            &mut f.history,
+        )
+        .unwrap();
+
+    assert!(out.degraded.as_deref().unwrap_or_default().contains("apply driver"), "the torn journal is surfaced");
+    assert_eq!(out.committed, vec![ItemId::from_raw("b")], "b's committed txn survives the report");
+    assert!(out.conflicts.contains(&ItemId::from_raw("a")), "a's conflict is NOT swallowed (codex P2)");
+    assert!(!out.intent_persisted, "a torn apply never persists ②③");
+    assert!(out.requires_rescan, "the heal set is unknown → fence the scan");
+    assert_ne!(f.world.borrow().get(&b.path).unwrap(), b"orig-b".to_vec(), "b stays styled");
+    assert_eq!(f.world.borrow().get(&c.path).unwrap(), b"orig-c", "c was never touched");
+    assert!(f.ledger.get(&b.id).unwrap().is_some(), "b has its ledger row");
+    assert!(f.ledger.get(&c.id).unwrap().is_none(), "c has no ledger row");
+}
+
+#[test]
+fn one_items_fresh_apply_fault_no_longer_rolls_back_the_other_items() {
+    // The 2026-07-16 owner bug distilled: a fresh apply of many items where one file fails to write
+    // (on the real desktop: a transient Explorer/AV lock, a legacy-encoding `.url`) used to roll
+    // EVERY already-styled item back — each apply visibly styled a few icons then undid them.
+    // Per-item transactions keep every healthy item styled and report the failure per item.
+    let mut f = Fixture::new();
+    let a = item("a", ItemKind::Shortcut);
+    let b = item("b", ItemKind::Shortcut);
+    let c = item("c", ItemKind::Shortcut);
+    f.seed(&a, b"orig-a");
+    f.seed(&b, b"orig-b");
+    f.seed(&c, b"orig-c");
+    f.world.borrow_mut().fail_apply(&b.path);
+
+    let out = f.apply(
+        &[("a", 0, [1, 1, 1, 255]), ("b", 0, [2, 2, 2, 255]), ("c", 0, [3, 3, 3, 255])],
+        style(1),
+        "A",
+        "v1",
+        &[a.clone(), b.clone(), c.clone()],
+    );
+
+    assert!(out.error.is_some(), "b's fault is reported");
+    assert!(out.error.as_ref().unwrap().contains(&b.path), "the error names b: {:?}", out.error);
+    assert_eq!(
+        out.committed,
+        vec![ItemId::from_raw("a"), ItemId::from_raw("c")],
+        "a and c commit despite b's fault"
+    );
+    assert_ne!(f.world.borrow().get(&a.path).unwrap(), b"orig-a".to_vec(), "a is styled");
+    assert_ne!(f.world.borrow().get(&c.path).unwrap(), b"orig-c".to_vec(), "c is styled");
+    assert_eq!(f.world.borrow().get(&b.path).unwrap(), b"orig-b", "b stays original");
+    assert!(f.ledger.get(&a.id).unwrap().is_some(), "a has a ledger row");
+    assert!(f.ledger.get(&c.id).unwrap().is_some(), "c has a ledger row");
+    assert!(f.ledger.get(&b.id).unwrap().is_none(), "b has no ledger row");
+    // The failure is honest but partial progress persists: a re-apply picks up only b.
+    assert!(!out.intent_persisted, "a partial apply must not persist ②③ as the desktop's look");
 }
 
 #[test]

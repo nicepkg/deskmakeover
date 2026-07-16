@@ -237,6 +237,16 @@ impl IconHost {
         if let Some(reason) = &outcome.degraded {
             log::warn!("icons apply finalize degraded: {reason}");
         }
+        // The batch error must reach the LOG, not just the toast — the 2026-07-16 mid-batch
+        // failure was undiagnosable server-side because the reason lived only in the frontend.
+        if let Some(e) = &outcome.error {
+            log::warn!(
+                "icons apply batch error ({} committed, {} conflicts, mutated={}): {e}",
+                outcome.committed.len(),
+                outcome.conflicts.len(),
+                outcome.desktop_mutated
+            );
+        }
         let (ok, toast) = if let Some(e) = &outcome.error {
             if outcome.reverted.is_empty() && !outcome.desktop_mutated {
                 // The styling batch failed BEFORE touching the desktop AND no keep-revert landed →

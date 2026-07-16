@@ -116,8 +116,59 @@ fn sync_parent_dir(_target: &Path) -> PortResult<()> {
 /// other links to the original file are not redirected to the replacement. DeskMakeover styles
 /// desktop items (`.lnk`/`.url`/`desktop.ini`/wrapper) that are not expected to be hard-linked, so
 /// this is an accepted limitation rather than a preserved property.
+///
+/// **Transient-lock retry**: replacing a file on the live Desktop races every process the shell
+/// change notifications wake up — Explorer re-reading the folder to redraw the icons we JUST
+/// changed, the search indexer, AV scanners, sync clients. Any of them briefly holding the target
+/// without full sharing fails the replace with a sharing-violation-family error (owner box
+/// 2026-07-16: each apply died at a RANDOM item mid-batch and rolled the whole batch back). Those
+/// locks clear in tens of milliseconds, so the publish retries with bounded backoff (~1s total)
+/// before treating the error as real.
 #[cfg(windows)]
 fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
+    const ATTEMPTS: u32 = 8;
+    let mut delay_ms = 25u64;
+    for attempt in 1..=ATTEMPTS {
+        match publish_once(tmp, target) {
+            Ok(()) => return Ok(()),
+            Err((transient, msg)) => {
+                if !transient || attempt == ATTEMPTS {
+                    return Err(PortError::Io(format!("{}: {msg}", target.display())));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                delay_ms = (delay_ms * 2).min(200);
+            }
+        }
+    }
+    unreachable!("the retry loop always returns")
+}
+
+/// Win32 codes that mean "another process transiently holds the file": ERROR_ACCESS_DENIED (5,
+/// what a replace-under-AV-scan surfaces as), ERROR_SHARING_VIOLATION (32), ERROR_LOCK_VIOLATION
+/// (33), and the ReplaceFileW-specific ERROR_UNABLE_TO_REMOVE_REPLACED / _TO_MOVE_REPLACEMENT
+/// / _TO_MOVE_REPLACEMENT_2 (1175–1177). A genuine ACL denial also reads as 5 — retrying it merely
+/// delays the (correct) failure by under a second, and privileged-scope targets never reach this
+/// writer (they route to the elevated helper).
+#[cfg(windows)]
+fn is_transient_replace_error(win32: u32) -> bool {
+    matches!(win32, 5 | 32 | 33 | 1175..=1177)
+}
+
+/// The Win32 code inside a `windows` crate error (unwraps the `0x8007xxxx` HRESULT wrapping).
+#[cfg(windows)]
+fn win32_code(e: &windows::core::Error) -> u32 {
+    let raw = e.code().0 as u32;
+    if raw & 0xFFFF_0000 == 0x8007_0000 {
+        raw & 0xFFFF
+    } else {
+        raw
+    }
+}
+
+/// One publish attempt. `Err((transient, message))` lets [`publish`] retry only the
+/// transient-lock family.
+#[cfg(windows)]
+fn publish_once(tmp: &Path, target: &Path) -> Result<(), (bool, String)> {
     use windows::core::HSTRING;
     use windows::Win32::Storage::FileSystem::{
         MoveFileExW, ReplaceFileW, MOVEFILE_WRITE_THROUGH, REPLACE_FILE_FLAGS,
@@ -125,9 +176,10 @@ fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
 
     // try_exists(), not exists() (audit F3): a metadata error must NOT read as "fresh target" and
     // select the MoveFileEx path that DROPS the existing file's DACL/ADS/compression — fail closed.
+    // Re-checked on every attempt: the target can appear/vanish between retries.
     let target_exists = target
         .try_exists()
-        .map_err(|e| PortError::Io(format!("cannot stat {}: {e}", target.display())))?;
+        .map_err(|e| (false, format!("cannot stat the target: {e}")))?;
     if target_exists {
         // ReplaceFileW carries the target's DACL, alternate data streams, and compression/encryption
         // attributes onto the replacement (MoveFileEx would drop them, and the restore anchors
@@ -147,7 +199,7 @@ fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
                 None,
             )
         }
-        .map_err(|e| PortError::Io(e.to_string()))
+        .map_err(|e| (is_transient_replace_error(win32_code(&e)), e.to_string()))
     } else {
         // Fresh target: nothing to preserve, so a write-through move makes the namespace change
         // durable before we return — the barrier the journal fsync assumes (a plain rename left the
@@ -164,7 +216,7 @@ fn publish(tmp: &Path, target: &Path) -> PortResult<()> {
                 MOVEFILE_WRITE_THROUGH,
             )
         }
-        .map_err(|e| PortError::Io(e.to_string()))
+        .map_err(|e| (is_transient_replace_error(win32_code(&e)), e.to_string()))
     }
 }
 
@@ -342,6 +394,40 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
             .collect();
         assert!(stragglers.is_empty(), "a failed write left temp files: {stragglers:?}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_transiently_locked_target_is_replaced_once_the_lock_clears() {
+        // The owner-box failure mode (2026-07-16): Explorer, woken by our OWN change notifications
+        // mid-batch, briefly holds the next target without sharing — ReplaceFileW fails with a
+        // sharing violation and the whole batch used to roll back. The publish must outwait a
+        // transient hold instead of failing on the first attempt.
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("contended.lnk");
+        fs::write(&path, b"original").unwrap();
+        // share_mode(0) = deny read/write/delete to everyone else — exactly Explorer's brief hold.
+        let lock = fs::OpenOptions::new().read(true).share_mode(0).open(&path).unwrap();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            drop(lock);
+        });
+        write_atomic(&path.to_string_lossy(), b"styled").unwrap();
+        handle.join().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"styled");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn transient_replace_error_set_matches_the_sharing_family() {
+        for code in [5, 32, 33, 1175, 1176, 1177] {
+            assert!(is_transient_replace_error(code), "{code} is transient");
+        }
+        for code in [2, 3, 123, 1392] {
+            // NotFound / path / name / corrupt — real errors, never retried.
+            assert!(!is_transient_replace_error(code), "{code} is NOT transient");
+        }
     }
 
     #[test]

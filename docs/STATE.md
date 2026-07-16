@@ -45,6 +45,22 @@ what is in flight, and what comes next.
 
 ## Active work (in flight)
 
+- **Apply reliability — transient-lock retry + per-item transactions (2026-07-17).** On-box
+  incident: every apply died at a RANDOM item mid-batch (journal: txn died between AssetWritten
+  and ItemApplied, e.g. at Raft.url) and rolled the WHOLE batch back — owner saw "apply randomly
+  styled a few icons then undid itself". Root cause: batch-writing the live Desktop races
+  Explorer/AV/indexer transient holds (ReplaceFileW/IPersistFile::Save → win32 5/32/33/1175–1177),
+  and one fault nuked the batch. FIXED 3-layer: durable::publish bounded-backoff retry (~1s);
+  dm-elevated set_icon/write_bytes same retry; commit_apply now runs EACH user-desktop item as its
+  OWN txn (blast radius = the one file; driver/journal grammar unchanged). Driver failure reason
+  now names the failing file; mutations.rs logs the batch error server-side; scan keeps a
+  debug-level not-styleable log. codex R1 REQUEST-CHANGES both fixed: P1 IPersistFile sharing
+  conflicts are STG_E_* HRESULTs (0x8003_0005/20/21) not 0x8007xxxx → full-HRESULT classifier
+  (host-tested) + retry on the helper's read_icon too; P2 the bare-Err early return dropped the
+  per-item `apply.conflicts` → merged + regression. Tests: ops 260 (3 new regressions) ·
+  windows 110 (real 150ms exclusive-lock retry) · elevated 56. codex R2 verdict PENDING; owner
+  re-test pending. UNCOMMITTED.
+
 - **Icons round — reset lens · panel P-B/H-A · preset packages · File shape · Comet mark
   (2026-07-15).** Owner-disposed 7 decisions; binding record
   `docs/reviews/2026-07-15-icon-preset-io-file-shape-arrow.md`; plan

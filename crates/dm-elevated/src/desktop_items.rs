@@ -133,6 +133,35 @@ pub fn restore(items: &[RestoreItem], writer: &dyn DesktopWriter) -> Result<usiz
     Ok(done.len())
 }
 
+/// Win32 codes meaning "another process transiently holds the file" — mirrors the main app's
+/// `dm_windows::durable` set: ERROR_ACCESS_DENIED (5, also what an AV-held replace surfaces as),
+/// ERROR_SHARING_VIOLATION (32), ERROR_LOCK_VIOLATION (33), ERROR_UNABLE_TO_REMOVE_REPLACED /
+/// _TO_MOVE_REPLACEMENT(_2) (1175–1177). Pure classification, host-tested; consumed by the
+/// Windows writer's bounded-backoff retry.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn is_transient_win32(code: u32) -> bool {
+    matches!(code, 5 | 32 | 33 | 1175..=1177)
+}
+
+/// Whether a full HRESULT is the transient-hold family. `IPersistFile::Save`/`Load` report
+/// sharing conflicts as STRUCTURED-STORAGE HRESULTs — `STG_E_SHAREVIOLATION (0x8003_0020)`,
+/// `STG_E_LOCKVIOLATION (0x8003_0021)`, `STG_E_ACCESSDENIED (0x8003_0005)` — NOT as
+/// `HRESULT_FROM_WIN32` wrappings, so unwrapping only `0x8007xxxx` missed every real COM sharing
+/// violation (codex 2026-07-17 P1). Both families are recognised, plus a bare Win32 code some
+/// layers pass through un-wrapped.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn is_transient_hresult(hr: u32) -> bool {
+    match hr {
+        // STG_E_ACCESSDENIED | STG_E_SHAREVIOLATION | STG_E_LOCKVIOLATION
+        0x8003_0005 | 0x8003_0020 | 0x8003_0021 => true,
+        // HRESULT_FROM_WIN32(win32) → FACILITY_WIN32 wrapping.
+        hr if hr & 0xFFFF_0000 == 0x8007_0000 => is_transient_win32(hr & 0xFFFF),
+        // A bare Win32 code (no failure bit) some layers pass through un-wrapped.
+        hr if hr & 0x8000_0000 == 0 => is_transient_win32(hr),
+        _ => false,
+    }
+}
+
 #[cfg(windows)]
 pub use windows_writer::run_apply_file;
 #[cfg(windows)]
@@ -249,18 +278,22 @@ mod windows_writer {
         }
 
         fn read_icon(&self, target: &str, _kind: Kind) -> Result<(String, i32), String> {
-            // SAFETY: STA COM; Load READ then GetIconLocation into an owned buffer.
-            unsafe {
-                let link: IShellLinkW =
-                    CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com)?;
-                let file: IPersistFile = link.cast().map_err(com)?;
-                file.Load(&HSTRING::from(target), STGM_READ).map_err(com)?;
-                let mut buf = vec![0u16; 1024];
-                let mut index = 0i32;
-                link.GetIconLocation(&mut buf, &mut index).map_err(com)?;
-                let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-                Ok((String::from_utf16_lossy(&buf[..end]), index))
-            }
+            // Retried like the writes: the CAS read racing a transient Explorer/AV hold must not
+            // fail the one batch the user's UAC consent paid for.
+            retry_transient(|| {
+                // SAFETY: STA COM; Load READ then GetIconLocation into an owned buffer.
+                unsafe {
+                    let link: IShellLinkW =
+                        CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com_err)?;
+                    let file: IPersistFile = link.cast().map_err(com_err)?;
+                    file.Load(&HSTRING::from(target), STGM_READ).map_err(com_err)?;
+                    let mut buf = vec![0u16; 1024];
+                    let mut index = 0i32;
+                    link.GetIconLocation(&mut buf, &mut index).map_err(com_err)?;
+                    let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+                    Ok((String::from_utf16_lossy(&buf[..end]), index))
+                }
+            })
         }
 
         fn read_bytes(&self, target: &str) -> Result<Vec<u8>, String> {
@@ -272,21 +305,63 @@ mod windows_writer {
         }
 
         fn set_icon(&self, target: &str, _kind: Kind, icon: &str, index: i32) -> Result<(), String> {
-            // SAFETY: STA COM; Load READWRITE, SetIconLocation, Save in place (fRemember = false).
-            unsafe {
-                let link: IShellLinkW =
-                    CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com)?;
-                let file: IPersistFile = link.cast().map_err(com)?;
-                file.Load(&HSTRING::from(target), STGM_READWRITE).map_err(com)?;
-                link.SetIconLocation(&HSTRING::from(icon), index).map_err(com)?;
-                file.Save(&HSTRING::from(target), false).map_err(com)
-            }
+            // Retried: writing the shared Desktop races Explorer/AV handles the batch's own shell
+            // notifications wake up — the same transient sharing-violation family the unelevated
+            // writer outwaits (owner box 2026-07-16, a helper batch failing with no terminal).
+            retry_transient(|| {
+                // SAFETY: STA COM; Load READWRITE, SetIconLocation, Save in place (fRemember = false).
+                unsafe {
+                    let link: IShellLinkW =
+                        CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(com_err)?;
+                    let file: IPersistFile = link.cast().map_err(com_err)?;
+                    file.Load(&HSTRING::from(target), STGM_READWRITE).map_err(com_err)?;
+                    link.SetIconLocation(&HSTRING::from(icon), index).map_err(com_err)?;
+                    file.Save(&HSTRING::from(target), false).map_err(com_err)
+                }
+            })
         }
 
         fn write_bytes(&self, target: &str, _kind: Kind, bytes: &[u8]) -> Result<(), String> {
-            // A plain overwrite: the original `.lnk` bytes captured before our write.
-            fs::write(target, bytes).map_err(|e| format!("write {target}: {e}"))
+            // A plain overwrite: the original `.lnk` bytes captured before our write. Retried for
+            // the same transient-hold family as `set_icon` — a rollback replay racing Explorer must
+            // not strand a half-restored batch.
+            retry_transient(|| {
+                fs::write(target, bytes).map_err(|e| {
+                    (
+                        e.raw_os_error().is_some_and(|c| super::is_transient_win32(c as u32)),
+                        format!("write {target}: {e}"),
+                    )
+                })
+            })
         }
+    }
+
+    /// Runs `op` with bounded backoff (~1s total) while it fails with a transient lock. The helper
+    /// runs ONE batch per UAC prompt, so failing fast on a 50 ms Explorer hold would waste the
+    /// user's consent; outwaiting it is strictly better.
+    fn retry_transient<T>(mut op: impl FnMut() -> Result<T, (bool, String)>) -> Result<T, String> {
+        const ATTEMPTS: u32 = 8;
+        let mut delay_ms = 25u64;
+        for attempt in 1..=ATTEMPTS {
+            match op() {
+                Ok(v) => return Ok(v),
+                Err((transient, msg)) => {
+                    if !transient || attempt == ATTEMPTS {
+                        return Err(msg);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                    delay_ms = (delay_ms * 2).min(200);
+                }
+            }
+        }
+        unreachable!("the retry loop always returns")
+    }
+
+    /// Maps a COM error into the retry contract: `(is_transient, message)` via
+    /// [`super::is_transient_hresult`] (structured-storage STG_E_* AND `HRESULT_FROM_WIN32`
+    /// families — codex 2026-07-17 P1).
+    fn com_err(e: windows::core::Error) -> (bool, String) {
+        (super::is_transient_hresult(e.code().0 as u32), format!("COM error: {e}"))
     }
 
     /// A capped, local-fixed read of a target/staged file (bounds a hostile size like the ICO guard).
@@ -307,10 +382,6 @@ mod windows_writer {
             return Err(format!("file exceeds the {MAX_ICO_BYTES}-byte cap: {}", path.display()));
         }
         Ok(bytes)
-    }
-
-    fn com(e: windows::core::Error) -> String {
-        format!("COM error: {e}")
     }
 
     fn writer() -> Result<WinWriter, String> {
@@ -346,6 +417,26 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
     use std::collections::HashMap;
+
+    #[test]
+    fn transient_hresult_covers_the_structured_storage_family_ipersistfile_reports() {
+        // codex 2026-07-17 P1: IPersistFile::Save/Load surface sharing conflicts as STG_E_*, not
+        // HRESULT_FROM_WIN32 — a classifier that only unwraps 0x8007xxxx retries NONE of them.
+        for hr in [0x8003_0020u32, 0x8003_0021, 0x8003_0005] {
+            assert!(is_transient_hresult(hr), "STG_E {hr:#010x} is transient");
+        }
+        // The HRESULT_FROM_WIN32 wrappings of the Win32 sharing family.
+        for win32 in [5u32, 32, 33, 1175, 1176, 1177] {
+            assert!(is_transient_hresult(0x8007_0000 | win32), "0x8007|{win32} is transient");
+        }
+        // Bare Win32 codes passed through un-wrapped.
+        assert!(is_transient_hresult(32));
+        // Real errors are never retried: E_FAIL, STG_E_FILENOTFOUND, wrapped ERROR_FILE_NOT_FOUND,
+        // bare ERROR_FILE_NOT_FOUND.
+        for hr in [0x8000_4005u32, 0x8003_0002, 0x8007_0002, 2] {
+            assert!(!is_transient_hresult(hr), "{hr:#010x} is NOT transient");
+        }
+    }
 
     /// A virtual desktop where each target's raw bytes FULLY encode its (icon_location, index) as
     /// `"<icon>\t<index>"` — so a rollback that replays captured bytes restores the OBSERVABLE icon

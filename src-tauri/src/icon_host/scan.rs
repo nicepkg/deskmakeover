@@ -184,6 +184,20 @@ impl IconHost {
                 y,
                 source_urls: urls,
             });
+            // Operability: WHY an item is not styleable (extraction fault / consent / state /
+            // kind) must be answerable from the log — the 2026-07-16 partial-apply incident was
+            // only attributable by reverse-engineering the journal. Debug level: it fires per
+            // not-styleable item on every rescan.
+            if degraded_reason.is_some() || !item.can_style() {
+                log::debug!(
+                    "scan not-styleable '{}' kind={:?} state={:?} consent={} reason={:?}",
+                    item.name,
+                    item.kind,
+                    item.state,
+                    item.requires_explicit_consent,
+                    degraded_reason,
+                );
+            }
             // `source_ok` is the ONE apply-authority bit shared with the commit path (codex
             // icons2-🟠5): the DTO's styleable, the commit's acceptance, and the restore planner
             // all derive from it instead of three drifting definitions.

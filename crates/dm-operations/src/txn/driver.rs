@@ -209,7 +209,16 @@ impl<'p> TxnDriver<'p> {
                 return if is_journal_error(&e) {
                     self.abandon(applied, ledger, format!("apply journal append failed: {e}"), outcome)
                 } else {
-                    self.rollback(txn, applied, journal, ledger, format!("apply failed: {e}"), outcome)
+                    // The reason NAMES the failing file — a mid-batch fault was otherwise only
+                    // attributable by reverse-engineering the journal (owner box 2026-07-16).
+                    self.rollback(
+                        txn,
+                        applied,
+                        journal,
+                        ledger,
+                        format!("apply {} failed: {e}", req.target.path),
+                        outcome,
+                    )
                 };
             }
         }

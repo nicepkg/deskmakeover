@@ -453,36 +453,67 @@ impl<'a> IconOps<'a> {
             }
         }
 
-        let txn_id = txn.next_id();
-        let mut apply = match TxnDriver::new(self.platform.reader, self.platform.applier, self.platform.assets)
-            .apply(txn_id, requests, journal, ledger)
-        {
-            Ok(a) => a,
-            Err(e) => {
-                // The driver faulted OUTSIDE its transactional envelope (a batch rollback returns
-                // Ok-with-error, NOT Err). Keep-reverts above may already have touched the desktop, so
-                // return the authoritative state + a repair note rather than a bare Err over a
-                // half-changed desktop (codex R3-Block 4).
-                repair.push(format!("apply driver: {e}"));
-                let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);
-                return Ok(IconApplyOutcome {
-                    committed: Vec::new(),
-                    reverted,
-                    conflicts,
-                    // A driver bare-Err can escape only from a journal-append fault, which may be AFTER
-                    // the desktop mutated — treat it as possibly-changed so the host never says
-                    // "nothing changed" (codex R5-#1). The `degraded` path already routes it there.
-                    desktop_mutated: true,
-                    intent_persisted: false,
-                    // The heal set is unknown on a bare-Err (a poison row may already have been dropped
-                    // in preflight) — fence the scan on the safe side (codex R9-#1).
-                    requires_rescan: true,
-                    error: None,
-                    degraded: Some(repair.join("; ")),
-                    stores,
-                });
+        // Each user-desktop item runs as its OWN transaction: reversibility is per-item anyway
+        // (each txn pins its own anchor + ledger row), and batch atomicity was never a product
+        // promise — but batch-wide rollback WAS a product bug. On the live Desktop one item can
+        // always fail for reasons private to it (an AV/sync client pinning the file for seconds, a
+        // legacy ANSI `.url` the writer refuses to rewrite); with one giant txn that single fault
+        // rolled every already-styled icon back, which the owner saw as "apply randomly undid
+        // itself" (2026-07-16). Per-item txns shrink the blast radius to exactly the failing file:
+        // the rest stay styled, the failure is reported per item, and a re-apply picks up the
+        // stragglers. The driver's own journal envelope is untouched (recovery semantics per txn
+        // are identical — just N small txns instead of one).
+        let driver =
+            TxnDriver::new(self.platform.reader, self.platform.applier, self.platform.assets);
+        let mut apply = ApplyOutcome::default();
+        let mut driver_fault: Option<OperationError> = None;
+        for req in requests {
+            match driver.apply(txn.next_id(), vec![req], journal, ledger) {
+                Ok(one) => {
+                    apply.committed.extend(one.committed);
+                    apply.conflicts.extend(one.conflicts);
+                    apply.rolled_back.extend(one.rolled_back);
+                    apply.healed.extend(one.healed);
+                    apply.desktop_mutated |= one.desktop_mutated;
+                    apply.error = join_errors(apply.error.take(), one.error);
+                }
+                // A bare Err means the driver faulted OUTSIDE its transactional envelope — possibly
+                // a TORN journal (P1-5). Stop the loop: later items were never journaled and stay
+                // untouched; appending more records to a torn journal could corrupt it.
+                Err(e) => {
+                    driver_fault = Some(e);
+                    break;
+                }
             }
-        };
+        }
+        if let Some(e) = driver_fault {
+            // Keep-reverts above and the per-item txns that already COMMITTED or CONFLICTED are
+            // real state — report them (never "nothing changed", never a vanished conflict —
+            // codex 2026-07-17 P2), plus the authoritative stores + a repair note rather than a
+            // bare Err over a half-changed desktop (codex R3-Block 4).
+            conflicts.append(&mut apply.conflicts);
+            repair.push(format!("apply driver: {e}"));
+            if let Some(err) = apply.error.take() {
+                repair.push(err);
+            }
+            let stores = self.read_state_or_degraded(history, ledger, journal, &mut repair);
+            return Ok(IconApplyOutcome {
+                committed: apply.committed,
+                reverted,
+                conflicts,
+                // A driver bare-Err can escape only from a journal-append fault, which may be AFTER
+                // the desktop mutated — treat it as possibly-changed so the host never says
+                // "nothing changed" (codex R5-#1). The `degraded` path already routes it there.
+                desktop_mutated: true,
+                intent_persisted: false,
+                // The heal set is unknown on a bare-Err (a poison row may already have been dropped
+                // in preflight) — fence the scan on the safe side (codex R9-#1).
+                requires_rescan: true,
+                error: None,
+                degraded: Some(repair.join("; ")),
+                stores,
+            });
+        }
         // The privileged shared items run as ONE elevated batch (one UAC), AFTER the user's own icons
         // (so a UAC cancel still lands the unelevated apply). Its outcome folds into `apply` so every
         // downstream verdict — committed / conflicts / desktop_mutated / error / heal-fence — treats

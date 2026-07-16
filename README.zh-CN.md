@@ -6,10 +6,10 @@
 
 <img src=".github/assets/name-zh-pill.png" height="22" alt="桌面美颜" />
 
-**一键美颜你的 Windows 桌面，一键完整还原。**
+**给你的 Windows 桌面换个好看的样子。不喜欢，一键变回原样。**
 
 [![状态](https://img.shields.io/badge/beta-v0.1.0-FF6F5E?labelColor=2f363d)](https://github.com/nicepkg/deskmakeover/releases)
-[![Windows](https://img.shields.io/badge/Windows-10%20%C2%B7%2011-464f58?labelColor=2f363d)](#安装)
+[![Windows](https://img.shields.io/badge/Windows-10%20%C2%B7%2011-464f58?labelColor=2f363d)](#-怎么安装)
 [![许可证](https://img.shields.io/badge/License-MIT-464f58?labelColor=2f363d)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%202-464f58?labelColor=2f363d)](https://v2.tauri.app/)
 
@@ -25,26 +25,43 @@
 
 <br/>
 
-DeskMakeover（桌面美颜）把杂乱的 Windows 桌面变成干净、像被认真设计过的样子，并且随时能还原到分毫不差的原样。它重绘你的桌面图标，在图标背后铺半透明的壁纸分区；每一个像素都先实时预览，确认之后才写入任何文件。不用 PowerShell，不用改注册表，不用手动换图标。
+DeskMakeover（桌面美颜）帮你把乱糟糟的 Windows 桌面，收拾成看着顺眼、像被认真布置过的样子。它给桌面图标换上你选的外观，还能在壁纸上圈出分区，把图标归归类。动手之前你先看到效果，满意了才落地；不满意，一键就回到原来的样子。
 
-> **状态：Beta。** 桌面壳已在真实 Windows 10/11 上运行；写入面正在完成真机验证，首个公开安装包正在准备中。在它发布前，请[从源码构建](#面向开发者)。细节见[常见问题](#常见问题)。
+<details>
+<summary>📑 目录</summary>
 
-## 可还原是产品本身
+- [你的桌面，可以是这样的](#%EF%B8%8F-你的桌面可以是这样的)
+- [先说最重要的：随时能变回来](#%EF%B8%8F-先说最重要的随时能变回来)
+- [九套现成外观，一键上身](#-九套现成外观一键上身)
+- [每一处都能自己调](#-每一处都能自己调)
+- [存成自己的风格，还能分享](#-存成自己的风格还能分享)
+- [在壁纸上圈出分区](#%EF%B8%8F-在壁纸上圈出分区图标不再乱堆)
+- [怎么安装](#-怎么安装) · [常见问题](#-常见问题) · [工作原理](#%EF%B8%8F-工作原理)
 
-- **动任何东西之前先快照。** 每次应用前都会快照你当前的图标、箭头和壁纸。还原只需一键，带回分毫不差的原样。
-- **先看到，再发生。** 实时预览和最终写入用的是同一套渲染代码，你看到什么，落地就是什么。
-- **纯本地。** 无账号，无上传，无遥测。一切都在你的机器上运行、留存。
-- **主程序不要管理员权限。** 应用以普通用户身份运行；极少数特权操作走一个只认固定动作白名单的小助手。
-- **签名发布。** 每个公开发布的安装包都会带 Authenticode 签名，Windows 可以验证它出厂后未被篡改；本地构建保持未签名。
+</details>
 
-<div align="center"><br/><img src=".github/assets/rule-sparkle.svg" width="80" alt="" /><br/><br/></div>
+## 🖥️ 你的桌面，可以是这样的
 
-## 九套外观，一键上身
+上面这幅画面，前一半是很多人桌面的日常：图标挤成一片，一堆小箭头，看着就累。点一下美化，同一台电脑，同一批图标，同一张壁纸，就换了个样子。中间没有魔法，是你自己一步步挑、一步步调，看着它慢慢变成这样。
 
-同一个文件夹，九种穿法；每一套都是在真实桌面上手工调出来的：
+## ↩️ 先说最重要的：随时能变回来
+
+很多人想动桌面又不敢，怕弄坏了回不去。这个「回不去」，恰恰是我们最先解决的事。
+
+动任何东西之前，它会先把你现在的桌面完整备份一份，就像先给桌面拍张照片存起来：图标、箭头、壁纸，原封不动地留好。之后你怎么调都行，想回到最初，点一下还原，就和你没动过时一模一样。就算调得不满意，也不会把自己困在里面。
+
+它只在你这台电脑上跑。不用注册账号，不联网上传任何东西。你的桌面长什么样，只有你自己看得到。
+
+你也不用自己敲命令，不用碰任何技术设置。你要做的就三件事：挑、预览、满意了点一下。
+
+<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+
+## ✨ 九套现成外观，一键上身
+
+我们内置了九套外观，每一套都在真实桌面上一点点手工调过。挑一套点一下，所有图标就换上这个样子。同一个文件夹，九种穿法：
 
 <div align="center">
-<img src=".github/assets/specimen-nine-styles.webp" width="880" alt="同一个文件夹图标在九套 DeskMakeover 风格下的样子" />
+<img src=".github/assets/specimen-nine-styles.webp" width="880" alt="同一个文件夹图标在九套风格下的样子" />
 <br/>
 <sub>方圆 · 圆窗 · 像素纪元 · 溪石 · 拼贴手帐 · 浮光 · 随形贴 · 蓝图 · 釉光</sub>
 </div>
@@ -69,18 +86,63 @@ DeskMakeover（桌面美颜）把杂乱的 Windows 桌面变成干净、像被�
 </tr>
 </table>
 
-预设是起点，不是牢笼。它下面是一套真正的图标设计系统：基于地道 iOS 连续圆角 squircle 几何的 11 形状目录、共享调色盘的配色处理、精修的快捷方式标识、质感滤镜，以及按类型覆写（文件夹和文件可以各有自己的形状）。图标主体像素永不被重新上色；外观靠底板、剪影和背景来区分。
+## 🎨 每一处都能自己调
 
-## 它能做什么
+<table>
+<tr>
+<td width="55%" valign="middle">
 
-- **一键美颜：**在你真实桌面的实时镜像上（真壁纸、真图标位置）重绘每一个图标。按住对比原样，右键单独覆盖任意图标，支持完整撤销重做与版本历史。
-- **壁纸分区：**直接在壁纸上画半透明面板给图标分组：五种材质、四种标题样式、可选烘焙阴影、网格吸附。原壁纸自动备份，一键换回。
-- **清爽（Calm Windows）：**引导式、fail-closed 的系统安静助手。任何一条调整在配方被认证前都不会真正写入；在那之前它教你真正的 Windows 设置在哪，并直接带你过去。
-- **还原永远在手边：**任何改动前都先快照；一键带回你原本的图标、箭头和壁纸，分毫不差。
+九套只是起点，不是全部。外观的每一部分你都能自己搭：图标形状有十一种可选，配色、图标底板的颜色、表面质感、快捷方式那个小标记的样式，都能单独换。程序、文件夹、普通文件还能各用各的样子。
 
-<div align="center"><br/><img src=".github/assets/rule-sparkle.svg" width="80" alt="" /><br/><br/></div>
+这样组合下来是上千种搭配，够你调出一套只属于自己的桌面。
 
-## 走进工作台
+预览时按住不放，就能和原样对比；哪个图标想单独改，右键点它就行；调乱了可以一步步撤销、重做。
+
+</td>
+<td width="45%" align="center">
+  <img src=".github/assets/feature-combine.webp" width="380" alt="外观控制面板：形状、配色、底板、质感、快捷方式标记都能单独调" />
+</td>
+</tr>
+</table>
+
+## 🧩 存成自己的风格，还能分享
+
+<table>
+<tr>
+<td width="45%" align="center">
+  <img src=".github/assets/feature-stylepack.webp" width="360" alt="风格库：九套内置外观，支持存为我的风格、导出和导入" />
+</td>
+<td width="55%" valign="middle">
+
+调出一套顺眼的搭配，别让它溜走。你可以把它存成自己的一套风格，下次一键就能再用上。
+
+你也可以把它导出成一个文件，发给朋友。朋友把文件导进去，就用上了你调的这一套。反过来，别人做好的风格包，你拿过来也能直接用。一套好看的桌面，可以这样传来传去。
+
+</td>
+</tr>
+</table>
+
+## 🗂️ 在壁纸上圈出分区，图标不再乱堆
+
+图标越攒越多，最后堆成一片，找个东西得扫半天。你可以直接在壁纸上圈出几块半透明的区域，比如一块放工作，一块放娱乐，把相关的图标归到一起，看着清爽多了。
+
+每块区域放在哪、多大，你自己拖着调。有五种材质、四种标题样式可选，还能让壁纸稍微暗一点，让分区更清楚。原来的壁纸照样备份好，想撤掉分区，一键换回。
+
+<div align="center">
+<img src=".github/assets/feature-zones.webp" width="880" alt="壁纸分区编辑：亮暗两种材质的分区摆在壁纸上，位置大小随意拖" />
+</div>
+
+## ✂️ 快捷方式的小箭头，可换可去
+
+快捷方式左下角那个小箭头，很多人嫌它丑。你可以把它换成更精致的小标记，或者干脆去掉。
+
+这件事由应用替你完成，你不用自己动手做任何技术操作。去掉箭头的时候，Windows 会弹一次确认框，问你允不允许，你点「允许」就行。改之前它一样先备份好，想让箭头回来，一键就装回去。
+
+> 顺带一提：内置的「清爽」小助手还能帮你把 Windows 一些吵闹的默认设置安静下来。改哪条都先问你，也都能改回来。
+
+<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+
+## 🎛️ 走进工作台
 
 <div align="center">
 <img src=".github/assets/app-studio.webp" width="880" alt="DeskMakeover 主窗口：左边是桌面实时镜像，右边是设计控制面板" />
@@ -88,34 +150,36 @@ DeskMakeover（桌面美颜）把杂乱的 Windows 桌面变成干净、像被�
 <sub>右边挑一套外观，左边看着自己的真实桌面实时换装，满意了再按下美化。</sub>
 </div>
 
-## 安装
+## 📦 怎么安装
 
-1. 打开 [Releases](https://github.com/nicepkg/deskmakeover/releases) 页面，下载最新的 `DeskMakeover_x.y.z_x64-setup.exe`。（首个公开版本正在路上；在它出现之前，请[从源码构建](#面向开发者)。）
-2. 双击运行。它按用户安装，不弹管理员提示；如果系统缺 WebView2 运行时会自动补上。
-3. 打开 DeskMakeover 开始。桌面上的一切都先预览再落地，每个改动都能一键撤销。
+第一个正式安装包还在准备中，做好后会放到 [Releases](https://github.com/nicepkg/deskmakeover/releases) 页面。到时候步骤很简单：下载那个安装文件，双击打开。它只给你自己这个账户安装，装完打开就能用。
 
-支持 Windows 10（1809 及以上）和 Windows 11，64 位。
+如果 Windows 弹出一个蓝色的「Windows 已保护你的电脑」，别慌。这不是说软件有病毒，只是 Windows 对下载人数还不多的新软件比较谨慎。点一下「更多信息」，再点「仍要运行」就好。等装的人多了，这个提示就不再出现了。
 
-> **如果 Windows 弹出蓝色的「Windows 已保护你的电脑」：** 这是 SmartScreen 对还不常见的发布者的谨慎提示，不是病毒警告。安装包做了 Authenticode 签名，你可以右键 `.exe`，选「属性 → 数字签名」核对签署者。要继续安装，点「更多信息」，再点「仍要运行」。随着装签名版的人越来越多，Windows 就不再弹这个提示了。
+它支持 Windows 10（1809 及以上版本）和 Windows 11，64 位。
 
-## 常见问题
+## 💬 常见问题
 
-**它会拖慢电脑吗？**
-重活只在你应用一套外观时干一次。之后有一个小托盘助手盯着 Windows 重置桌面的时机（比如资源管理器重启）并把你的外观补回来。它是一个校对器，不是常驻渲染器。
+**会不会把电脑弄坏，回不去？**
+它动手之前先把你的桌面完整备份，任何改动都能一键还原，回到和你没动过时一模一样。这是我们最优先保证的事，所以就算你随便试，也能随时收回来。
 
-**重启或 Windows 更新后还在吗？**
-美化后的图标是烘焙成真实图片文件的，重启不丢；Windows 重建图标缓存时托盘助手会把外观校对回来。大版本的 Windows 功能更新可能重置部分系统默认项；遇到了就一键重新应用，或者干脆还原。
+**会不会拖慢电脑？**
+不会让你察觉到。费劲的活只在你点「应用」的那一下干一次，平时它只是安安静静待着。万一 Windows 自己把桌面刷回了默认，它会帮你把外观补回来。
 
-**怎么变回原样？**
-一键。DeskMakeover 在任何改动前都快照了你原本的图标、箭头和壁纸，还原就是分毫不差地放回去。你也可以逐步撤销重做，设置里还有完整的「恢复系统原始外观」。
+**关机重启之后还在吗？**
+在。换好的图标是实实在在的图片文件，重启不会丢。如果哪天 Windows 大更新把一些设置重置了，你一键重新应用就好，或者干脆还原。
 
-**它动注册表吗？**
-你不需要碰注册表，你原本的图标文件也永远不会被修改。美化图标是存在应用自己数据目录里的新图片文件；文件夹走标准的 `desktop.ini` 机制。应用确实会改的少数 shell 设置都先快照，还原时原样放回。
+**要花钱吗？我的东西会被上传吗？**
+完全免费，而且是开源的。它只在你这台电脑上跑，不用注册账号，也不会把你的桌面或任何东西传到网上。
 
-**支持 Windows 10 吗？**
-支持，Windows 10 需 1809 及以上，64 位；也支持 64 位 Windows 11。
+**我不太懂电脑，能用明白吗？**
+能。你要做的就是挑一套外观、看预览、满意了点一下。全程不用敲命令，不用碰任何技术设置。挑错了、看腻了，随时一键还原。
 
-## 工作原理
+> **说句实在话：** 它现在还是 Beta，第一个安装包还在准备，用起来会有些粗糙的地方。它做的是把桌面图标和壁纸分区变好看，不负责给整个 Windows 换主题。别指望它一键就完美，但你调出来的样子随时能一键收回，所以尽管放心试。
+
+<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+
+## 🏗️ 工作原理
 
 DeskMakeover 是一个 **Tauri 2 + Rust** 桌面应用，UI 是渲染在系统 WebView（Windows 上是 WebView2）里的 **React**。像素由一个 Rust 图标内核统一拥有：
 
@@ -129,9 +193,9 @@ React UI  ──(生成式 bridge，tauri-specta)──▶  Rust host
                                                   └─ dm-elevated    极小的白名单提权助手
 ```
 
-bridge 契约由 `dm-contracts` crate 生成，并由 CI 里的 bindings 测试锁住，TypeScript 与 Rust 两侧保持同步。web 半边可独立对着 mock 后端运行，这也是大部分 UI 在浏览器循环里构建和测试的原因。全貌见 [`docs/development.md`](docs/development.md) 与 [`docs/specs/`](docs/specs) 下的设计规格。
+bridge 契约由 `dm-contracts` crate 生成，并由 CI 里的 bindings 测试锁住，TypeScript 与 Rust 两侧保持同步。预览像素和最终落地像素来自同一套 `dm-icon-core` 渲染代码（预览走 WASM，落地走原生），所见即所得是构造出来的，不是碰运气。隐藏原生快捷方式箭头会通过白名单提权助手改一个 Shell Icons 注册表值；和其他所有改动一样，改之前先快照，还原时原样放回。web 半边可独立对着 mock 后端运行，这也是大部分 UI 在浏览器循环里构建和测试的原因。全貌见 [`docs/development.md`](docs/development.md) 与 [`docs/specs/`](docs/specs) 下的设计规格。
 
-## 面向开发者
+## 🛠️ 面向开发者
 
 [![CI](https://github.com/nicepkg/deskmakeover/actions/workflows/ci.yml/badge.svg)](https://github.com/nicepkg/deskmakeover/actions/workflows/ci.yml)
 
@@ -145,10 +209,30 @@ bun run tauri:dev    # 完整桌面应用(Windows)：编译 Rust host，打开�
 
 完整开发手册（开发模式、测试、Tauri 循环、打包、签名）见 [`docs/development.md`](docs/development.md)；本地构建永远是未签名的，在哪都能跑。
 
-## 参与贡献
+## 🤝 参与贡献
 
 React UI、Rust 内核、文档、本地化、Windows 兼容性测试都欢迎参与；大部分 UI 在浏览器里就能开发测试，不需要 Windows 机器。先看 [`CONTRIBUTING.md`](CONTRIBUTING.md) 了解环境搭建和家规，再看看 [good first issue](https://github.com/nicepkg/deskmakeover/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)。安全问题走 [`SECURITY.md`](SECURITY.md)。
 
-## 许可证
+## 📄 许可证
 
 [MIT](LICENSE) © 2026 [Jinming Yang](https://github.com/2214962083)。免费开源。
+
+<div align="center">
+
+<br/>
+
+**桌面变好看了？给个 ⭐ 让更多人看到它。**
+
+<a href="https://github.com/nicepkg/deskmakeover"><img src="https://img.shields.io/github/stars/nicepkg/deskmakeover?style=social" alt="Star DeskMakeover" /></a>
+
+<br/><br/>
+
+<img src=".github/assets/rule-gradient.svg" width="880" alt="" />
+
+<img src=".github/assets/logo.png" width="40" alt="" />
+
+**DeskMakeover · 桌面美颜**
+
+[Releases](https://github.com/nicepkg/deskmakeover/releases) · [Issues](https://github.com/nicepkg/deskmakeover/issues) · [English](README.md) · **中文**
+
+</div>

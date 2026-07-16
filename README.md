@@ -6,10 +6,10 @@
 
 <a href="README.zh-CN.md"><img src=".github/assets/name-zh-pill.png" height="22" alt="桌面美颜" /></a>
 
-**Make your Windows desktop beautiful in one click. Put it all back in one click.**
+**Give your Windows desktop a look you actually like. Don't like it? One click puts everything back.**
 
 [![Status](https://img.shields.io/badge/beta-v0.1.0-FF6F5E?labelColor=2f363d)](https://github.com/nicepkg/deskmakeover/releases)
-[![Windows](https://img.shields.io/badge/Windows-10%20%C2%B7%2011-464f58?labelColor=2f363d)](#install)
+[![Windows](https://img.shields.io/badge/Windows-10%20%C2%B7%2011-464f58?labelColor=2f363d)](#-how-to-install)
 [![License](https://img.shields.io/badge/License-MIT-464f58?labelColor=2f363d)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%202-464f58?labelColor=2f363d)](https://v2.tauri.app/)
 
@@ -25,23 +25,40 @@
 
 <br/>
 
-DeskMakeover restyles a cluttered Windows desktop into one that looks clean and deliberate, then lets you restore the exact original whenever you want. It restyles your desktop icons and paints translucent zones into the wallpaper behind them, previewing every pixel live before it writes a single file. No PowerShell, no registry edits, no swapping icons by hand.
+DeskMakeover turns a cluttered Windows desktop into something that looks calm and deliberate. It restyles your desktop icons, and it lets you draw zones onto your wallpaper to group them. You see the result before anything changes, and if you don't like it, one click brings back exactly what you had.
 
-> **Status: beta.** The desktop shell runs on real Windows 10/11; the write surface is completing its on-device verification pass, and the first public installer is being prepared. Until it lands, [build from source](#for-developers). Details in the [FAQ](#faq).
+<details>
+<summary>📑 Table of contents</summary>
 
-## Reversible by design
+- [This is what your desktop could look like](#%EF%B8%8F-this-is-what-your-desktop-could-look-like)
+- [First, the thing people worry about most](#%EF%B8%8F-first-the-thing-people-worry-about-most)
+- [Nine looks built in](#-nine-looks-built-in)
+- [Make every part yours](#-make-every-part-yours)
+- [Save it. Share it.](#-save-it-share-it)
+- [Draw zones on your wallpaper](#%EF%B8%8F-draw-zones-on-your-wallpaper-so-icons-stop-piling-up)
+- [Install](#-how-to-install) · [FAQ](#-questions-people-ask) · [How it works](#%EF%B8%8F-how-it-works)
 
-- **It snapshots before it touches anything.** Every apply is preceded by a snapshot of your current icons, arrows, and wallpaper. Restore is one click and brings back the exact original.
-- **You approve it before it happens.** The live preview is drawn by the same code that writes the final pixels, so what you see is what gets applied.
-- **Local only.** No account, no upload, no telemetry. It reads and writes on your machine and nowhere else.
-- **No administrator rights for the app.** The main app runs as your normal user. The few privileged steps go through a small helper that is limited to a fixed list of actions.
-- **Signed releases.** Every public installer ships Authenticode-signed, so Windows can confirm it was not tampered with after we built it. Local builds stay unsigned.
+</details>
 
-<div align="center"><br/><img src=".github/assets/rule-sparkle.svg" width="80" alt="" /><br/><br/></div>
+## 🖥️ This is what your desktop could look like
 
-## Nine looks, one click
+The picture above starts as a desktop most of us know: icons crammed together, little arrows everywhere, tiring to look at. One click later it's the same PC, the same icons, the same wallpaper, just wearing a different look. There's no magic in between. You pick and adjust it yourself, and watch it change.
 
-The same folder, dressed nine ways — every preset was tuned by hand on a real desktop:
+## ↩️ First, the thing people worry about most
+
+Plenty of people want to tidy up their desktop but don't dare, in case they break something and can't get it back. That "can't get it back" part is the first thing we solved.
+
+Before it changes anything, DeskMakeover saves a full copy of your desktop as it is now, like taking a photo of it first: icons, arrows, wallpaper, all kept exactly. After that you can try whatever you want. To go back to the start, click restore, and it looks just like you never touched it. So even a bad experiment leaves you free to walk it back.
+
+It runs only on your computer. No account to sign up for, nothing uploaded anywhere. What your desktop looks like stays between you and your screen.
+
+And you never type commands or touch any technical settings. You do three things: pick, preview, and apply when you're happy.
+
+<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+
+## ✨ Nine looks built in
+
+Nine looks come built in, each one hand-tuned on a real desktop. Pick one, click once, and every icon puts it on. Here is the same folder wearing all nine:
 
 <div align="center">
 <img src=".github/assets/specimen-nine-styles.webp" width="880" alt="One folder icon rendered in all nine DeskMakeover styles" />
@@ -69,18 +86,63 @@ The same folder, dressed nine ways — every preset was tuned by hand on a real 
 </tr>
 </table>
 
-Presets are starting points, not cages. Underneath sits a real icon design system: an 11-shape catalog built on authentic iOS continuous-corner squircle geometry, color treatments with a shared palette, refined shortcut marks, finish filters, and per-type overrides so folders and files can keep shapes of their own. Subject pixels are never recolored; looks differentiate through plates, silhouettes, and backgrounds.
+## 🎨 Make every part yours
 
-## What it does
+<table>
+<tr>
+<td width="55%" valign="middle">
 
-- **One-tap beautify** — restyle every desktop icon over a live mirror of your *actual* desktop: real wallpaper, real icon positions. Hold to compare with the original, override any single icon by right-click, undo and redo with full version history.
-- **Wallpaper zones** — paint translucent panels directly into the wallpaper to group your icons: five materials, four title styles, optional baked shadow, grid-snap. The original wallpaper is backed up for a one-click return.
-- **Calm Windows (清爽)** — a guided, fail-closed helper for quieting noisy system defaults. It never writes a tweak until that recipe is certified; until then it teaches you where the real Windows setting lives and takes you straight there.
-- **Restore, always** — a snapshot precedes every change; one click brings back your original icons, arrows, and wallpaper, exactly.
+The nine are a starting point, not the whole story. You can adjust every part yourself: eleven icon shapes to choose from, plus the coloring, the plate behind each icon, the surface finish, and the style of that little shortcut mark. Apps, folders, and plain files can each look different.
 
-<div align="center"><br/><img src=".github/assets/rule-sparkle.svg" width="80" alt="" /><br/><br/></div>
+It adds up to thousands of combinations, enough to build a desktop that's just yours.
 
-## Inside the studio
+While you preview, hold to compare with the original. Right-click any single icon to change just that one. Changed your mind mid-way? Step back and forward through your edits.
+
+</td>
+<td width="45%" align="center">
+  <img src=".github/assets/feature-combine.webp" width="380" alt="The style controls: shape, coloring, plate, finish, and shortcut mark, each adjustable" />
+</td>
+</tr>
+</table>
+
+## 🧩 Save it. Share it.
+
+<table>
+<tr>
+<td width="45%" align="center">
+  <img src=".github/assets/feature-stylepack.webp" width="360" alt="The style library: nine built-in looks with save, export, and import controls" />
+</td>
+<td width="55%" valign="middle">
+
+Once you land on a combination you love, keep it. Save it as one of your own styles and reuse it with a click.
+
+You can also export it as a file and send it to a friend. They import the file and get your exact look. Style packs other people made work the same way. A good-looking desktop is easy to pass around.
+
+</td>
+</tr>
+</table>
+
+## 🗂️ Draw zones on your wallpaper so icons stop piling up
+
+The more icons pile up, the more they blur into one crowd, and finding anything takes a while. You can draw translucent zones right onto your wallpaper, say one for work and one for fun, and group related icons together.
+
+Drag each zone where you want it and size it however you like. There are five materials and four title styles, and you can dim the wallpaper a little to make the zones stand out. Your original wallpaper is backed up, so removing the zones is one click away.
+
+<div align="center">
+<img src=".github/assets/feature-zones.webp" width="880" alt="The zone editor: a light and a dark zone laid out on the wallpaper, free to move and resize" />
+</div>
+
+## ✂️ The little shortcut arrow: swap it or remove it
+
+That little arrow in the corner of every shortcut is something a lot of people find ugly. You can swap it for a cleaner mark, or remove it entirely.
+
+The app handles this for you, so you never do anything technical yourself. When you remove the arrow, Windows shows one confirmation box asking if you allow it, and you click allow. It's backed up first, so if you want the arrow back, one click restores it.
+
+> One more thing: the built-in Calm helper can quiet some of Windows' noisier defaults. It asks you before every change, and every change can be turned back.
+
+<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+
+## 🎛️ Inside the studio
 
 <div align="center">
 <img src=".github/assets/app-studio.webp" width="880" alt="The DeskMakeover window: live desktop mirror on the left, design controls on the right" />
@@ -88,34 +150,36 @@ Presets are starting points, not cages. Underneath sits a real icon design syste
 <sub>Pick a look on the right, watch your real desktop restyle live on the left, hit Beautify when it's perfect.</sub>
 </div>
 
-## Install
+## 📦 How to install
 
-1. Open the [Releases](https://github.com/nicepkg/deskmakeover/releases) page and download the latest `DeskMakeover_x.y.z_x64-setup.exe`. (The first public release is on its way; until it appears there, [build from source](#for-developers).)
-2. Double-click it. DeskMakeover installs just for your user, so there is no administrator prompt, and it adds the WebView2 runtime automatically if your PC doesn't already have it.
-3. Open DeskMakeover and start. Nothing on your desktop changes until you preview it first, and every change is one click to undo.
+The first proper installer is still being prepared, and it will appear on the [Releases](https://github.com/nicepkg/deskmakeover/releases) page when it's ready. The steps will be simple: download the setup file and double-click it. It installs just for your account, and opens ready to use.
 
-Works on Windows 10 (version 1809 or newer) and Windows 11, 64-bit.
+If Windows shows a blue "Windows protected your PC" screen, don't worry. It doesn't mean the app has a virus. Windows is just cautious with newer software that not many people have downloaded yet. Click **More info**, then **Run anyway**. Once more people have installed it, that screen stops appearing.
 
-> **If Windows shows a blue "Windows protected your PC" screen:** that is SmartScreen being cautious about a publisher it hasn't seen often yet, not a virus alert. The installer is Authenticode-signed; you can confirm this by right-clicking the `.exe`, choosing **Properties → Digital Signatures**, and checking the signer. To continue, click **More info**, then **Run anyway**. As more people install the signed builds, Windows stops showing this prompt.
+It runs on Windows 10 (version 1809 or newer) and Windows 11, 64-bit.
 
-## FAQ
+## 💬 Questions people ask
 
-**Will it slow down my PC?**
-The heavy work happens once, when you apply a look. After that a small tray helper watches for Windows resetting your desktop (for example when Explorer restarts) and reapplies your look. It is a reconciler, not a constant background renderer.
+**Can it break my PC, or leave me stuck?**
+It backs up your desktop before it changes anything, and every change can be undone with one click, back to exactly how it was. This is the thing we guard most, so you can experiment freely and always take it back.
 
-**Will my desktop survive a reboot or a Windows update?**
-Your styled icons are baked to real image files, so they persist across reboots, and the tray helper reconciles your look back if Windows regenerates its icon cache. A major Windows feature update can reset some system defaults; if that happens, reapply with one click, or restore the original.
+**Will it slow my PC down?**
+Not in any way you'd notice. The heavy work happens once, when you hit apply. The rest of the time it just sits quietly, and if Windows ever resets your desktop to its defaults, it puts your look back for you.
 
-**How do I go back to normal?**
-One click. DeskMakeover snapshots your original icons, arrows, and wallpaper before any change, and Restore returns them exactly. You can also undo and redo individual steps, and Settings keeps a full "restore original appearance" action.
+**Will it survive a restart?**
+Yes. Your restyled icons are real image files, so they don't disappear when you reboot. If a big Windows update resets some settings, you re-apply with one click, or restore the original.
 
-**Does it edit the registry?**
-You never edit the registry by hand, and your original icon files are never modified. Styled icons are new image files kept in the app's own data folder; folders are styled through the standard `desktop.ini` mechanism. The few shell settings the app does change are snapshotted first, so Restore puts them back.
+**Is it free, and does anything get uploaded?**
+It's completely free and open source. It runs only on your computer, needs no account, and never sends your desktop or anything else online.
 
-**Does it work on Windows 10?**
-Yes, on Windows 10 version 1809 or newer, 64-bit, and on Windows 11.
+**I'm not great with computers. Can I figure it out?**
+Yes. You pick a look, check the preview, and apply when you're happy. No commands, no technical settings. If you change your mind, restore is always one click away.
 
-## How it works
+> **Straight talk:** this is still beta, the first installer is on the way, and there will be rough edges. It makes your icons and wallpaper zones look better; it isn't a full theme for all of Windows. Don't expect one-click perfection, but whatever you try, you can always take it back with one click.
+
+<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+
+## 🏗️ How it works
 
 DeskMakeover is a **Tauri 2 + Rust** desktop app with a **React** UI rendered in the system WebView (WebView2 on Windows). The pixels are owned by one Rust icon core:
 
@@ -129,9 +193,9 @@ React UI  ──(generated bridge, tauri-specta)──▶  Rust host
                                                      └─ dm-elevated    tiny whitelisted privileged helper
 ```
 
-The bridge contract is generated from the `dm-contracts` crate and locked by a bindings test in CI, so the TypeScript and Rust sides stay in sync. The web half runs standalone against a mock backend, which is why most of the UI is built and tested in a browser loop. The full picture lives in [`docs/development.md`](docs/development.md) and the design specs under [`docs/specs/`](docs/specs).
+The bridge contract is generated from the `dm-contracts` crate and locked by a bindings test in CI, so the TypeScript and Rust sides stay in sync. The preview pixels and the applied pixels come from the same `dm-icon-core` renderer (WASM in the preview, native in the bake), so WYSIWYG holds by construction. Hiding the native shortcut arrow swaps one Shell Icons registry value through the whitelisted elevated helper; like every other change it is snapshotted first and restored exactly. The web half runs standalone against a mock backend, which is why most of the UI is built and tested in a browser loop. The full picture lives in [`docs/development.md`](docs/development.md) and the design specs under [`docs/specs/`](docs/specs).
 
-## For developers
+## 🛠️ For developers
 
 [![CI](https://github.com/nicepkg/deskmakeover/actions/workflows/ci.yml/badge.svg)](https://github.com/nicepkg/deskmakeover/actions/workflows/ci.yml)
 
@@ -145,10 +209,30 @@ bun run tauri:dev    # full desktop app (Windows) — compiles the Rust host, op
 
 The full dev runbook (dev modes, tests, the Tauri loop, packaging, signing) lives in [`docs/development.md`](docs/development.md); local builds are always unsigned and work anywhere.
 
-## Contributing
+## 🤝 Contributing
 
 Contributions to the React UI, the Rust core, documentation, localization, and Windows compatibility testing are all welcome — most of the UI can be built and tested in a browser without a Windows box. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and the house rules, and check the [good first issues](https://github.com/nicepkg/deskmakeover/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Security reports go through [`SECURITY.md`](SECURITY.md).
 
-## License
+## 📄 License
 
 [MIT](LICENSE) © 2026 [Jinming Yang](https://github.com/2214962083). Free and open source.
+
+<div align="center">
+
+<br/>
+
+**Made your desktop nicer? Give it a ⭐ so more people find it.**
+
+<a href="https://github.com/nicepkg/deskmakeover"><img src="https://img.shields.io/github/stars/nicepkg/deskmakeover?style=social" alt="Star DeskMakeover" /></a>
+
+<br/><br/>
+
+<img src=".github/assets/rule-gradient.svg" width="880" alt="" />
+
+<img src=".github/assets/logo.png" width="40" alt="" />
+
+**DeskMakeover · 桌面美颜**
+
+[Releases](https://github.com/nicepkg/deskmakeover/releases) · [Issues](https://github.com/nicepkg/deskmakeover/issues) · **English** · [中文](README.zh-CN.md)
+
+</div>

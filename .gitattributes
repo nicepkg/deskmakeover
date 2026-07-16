@@ -1,0 +1,3 @@
+# The bindings gate compares this generated file byte-for-byte; keep it LF on every
+# checkout (GitHub windows runners set core.autocrlf=true machine-wide).
+src/bridge/generated.ts text eol=lf

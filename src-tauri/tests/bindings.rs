@@ -19,8 +19,11 @@ fn bindings_are_up_to_date() {
     let fresh = fs::read_to_string(&tmp).unwrap();
     fs::remove_file(&tmp).ok();
 
+    // Compare content, not checkout line endings: a core.autocrlf=true checkout (the GitHub
+    // Windows runner image default) materializes the committed file as CRLF.
     assert_eq!(
-        committed, fresh,
+        committed.replace("\r\n", "\n"),
+        fresh.replace("\r\n", "\n"),
         "bridge bindings are stale — run `bun run gen:bindings` and commit generated.ts"
     );
 }

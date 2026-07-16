@@ -42,6 +42,9 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: website
+          # assets-only deploy (no main entry-point) needs wrangler 4; the
+          # action defaults to wrangler 3.x
+          wranglerVersion: "4"
 
       - name: Upload PR preview version
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
@@ -50,4 +53,5 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: website
+          wranglerVersion: "4"
           command: versions upload

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { StyleEntry } from "@/content/types";
 import { img } from "@/lib/manifest";
+import { Lightbox } from "@/components/zoomable";
 
 const SIZES = "(min-width: 1024px) 62vw, 92vw";
 
@@ -36,8 +37,27 @@ function WallImage({ id, alt, active }: { id: string; alt: string; active: boole
  * Nine real desktops, one per look. A flat index rail on the left drives the
  * big frame; on small screens the rail becomes a scrollable chip row.
  */
-export function StyleWall({ styles, altPrefix }: { styles: StyleEntry[]; altPrefix: string }) {
-  const [active, setActive] = useState(styles[0].key);
+export function StyleWall({
+  styles,
+  altPrefix,
+  zoomHint,
+  closeLabel,
+}: {
+  styles: StyleEntry[];
+  altPrefix: string;
+  zoomHint: string;
+  closeLabel: string;
+}) {
+  const [zoomed, setZoomed] = useState(false);
+  // only the active render and the one fading out stay mounted — nine
+  // full-size desktops decoded at once is real memory and network cost
+  const [frame, setFrame] = useState<{ active: string; prev: string | null }>({
+    active: styles[0].key,
+    prev: null,
+  });
+  const active = frame.active;
+  const setActive = (key: string) =>
+    setFrame((f) => (key === f.active ? f : { active: key, prev: f.active }));
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -73,16 +93,38 @@ export function StyleWall({ styles, altPrefix }: { styles: StyleEntry[]; altPref
       </div>
       <div className="order-1 min-w-0 lg:order-2 lg:col-span-8">
         <div className="relative aspect-[16/9] overflow-hidden border border-line bg-white">
-          {styles.map((s) => (
-            <WallImage
-              key={s.key}
-              id={`desk-${s.key}`}
-              alt={`${altPrefix} ${s.name}`}
-              active={s.key === active}
-            />
-          ))}
+          {[
+            styles.find((s) => s.key === frame.active),
+            styles.find((s) => s.key === frame.prev),
+          ]
+            .filter((s): s is StyleEntry => s !== undefined)
+            .map((s) => (
+              // prev renders last (on top) so it fades OUT over the new image
+              <WallImage
+                key={s.key}
+                id={`desk-${s.key}`}
+                alt={`${altPrefix} ${s.name}`}
+                active={s.key === active}
+              />
+            ))}
+          <button
+            type="button"
+            onClick={() => setZoomed(true)}
+            aria-label={zoomHint}
+            className="absolute bottom-3 right-3 z-10 cursor-zoom-in border border-line bg-white/92 px-2 py-1 font-mono text-[11px] tracking-[0.1em] text-ink-2 transition-colors hover:border-ink hover:text-ink"
+          >
+            {zoomHint}
+          </button>
         </div>
       </div>
+      {zoomed ? (
+        <Lightbox
+          id={`desk-${active}`}
+          alt={`${altPrefix} ${styles.find((s) => s.key === active)?.name ?? active}`}
+          closeLabel={closeLabel}
+          onClose={() => setZoomed(false)}
+        />
+      ) : null}
     </div>
   );
 }

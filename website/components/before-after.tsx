@@ -46,6 +46,9 @@ export function BeforeAfter({
 }) {
   const [pos, setPos] = useState(42);
   const sizes = "(min-width: 1280px) 1136px, 92vw";
+  // the native 44px range thumb travels [22px, 100% - 22px]; the divider and
+  // the clip edge must use the same coordinate or they drift near the edges
+  const cut = `calc(22px + (100% - 44px) * ${pos / 100})`;
 
   return (
     <div className="relative select-none overflow-hidden border border-line bg-white">
@@ -55,7 +58,7 @@ export function BeforeAfter({
         </div>
         <div
           className="absolute inset-0"
-          style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}
+          style={{ clipPath: `inset(0 calc(100% - (${cut})) 0 0)` }}
         >
           <Layer id="desk-before" alt={altBefore} sizes={sizes} />
         </div>
@@ -81,7 +84,7 @@ export function BeforeAfter({
         <div
           aria-hidden
           className="wipe-handle pointer-events-none absolute inset-y-0 z-[5]"
-          style={{ left: `${pos}%` }}
+          style={{ left: cut }}
         >
           <div className="absolute inset-y-0 w-px -translate-x-1/2 bg-white" />
           <div className="wipe-knob absolute top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center bg-coral text-white">

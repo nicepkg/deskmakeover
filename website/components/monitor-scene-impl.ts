@@ -1,8 +1,10 @@
 /**
- * The hero 3D scene: a physically-shaded desktop monitor whose screen plays
- * the real product story — the actual before render, a scan wipe to the
- * styled render, then a restore back. Loaded lazily from monitor-scene.tsx;
- * this module never runs on the server.
+ * The hero 3D scene: an aluminum all-in-one display (iMac-inspired, no logo)
+ * whose screen plays the real product story. The camera opens on a wide 3/4
+ * product view, then dollies smoothly INTO the screen until it nearly fills
+ * the canvas — the desktop becomes the hero background — and only then the
+ * coral scan wipe restyles it, dwells, and restores. Loaded lazily from
+ * monitor-scene.tsx; this module never runs on the server.
  */
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
@@ -16,18 +18,25 @@ export interface MountOptions {
 
 const CORAL = new THREE.Color("#ff6f5e");
 
-/** easeOutQuint */
-const outQuint = (x: number) => 1 - Math.pow(1 - x, 5);
+/** easeInOutQuint — the silky dolly */
+const inOutQuint = (x: number) =>
+  x < 0.5 ? 16 * x * x * x * x * x : 1 - Math.pow(-2 * x + 2, 5) / 2;
 /** easeInOutCubic */
 const inOutCubic = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 
+/** Dolly: hold wide, then fly to the screen. */
+const DOLLY_DELAY = 0.25;
+const DOLLY_DUR = 2.45;
+/** Wipe starts once the screen owns the frame. */
+const WIPE_DELAY = DOLLY_DELAY + DOLLY_DUR + 0.35;
+
 /** Wipe timeline: hold before, scan to after, dwell, restore, breathe. */
 const TIMELINE = [
-  { dur: 1.3, from: 0, to: 0 },
-  { dur: 1.15, from: 0, to: 1 },
-  { dur: 3.6, from: 1, to: 1 },
-  { dur: 0.95, from: 1, to: 0 },
-  { dur: 1.7, from: 0, to: 0 },
+  { dur: 1.0, from: 0, to: 0 },
+  { dur: 1.35, from: 0, to: 1 },
+  { dur: 4.2, from: 1, to: 1 },
+  { dur: 1.1, from: 1, to: 0 },
+  { dur: 2.0, from: 0, to: 0 },
 ] as const;
 const TIMELINE_TOTAL = TIMELINE.reduce((s, p) => s + p.dur, 0);
 
@@ -49,7 +58,7 @@ function contactShadowTexture(): THREE.CanvasTexture {
   c.height = 128;
   const g = c.getContext("2d")!;
   const grad = g.createRadialGradient(128, 64, 8, 128, 64, 120);
-  grad.addColorStop(0, "rgba(22,24,29,0.32)");
+  grad.addColorStop(0, "rgba(22,24,29,0.30)");
   grad.addColorStop(0.55, "rgba(22,24,29,0.10)");
   grad.addColorStop(1, "rgba(22,24,29,0)");
   g.scale(1, 0.5);
@@ -60,6 +69,23 @@ function contactShadowTexture(): THREE.CanvasTexture {
 }
 
 export async function mount(host: HTMLElement, opts: MountOptions): Promise<() => void> {
+  // Load textures BEFORE creating any GL resource: a rejected fetch leaks
+  // nothing, and an unmount-during-load has nothing to tear down yet.
+  const loader = new THREE.TextureLoader();
+  let texBefore: THREE.Texture;
+  let texAfter: THREE.Texture;
+  const settled = await Promise.allSettled([
+    loader.loadAsync(opts.before),
+    loader.loadAsync(opts.after),
+  ]);
+  if (settled[0].status === "fulfilled" && settled[1].status === "fulfilled") {
+    texBefore = settled[0].value;
+    texAfter = settled[1].value;
+  } else {
+    for (const s of settled) if (s.status === "fulfilled") s.value.dispose();
+    throw new Error("monitor-scene: screen texture failed to load");
+  }
+
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -74,56 +100,47 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environment = envTex;
 
-  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 40);
-  const frameCamera = () => {
-    // keep the rotated monitor (~3.6 world units wide) inside narrow hosts,
-    // and lift it in frame when the host is portrait-ish
-    const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const z = Math.max(6.7, 2.0 / (halfTan * camera.aspect));
-    const ty = camera.aspect < 1 ? 1.6 : 1.35;
-    camera.position.set(2.7, ty + 0.45, z);
-    camera.lookAt(0, ty, 0);
-  };
-  frameCamera();
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60);
+  const halfTan = () => Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
 
   const key = new THREE.DirectionalLight(0xffffff, 0.55);
   key.position.set(3.5, 6, 4.5);
   scene.add(key);
 
-  // ── the monitor ─────────────────────────────────────────────────
+  // ── the display: thin aluminum slab, white glass front, wedge stand ──
   const group = new THREE.Group();
   scene.add(group);
 
-  const graphite = new THREE.MeshPhysicalMaterial({
-    color: 0x23262c,
-    metalness: 0.55,
-    roughness: 0.38,
-    clearcoat: 0.35,
-    clearcoatRoughness: 0.25,
-  });
   const aluminum = new THREE.MeshPhysicalMaterial({
-    color: 0xd9dce0,
-    metalness: 0.95,
-    roughness: 0.3,
+    color: 0xdfe3e7,
+    metalness: 0.9,
+    roughness: 0.32,
+  });
+  const glassWhite = new THREE.MeshPhysicalMaterial({
+    color: 0xf5f6f8,
+    metalness: 0,
+    roughness: 0.22,
+    clearcoat: 0.8,
+    clearcoatRoughness: 0.2,
   });
 
-  const foot = new THREE.Mesh(new RoundedBoxGeometry(1.15, 0.05, 0.66, 4, 0.02), aluminum);
-  foot.position.set(0, 0.025, 0.02);
-  group.add(foot);
-
-  const neck = new THREE.Mesh(new RoundedBoxGeometry(0.16, 0.82, 0.055, 4, 0.02), aluminum);
-  neck.position.set(0, 0.44, -0.075);
-  group.add(neck);
-
-  const slab = new THREE.Mesh(new RoundedBoxGeometry(3.34, 1.94, 0.115, 4, 0.04), graphite);
-  slab.position.set(0, 1.59, 0);
+  const slab = new THREE.Mesh(new RoundedBoxGeometry(3.36, 2.14, 0.07, 4, 0.035), aluminum);
+  slab.position.set(0, 1.5, 0);
   group.add(slab);
 
-  const loader = new THREE.TextureLoader();
-  const [texBefore, texAfter] = await Promise.all([
-    loader.loadAsync(opts.before),
-    loader.loadAsync(opts.after),
-  ]);
+  const glass = new THREE.Mesh(new RoundedBoxGeometry(3.3, 2.08, 0.02, 4, 0.01), glassWhite);
+  glass.position.set(0, 1.5, 0.038);
+  group.add(glass);
+
+  const leg = new THREE.Mesh(new RoundedBoxGeometry(0.64, 0.56, 0.045, 4, 0.02), aluminum);
+  leg.position.set(0, 0.22, -0.13);
+  leg.rotation.x = 0.3;
+  group.add(leg);
+
+  const foot = new THREE.Mesh(new RoundedBoxGeometry(0.68, 0.025, 0.46, 4, 0.012), aluminum);
+  foot.position.set(0, 0.0125, -0.02);
+  group.add(foot);
+
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
   for (const t of [texBefore, texAfter]) {
     t.colorSpace = THREE.SRGBColorSpace;
@@ -157,9 +174,9 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
         float m = smoothstep(uWipe - 0.0025, uWipe + 0.0025, vUv.x);
         vec3 c = mix(afterC, beforeC, m);
         float scanning = step(0.0005, uWipe) * step(uWipe, 0.9995);
-        float line = 1.0 - smoothstep(0.0, 0.005, abs(vUv.x - uWipe));
+        float line = 1.0 - smoothstep(0.0, 0.004, abs(vUv.x - uWipe));
         c = mix(c, uCoral, line * scanning);
-        float sheen = smoothstep(0.22, 0.0, abs(vUv.x * 0.5 + vUv.y * 0.86 - 0.66)) * 0.045;
+        float sheen = (1.0 - smoothstep(0.0, 0.22, abs(vUv.x * 0.5 + vUv.y * 0.86 - 0.66))) * 0.03;
         c += sheen;
         gl_FragColor = vec4(c, 1.0);
         #include <colorspace_fragment>
@@ -167,13 +184,8 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     `,
   });
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.8), screenMat);
-  screen.position.set(0, 1.59, 0.0595);
+  screen.position.set(0, 1.59, 0.0495);
   group.add(screen);
-
-  const dotMat = new THREE.MeshBasicMaterial({ color: CORAL });
-  const dot = new THREE.Mesh(new THREE.CircleGeometry(0.016, 24), dotMat);
-  dot.position.set(0, 0.652, 0.0595);
-  group.add(dot);
 
   const shadowTex = contactShadowTexture();
   const shadowMat = new THREE.MeshBasicMaterial({
@@ -186,7 +198,27 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   shadow.position.y = 0.001;
   scene.add(shadow);
 
-  // ── sizing ──────────────────────────────────────────────────────
+  // ── camera choreography ─────────────────────────────────────────
+  const YAW_A = -0.42;
+  const YAW_B = -0.05;
+  const LOOK_A = new THREE.Vector3(0, 1.32, 0);
+  // biased toward the icon-dense side of the desktop
+  const LOOK_B = new THREE.Vector3(-0.25, 1.59, 0.05);
+  const POS_A = new THREE.Vector3();
+  const POS_B = new THREE.Vector3();
+  const camPos = new THREE.Vector3();
+  const camLook = new THREE.Vector3();
+
+  const frameCamera = () => {
+    // wide opener: whole product in frame whatever the host shape
+    const zA = Math.max(8.8, 2.3 / (halfTan() * camera.aspect));
+    POS_A.set(4.2, 2.6, zA);
+    // close state: the glass fills ~96% of the view height
+    const zB = 0.05 + 2.06 / 0.96 / (2 * halfTan());
+    POS_B.set(LOOK_B.x + 0.1, LOOK_B.y, zB);
+  };
+  frameCamera();
+
   const resize = () => {
     const w = host.clientWidth;
     const h = host.clientHeight;
@@ -201,21 +233,18 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   ro.observe(host);
 
   // ── interaction + loop ──────────────────────────────────────────
-  const BASE_YAW = -0.3;
-  let targetYawOff = 0;
-  let targetPitchOff = 0;
-  let yawOff = 0;
-  let pitchOff = 0;
+  let targetPanX = 0;
+  let targetPanY = 0;
+  let panX = 0;
+  let panY = 0;
   const onPointer = (e: PointerEvent) => {
     const r = host.getBoundingClientRect();
-    const nx = (e.clientX - r.left) / r.width - 0.5;
-    const ny = (e.clientY - r.top) / r.height - 0.5;
-    targetYawOff = nx * 0.11;
-    targetPitchOff = ny * 0.05;
+    targetPanX = ((e.clientX - r.left) / r.width - 0.5) * 0.16;
+    targetPanY = ((e.clientY - r.top) / r.height - 0.5) * -0.1;
   };
   const onLeave = () => {
-    targetYawOff = 0;
-    targetPitchOff = 0;
+    targetPanX = 0;
+    targetPanY = 0;
   };
   host.addEventListener("pointermove", onPointer);
   host.addEventListener("pointerleave", onLeave);
@@ -226,13 +255,13 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   let pageVisible = !document.hidden;
   let start = 0;
   let last = 0;
-  let entranceDone = false;
   let firstFrame = true;
   let lastPhase: "before" | "after" = "before";
 
-  // deterministic states for visual acceptance shots: ?dm3d=before|after|scan
+  // deterministic states for visual acceptance shots: ?dm3d=before|after|scan|wide
   const forced = new URLSearchParams(window.location.search).get("dm3d");
   const forcedWipe = forced === "after" ? 1 : forced === "scan" ? 0.46 : forced === "before" ? 0 : null;
+  const forcedS = forced === "wide" ? 0 : forcedWipe !== null ? 1 : null;
 
   const frame = (now: number) => {
     raf = requestAnimationFrame(frame);
@@ -244,18 +273,23 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     last = now;
     const t = (now - start) / 1000;
 
-    const enter = forcedWipe !== null ? 1 : Math.min(t / 1.05, 1);
-    const e = outQuint(enter);
-    if (!entranceDone && enter >= 1) entranceDone = true;
+    // dolly progress
+    const s = forcedS ?? inOutQuint(Math.min(Math.max((t - DOLLY_DELAY) / DOLLY_DUR, 0), 1));
 
-    yawOff += (targetYawOff - yawOff) * (1 - Math.exp(-6 * dt));
-    pitchOff += (targetPitchOff - pitchOff) * (1 - Math.exp(-6 * dt));
+    panX += (targetPanX - panX) * (1 - Math.exp(-5 * dt));
+    panY += (targetPanY - panY) * (1 - Math.exp(-5 * dt));
 
-    group.position.y = (1 - e) * -0.24 + Math.sin(t * 0.9) * 0.012;
-    group.rotation.y = BASE_YAW + (1 - e) * 0.26 + Math.sin(t * 0.5) * 0.018 + yawOff;
-    group.rotation.x = pitchOff;
+    camPos.lerpVectors(POS_A, POS_B, s);
+    camLook.lerpVectors(LOOK_A, LOOK_B, s);
+    // gentle breathing after arrival + pointer peek, both fade in with s
+    const idle = Math.sin(t * 0.4) * 0.02 * s;
+    camera.position.set(camPos.x + panX * s, camPos.y + panY * s, camPos.z + idle);
+    camera.lookAt(camLook);
 
-    const wipeT = entranceDone ? t - 1.05 : 0;
+    group.rotation.y = YAW_A + (YAW_B - YAW_A) * s + panX * 0.12 * s;
+    group.position.y = Math.sin(t * 0.8) * 0.01 * (1 - s * 0.75);
+
+    const wipeT = forcedWipe !== null ? 0 : Math.max(t - WIPE_DELAY, 0);
     const wipe = forcedWipe ?? wipeAt(wipeT);
     screenMat.uniforms.uWipe.value = wipe;
     const phase = wipe >= 0.5 ? "after" : "before";
@@ -271,18 +305,21 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     }
   };
 
+  let pausedAt = 0;
   const setRunning = () => {
     const should = visible && pageVisible;
     if (should && !running) {
       running = true;
-      last = 0;
-      start = start === 0 ? 0 : start; // timeline keeps absolute clock
       raf = requestAnimationFrame((now) => {
+        // freeze the timeline across the pause instead of jumping forward
+        if (pausedAt && start) start += now - pausedAt;
+        pausedAt = 0;
         last = now;
         frame(now);
       });
     } else if (!should && running) {
       running = false;
+      pausedAt = performance.now();
       cancelAnimationFrame(raf);
     }
   };
@@ -312,8 +349,8 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     document.removeEventListener("visibilitychange", onVis);
     host.removeEventListener("pointermove", onPointer);
     host.removeEventListener("pointerleave", onLeave);
-    for (const g of [foot, neck, slab, screen, dot, shadow]) g.geometry.dispose();
-    for (const m of [graphite, aluminum, screenMat, dotMat, shadowMat]) m.dispose();
+    for (const g of [slab, glass, leg, foot, screen, shadow]) g.geometry.dispose();
+    for (const m of [aluminum, glassWhite, screenMat, shadowMat]) m.dispose();
     for (const x of [texBefore, texAfter, shadowTex, envTex]) x.dispose();
     pmrem.dispose();
     renderer.dispose();

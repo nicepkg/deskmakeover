@@ -18,10 +18,13 @@ export function Hero({ dict }: { dict: Dict }) {
             <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-coral-ink">
               {h.eyebrow}
             </p>
-            <h1 className="mt-5 whitespace-pre-line text-[42px] font-bold leading-[1.04] tracking-[-0.02em] md:text-[58px]">
+            <h1 className="mt-5 text-[52px] font-bold leading-[1.02] tracking-[-0.02em] md:text-[64px]">
               {h.title}
             </h1>
-            <p className="mt-6 max-w-[26rem] text-[17px] leading-[1.6] text-ink-2">{h.sub}</p>
+            <p className="mt-3 text-[20px] font-semibold tracking-[-0.01em] text-ink md:text-[23px]">
+              {h.tagline}
+            </p>
+            <p className="mt-5 max-w-[26rem] text-[17px] leading-[1.6] text-ink-2">{h.sub}</p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <a
                 href={RELEASE_READY ? DOWNLOAD_URL : "#download"}

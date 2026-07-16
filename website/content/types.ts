@@ -43,9 +43,16 @@ export interface Dict {
     langLabel: string;
     langHref: string;
   };
+  ui: {
+    zoomHint: string;
+    zoomClose: string;
+  };
   hero: {
     eyebrow: string;
+    /** the product name — always the largest text on screen */
     title: string;
+    /** category line under the name */
+    tagline: string;
     sub: string;
     ctaRelease: string;
     ctaPending: string;

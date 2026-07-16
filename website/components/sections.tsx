@@ -1,8 +1,8 @@
 import type { Dict, PointEntry, SectionHead } from "@/content/types";
 import { BeforeAfter } from "@/components/before-after";
 import { StyleWall } from "@/components/style-wall";
-import { Pic } from "@/components/pic";
 import { Reveal } from "@/components/reveal";
+import { Zoomable } from "@/components/zoomable";
 import { DOWNLOAD_URL, GITHUB_URL, RELEASE_READY } from "@/lib/site";
 
 function SectionHeader({ head, className }: { head: SectionHead; className?: string }) {
@@ -63,7 +63,12 @@ export function LooksSection({ dict }: { dict: Dict }) {
           <SectionHeader head={s} />
         </Reveal>
         <Reveal delay={80} className="mt-10">
-          <StyleWall styles={s.styles} altPrefix={s.altPrefix} />
+          <StyleWall
+            styles={s.styles}
+            altPrefix={s.altPrefix}
+            zoomHint={dict.ui.zoomHint}
+            closeLabel={dict.ui.zoomClose}
+          />
         </Reveal>
       </div>
     </section>
@@ -76,14 +81,13 @@ export function ZonesSection({ dict }: { dict: Dict }) {
     <section id="zones" className="border-t border-line">
       <div className="mx-auto grid max-w-[1200px] items-center gap-10 px-5 py-20 md:px-8 md:py-28 lg:grid-cols-12">
         <Reveal className="lg:col-span-7">
-          <div className="overflow-hidden border border-line bg-white">
-            <Pic
-              id="studio-zones"
-              alt={s.imgAlt}
-              sizes="(min-width: 1024px) 58vw, 92vw"
-              imgClassName="block h-auto w-full"
-            />
-          </div>
+          <Zoomable
+            id="studio-zones"
+            alt={s.imgAlt}
+            sizes="(min-width: 1024px) 58vw, 92vw"
+            zoomHint={dict.ui.zoomHint}
+            closeLabel={dict.ui.zoomClose}
+          />
         </Reveal>
         <Reveal delay={80} className="lg:col-span-5">
           <SectionHeader head={s} />
@@ -100,14 +104,13 @@ export function StudioSection({ dict }: { dict: Dict }) {
     <section id="studio" className="border-t border-line">
       <div className="mx-auto grid max-w-[1200px] items-center gap-10 px-5 py-20 md:px-8 md:py-28 lg:grid-cols-12">
         <Reveal className="lg:order-2 lg:col-span-7">
-          <div className="overflow-hidden border border-line bg-white">
-            <Pic
-              id="studio-icons"
-              alt={s.imgAlt}
-              sizes="(min-width: 1024px) 58vw, 92vw"
-              imgClassName="block h-auto w-full"
-            />
-          </div>
+          <Zoomable
+            id="studio-icons"
+            alt={s.imgAlt}
+            sizes="(min-width: 1024px) 58vw, 92vw"
+            zoomHint={dict.ui.zoomHint}
+            closeLabel={dict.ui.zoomClose}
+          />
         </Reveal>
         <Reveal delay={80} className="lg:order-1 lg:col-span-5">
           <SectionHeader head={s} />

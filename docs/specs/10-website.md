@@ -1,7 +1,10 @@
 # 10 — Website (dm.nicepkg.cn landing page)
 
-Status: approved (owner, 2026-07-16 — product-studio four-chief panel + owner Q&A)
-Owner decisions recorded in `docs/plans/2026-07-16-landing-page.md` §Decisions.
+Status: approved direction v4 (owner, 2026-07-17). v1 light-editorial, v2 dark-cinema and
+v3 flat-shader takes were all owner-rejected; v3 lives in `website-legacy/` for reference
+and the v4 rewrite shares no visual DNA with it. Original panel + owner Q&A decisions:
+`docs/plans/2026-07-16-landing-page.md` §Decisions (routing/hosting decisions still stand;
+the art direction sections of that plan are superseded by this spec).
 
 ## Scope
 
@@ -25,138 +28,152 @@ Assets via wrangler, auto-deployed from CI.
 - `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` GitHub secrets are created by the owner
   once; everything else is automated.
 
-## Dependencies
+## Art direction (v4, owner-mandated)
 
-- Brand assets in `.github/assets/` (hero frames, preset gallery, feature shots,
-  social card, logo). The website build re-encodes copies; it never mutates the originals.
-- App visual language `docs/specs/02-visual-language.md`: coral `#FF6F5E` is the only
-  accent ("saturation is an event"), `--coral-ink` deeper register for large fills/text,
-  `--cta-ink` warm white `#FFF7F3`. The website extends, never contradicts, this language.
+- **Flat white future-tech.** Near-white canvas, ink text, hairline `#e4e7ec` rules,
+  exactly one coral accent family. Zero gradients, zero soft shadows on chrome, flat
+  rectangular buttons. Mono uppercase micro-labels + a faint masked engineering grid
+  carry the technical register.
+- **The 3D display IS the hero, and the camera moves.** A physically-shaded three.js
+  all-in-one display (iMac-inspired: thin aluminum slab, white glass front, wedge
+  stand, NO logo — never a black monitor) sits in the FIRST viewport, right of
+  left-aligned copy. The camera opens on a wide 3/4 product view, then dollies
+  smoothly INTO the screen (easeInOutQuint, ~2.5 s) until the glass fills ~96% of
+  the canvas height — the real desktop becomes the hero background. Only after
+  arrival does the screen shader play: hold before → coral scan wipe to after →
+  dwell → restore → loop. Pointer peek + breathing after arrival. This is the only
+  3D on the page. `?dm3d=wide|before|scan|after` freezes states for visual tests.
+- **The product name is the largest text on screen.** H1 is "DeskMakeover" /
+  「桌面美颜」; the category line ("The desktop studio for Windows" / "Windows
+  桌面工作室") is a subordinate tagline, never the headline.
+- **Preset names mirror the app.** The nine look names + taglines are copied
+  verbatim from the app i18n (`src/lib/i18n/en.ts` / `zh-hans.ts` `Preset_*` keys),
+  both locales. Never invent marketing names for in-product objects.
+- **Captures are click-to-enlarge.** Every static product capture (style wall,
+  zones, studio) opens a fullscreen lightbox — laptop viewers must be able to read
+  the icons.
+- **Asymmetric layouts everywhere.** Hero 5/7 split; zones and studio sections alternate
+  image/text 7/5 splits; centered hero text is banned.
+- Banned: left accent bars, handwriting fonts, glassmorphism, neon/mesh gradients,
+  skeuomorphic buttons, dark theme, fabricated imagery.
 
-## Information architecture (both locales, 7 screens max)
+## Information architecture (both locales)
 
-1. **Hero** — one-line value + primary Download button + "you can always go back" subline.
-   Before/after desktop transformation with coral scan-line reveal.
-2. **The safety promise** — snapshot-first / one-click restore / local-only / nothing
-   technical. This is the conversion gate for this category; it never moves below fold 3.
-3. **Nine built-in looks** — specimen wall: nine preset cards (existing gallery webp).
-4. **Deep customization** — `feature-combine` shot: live preview + per-axis controls.
-5. **Wallpaper zones + shortcut arrow** — `feature-zones` shot + arrow paragraph.
-6. **Inside the studio + style packs** — `app-studio` + `feature-stylepack`.
-7. **Honest beta + Download (second CTA) + FAQ + open-source footer.**
+1. **Hero (viewport 1)** — eyebrow, display headline, one sub-paragraph, primary
+   Download/Coming-soon CTA + GitHub, the 3D monitor scene with BEFORE/AFTER state chip,
+   mono spec strip on the fold line (Windows req · MIT · local-only · snapshot restore).
+2. **01 Proof** — before/after wipe over the two real captures, range-input driven
+   divider with coral knob.
+3. **02 Looks** — style wall: mono-indexed rail of the nine looks driving one large
+   real desktop render (scroll chips on mobile).
+4. **03 Zones** — real zones-editor screenshot (applied Workbench template) + three
+   fact points.
+5. **04 Studio** — real icons-studio screenshot + three fact points, mirrored split.
+6. **05 Download** — full-bleed flat coral block: dual-state CTA, watch-on-GitHub,
+   pending note (or SmartScreen honesty when released), mono requirements line.
+7. **FAQ + footer** — four plain-text Q/As (no accordion), hairline footer.
 
-Copy inherits the README voice verbatim where possible (calm, consumer, zero tech vocab
-in product sections). Chinese copy contains no dashes and no exclamation marks.
+Copy voice: short, spec-sheet confident, consumer-safe. Chinese copy contains no dashes
+and no exclamation marks; zh display headings may carry a manual `\n` break point.
+
+## Imagery contract
+
+All product imagery is real capture, re-shot for this design (2026-07-17 set):
+- `assets-src/desktop/*.webp` — before-system-default + nine style renders, same camera,
+  2000 px, shot from the app's desktop mirror.
+- `assets-src/app/*.webp` — icons studio + zones editor full-window shots.
+- The 3D screen textures are 1600×900 WebP crops of the before/squircle renders.
+Regenerating: dev server + the capture scripts (session scratchpad `pw/`); any future
+re-shoot must go through the real app, never mockups.
 
 ## Routing & i18n
 
 - `/` = English, `/zh` = Chinese; both fully static-prerendered. No automatic locale
   redirect of any kind (no meta refresh, no JS sniffing). Header carries an explicit
   language switch.
-- Dictionaries are plain TypeScript objects; no i18n library.
+- Dictionaries are plain TypeScript objects (`content/{types,en,zh}.ts`); no i18n library.
 - `hreflang` alternates on both pages (`en`, `zh-CN`, `x-default` → `/`).
 
-## Hero motion contract
+## Motion discipline
 
-- Two frames (before/after) as AVIF with WebP fallback, explicit width/height,
-  `fetchpriority=high` on the LCP frame.
-- On load: coral scan-line (clip-path inset reveal) plays the transformation ONCE,
-  then hands control to a "put it back" button that elastically restores the before frame
-  (the signature moment). Replay affordance stays visible.
-- `prefers-reduced-motion: reduce` → static after-frame, button swaps frames with no
-  animation. The scan animation is CSS-only; JS only toggles classes.
-
-## Motion discipline (site-wide)
-
-- Zero animation libraries. CSS transitions/keyframes + one IntersectionObserver util.
-- Exactly two signature animations: hero scan reveal + gallery staggered fade-up
-  (40–60 ms stagger). Everything else is hover/focus micro-transition.
-- CSS scroll-driven animations only inside `@supports (animation-timeline: view())`,
-  with the IO reveal as fallback.
-
-## Design tokens (website layer)
-
-- Neutrals are cool-tinted OKLCH, not pure gray: bg `oklch(0.99 0.004 255)`, surface
-  `oklch(0.975 0.006 250)`, border `oklch(0.92 0.008 250)`; body ink `#2f363d`.
-- Coral coverage ≤ 10% of any viewport: one primary CTA + active states + scan line.
-  Coral→deep-coral 135° gradient allowed ONLY on the primary CTA and hero scan.
-- Display type: `clamp(2.5rem, 6vw, 4.5rem)`, line-height 1.05, tracking −0.02em;
-  body 17–18 px, line-height 1.6.
-- Shadows are layered, cool-tinted, never pure black; hairline borders preferred.
-- Radii echo the squircle family: cards 16–20 px, buttons 10–12 px.
-- Section vertical rhythm `clamp(80px, 10vw, 120px)`; 8-pt grid.
-- Banned: left accent bars, handwriting fonts, glassmorphism icon grids, neon/mesh
-  gradients, giant decorative emoji, fabricated stats, stock screenshots.
+- No animation libraries. The three.js hero scene is the single scripted signature
+  element; everything else is CSS transitions + one IntersectionObserver reveal util
+  (arms only below the fold; reveals when intersecting OR already scrolled past).
+- Scene lifecycle: lazy dynamic import, RAF pauses when offscreen or tab hidden,
+  full dispose on unmount. `?dm3d=before|after|scan` freezes the wipe for visual tests.
+- `prefers-reduced-motion: reduce` → no scene; the styled render in a flat frame.
+  Any WebGL failure falls back the same way.
 
 ## Fonts
 
-- Latin: one self-hosted variable font (latin subset, ≤ 35 KB woff2), `font-display: swap`.
+- Latin: self-hosted Satoshi Variable (≈ 42 KB woff2), `font-display: swap`.
 - Chinese body: system stack (`PingFang SC`, `Microsoft YaHei`, `Noto Sans SC`) — 0 bytes.
-- Chinese display: build-time subset of a modern sans licensed for embedding, covering
-  exactly the glyphs used in zh display headings (≤ 25 KB). Subsetting is a build step.
+- Chinese display: build-time MiSans Semibold subset covering exactly the zh h1–h3
+  glyphs (`scripts/subset-zh-font.mjs`; regenerates when `fonts-src/misans/` exists,
+  otherwise verifies the committed subset and fails the build on copy drift).
 
 ## Images
 
-- `images.unoptimized: true` (mandatory under export). A build script (sharp) emits
-  AVIF + WebP variants at display-appropriate widths with intrinsic dimensions; pages use
-  `<picture>` with explicit width/height. First-screen images eager, the rest lazy.
+- `images.unoptimized: true` (mandatory under export). `scripts/build-images.mjs` (sharp)
+  emits AVIF+WebP variants with intrinsic dimensions into gitignored `public/img/` and
+  writes `lib/image-manifest.json`; pages use `<picture>` with explicit width/height.
+  Hero 3D texture payload is budget-gated (fails the build over 420 KB).
 
 ## Download contract (dual state)
 
-- Build-time constant `RELEASE_READY: boolean` in one config file.
-  - `false`: button reads "first installer on the way" and links to the GitHub repo
-    (Watch/Star capture); no dead link to an empty Releases page.
-  - `true`: button links to `https://github.com/nicepkg/deskmakeover/releases/latest`
-    (never a direct .exe URL — filename changes must not produce dead links).
-- SmartScreen honesty line sits directly under the Download button (both CTAs), with an
-  expandable "More info → Run anyway" walkthrough. Never hidden in FAQ only.
-- Non-Windows user agents (client-side check): button swaps to "open dm.nicepkg.cn on
-  your PC" + copy-link + mailto fallback. Page remains browsable.
+- Build-time constant `RELEASE_READY` in `lib/site.ts`.
+  - `false`: hero + download CTAs read "Coming soon"; download block links Watch-on-GitHub
+    and explains the installer is on the way. No dead link to an empty Releases page.
+  - `true`: CTAs link `releases/latest` (never a direct .exe URL) and the SmartScreen
+    honesty note ("More info → Run anyway", open-source assurance) appears in the
+    download block.
+- No client-side OS sniffing, no copy-link/mailto widgets (owner removed them in v4).
 
 ## SEO / GEO
 
 - Next metadata API: per-locale title/description/canonical/OG/Twitter
-  (`summary_large_image`, existing `social-card.png`).
-- JSON-LD inline: `SoftwareApplication` (applicationCategory UtilitiesApplication,
-  operatingSystem Windows 10/11, price 0, license MIT, downloadUrl) + `FAQPage`.
-  No aggregateRating until real ratings exist.
-- `app/sitemap.ts` + `app/robots.ts`; robots explicitly allows GPTBot, ClaudeBot,
-  Claude-Web, PerplexityBot, OAI-SearchBot, Google-Extended.
-- Static `llms.txt` (short product description + key links).
-- FAQ answers are self-contained (name the product + platform in the answer) so LLMs can
-  quote them standalone. FAQ content: the nine questions listed in the plan.
+  (`summary_large_image`, `social-card.png`).
+- JSON-LD inline: `SoftwareApplication` (UtilitiesApplication, Windows 10/11, price 0,
+  MIT, downloadUrl) + `FAQPage`. No aggregateRating until real ratings exist.
+- `app/sitemap.ts` + `app/robots.ts` (`force-static`); robots explicitly allows GPTBot,
+  ClaudeBot, Claude-Web, PerplexityBot, OAI-SearchBot, Google-Extended and peers.
+- Static `public/llms.txt` (short product description + key links).
+- FAQ answers are self-contained (name the product + platform) so LLMs can quote them.
 
 ## Analytics
 
-Cloudflare Web Analytics beacon only (no cookies) + a custom event on Download clicks.
-No GA4.
+Cloudflare Web Analytics beacon only (no cookies), injected only when
+`NEXT_PUBLIC_CF_BEACON_TOKEN` is set. No GA4.
 
 ## Deploy architecture
 
 - `website/` inside this repo, own `package.json` (root has no `workspaces`; keep it so).
 - Hosting: Cloudflare **Workers Static Assets** — `wrangler.jsonc` with
-  `assets: { directory: "./out" }` and
-  `routes: [{ pattern: "dm.nicepkg.cn", custom_domain: true }]`. No Worker script file:
-  requests are served from assets and bill nothing.
+  `assets: { directory: "./out" }`, `workers_dev: true`. No Worker script file: requests
+  are served from assets and bill nothing. Custom-domain route for `dm.nicepkg.cn` is
+  commented until the zone moves into the Cloudflare account (currently on Aliyun DNS;
+  interim: CNAME `dm` → `deskmakeover-site.2214962083.workers.dev`).
 - CI: `.github/workflows/website.yml`, path-filtered to `website/**`; builds with bun,
-  deploys with wrangler on push to main; PR runs build + preview upload.
+  deploys with wrangler 4 on push to main (deploy step gated on the CF token secret).
 
 ## Performance budget (acceptance)
 
-- LCP < 1.8 s (Fast 3G lab), CLS < 0.05, INP < 200 ms.
-- JS: non-framework (site) JS ≤ 15 KB gz; total ≤ 200 KB gz. Measured floor of the
-  Next 16 app-router runtime on this page is ~183 KB gz (deferred scripts — LCP renders
-  from static HTML before any JS runs), so a lower total is not reachable on the
-  owner-fixed stack.
-- Every image has explicit dimensions; fonts preloaded only when actually used above
-  the fold.
+- LCP < 1.8 s (Fast 3G lab) — LCP is the static hero copy, not the canvas; the scene
+  loads lazily behind it. CLS < 0.05, INP < 200 ms.
+- Non-three JS ≤ 220 KB gz total; three.js chunk lazy-loaded only on non-reduced-motion,
+  WebGL-capable clients, never blocking first paint. Screen textures ≤ 420 KB combined
+  (build-gated).
+- Every image has explicit dimensions; fonts preloaded only when used above the fold.
 
 ## Acceptance criteria
 
 1. `bun run build` in `website/` produces `out/` with zero server artifacts.
-2. Both locales render fully with JS disabled (content, images, FAQ text in static DOM).
-3. Hero plays once, restore button works, reduced-motion path verified in a real browser.
+2. Both locales render fully with JS disabled (content, images, FAQ text in static DOM);
+   the hero area shows real product imagery via the no-JS/reduced-motion fallback.
+3. The 3D monitor renders in viewport 1 at 1600×900 and 390×844; scan wipe, restore
+   loop, state chip, pointer parallax and pause-offscreen verified in a real browser.
 4. Lighthouse (mobile emulation) meets the performance budget on the deployed URL.
-5. `wrangler deploy` from `website/` serves the site on dm.nicepkg.cn over HTTPS.
+5. `wrangler deploy` from `website/` serves both locales on the workers.dev URL (and
+   dm.nicepkg.cn once DNS lands).
 6. CI deploys on a `website/**` push to main and skips on unrelated pushes.
-7. JSON-LD validates (Rich Results test schema-parse level); hreflang pair resolves.
+7. JSON-LD validates; hreflang pair resolves; zh subset build gate passes.

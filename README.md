@@ -188,20 +188,10 @@ The React UI, the Rust core, docs, localization, and Windows compatibility testi
 
 <div align="center">
 
-<br/>
-
-**Made your desktop nicer? Give it a ⭐ so more people find it.**
-
-<a href="https://github.com/nicepkg/deskmakeover"><img src="https://img.shields.io/github/stars/nicepkg/deskmakeover?style=social" alt="Star DeskMakeover" /></a>
-
-<br/><br/>
+**Made your desktop nicer? [Give it a ⭐](https://github.com/nicepkg/deskmakeover) so more people find it.**
 
 <img src=".github/assets/rule-gradient.svg" width="880" alt="" />
 
-<img src=".github/assets/logo.png" width="40" alt="" />
-
-**DeskMakeover · 桌面美颜**
-
-[Releases](https://github.com/nicepkg/deskmakeover/releases) · [Issues](https://github.com/nicepkg/deskmakeover/issues) · **English** · [中文](README.zh-CN.md)
+<img src=".github/assets/logo.png" width="40" alt="" /><br/><b>DeskMakeover · 桌面美颜</b><br/><sub>[Releases](https://github.com/nicepkg/deskmakeover/releases) · [Issues](https://github.com/nicepkg/deskmakeover/issues) · English · [中文](README.zh-CN.md)</sub>
 
 </div>

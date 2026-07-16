@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+/*
+ * DeskMakeover site — flat white, future-tech.
+ * Pure geometry and ink: near-white canvas, one coral, hairline lines,
+ * zero gradients, zero soft shadows on chrome. Depth belongs to the 3D
+ * scene and the product renders, not to the UI.
+ */
+@theme {
+  --color-canvas: #fcfcfd;
+  --color-ink: #16181d;
+  --color-ink-2: #4d5560;
+  --color-ink-3: #8a919c;
+  --color-line: #e4e7ec;
+  --color-panel: #f4f5f7;
+  --color-coral: #ff6f5e;
+  --color-coral-deep: #f25c4b;
+  --color-coral-ink: #d4402e;
+
+  --font-sans:
+    var(--font-satoshi), ui-sans-serif, system-ui, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-display:
+    var(--font-satoshi), var(--font-zh-display), ui-sans-serif, system-ui,
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+
+  --ease-swift: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink-2);
+  font-family: var(--font-sans);
+  font-size: 16.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-coral);
+  color: #fff;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  color: var(--color-ink);
+  text-wrap: balance;
+}
+
+html[lang="zh-CN"] h1,
+html[lang="zh-CN"] h2 {
+  letter-spacing: 0 !important;
+  line-height: 1.16 !important;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* faint engineering grid behind the hero — hairlines, masked out at edges */
+.grid-paper {
+  background-image:
+    linear-gradient(to right, var(--color-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-line) 1px, transparent 1px);
+  background-size: 72px 72px;
+  opacity: 0.5;
+  mask-image: radial-gradient(ellipse 75% 70% at 62% 42%, black 30%, transparent 78%);
+}
+
+/* enters: visible by default, armed below the fold by JS */
+.rise-armed {
+  opacity: 0;
+  transform: translateY(14px);
+}
+.rise-armed.in-view {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.6s var(--ease-swift),
+    transform 0.6s var(--ease-swift);
+  transition-delay: var(--rise-delay, 0ms);
+}
+@media (prefers-reduced-motion: reduce), print {
+  .rise-armed {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* before/after wipe: the invisible range input drives the divider */
+.wipe-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.wipe-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+}
+.wipe-range::-moz-range-thumb {
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+}
+.wipe-range:focus-visible {
+  outline: none;
+}
+.wipe-range:focus-visible ~ .wipe-handle .wipe-knob {
+  outline: 2px solid var(--color-coral);
+  outline-offset: 3px;
+}

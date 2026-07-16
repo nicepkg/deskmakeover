@@ -15,9 +15,15 @@ pub struct WindowsExplorerRefresher;
 impl ExplorerRefresher for WindowsExplorerRefresher {
     /// [WINDOWS-VERIFY] runtime.
     fn notify_icons_changed(&self) -> PortResult<()> {
-        // SAFETY: `SHChangeNotify(SHCNE_ASSOCCHANGED, …, null, null)` is the documented global
-        // icon-association refresh; it takes no ownership and cannot fail meaningfully.
-        unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None) };
+        // SHCNF_FLUSH (SYNCHRONOUS), not the async SHCNF_IDLIST it was: an async global refresh
+        // RACES the just-finished desktop.ini/.url writes + asset GC, so Explorer re-reads a
+        // transitional state and then never re-notifies — a folder / `.url` re-styled on a second
+        // apply stayed on its stale (default / blank) icon (owner box 2026-07-17). `.lnk` items
+        // self-refresh on the file change; the path-referencing kinds depend on this notification
+        // actually landing after the writes. FLUSH waits for the shell handlers, matching the
+        // proven-good reference's `SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_FLUSH, …)`.
+        // SAFETY: null params; no ownership taken.
+        unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST | SHCNF_FLUSH, None, None) };
         Ok(())
     }
 

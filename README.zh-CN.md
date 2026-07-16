@@ -8,7 +8,7 @@
 
 **给你的 Windows 桌面换个好看的样子。不喜欢，一键变回原样。**
 
-[![状态](https://img.shields.io/badge/beta-v0.1.0-FF6F5E?labelColor=2f363d)](https://github.com/nicepkg/deskmakeover/releases)
+[![状态](https://img.shields.io/badge/beta-v0.1.0-FF6F5E?labelColor=2f363d)](#-怎么安装)
 [![Windows](https://img.shields.io/badge/Windows-10%20%C2%B7%2011-464f58?labelColor=2f363d)](#-怎么安装)
 [![许可证](https://img.shields.io/badge/License-MIT-464f58?labelColor=2f363d)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%202-464f58?labelColor=2f363d)](https://v2.tauri.app/)
@@ -17,7 +17,7 @@
 
 <br/>
 
-<a href="https://github.com/nicepkg/deskmakeover/releases">
+<a href="#-怎么安装">
   <img src=".github/assets/hero-beforeafter.svg" width="880" alt="杂乱的 Windows 默认桌面一键美颜成整齐的方圆图标，然后完整还原" />
 </a>
 
@@ -43,14 +43,14 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 <div align="center">
 <img src=".github/assets/specimen-nine-styles.webp" width="880" alt="同一个文件夹图标在九套风格下的样子" />
 <br/>
-<sub>方圆 · 圆窗 · 像素纪元 · 溪石 · 拼贴手帐 · 浮光 · 随形贴 · 蓝图 · 釉光</sub>
+<sub>方圆 · 蓝图 · 像素纪元 · 浮光 · 釉光 · 随形贴 · 圆窗 · 拼贴手帐 · 溪石</sub>
 </div>
 
 <br/>
 
 <table align="center">
 <tr>
-  <td align="center"><img src=".github/assets/preset-squircle.webp" width="250" alt="方圆" /><br/><b>方圆</b><br/><sub>一枚方圆，各有其形</sub></td>
+  <td align="center"><img src=".github/assets/preset-squircle.webp" width="250" alt="方圆" /><br/><b>方圆</b><br/><sub>圆角连续，顺滑过渡</sub></td>
   <td align="center"><img src=".github/assets/preset-blueprint.webp" width="250" alt="蓝图" /><br/><b>蓝图</b><br/><sub>一整套工程蓝图</sub></td>
   <td align="center"><img src=".github/assets/preset-pixel-era.webp" width="250" alt="像素纪元" /><br/><b>像素纪元</b><br/><sub>回到八比特的下午</sub></td>
 </tr>
@@ -60,7 +60,7 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
   <td align="center"><img src=".github/assets/preset-die-cut.webp" width="250" alt="随形贴" /><br/><b>随形贴</b><br/><sub>沿轮廓裁开的贴纸</sub></td>
 </tr>
 <tr>
-  <td align="center"><img src=".github/assets/preset-porthole.webp" width="250" alt="圆窗" /><br/><b>圆窗</b><br/><sub>程序是圆窗</sub></td>
+  <td align="center"><img src=".github/assets/preset-porthole.webp" width="250" alt="圆窗" /><br/><b>圆窗</b><br/><sub>干净利落的圆形</sub></td>
   <td align="center"><img src=".github/assets/preset-scrapbook.webp" width="250" alt="拼贴手帐" /><br/><b>拼贴手帐</b><br/><sub>随手拼贴的一页</sub></td>
   <td align="center"><img src=".github/assets/preset-creekstone.webp" width="250" alt="溪石" /><br/><b>溪石</b><br/><sub>溪水磨圆的石头</sub></td>
 </tr>
@@ -85,6 +85,8 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 
 <div align="center">
 <img src=".github/assets/feature-stylepack.webp" width="440" alt="风格库：内置外观加上存为我的风格、导出、导入按钮" />
+<br/>
+<sub>你的风格和内置外观放在一起：保存、导出、导入。</sub>
 </div>
 
 ## 🗂️ 在壁纸上圈出分区，图标不再乱堆
@@ -93,6 +95,8 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 
 <div align="center">
 <img src=".github/assets/feature-zones.webp" width="760" alt="布局模板铺好的三个分区：Apps、Work 和深色的 Doing" />
+<br/>
+<sub>一个布局模板点下去，这三块分区就铺好了。</sub>
 </div>
 
 ## ✂️ 快捷方式的小箭头，可换可去
@@ -106,9 +110,9 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 ## 🎛️ 走进工作台
 
 <div align="center">
-<img src=".github/assets/app-studio.webp" width="880" alt="DeskMakeover 主窗口：左边是桌面实时镜像，右边是设计控制面板" />
+<img src=".github/assets/app-studio.webp" width="880" alt="DeskMakeover 主窗口的壁纸标签页：左边实时镜像上是分区，右边是材质、配色和标题样式" />
 <br/>
-<sub>右边挑外观，左边看着真实桌面实时换装，满意了按下美化。</sub>
+<sub>每个标签页都是这个用法：右边调整，左边的真实桌面实时跟着变。</sub>
 </div>
 
 ## 📦 怎么安装
@@ -145,13 +149,14 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 DeskMakeover 是 **Tauri 2 + Rust** 桌面应用，UI 是渲染在系统 WebView（WebView2）里的 **React 19 + TypeScript**，像素由一个 Rust 图标内核统一拥有：
 
 ```
-React UI  ──(生成式 bridge，tauri-specta)──▶  Rust host
-  │                                              │
-  │  实时预览 + 设计控件                          ├─ dm-icon-core   唯一像素真理(WASM 预览 + 原生烘焙)
-  │  WYSIWYG 画布(Pixi 壁纸)                     ├─ dm-windows     shell / 注册表 / 桌面几何
-  └─ 浏览器开发用 mock 后端                        ├─ dm-operations  快照 · 应用 · 还原(SQLite 事务账本)
-                                                  ├─ dm-resident    后台托盘 + reconciler
-                                                  └─ dm-elevated    极小的白名单提权助手
+React UI ──(tauri-specta 生成式 bridge)──▶ Rust host
+  │                                   │
+  │  实时预览 + 设计控件              ├─ dm-icon-core   唯一像素真理
+  │  WYSIWYG 画布(Pixi 壁纸)          │                 (WASM 预览 + 原生烘焙)
+  └─ 浏览器开发用 mock 后端           ├─ dm-windows     shell · 注册表 · 桌面几何
+                                      ├─ dm-operations  快照 · 应用 · 还原
+                                      ├─ dm-resident    后台托盘 + reconciler
+                                      └─ dm-elevated    白名单提权小助手
 ```
 
 **为什么这么选：**

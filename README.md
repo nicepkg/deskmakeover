@@ -8,7 +8,7 @@
 
 **Give your Windows desktop a look you actually like. Don't like it? One click puts everything back.**
 
-[![Status](https://img.shields.io/badge/beta-v0.1.0-FF6F5E?labelColor=2f363d)](https://github.com/nicepkg/deskmakeover/releases)
+[![Status](https://img.shields.io/badge/beta-v0.1.0-FF6F5E?labelColor=2f363d)](#-how-to-install)
 [![Windows](https://img.shields.io/badge/Windows-10%20%C2%B7%2011-464f58?labelColor=2f363d)](#-how-to-install)
 [![License](https://img.shields.io/badge/License-MIT-464f58?labelColor=2f363d)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%202-464f58?labelColor=2f363d)](https://v2.tauri.app/)
@@ -17,7 +17,7 @@
 
 <br/>
 
-<a href="https://github.com/nicepkg/deskmakeover/releases">
+<a href="#-how-to-install">
   <img src=".github/assets/hero-beforeafter.svg" width="880" alt="A cluttered default Windows desktop is beautified into clean squircle icons with one click, then fully restored" />
 </a>
 
@@ -43,7 +43,7 @@ Each one hand-tuned on a real desktop. Pick one, click once, every icon puts it 
 <div align="center">
 <img src=".github/assets/specimen-nine-styles.webp" width="880" alt="One folder icon rendered in all nine DeskMakeover styles" />
 <br/>
-<sub>Squircle · Porthole · Pixel Era · Creekstone · Scrapbook · Gleam · Die-Cut · Blueprint · Glaze</sub>
+<sub>Squircle · Blueprint · Pixel Era · Gleam · Glaze · Die-Cut · Porthole · Scrapbook · Creekstone</sub>
 </div>
 
 <br/>
@@ -85,6 +85,8 @@ Landed on a combination you love? Save it as your own style and reuse it with a 
 
 <div align="center">
 <img src=".github/assets/feature-stylepack.webp" width="440" alt="The style library with save, export, and import controls" />
+<br/>
+<sub>Your library lives next to the built-ins: save, export, import.</sub>
 </div>
 
 ## 🗂️ Draw zones on your wallpaper
@@ -93,6 +95,8 @@ Icons piling into one big crowd? Draw translucent zones onto the wallpaper, one 
 
 <div align="center">
 <img src=".github/assets/feature-zones.webp" width="760" alt="Three template zones laid out on the wallpaper: Apps, Work, and a dark Doing zone" />
+<br/>
+<sub>One click of a layout template put these three zones down.</sub>
 </div>
 
 ## ✂️ The little shortcut arrow: swap it or remove it
@@ -106,9 +110,9 @@ Find that arrow ugly? Swap it for a cleaner mark, or remove it. The app does it 
 ## 🎛️ Inside the studio
 
 <div align="center">
-<img src=".github/assets/app-studio.webp" width="880" alt="The DeskMakeover window: live desktop mirror on the left, design controls on the right" />
+<img src=".github/assets/app-studio.webp" width="880" alt="The DeskMakeover window on the wallpaper tab: zones on the live desktop mirror, materials and title styles on the right" />
 <br/>
-<sub>Pick a look on the right, watch your real desktop restyle live on the left, hit Beautify when it's perfect.</sub>
+<sub>Every tab works the same way: adjust on the right, watch your real desktop change live on the left.</sub>
 </div>
 
 ## 📦 How to install
@@ -145,13 +149,14 @@ Yes. Pick a look, check the preview, click apply. No commands, no technical sett
 DeskMakeover is a **Tauri 2 + Rust** desktop app with a **React 19 + TypeScript** UI rendered in the system WebView (WebView2). The pixels are owned by one Rust icon core:
 
 ```
-React UI  ──(generated bridge, tauri-specta)──▶  Rust host
-  │                                                 │
-  │  live preview + design controls                ├─ dm-icon-core   one pixel truth (WASM preview + native bake)
-  │  WYSIWYG canvas (Pixi wallpaper)                ├─ dm-windows     shell / registry / desktop geometry
-  └─ mock backend for browser dev                   ├─ dm-operations  snapshot · apply · restore (SQLite ledger)
-                                                     ├─ dm-resident    background tray + reconciler
-                                                     └─ dm-elevated    tiny whitelisted privileged helper
+React UI ──(tauri-specta bridge)──▶ Rust host
+  │                                   │
+  │  live preview + design controls   ├─ dm-icon-core   one pixel truth
+  │  WYSIWYG canvas (Pixi wallpaper)  │                 (WASM + native)
+  └─ mock backend for browser dev     ├─ dm-windows     shell · registry · geometry
+                                      ├─ dm-operations  snapshot · apply · restore
+                                      ├─ dm-resident    tray + reconciler
+                                      └─ dm-elevated    tiny whitelisted helper
 ```
 
 **Why these choices:**

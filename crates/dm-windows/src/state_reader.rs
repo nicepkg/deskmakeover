@@ -133,6 +133,28 @@ impl ItemStateReader for WindowsStateReader {
         }
     }
 
+    fn read_styleable_surface(
+        &self,
+        target: &ItemTarget,
+    ) -> PortResult<(Fingerprint, Option<(String, i32)>)> {
+        match target.kind {
+            // A shortcut's fingerprint IS its icon location, so read the location ONCE and return BOTH
+            // — the elevated CAS anchor and the fingerprint can then never disagree (§P1-1). A UWP
+            // shortcut is an ordinary `.lnk`, same surface.
+            ItemKind::Shortcut | ItemKind::AppxShortcut => {
+                pathcheck::require_exists(&target.path)?;
+                let p = target.path.clone();
+                let (path, index) =
+                    self.exec.run(move || shell_link::read_icon_location(&p))??.unwrap_or_default();
+                let fingerprint = SurfaceState::IconRef { path: path.clone(), index }.fingerprint();
+                Ok((fingerprint, Some((path, index))))
+            }
+            // Every other kind: the full per-kind fingerprint, no single icon-location CAS anchor (they
+            // are never routed to the elevated shortcut helper).
+            _ => Ok((self.read_fingerprint(target)?, None)),
+        }
+    }
+
     fn capture_anchor(&self, target: &ItemTarget) -> PortResult<RestoreAnchor> {
         match target.kind {
             // AppxShortcut is an ordinary `.lnk`: byte-replay restore like a Shortcut (P1-12).

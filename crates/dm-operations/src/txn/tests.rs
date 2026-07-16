@@ -1887,3 +1887,18 @@ fn recovery_adopts_forward_a_privileged_item_the_elevated_helper_styled() {
         "unprivileged recovery attempts the doomed restore → degraded (the wedge scope-awareness fixes)"
     );
 }
+
+#[test]
+fn default_styleable_surface_returns_the_fingerprint_and_no_icon() {
+    // The trait's default `read_styleable_surface` (used by every non-Windows reader) must equal
+    // `read_fingerprint` with NO icon-location CAS anchor — only the Windows reader surfaces the
+    // shortcut icon from the fingerprint's own read (§P1-1). This locks the default contract.
+    use dm_domain::ItemStateReader;
+    let world = World::shared();
+    let a = target("A");
+    seed(&world, &a, b"orig-A");
+    let plat = FakePlatform::new(world);
+    let (fp, icon) = plat.read_styleable_surface(&a).unwrap();
+    assert_eq!(fp, plat.read_fingerprint(&a).unwrap(), "default surface fingerprint == read_fingerprint");
+    assert_eq!(icon, None, "the default surfaces no icon-location CAS anchor");
+}

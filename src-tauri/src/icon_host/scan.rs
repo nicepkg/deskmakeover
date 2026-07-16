@@ -114,10 +114,12 @@ impl IconHost {
             // sentinel fingerprint for display purposes but is stripped of APPLY AUTHORITY
             // (`source_ok:false` → the commit refuses it; codex icons2-🟠5 — the sentinel is a
             // legal CAS value for empty bytes, so it must never carry authority on its own).
-            let read = self.reader.read_fingerprint(&item.target());
+            // ONE read yields BOTH the CAS fingerprint AND a shortcut's raw icon location, so the
+            // elevated helper's CAS anchor can never disagree with the accepted fingerprint (§P1-1).
+            let read = self.reader.read_styleable_surface(&item.target());
             let unreadable = read.is_err();
-            let fingerprint =
-                read.unwrap_or_else(|_| dm_domain::Fingerprint::of_bytes(b""));
+            let (fingerprint, cas_icon) =
+                read.unwrap_or_else(|_| (dm_domain::Fingerprint::of_bytes(b""), None));
             // Journal-incomplete items have unknowable live provenance — never anchor-substitute,
             // never offer for styling; show the live pixels with an honest reason.
             let provenance_unknown = unknown_provenance.contains(item.id.as_str());
@@ -185,7 +187,7 @@ impl IconHost {
             // `source_ok` is the ONE apply-authority bit shared with the commit path (codex
             // icons2-🟠5): the DTO's styleable, the commit's acceptance, and the restore planner
             // all derive from it instead of three drifting definitions.
-            scanned.push(ScannedItem { item, fingerprint, source_ok: degraded_reason.is_none() });
+            scanned.push(ScannedItem { item, fingerprint, cas_icon, source_ok: degraded_reason.is_none() });
         }
         // Every extract succeeded → publish atomically, ALL inside one critical section ordered
         // acceptance-check → source cache → snapshot (codex R10-#B + R11-#1). The revision check runs

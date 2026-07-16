@@ -56,6 +56,12 @@ pub struct IconPlatform<'a> {
 pub struct ScannedItem {
     pub item: DesktopItem,
     pub fingerprint: Fingerprint,
+    /// A shortcut's raw icon location `(path, index)` captured from the SAME read as `fingerprint`
+    /// (via `read_styleable_surface`), so the two never disagree. It is the elevated helper's
+    /// compare-and-swap anchor for a privileged shortcut — sourced here (not from `item.icon`, which
+    /// is a SEPARATE scan read that could observe a different state) so a value the preflight rejected
+    /// is never handed to the helper as "expected" (§P1-1). `None` for a non-shortcut / icon-less item.
+    pub cas_icon: Option<(String, i32)>,
     /// The ONE apply-authority bit (codex icons2-🟠5): false when the scan could not establish a
     /// trustworthy source/state for this item (extraction fault, unreadable fingerprint, or an
     /// unreconciled journal). The commit REFUSES such an item even if a client submits a master
@@ -432,16 +438,12 @@ impl<'a> IconOps<'a> {
             // write that always fails, then rolls the WHOLE user-desktop batch back (the on-box bug).
             if scope.classify(&req.target.path).is_some() {
                 if elevated.is_some() && is_elevatable_kind(req.target.kind) {
-                    // The scan-observed icon location (== the fingerprint the preflight will accept, since
-                    // a shortcut's fingerprint IS its icon location) is the helper's CAS anchor. `None`
-                    // (no explicit icon) → ("", 0); the helper's `GetIconLocation` reads "" for the same
+                    // The CAS anchor is the icon location captured from the SAME read as the accepted
+                    // fingerprint (`cas_icon`, not the separate `item.icon` scan read) — so the helper
+                    // is never told to "expect" a value the preflight did not accept (§P1-1). `None`
+                    // (icon-less) → ("", 0); the helper's `GetIconLocation` reads "" for the same
                     // target, so the `"" == ""` CAS matches.
-                    let expect = scanned
-                        .item
-                        .icon
-                        .as_ref()
-                        .map(|r| (r.location.clone(), r.index))
-                        .unwrap_or_default();
+                    let expect = scanned.cas_icon.clone().unwrap_or_default();
                     privileged.push((req, expect));
                 } else {
                     conflicts.push(req.target.id.clone());

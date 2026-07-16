@@ -23,6 +23,23 @@ pub trait ItemStateReader {
     /// Captures the exact-restore anchor for the item BEFORE any mutation
     /// (oracle: `RestoreMetadataCollector`).
     fn capture_anchor(&self, target: &ItemTarget) -> PortResult<RestoreAnchor>;
+
+    /// The CAS fingerprint AND, for a shortcut (`.lnk`), its raw icon location `(path, index)` — both
+    /// derived from ONE read, so the two never disagree (the fingerprint of a shortcut IS its icon
+    /// location). The operations layer threads the returned icon location to the elevated helper as
+    /// its compare-and-swap anchor: because it comes from the SAME read as the accepted fingerprint, a
+    /// value the preflight rejected can never be handed to the helper as "expected" (trust-first,
+    /// §P1-1). `None` for the icon means either a non-shortcut kind (its surface is not a single icon
+    /// location) or a shortcut with no explicit icon location; both are safe — only the privileged
+    /// SHORTCUT elevated path consumes the icon, and `None` maps to `("", 0)`, matching the helper's
+    /// empty `GetIconLocation` read. The default is `(read_fingerprint, None)`; the Windows reader
+    /// overrides it to surface the shortcut icon location from the fingerprint's own read.
+    fn read_styleable_surface(
+        &self,
+        target: &ItemTarget,
+    ) -> PortResult<(Fingerprint, Option<(String, i32)>)> {
+        Ok((self.read_fingerprint(target)?, None))
+    }
 }
 
 /// Applies owned fields to one item (points it at a generated asset) and restores it from a

@@ -1,5 +1,5 @@
 import type { Dict } from "@/content/types";
-import { GITHUB_URL, RELEASES_LATEST_URL, SITE_URL } from "@/lib/site";
+import { DOWNLOAD_URL, GITHUB_URL, SITE_URL } from "@/lib/site";
 
 export function softwareApplicationJsonLd(dict: Dict) {
   return {
@@ -13,7 +13,7 @@ export function softwareApplicationJsonLd(dict: Dict) {
     softwareVersion: "0.1.0-beta",
     url: dict.locale === "zh" ? `${SITE_URL}/zh/` : `${SITE_URL}/`,
     image: `${SITE_URL}/social-card.png`,
-    downloadUrl: RELEASES_LATEST_URL,
+    downloadUrl: DOWNLOAD_URL,
     license: `${GITHUB_URL}/blob/main/LICENSE`,
     isAccessibleForFree: true,
     offers: {

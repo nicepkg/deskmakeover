@@ -1,35 +1,65 @@
 import type { Dict } from "@/content/types";
-import { HeroStage } from "@/components/hero-stage";
+import { HeroTheater } from "@/components/hero-theater";
 import { DOWNLOAD_URL, RELEASE_READY } from "@/lib/site";
+
+function StaggeredLine({ text, from, coral }: { text: string; from: number; coral?: boolean }) {
+  const words = text.split(/(\s+)/).filter((w) => w.length > 0);
+  let i = from;
+  return (
+    <span className={coral ? "text-coral" : undefined}>
+      {words.map((w, k) =>
+        /^\s+$/.test(w) ? (
+          " "
+        ) : (
+          <span key={k} className="hero-word" style={{ "--word-delay": `${250 + i++ * 60}ms` } as React.CSSProperties}>
+            {w}
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
 
 export function Hero({ dict }: { dict: Dict }) {
   const h = dict.hero;
+  const isZh = dict.locale === "zh";
   return (
-    <section className="mx-auto max-w-[1200px] px-5 pt-14 md:px-8 md:pt-20">
-      <div>
-        <h1 className="font-display text-[clamp(2.2rem,4.6vw,3.5rem)] font-bold leading-[1.08] tracking-[-0.02em]">
-          {h.headline1}
-          <br />
-          <span className="text-coral-text">{h.headline2}</span>
-        </h1>
-        <p className="mt-5 max-w-[54ch] text-[18px] leading-relaxed text-ink-soft">{h.sub}</p>
-        <div className="mt-8 flex flex-wrap items-center gap-4">
-          <a
-            href={RELEASE_READY ? DOWNLOAD_URL : "#download"}
-            className="rounded-btn bg-gradient-to-br from-coral to-coral-deep px-6 py-3 text-[16px] font-semibold text-cream shadow-lift transition-transform duration-150 hover:brightness-[1.05] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral active:scale-[0.98]"
-          >
-            {RELEASE_READY ? h.ctaRelease : h.ctaPending}
-          </a>
-          <a
-            href="#looks"
-            className="rounded-btn px-4 py-3 text-[16px] font-medium text-ink-soft transition-colors hover:text-ink"
-          >
-            {h.ctaSecondary}
-          </a>
+    <section className="relative overflow-hidden pb-10 pt-10 md:pt-14">
+      {/* faint grid + vignette behind everything */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 [background-image:linear-gradient(rgb(47_54_61/0.045)_1px,transparent_1px),linear-gradient(90deg,rgb(47_54_61/0.045)_1px,transparent_1px)] [background-size:64px_64px] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_35%,black,transparent)]"
+      />
+      <div className="relative mx-auto max-w-[1240px] px-5 md:px-8">
+        <div className="mx-auto max-w-[1000px] text-center">
+          <h1 className="font-display text-[clamp(2.4rem,5vw,4.4rem)] font-bold leading-[0.98] tracking-[-0.03em]">
+            <StaggeredLine text={h.headline1} from={0} />
+            <br />
+            <StaggeredLine text={h.headline2} from={isZh ? 2 : 6} coral />
+          </h1>
+          <p className="mx-auto mt-4 max-w-[52ch] text-[clamp(1.05rem,1.4vw,1.3rem)] text-text-mid">{h.sub}</p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+            <a
+              href={RELEASE_READY ? DOWNLOAD_URL : "#download"}
+              className="rounded-full bg-gradient-to-br from-coral-deep to-coral-ink px-7 py-3.5 text-[19px] font-bold text-white shadow-[0_8px_32px_-8px_var(--coral-glow)] transition-[filter,transform] duration-150 hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral active:scale-[0.98]"
+            >
+              {RELEASE_READY ? h.ctaRelease : h.ctaPending}
+            </a>
+            <a
+              href="#looks"
+              className="group rounded-full border border-hairline px-6 py-3.5 text-[16px] font-medium text-text-mid transition-colors hover:border-text-dim hover:text-text-hi"
+            >
+              {h.ctaSecondary}
+              <span aria-hidden="true" className="ml-1.5 inline-block transition-transform duration-200 group-hover:translate-x-0.5">
+                →
+              </span>
+            </a>
+          </div>
+          <p className="mt-4 text-[13.5px] text-text-dim">{h.trust}</p>
         </div>
-      </div>
-      <div className="mt-12 md:mt-16">
-        <HeroStage dict={h} />
+        <div className="mt-8 md:mt-10">
+          <HeroTheater dict={dict} />
+        </div>
       </div>
     </section>
   );

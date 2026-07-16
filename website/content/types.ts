@@ -33,6 +33,8 @@ export interface Dict {
     headline1: string;
     headline2: string;
     sub: string;
+    trust: string;
+    statusRefreshed: string;
     ctaRelease: string;
     ctaPending: string;
     ctaSecondary: string;
@@ -44,6 +46,9 @@ export interface Dict {
   };
   promise: {
     title: string;
+    lead: string;
+    toggleStyled: string;
+    toggleOriginal: string;
     items: { title: string; body: string }[];
   };
   looks: {
@@ -56,26 +61,16 @@ export interface Dict {
   customize: {
     title: string;
     body: string;
-    bullets: string[];
+    rows: { title: string; body: string }[];
     imgAlt: string;
-    caption: string;
   };
   zones: {
     title: string;
     body: string;
     imgAlt: string;
-    caption: string;
+    zoneLabels: [string, string, string];
     arrowTitle: string;
     arrowBody: string;
-  };
-  studio: {
-    title: string;
-    body: string;
-    imgAlt: string;
-    caption: string;
-    packTitle: string;
-    packBody: string;
-    packImgAlt: string;
   };
   download: {
     title: string;

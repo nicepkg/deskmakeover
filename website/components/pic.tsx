@@ -1,12 +1,11 @@
 import manifest from "@/lib/image-manifest.json";
 
-type ManifestEntry = {
-  w: number;
-  h: number;
-  variants: { w: number; h: number; avif: string; webp: string }[];
-};
+type Variant = { w: number; h: number; avif: string; webp: string };
+type ManifestEntry = { w: number; h: number; variants: Variant[] };
+type Cell = { x: number; y: number; w: number; h: number };
+type Meta = { chips: Record<string, { avif: string; webp: string }>; featured: Cell[] };
 
-const images = manifest as Record<string, ManifestEntry>;
+const { __meta, ...images } = manifest as unknown as Record<string, ManifestEntry> & { __meta: Meta };
 
 interface PicProps {
   name: string;
@@ -22,8 +21,7 @@ interface PicProps {
  * sources, intrinsic dimensions (zero CLS), lazy by default.
  */
 export function Pic({ name, alt, sizes, eager = false, className, imgClassName }: PicProps) {
-  const entry = images[name];
-  if (!entry) throw new Error(`Pic: unknown image key "${name}" — run scripts/build-images.mjs`);
+  const entry = imageEntry(name);
   const srcSet = (kind: "avif" | "webp") => entry.variants.map((v) => `${v[kind]} ${v.w}w`).join(", ");
   const fallback = entry.variants[0];
   return (
@@ -51,7 +49,11 @@ export function Pic({ name, alt, sizes, eager = false, className, imgClassName }
 }
 
 export function imageEntry(name: string): ManifestEntry {
-  const entry = images[name];
-  if (!entry) throw new Error(`imageEntry: unknown image key "${name}"`);
+  const entry = (images as Record<string, ManifestEntry>)[name];
+  if (!entry) throw new Error(`imageEntry: unknown image key "${name}" — run scripts/build-images.mjs`);
   return entry;
+}
+
+export function imageMeta(): Meta {
+  return __meta;
 }

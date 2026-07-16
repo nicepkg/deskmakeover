@@ -21,7 +21,9 @@ export const en: Dict = {
   hero: {
     headline1: "One click makes your desktop beautiful.",
     headline2: "One click puts it back.",
-    sub: "Hand-tuned icon looks, wallpaper zones, and a full backup before anything changes. Free and open source.",
+    sub: "Hand-tuned icon looks, wallpaper zones, and a full backup before anything changes.",
+    trust: "Free. Open source. Runs only on your PC.",
+    statusRefreshed: "Refreshed",
     ctaRelease: "Download for Windows",
     ctaPending: "Watch the release",
     ctaSecondary: "See the nine looks",
@@ -33,6 +35,9 @@ export const en: Dict = {
   },
   promise: {
     title: "You can always go back",
+    lead: "DeskMakeover photographs your desktop before touching it. Try the toggle: that is the real promise, running on real pixels.",
+    toggleStyled: "Styled",
+    toggleOriginal: "Original",
     items: [
       {
         title: "It backs everything up first",
@@ -71,31 +76,22 @@ export const en: Dict = {
   },
   customize: {
     title: "Make every part yours",
-    body: "The nine are a starting point. Eleven icon shapes, plus coloring, plates, finishes, and shortcut marks, each adjustable on its own.",
-    bullets: [
-      "Apps, folders, and plain files can each wear their own look",
-      "Hold to compare with the original, right-click to restyle a single icon",
-      "Undo and redo freely",
+    body: "The nine are a starting point. Everything below is one panel away.",
+    rows: [
+      { title: "Eleven shapes, five axes", body: "Shape, coloring, plate, finish, and shortcut mark, each adjustable on its own." },
+      { title: "Per-type looks", body: "Apps, folders, and plain files can each wear their own style." },
+      { title: "Compare and undo freely", body: "Hold to see the original, right-click to restyle one icon, undo and redo anytime." },
+      { title: "Save it. Share it.", body: "Keep combinations as your own styles, export them as files, import packs from friends." },
     ],
-    imgAlt: "The zoomed live preview beside the full control panel: shape, coloring, plate, finish, and shortcut mark",
-    caption: "The live preview zoomed in on the left; every axis adjustable on the right.",
+    imgAlt: "The DeskMakeover icons tab: the live desktop mirror on the left, shape, coloring, plate and finish controls on the right",
   },
   zones: {
     title: "Draw zones on your wallpaper",
     body: "Icons piling into one big crowd? Draw translucent zones onto the wallpaper, one for work, one for fun. Five materials, four title styles, or lay down a ready-made layout in one click. Your wallpaper is backed up; removing zones is one click.",
-    imgAlt: "Three template zones laid out on the wallpaper: Apps, Work, and a dark Doing zone",
-    caption: "One click of a layout template put these three zones down.",
+    imgAlt: "A styled desktop with three translucent organizer zones drawn over the wallpaper",
+    zoneLabels: ["Work", "Play", "Doing"],
     arrowTitle: "The little shortcut arrow: swap it or remove it",
     arrowBody: "Swap it for a cleaner mark, or remove it entirely. Windows asks once for permission. Backed up first, one click brings it back.",
-  },
-  studio: {
-    title: "Inside the studio",
-    body: "Every tab works the same way: adjust on the right, watch your real desktop change live on the left.",
-    imgAlt: "The DeskMakeover window on the wallpaper tab: zones on the live desktop mirror, materials and title styles on the right",
-    caption: "What you preview is exactly what you get.",
-    packTitle: "Save it. Share it.",
-    packBody: "Save a combination you love as your own style and reuse it with a click. Export it as a file for a friend, or import style packs other people made.",
-    packImgAlt: "The style library with save, export, and import controls",
   },
   download: {
     title: "Get DeskMakeover",

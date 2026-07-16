@@ -89,6 +89,7 @@ export interface Dict {
     requirements: string;
   };
   faq: {
+    kicker: string;
     title: string;
     items: FaqItem[];
   };

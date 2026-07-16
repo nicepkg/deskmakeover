@@ -119,6 +119,7 @@ export const en: Dict = {
     requirements: "WIN 10 1809+ / WIN 11 · 64-BIT",
   },
   faq: {
+    kicker: "FAQ",
     title: "Questions people ask",
     items: [
       {

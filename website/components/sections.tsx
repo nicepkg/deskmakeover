@@ -121,7 +121,7 @@ export function DownloadSection({ dict }: { dict: Dict }) {
     <section id="download" className="border-t border-line bg-coral">
       <div className="mx-auto max-w-[1200px] px-5 py-20 md:px-8 md:py-28">
         <Reveal>
-          <p className="font-mono text-[12px] tracking-[0.22em] text-white/75">
+          <p className="font-mono text-[12px] tracking-[0.22em] text-white/90">
             {s.index}
             {"  ·  "}
             {s.kicker.toUpperCase()}
@@ -134,12 +134,12 @@ export function DownloadSection({ dict }: { dict: Dict }) {
             {RELEASE_READY ? (
               <a
                 href={DOWNLOAD_URL}
-                className="bg-white px-7 py-3.5 text-[16px] font-semibold text-ink transition-colors hover:bg-panel"
+                className="w-full bg-white px-7 py-3.5 text-center text-[16px] font-semibold text-ink transition-colors hover:bg-panel sm:w-auto"
               >
                 {s.ctaRelease}
               </a>
             ) : (
-              <span className="bg-white/20 px-7 py-3.5 text-[16px] font-semibold text-white">
+              <span className="w-full bg-white/20 px-7 py-3.5 text-center text-[16px] font-semibold text-white sm:w-auto">
                 {s.ctaPending}
               </span>
             )}
@@ -147,7 +147,7 @@ export function DownloadSection({ dict }: { dict: Dict }) {
               href={GITHUB_URL}
               target="_blank"
               rel="noreferrer"
-              className="border border-white/50 px-7 py-3.5 text-[16px] font-semibold text-white transition-colors hover:border-white"
+              className="w-full border border-white/50 px-7 py-3.5 text-center text-[16px] font-semibold text-white transition-colors hover:border-white sm:w-auto"
             >
               {s.watchGithub}
             </a>
@@ -155,14 +155,14 @@ export function DownloadSection({ dict }: { dict: Dict }) {
           {RELEASE_READY ? (
             <div className="mt-8 max-w-[44rem] border-t border-white/25 pt-6">
               <p className="text-[14px] font-semibold text-white">{s.smartscreenLead}</p>
-              <p className="mt-2 text-[14px] leading-[1.6] text-white/85">{s.smartscreenDetail}</p>
+              <p className="mt-2 text-[14px] leading-[1.6] text-white/95">{s.smartscreenDetail}</p>
             </div>
           ) : (
-            <p className="mt-8 max-w-[44rem] text-[14px] leading-[1.6] text-white/85">
+            <p className="mt-8 max-w-[44rem] text-[14px] leading-[1.6] text-white/95">
               {s.pendingNote}
             </p>
           )}
-          <p className="mt-6 font-mono text-[11px] tracking-[0.14em] text-white/70">
+          <p className="mt-6 font-mono text-[11px] tracking-[0.14em] text-white/90">
             {s.requirements}
           </p>
         </Reveal>
@@ -177,7 +177,12 @@ export function FaqSection({ dict }: { dict: Dict }) {
     <section id="faq" className="border-t border-line">
       <div className="mx-auto max-w-[1200px] px-5 py-20 md:px-8 md:py-24">
         <Reveal>
-          <h2 className="text-[26px] font-bold tracking-[-0.01em] md:text-[32px]">{s.title}</h2>
+          <p className="font-mono text-[12px] tracking-[0.22em] text-ink-3">
+            <span className="text-coral-ink">06</span>
+            {"  ·  "}
+            {s.kicker.toUpperCase()}
+          </p>
+          <h2 className="mt-4 text-[26px] font-bold tracking-[-0.01em] md:text-[32px]">{s.title}</h2>
         </Reveal>
         <div className="mt-10 grid gap-x-12 gap-y-9 md:grid-cols-2">
           {s.items.map((item, i) => (

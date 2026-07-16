@@ -119,6 +119,7 @@ export const zh: Dict = {
     requirements: "WIN 10 1809+ / WIN 11 · 64 位",
   },
   faq: {
+    kicker: "常见问题",
     title: "大家常问的问题",
     items: [
       {

@@ -74,9 +74,9 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 - 按住对比原样，右键单独改一个图标，随时撤销重做
 
 <div align="center">
-<img src=".github/assets/feature-combine.webp" width="760" alt="方圆套装下的桌面近景：程序是方圆，文件夹和文件各有专属形状" />
+<img src=".github/assets/feature-combine.webp" width="760" alt="放大的实时预览和完整的调节面板：形状、配色、底板、质感、快捷方式标记" />
 <br/>
-<sub>比如方圆套装：程序是方圆，文件夹和文件各有专属形状。</sub>
+<sub>左边是放大的实时预览，右边每一个轴都能单独调。</sub>
 </div>
 
 ## 🧩 存成自己的风格，还能分享

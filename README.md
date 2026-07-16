@@ -74,9 +74,9 @@ The nine are a starting point. Eleven icon shapes, plus coloring, plates, finish
 - Hold to compare with the original, right-click to restyle a single icon, undo and redo freely
 
 <div align="center">
-<img src=".github/assets/feature-combine.webp" width="760" alt="A desktop close-up in the Squircle look: apps in squircles, folders and files in their own shapes" />
+<img src=".github/assets/feature-combine.webp" width="760" alt="The zoomed live preview beside the full control panel: shape, coloring, plate, finish, and shortcut mark" />
 <br/>
-<sub>The Squircle look, up close: apps in squircles, folders and files in shapes of their own.</sub>
+<sub>The live preview zoomed in on the left; every axis adjustable on the right.</sub>
 </div>
 
 ## 🧩 Save it. Share it.

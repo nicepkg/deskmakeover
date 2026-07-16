@@ -7,7 +7,7 @@ pub mod journal;
 pub mod recovery;
 
 pub use asset_store::FsAssetStore;
-pub use driver::{ApplyOutcome, ApplyRequest, TxnDriver};
+pub use driver::{ApplyOutcome, ApplyRequest, PreparedBatch, TxnDriver};
 pub use id::TxnIdAllocator;
 pub use journal::{FileJournal, JournalRecord, JournalSink, VecJournal};
 pub use recovery::{recover, recover_from_journal, repair_pending, RecoveryOutcome};

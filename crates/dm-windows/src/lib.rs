@@ -18,6 +18,9 @@ pub mod cmdline;
 pub mod durable;
 pub mod fingerprint_surface;
 pub mod pathcheck;
+// The A1/C3 signature gate (WinVerifyTrust before `runas`). Cross-platform MODULE: a non-Windows
+// stub links for the host cross-check; the real WinTrust body is `cfg(windows)` + [WINDOWS-VERIFY].
+pub mod signing;
 // The calm (清爽) settings platform adapters. Cross-platform MODULE: the `translate`/`profile_facts`
 // decision cores compile and are unit-tested on the Mac host; the `WinregBackend`/profile FFI shells
 // inside are `cfg(windows)` and `[WINDOWS-VERIFY]` (Wave 2).
@@ -28,6 +31,8 @@ pub mod textfmt;
 pub mod apply;
 #[cfg(windows)]
 pub mod com;
+#[cfg(windows)]
+mod elevated;
 #[cfg(windows)]
 mod overlay;
 #[cfg(windows)]
@@ -55,6 +60,8 @@ pub mod watcher;
 pub use apply::WindowsIconApplier;
 #[cfg(windows)]
 pub use com::StaExecutor;
+#[cfg(windows)]
+pub use elevated::WindowsElevatedIconApplier;
 #[cfg(windows)]
 pub use overlay::WindowsOverlayControl;
 #[cfg(windows)]

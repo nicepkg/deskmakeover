@@ -225,7 +225,7 @@ mod devhost {
                 stability: &stability,
             };
             self.rec
-                .restore_batch(&ports, targets, &mut self.journal, &mut self.ledger)
+                .restore_batch(&ports, &self.scope, targets, &mut self.journal, &mut self.ledger)
                 .map_err(|e| e.to_string())
         }
     }
@@ -362,7 +362,7 @@ mod win {
                 stability: &self.stability,
             };
             self.rec
-                .restore_batch(&ports, targets, &mut self.journal, &mut self.ledger)
+                .restore_batch(&ports, &self.scope, targets, &mut self.journal, &mut self.ledger)
                 .map_err(|e| e.to_string())
         }
     }

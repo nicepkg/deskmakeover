@@ -10,7 +10,7 @@ use serde_json::json;
 use super::*;
 use crate::ledger::store::{JsonLedgerStore, LedgerStore, MemLedgerStore};
 use crate::settings_store::SettingsStore;
-use crate::txn::fakes::{FakePlatform, World};
+use crate::txn::fakes::{FakeElevatedIconApplier, FakePlatform, World};
 use crate::txn::{FsAssetStore, TxnIdAllocator, VecJournal};
 
 /// A base64 straight-alpha RGBA PNG master of a solid colour, at the REQUIRED 256×256 master size
@@ -135,6 +135,8 @@ impl Fixture {
             look_id.len() as i64, // a deterministic caller-stamped timestamp
             &scanned,
             &restore,
+            &scope::ScopeRoots::Unprivileged,
+            None,
             &mut self.txn,
             &mut self.journal,
             &mut self.ledger,
@@ -148,7 +150,45 @@ impl Fixture {
         let fake = FakePlatform::new(self.world.clone());
         let platform = IconPlatform::new(&fake, &fake, &self.assets);
         let ops = IconOps::new(platform, &self.settings);
-        ops.reset_to_original(&scope::ScopeRoots::Unprivileged, &mut self.journal, &mut self.ledger, &self.history)
+        ops.reset_to_original(&scope::ScopeRoots::Unprivileged, None, &mut self.journal, &mut self.ledger, &self.history)
+            .unwrap()
+    }
+
+    /// Applies with an explicit privileged scope + (optional) elevated port — the wiring the real
+    /// Windows host uses. Privileged-scope targets route to the elevated batch; the rest to the driver.
+    fn apply_scoped(
+        &mut self,
+        masters: &[(&str, u32, [u8; 4])],
+        style: IconStyle,
+        look_id: &str,
+        scan: &[DesktopItem],
+        scope: &scope::ScopeRoots,
+        elevated: Option<&dyn dm_domain::ElevatedIconApplier>,
+    ) -> IconApplyOutcome {
+        let mut session = IconApplySession::begin(0, masters.len());
+        for (id, slot, rgba) in masters {
+            session.push(*id, *slot, master_b64(*rgba));
+        }
+        let scanned = self.scanned(scan);
+        let fake = FakePlatform::new(self.world.clone());
+        let platform = IconPlatform::new(&fake, &fake, &self.assets);
+        let ops = IconOps::new(platform, &self.settings);
+        ops.commit_apply(
+            session, style, Some("L".into()), look_id, 1, &scanned, &[], scope, elevated,
+            &mut self.txn, &mut self.journal, &mut self.ledger, &mut self.history,
+        )
+        .unwrap()
+    }
+
+    fn reset_scoped(
+        &mut self,
+        scope: &scope::ScopeRoots,
+        elevated: Option<&dyn dm_domain::ElevatedIconApplier>,
+    ) -> IconResetOutcome {
+        let fake = FakePlatform::new(self.world.clone());
+        let platform = IconPlatform::new(&fake, &fake, &self.assets);
+        let ops = IconOps::new(platform, &self.settings);
+        ops.reset_to_original(scope, elevated, &mut self.journal, &mut self.ledger, &self.history)
             .unwrap()
     }
 
@@ -394,7 +434,7 @@ fn commit_reconciles_a_committed_but_unledgered_txn_before_preparing() {
         let mut s = IconApplySession::begin(0, 1);
         s.push("app", 0, master_b64([1, 2, 3, 255]));
         let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()), source_ok: true }];
-        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &mut txn, &mut journal, &mut ledger_a, &mut history)
+        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &scope::ScopeRoots::Unprivileged, None, &mut txn, &mut journal, &mut ledger_a, &mut history)
             .unwrap();
     }
 
@@ -410,7 +450,7 @@ fn commit_reconciles_a_committed_but_unledgered_txn_before_preparing() {
         s.push("app", 0, master_b64([9, 9, 9, 255]));
         let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()), source_ok: true }];
         let out = ops
-            .commit_apply(s, style(2), Some("B".into()), "v2", 2, &scan, &[], &mut txn, &mut journal, &mut ledger_b, &mut history)
+            .commit_apply(s, style(2), Some("B".into()), "v2", 2, &scan, &[], &scope::ScopeRoots::Unprivileged, None, &mut txn, &mut journal, &mut ledger_b, &mut history)
             .unwrap();
         assert_eq!(out.committed, vec![ItemId::from_raw("app")]);
     }
@@ -444,14 +484,14 @@ fn reset_checkpoints_the_journal_so_a_restart_cannot_revive_the_ledger() {
         let mut s = IconApplySession::begin(0, 1);
         s.push("app", 0, master_b64([1, 2, 3, 255]));
         let scan = vec![ScannedItem { item: app.clone(), fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()), source_ok: true }];
-        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &mut txn, &mut journal, &mut ledger, &mut history)
+        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &scope::ScopeRoots::Unprivileged, None, &mut txn, &mut journal, &mut ledger, &mut history)
             .unwrap();
     }
     assert!(ledger.get(&app.id).unwrap().is_some(), "A is styled");
     {
         let fake = FakePlatform::new(world.clone());
         let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
-        ops.reset_to_original(&scope::ScopeRoots::Unprivileged, &mut journal, &mut ledger, &history).unwrap();
+        ops.reset_to_original(&scope::ScopeRoots::Unprivileged, None, &mut journal, &mut ledger, &history).unwrap();
     }
     assert!(ledger.all().unwrap().is_empty(), "reset emptied the ledger");
     assert_eq!(world.borrow().get(&app.path).unwrap(), b"orig-app", "desktop reverted to original");
@@ -461,7 +501,7 @@ fn reset_checkpoints_the_journal_so_a_restart_cannot_revive_the_ledger() {
     let mut restart_ledger = MemLedgerStore::new();
     let fake = FakePlatform::new(world.clone());
     let mut restart_journal = crate::txn::FileJournal::new(&journal_path);
-    crate::txn::recover_from_journal(&mut restart_journal, &fake, &fake, &mut restart_ledger).unwrap();
+    crate::txn::recover_from_journal(&mut restart_journal, &fake, &fake, &mut restart_ledger, &scope::ScopeRoots::Unprivileged).unwrap();
     assert!(
         restart_ledger.all().unwrap().is_empty(),
         "a restart after reset must NOT revive the deleted ledger rows",
@@ -496,7 +536,7 @@ fn reset_leaves_privileged_scope_rows_untouched_and_surfaces_them() {
             fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()),
             source_ok: true,
         }];
-        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &mut txn, &mut journal, &mut ledger, &mut history)
+        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &scope::ScopeRoots::Unprivileged, None, &mut txn, &mut journal, &mut ledger, &mut history)
             .unwrap();
     }
     let styled = world.borrow().get(&app.path).unwrap();
@@ -507,7 +547,7 @@ fn reset_leaves_privileged_scope_rows_untouched_and_surfaces_them() {
     let out = {
         let fake = FakePlatform::new(world.clone());
         let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
-        ops.reset_to_original(&privileged, &mut journal, &mut ledger, &history).unwrap()
+        ops.reset_to_original(&privileged, None, &mut journal, &mut ledger, &history).unwrap()
     };
 
     // Observable contract: the desktop keeps its styled bytes, the ledger keeps the row, and it is
@@ -547,7 +587,7 @@ fn reset_still_heals_a_deleted_privileged_row_without_a_desktop_write() {
             fingerprint: dm_domain::Fingerprint::of_bytes(&world.borrow().get(&app.path).unwrap()),
             source_ok: true,
         }];
-        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &mut txn, &mut journal, &mut ledger, &mut history)
+        ops.commit_apply(s, style(1), Some("A".into()), "v1", 1, &scan, &[], &scope::ScopeRoots::Unprivileged, None, &mut txn, &mut journal, &mut ledger, &mut history)
             .unwrap();
     }
     // The user deletes the icon after styling → read_fingerprint returns NotFound.
@@ -558,7 +598,7 @@ fn reset_still_heals_a_deleted_privileged_row_without_a_desktop_write() {
     let out = {
         let fake = FakePlatform::new(world.clone());
         let ops = IconOps::new(IconPlatform::new(&fake, &fake, &assets), &settings);
-        ops.reset_to_original(&privileged, &mut journal, &mut ledger, &history).unwrap()
+        ops.reset_to_original(&privileged, None, &mut journal, &mut ledger, &history).unwrap()
     };
 
     // The stale row was dropped (a local ledger op, no privileged desktop write) — no leak.
@@ -897,6 +937,8 @@ fn a_poisoned_row_re_applied_with_a_stale_scan_is_healed_but_not_silently_restyl
             2,
             &stale_scan,
             &[],
+            &scope::ScopeRoots::Unprivileged,
+            None,
             &mut f.txn,
             &mut f.journal,
             &mut f.ledger,
@@ -1082,4 +1124,155 @@ fn a_reset_defers_when_up_front_recovery_had_to_heal_a_prior_crash() {
     assert!(out.restored.is_empty(), "the ledger reset did NOT run this round");
     assert!(out.degraded.is_some(), "a repair/resync note is returned, never a bare Err");
     assert_eq!(f.world.borrow().get(&x.path).unwrap(), orig_x, "recovery restored the crashed item's desktop");
+}
+
+// ── Elevated batch (privileged shared items: Public Desktop / ProgramData) ─────────────────────
+
+/// A Public-Desktop shortcut (privileged scope) — the ACL-protected item the elevated helper styles.
+fn pub_item(id: &str) -> DesktopItem {
+    DesktopItem {
+        id: ItemId::from_raw(id),
+        name: id.into(),
+        path: format!("C:/Users/Public/Desktop/{id}"),
+        kind: ItemKind::Shortcut,
+        icon: None,
+        state: ItemState::Ready,
+        requires_explicit_consent: false,
+        status_message: None,
+    }
+}
+
+/// Roots where `C:/Users/Public/Desktop/*` is privileged but the user's own `C:/Desktop/*` is not.
+fn public_desktop_scope() -> scope::ScopeRoots {
+    scope::ScopeRoots::resolved(
+        vec!["C:/Users/Public/Desktop".into()],
+        vec!["C:/ProgramData".into()],
+    )
+    .unwrap()
+}
+
+#[test]
+fn an_elevated_batch_styles_a_public_desktop_item_alongside_a_user_one_and_both_are_reversible() {
+    let mut f = Fixture::new();
+    let scope = public_desktop_scope();
+    let elev = FakeElevatedIconApplier::new(f.world.clone());
+
+    let user = item("app", ItemKind::Shortcut); // C:/Desktop/app — the driver's path
+    let shared = pub_item("chrome"); // C:/Users/Public/Desktop/chrome — the elevated path
+    f.seed(&user, b"orig-app");
+    f.seed(&shared, b"orig-chrome");
+
+    let out = f.apply_scoped(
+        &[("app", 0, [1, 2, 3, 255]), ("chrome", 0, [4, 5, 6, 255])],
+        style(1),
+        "v1",
+        &[user.clone(), shared.clone()],
+        &scope,
+        Some(&elev),
+    );
+
+    // BOTH styled + committed — the whole point ("我要所有图标都可修改").
+    assert_eq!(out.committed.len(), 2, "both the user AND the shared item committed");
+    assert!(out.error.is_none() && out.conflicts.is_empty());
+    // The shared item went through the ELEVATED helper (one batch), the user one did not.
+    assert_eq!(elev.applied_paths(), vec![shared.path.clone()]);
+    // Both are tracked in the ledger → both reversible.
+    assert!(f.ledger.get(&user.id).unwrap().is_some());
+    assert!(f.ledger.get(&shared.id).unwrap().is_some());
+    // The privileged desktop actually wears the elevated helper's styled bytes now (the staged asset
+    // path is the real FsAssetStore path, so match on the elevated scheme rather than reconstruct it).
+    assert!(
+        f.world.borrow().get(&shared.path).unwrap().starts_with(b"STYLED-ELEV:"),
+        "the privileged desktop wears the elevated-styled bytes"
+    );
+
+    // Reset reverts BOTH — the privileged one through the elevated helper (byte replay).
+    let reset = f.reset_scoped(&scope, Some(&elev));
+    assert_eq!(reset.restored.len(), 2, "both reverted");
+    assert!(reset.skipped.is_empty());
+    assert_eq!(elev.restored_paths(), vec![shared.path.clone()]);
+    assert_eq!(f.world.borrow().get(&shared.path).unwrap(), b"orig-chrome", "privileged item back to original");
+    assert!(f.ledger.get(&shared.id).unwrap().is_none(), "its ledger row is dropped");
+}
+
+#[test]
+fn an_elevated_uac_cancel_reports_the_privileged_items_as_conflicts_not_a_failure() {
+    let mut f = Fixture::new();
+    let scope = public_desktop_scope();
+    let elev = FakeElevatedIconApplier::new(f.world.clone());
+    elev.set_outcome(dm_domain::ElevatedOutcome::Declined); // the user cancels the UAC prompt
+
+    let user = item("app", ItemKind::Shortcut);
+    let shared = pub_item("chrome");
+    f.seed(&user, b"orig-app");
+    f.seed(&shared, b"orig-chrome");
+
+    let out = f.apply_scoped(
+        &[("app", 0, [1, 2, 3, 255]), ("chrome", 0, [4, 5, 6, 255])],
+        style(1),
+        "v1",
+        &[user.clone(), shared.clone()],
+        &scope,
+        Some(&elev),
+    );
+
+    // The user's own icon STILL applied — a UAC cancel must not undo it.
+    assert_eq!(out.committed, vec![user.id.clone()], "the user desktop styled despite the cancel");
+    // The declined shared item is a retryable CONFLICT, never a hard error.
+    assert!(out.error.is_none(), "a UAC cancel is a user choice, not a failure");
+    assert_eq!(out.conflicts, vec![shared.id.clone()]);
+    assert!(f.ledger.get(&shared.id).unwrap().is_none(), "nothing ledgered for the declined item");
+    assert_eq!(f.world.borrow().get(&shared.path).unwrap(), b"orig-chrome", "the privileged desktop is untouched");
+    // The chosen style STILL persisted (②③) for the icons that did apply.
+    assert_eq!(f.settings.get_saved_style().unwrap().as_ref(), Some(&style(1)));
+}
+
+#[test]
+fn an_elevated_helper_failure_surfaces_as_an_error() {
+    let mut f = Fixture::new();
+    let scope = public_desktop_scope();
+    let elev = FakeElevatedIconApplier::new(f.world.clone());
+    elev.set_outcome(dm_domain::ElevatedOutcome::Failed("write denied".into()));
+
+    let shared = pub_item("chrome");
+    f.seed(&shared, b"orig-chrome");
+
+    let out = f.apply_scoped(
+        &[("chrome", 0, [4, 5, 6, 255])],
+        style(1),
+        "v1",
+        &[shared.clone()],
+        &scope,
+        Some(&elev),
+    );
+
+    assert!(out.committed.is_empty(), "nothing committed on a helper failure");
+    assert!(out.error.is_some(), "a real helper failure surfaces as an error (degraded toast)");
+    assert!(f.ledger.get(&shared.id).unwrap().is_none());
+    assert_eq!(f.world.borrow().get(&shared.path).unwrap(), b"orig-chrome", "the helper rolled back — desktop original");
+}
+
+#[test]
+fn without_an_elevated_port_a_privileged_item_is_an_honest_conflict_never_a_doomed_write() {
+    let mut f = Fixture::new();
+    let scope = public_desktop_scope();
+
+    let shared = pub_item("chrome");
+    f.seed(&shared, b"orig-chrome");
+
+    // No elevated port wired (an unwired host) → the privileged item is skipped, NOT written unelevated
+    // (which would hit Access Denied and, before the partition, roll back the whole batch).
+    let out = f.apply_scoped(
+        &[("chrome", 0, [4, 5, 6, 255])],
+        style(1),
+        "v1",
+        &[shared.clone()],
+        &scope,
+        None,
+    );
+
+    assert!(out.committed.is_empty());
+    assert_eq!(out.conflicts, vec![shared.id.clone()], "left as an honest skip");
+    assert!(out.error.is_none(), "a skip is not a failure — the desktop was never touched");
+    assert_eq!(f.world.borrow().get(&shared.path).unwrap(), b"orig-chrome");
 }

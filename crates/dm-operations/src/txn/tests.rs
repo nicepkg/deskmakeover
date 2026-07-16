@@ -17,6 +17,7 @@ use super::fakes::{
 use super::journal::{JournalRecord, VecJournal};
 use super::recovery::{recover, recover_from_journal, repair_pending, RecoveryOutcome};
 use crate::error::{OperationError, Result};
+use crate::icons::scope::ScopeRoots;
 use crate::ledger::entry::LedgerEntry;
 use crate::ledger::store::{JsonLedgerStore, LedgerStore, MemLedgerStore};
 use crate::ledger::TxnState;
@@ -256,7 +257,7 @@ fn reconcile_committed_rebuilds_lost_ledger_entry() {
 
     // Simulate the lost ledger write: recover into a fresh empty ledger.
     let mut fresh_ledger = MemLedgerStore::new();
-    let out = recover(journal.records(), &plat, &plat, &mut fresh_ledger).unwrap();
+    let out = recover(journal.records(), &plat, &plat, &mut fresh_ledger, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(out.reconciled, vec![ItemId::from_raw("A")]);
     let entry = fresh_ledger.get(&a.id).unwrap().unwrap();
     assert_eq!(entry.state, TxnState::Committed);
@@ -292,7 +293,7 @@ fn rollback_restore_failure_withholds_terminal_so_recovery_can_retry() {
 
     // The transient fault clears; startup recovery finishes the job exactly.
     world.borrow_mut().clear_faults();
-    recover(journal.records(), &plat, &plat, &mut ledger).unwrap();
+    recover(journal.records(), &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
     assert_eq!(world.borrow().get(&b.path).unwrap(), b"orig-B");
     assert!(ledger.all().unwrap().is_empty());
@@ -332,7 +333,7 @@ fn durably_rolled_back_item_is_not_restored_again_over_a_user_edit() {
     world.borrow_mut().put(&a.path, b"user-edit-after-rollback");
 
     let mut fresh = MemLedgerStore::new();
-    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    let out = recover(&records, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
 
     // The durably-rolled-back item is left exactly as the user left it — never re-restored.
     assert_eq!(
@@ -375,7 +376,7 @@ fn a_user_edit_between_crash_and_restart_is_preserved_never_clobbered() {
     world.borrow_mut().put(&a.path, b"user-chosen-icon");
 
     let mut fresh = MemLedgerStore::new();
-    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    let out = recover(&records, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
 
     assert_eq!(
         world.borrow().get(&a.path).unwrap(),
@@ -412,7 +413,7 @@ fn recovery_never_writes_to_restore_an_already_original_protected_target() {
     world.borrow_mut().fail_restore(&a.path);
 
     let mut fresh = MemLedgerStore::new();
-    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    let out = recover(&records, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
 
     // The fix: recovery saw live == original and SKIPPED the pointless (here impossible) restore
     // write, so the un-writable target never faults recovery.
@@ -456,7 +457,7 @@ fn crash_after_write_before_journal_preserves_our_own_uncommitted_style() {
     assert_eq!(world.borrow().get(&a.path).unwrap(), styled, "world is our styled state at the crash");
 
     let mut fresh = MemLedgerStore::new();
-    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    let out = recover(&records, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
 
     assert_eq!(out.preserved, vec![ItemId::from_raw("A")], "our unrecognised style is preserved");
     assert!(out.aborted.is_empty(), "nothing was reverted");
@@ -517,7 +518,7 @@ fn a_deleted_item_is_preserved_not_left_as_a_permanent_recovery_fence() {
     world.borrow_mut().remove(&a.path);
 
     let mut fresh = MemLedgerStore::new();
-    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    let out = recover(&records, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
 
     assert_eq!(out.preserved, vec![ItemId::from_raw("A")], "the deletion is a final preserved outcome");
     assert!(out.aborted.is_empty(), "a deleted item was not restored");
@@ -526,7 +527,7 @@ fn a_deleted_item_is_preserved_not_left_as_a_permanent_recovery_fence() {
         "a deletion is NOT a retryable fault — a non-empty `degraded` would fence recovery forever"
     );
     // Idempotent: a second pass over the same (still-deleted) state is a clean no-op.
-    let out2 = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    let out2 = recover(&records, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert!(out2.degraded.is_empty() && out2.aborted.is_empty());
 }
 
@@ -554,7 +555,7 @@ fn an_incomplete_reapply_over_a_user_edit_drops_the_stale_committed_row() {
     // The user replaces A's icon with their own between crash and restart (neither original nor X).
     world.borrow_mut().put(&a.path, b"user-edit");
 
-    let out = recover(&records, &plat, &plat, &mut ledger).unwrap();
+    let out = recover(&records, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap();
 
     assert_eq!(out.preserved, vec![ItemId::from_raw("A")], "the user edit is preserved");
     assert_eq!(world.borrow().get(&a.path).unwrap(), b"user-edit", "the edit is never clobbered");
@@ -588,7 +589,7 @@ fn an_incomplete_reapply_that_never_touched_disk_keeps_the_prior_committed_row()
     // The desktop is still at the prior committed style X (the re-apply never wrote).
     world.borrow_mut().put(&a.path, style_x);
 
-    let out = recover(&records, &plat, &plat, &mut ledger).unwrap();
+    let out = recover(&records, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap();
 
     assert!(out.preserved.is_empty(), "a correctly-tracked prior style is not a preserve event");
     assert!(out.aborted.is_empty(), "the prior committed style is not reverted");
@@ -659,8 +660,8 @@ fn assert_preserves_unrecognized(records: &[JournalRecord], world_at_crash: &Has
     let plat = FakePlatform::new(world.clone());
     let mut ledger = MemLedgerStore::new();
 
-    let out1 = recover(records, &plat, &plat, &mut ledger).unwrap();
-    let out2 = recover(records, &plat, &plat, &mut ledger).unwrap(); // idempotency
+    let out1 = recover(records, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap();
+    let out2 = recover(records, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap(); // idempotency
 
     let prepared = prepared_ids(records);
     for name in ["A", "B"] {
@@ -713,9 +714,9 @@ fn assert_recovers_consistently(
     let plat = FakePlatform::new(world.clone());
     let mut ledger = MemLedgerStore::new();
 
-    recover(records, &plat, &plat, &mut ledger).unwrap();
+    recover(records, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap();
     // Idempotency: a second pass changes nothing.
-    recover(records, &plat, &plat, &mut ledger).unwrap();
+    recover(records, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap();
 
     for name in ["A", "B"] {
         let path = format!("C:/Desktop/{name}.lnk");
@@ -959,7 +960,7 @@ fn recovery_fails_closed_when_one_txn_id_has_both_terminals() {
     records.push(JournalRecord::TxnRolledBack { txn: 1 });
 
     let mut fresh = MemLedgerStore::new();
-    let result = recover(&records, &plat, &plat, &mut fresh);
+    let result = recover(&records, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged);
     assert!(
         matches!(result, Err(OperationError::Journal(_))),
         "a txn id bearing both terminals must fail closed, not misclassify committed work"
@@ -1014,7 +1015,7 @@ fn both_terminals_fail_closed_before_any_earlier_incomplete_txn_mutates_the_desk
     let plat = FakePlatform::new(world.clone());
     let mut ledger = MemLedgerStore::new();
 
-    let result = recover(&records, &plat, &plat, &mut ledger);
+    let result = recover(&records, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged);
     assert!(
         matches!(result, Err(OperationError::Journal(_))),
         "both-terminals corruption must fail closed"
@@ -1137,7 +1138,7 @@ fn an_abandoned_txn_does_not_clobber_a_later_committed_txn_on_the_same_item() {
     let plat = FakePlatform::new(world.clone());
     let mut ledger = MemLedgerStore::new();
 
-    let out = recover(&records, &plat, &plat, &mut ledger).unwrap();
+    let out = recover(&records, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap();
 
     // txn 1's abort must be suppressed for A; txn 2's commit reconciled.
     assert!(!out.aborted.contains(&a.id), "the committed item must not be aborted by the earlier txn");
@@ -1152,7 +1153,7 @@ fn an_abandoned_txn_does_not_clobber_a_later_committed_txn_on_the_same_item() {
     assert_eq!(entry.last_applied_fingerprint, styled2_fp);
 
     // Idempotent: a second pass changes nothing.
-    recover(&records, &plat, &plat, &mut ledger).unwrap();
+    recover(&records, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(world.borrow().get(&a.path).unwrap(), styled2);
 }
 
@@ -1294,7 +1295,7 @@ fn the_paired_empty_asset_is_persisted_in_the_ledger_and_survives_recovery() {
 
     // Recovery from the journal rebuilds the same empty ref (crash in the commit→upsert gap).
     let mut fresh = MemLedgerStore::new();
-    recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
+    recover(journal.records(), &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     let rebuilt = fresh.get(&bin.id).unwrap().unwrap();
     assert_eq!(
         rebuilt.empty_asset.expect("recovery must rebuild the empty asset").path,
@@ -1361,7 +1362,7 @@ fn same_style_reapply_recovery_backfills_a_missing_empty_ref() {
         })
         .unwrap();
 
-    recover(&records, &plat, &plat, &mut ledger).unwrap();
+    recover(&records, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap();
 
     let entry = ledger.get(&bin.id).unwrap().unwrap();
     assert_eq!(
@@ -1604,7 +1605,7 @@ fn commit_append_failure_when_not_durable_recovers_by_rolling_back() {
 
     // Recovery: no commit record → incomplete txn → restore to the true original.
     let mut fresh = MemLedgerStore::new();
-    recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
+    recover(journal.records(), &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
     assert!(fresh.all().unwrap().is_empty());
 }
@@ -1632,7 +1633,7 @@ fn commit_append_failure_when_durable_recovers_by_rolling_forward() {
 
     // Recovery reconciles the committed txn: the ledger is rebuilt and the desktop stays styled.
     let mut fresh = MemLedgerStore::new();
-    let rec = recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
+    let rec = recover(journal.records(), &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(rec.reconciled, vec![ItemId::from_raw("A")]);
     assert_eq!(world.borrow().get(&a.path).unwrap(), styled_bytes("hashA"));
     assert!(fresh.get(&a.id).unwrap().is_some());
@@ -1675,7 +1676,7 @@ fn ledger_upsert_failure_at_commit_surfaces_but_recovery_reconciles() {
     assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::TxnCommitted { .. })));
 
     let mut fresh = MemLedgerStore::new();
-    let rec = recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
+    let rec = recover(journal.records(), &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(rec.reconciled, vec![ItemId::from_raw("A")]);
 }
 
@@ -1722,7 +1723,7 @@ fn recovery_of_a_rolled_back_txn_is_a_clean_noop() {
     assert!(journal.records().iter().any(|r| matches!(r, JournalRecord::TxnRolledBack { .. })));
 
     let mut fresh = MemLedgerStore::new();
-    let rec = recover(journal.records(), &plat, &plat, &mut fresh).unwrap();
+    let rec = recover(journal.records(), &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(rec.clean_txns, 1);
     assert!(rec.aborted.is_empty() && rec.reconciled.is_empty());
 }
@@ -1746,7 +1747,7 @@ fn recover_from_journal_reads_the_log_then_recovers() {
         .unwrap();
 
     let mut fresh = MemLedgerStore::new();
-    let rec = recover_from_journal(&mut journal, &plat, &plat, &mut fresh).unwrap();
+    let rec = recover_from_journal(&mut journal, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(rec.clean_txns, 1);
 }
 
@@ -1757,7 +1758,7 @@ fn recover_from_an_empty_journal_is_a_clean_noop() {
     let plat = FakePlatform::new(world);
     let mut journal = VecJournal::new();
     let mut ledger = MemLedgerStore::new();
-    let rec = recover_from_journal(&mut journal, &plat, &plat, &mut ledger).unwrap();
+    let rec = recover_from_journal(&mut journal, &plat, &plat, &mut ledger, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(rec.clean_txns, 0);
     assert!(rec.aborted.is_empty() && rec.reconciled.is_empty());
 }
@@ -1778,11 +1779,11 @@ fn recover_from_journal_truncates_the_journal_after_reconciling() {
 
     // Recover into a fresh ledger (simulating a lost ledger write), then the journal is truncated.
     let mut fresh = MemLedgerStore::new();
-    recover_from_journal(&mut journal, &plat, &plat, &mut fresh).unwrap();
+    recover_from_journal(&mut journal, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert!(journal.records().is_empty(), "checkpoint empties the journal after reconciling");
 
     // A second pass over the emptied journal is a clean no-op.
-    let out2 = recover_from_journal(&mut journal, &plat, &plat, &mut fresh).unwrap();
+    let out2 = recover_from_journal(&mut journal, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(out2, RecoveryOutcome::default());
 }
 
@@ -1807,13 +1808,82 @@ fn recovery_surfaces_a_restore_failure_as_degraded_then_retries_clean() {
     // aborted (its revert never landed).
     world.borrow_mut().fail_restore(&a.path);
     let mut fresh = MemLedgerStore::new();
-    let out = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    let out = recover(&records, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert!(!out.degraded.is_empty(), "the restore fault is surfaced as degraded");
     assert!(out.aborted.is_empty(), "the item was NOT reported reverted");
 
     // The transient fault clears; a retry finishes the abort exactly (restore is idempotent).
     world.borrow_mut().clear_faults();
-    let out2 = recover(&records, &plat, &plat, &mut fresh).unwrap();
+    let out2 = recover(&records, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert!(out2.degraded.is_empty(), "the retry reconciles cleanly");
     assert_eq!(world.borrow().get(&a.path).unwrap(), b"orig-A");
+}
+
+#[test]
+fn recovery_adopts_forward_a_privileged_item_the_elevated_helper_styled() {
+    // The M8 elevated crash window: the elevated helper STYLED a Public-Desktop `.lnk` (its
+    // `ItemApplied` fingerprint is journaled), then a crash hit BEFORE `TxnCommitted`. The unelevated
+    // applier here can NEVER revert it — the old code would try, degrade forever, and WEDGE every future
+    // apply/reset. Scope-aware recovery instead ADOPTS it FORWARD: the desktop provably wears our style
+    // (live == the journaled new_fingerprint), so rebuild the committed ledger row (reversible later via
+    // the elevated reset) rather than attempting a doomed restore.
+    let world = World::shared();
+    let a = ItemTarget::new(
+        ItemId::from_raw("Chrome"),
+        ItemKind::Shortcut,
+        "C:/Users/Public/Desktop/Chrome.lnk".to_string(),
+    );
+    seed(&world, &a, b"orig-chrome");
+    let plat = FakePlatform::new(world.clone());
+    let driver = TxnDriver::new(&plat, &plat, &plat);
+    let mut journal = VecJournal::new();
+    let mut ledger = MemLedgerStore::new();
+    driver.apply(1, vec![request(&a, &world, "hashChrome")], &mut journal, &mut ledger).unwrap();
+
+    // Incomplete txn: the full apply EXCEPT its `TxnCommitted` terminal (crash right before commit). The
+    // world stays at the styled state (live == the journaled new_fingerprint).
+    let records: Vec<JournalRecord> = journal
+        .records()
+        .iter()
+        .take_while(|r| !matches!(r, JournalRecord::TxnCommitted { .. }))
+        .cloned()
+        .collect();
+    assert!(records.iter().any(|r| matches!(r, JournalRecord::ItemApplied { .. })));
+    assert!(!records.iter().any(|r| matches!(r, JournalRecord::TxnCommitted { .. })));
+    let styled = styled_bytes("hashChrome");
+    assert_eq!(world.borrow().get(&a.path).unwrap(), styled, "the helper styled it before the crash");
+    // The target is permanently unwritable for the unelevated applier (a real Public-Desktop `.lnk`) —
+    // so ANY restore attempt would degrade. The adopt-forward path must therefore never call restore.
+    world.borrow_mut().fail_restore(&a.path);
+
+    let scope = ScopeRoots::resolved(
+        vec!["C:/Users/Public/Desktop".into()],
+        vec!["C:/ProgramData".into()],
+    )
+    .unwrap();
+    let mut fresh = MemLedgerStore::new();
+    let out = recover(&records, &plat, &plat, &mut fresh, &scope).unwrap();
+
+    // Adopted forward, NOT restored: degraded empty (no wedge), the desktop keeps our style, and a
+    // committed ledger row now tracks it (reversible via the elevated reset).
+    assert!(out.degraded.is_empty(), "no doomed restore → no wedge: {:?}", out.degraded);
+    assert!(out.aborted.is_empty(), "the privileged item was not rolled back");
+    assert_eq!(out.reconciled, vec![ItemId::from_raw("Chrome")], "adopted forward into the ledger");
+    assert_eq!(world.borrow().get(&a.path).unwrap(), styled, "the desktop keeps the elevated style");
+    let row = fresh.get(&a.id).unwrap().expect("a committed ledger row now tracks the adopted item");
+    assert!(row.state.is_committed());
+    assert_eq!(
+        row.last_applied_fingerprint,
+        dm_domain::Fingerprint::of_bytes(&styled),
+        "the row matches the live styled desktop"
+    );
+
+    // Contrast — WITHOUT scope-awareness the SAME crash attempts the unelevated restore, hits the
+    // permanent Access-Denied, degrades, and wedges. This is exactly the failure adopt-forward closes.
+    let mut fresh2 = MemLedgerStore::new();
+    let wedged = recover(&records, &plat, &plat, &mut fresh2, &ScopeRoots::Unprivileged).unwrap();
+    assert!(
+        !wedged.degraded.is_empty(),
+        "unprivileged recovery attempts the doomed restore → degraded (the wedge scope-awareness fixes)"
+    );
 }

@@ -102,6 +102,20 @@ fn field(parts: &[&str], i: usize, row: usize, name: &str) -> Result<String, Str
     Ok(raw.to_string())
 }
 
+/// Like [`field`] but PERMITS an empty value — only `expect_icon` uses it: a target with no explicit
+/// icon location (`GetIconLocation` returns the empty string) has an empty `expect_icon`, and the
+/// compare-and-swap `"" == ""` is a legitimate "the target still has no icon" match. Control
+/// characters stay rejected (a NUL/newline in a privileged file op is never legitimate).
+fn field_allow_empty(parts: &[&str], i: usize, row: usize, name: &str) -> Result<String, String> {
+    let raw = parts
+        .get(i)
+        .ok_or_else(|| format!("manifest row {row}: missing {name}"))?;
+    if raw.chars().any(|c| c.is_control()) {
+        return Err(format!("manifest row {row}: {name} contains a control character"));
+    }
+    Ok(raw.to_string())
+}
+
 fn index(parts: &[&str], i: usize, row: usize) -> Result<i32, String> {
     parts
         .get(i)
@@ -139,7 +153,7 @@ pub fn parse_apply(text: &str) -> Result<Vec<ApplyItem>, String> {
             target: field(&parts, 1, row, "target")?,
             icon: field(&parts, 2, row, "icon")?,
             index: index(&parts, 3, row)?,
-            expect_icon: field(&parts, 4, row, "expect_icon")?,
+            expect_icon: field_allow_empty(&parts, 4, row, "expect_icon")?,
             expect_index: index(&parts, 5, row)?,
         });
     }
@@ -162,7 +176,7 @@ pub fn parse_restore(text: &str) -> Result<Vec<RestoreItem>, String> {
             kind: kind(&parts, row)?,
             target: field(&parts, 1, row, "target")?,
             original: field(&parts, 2, row, "original")?,
-            expect_icon: field(&parts, 3, row, "expect_icon")?,
+            expect_icon: field_allow_empty(&parts, 3, row, "expect_icon")?,
             expect_index: index(&parts, 4, row)?,
         });
     }
@@ -243,6 +257,20 @@ mod tests {
         assert!(parse_apply(&apply_manifest(&["shortcut\t\tC:\\a.ico\t0\tC:\\o.ico\t0"])).is_err(), "empty target");
         // A NUL or newline in a path field is never legitimate for a privileged file op.
         assert!(parse_apply(&apply_manifest(&["shortcut\tC:\\a\0.lnk\tC:\\a.ico\t0\tC:\\o.ico\t0"])).is_err());
+    }
+
+    #[test]
+    fn an_empty_expect_icon_is_accepted_as_no_current_icon() {
+        // A target with no explicit icon location (`GetIconLocation` → "") has an empty expect_icon;
+        // the compare-and-swap `"" == ""` is a legitimate "still has no icon" match. Only expect_icon
+        // may be empty — an empty target / icon / original stays refused.
+        let apply = parse_apply(&apply_manifest(&["shortcut\tC:\\a.lnk\tC:\\a.ico\t0\t\t0"])).unwrap();
+        assert_eq!(apply.len(), 1);
+        assert_eq!(apply[0].expect_icon, "");
+        let restore = parse_restore(&[HEADER, "shortcut\tC:\\a.lnk\tC:\\o.bin\t\t0"].join("\n")).unwrap();
+        assert_eq!(restore[0].expect_icon, "");
+        // The icon field itself still must be non-empty.
+        assert!(parse_apply(&apply_manifest(&["shortcut\tC:\\a.lnk\t\t0\tC:\\o.ico\t0"])).is_err(), "empty icon");
     }
 
     #[test]

@@ -776,7 +776,7 @@ fn undo(
         activity,
         stability: &ScriptedStability::default(),
     };
-    rec.restore_batch(&ports, targets, &mut w.journal, &mut w.ledger).unwrap()
+    rec.restore_batch(&ports, &ScopeRoots::Unprivileged, targets, &mut w.journal, &mut w.ledger).unwrap()
 }
 
 #[test]
@@ -895,7 +895,7 @@ fn undo_never_clobbers_a_change_that_lands_in_the_check_to_write_window() {
         activity: &ScriptedActivity::idle(),
         stability: &ScriptedStability::default(),
     };
-    let undone = rec.restore_batch(&ports, &out.applied_snapshot, &mut w.journal, &mut w.ledger).unwrap();
+    let undone = rec.restore_batch(&ports, &ScopeRoots::Unprivileged, &out.applied_snapshot, &mut w.journal, &mut w.ledger).unwrap();
     assert_eq!(undone.conflicts, vec![ItemId::from_raw("raced")], "an in-window change → conflict, never clobber");
     assert!(undone.restored.is_empty());
     assert_eq!(

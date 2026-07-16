@@ -171,7 +171,7 @@ impl IconHost {
         let created_at = now_secs();
         let outcome = self
             .ops()
-            .commit_apply(session, style, label, look_id, created_at, session_scan, &restore_ids, txn, journal, ledger, history)
+            .commit_apply(session, style, label, look_id, created_at, session_scan, &restore_ids, &self.scope_roots, self.elevated(), txn, journal, ledger, history)
             .map_err(|e| e.to_string())?;
         // This apply mutated the desktop → bump the epoch so any concurrent stale apply rejects.
         *op_epoch += 1;
@@ -287,9 +287,10 @@ impl IconHost {
         let IconMutState { ledger, history, journal, op_epoch, .. } = &mut *st;
         let outcome = self
             .ops()
-            // §14 privileged-scope roots — `Unresolved` on an unwired Windows host resets nothing
-            // (fail closed); the non-elevated applier never touches a Public Desktop / ProgramData row.
-            .reset_to_original(&self.scope_roots, journal, ledger, history)
+            // §14 privileged-scope roots + the elevated applier — a Public Desktop / ProgramData row
+            // still wearing our style reverts through the elevated helper (one UAC); an unwired host
+            // (`None` / `Unresolved` scope) leaves it as an honest skip (fail closed).
+            .reset_to_original(&self.scope_roots, self.elevated(), journal, ledger, history)
             .map_err(|e| e.to_string())?;
         // A reset is a mutation → bump the epoch so a concurrent in-flight apply rejects.
         *op_epoch += 1;

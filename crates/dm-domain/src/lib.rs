@@ -7,6 +7,7 @@
 //! cleanly for `x86_64-pc-windows-msvc`.
 
 pub mod asset;
+pub mod elevated;
 pub mod error;
 pub mod fingerprint;
 pub mod item;
@@ -17,6 +18,9 @@ pub mod system_tweaks;
 pub mod wallpaper;
 
 pub use asset::{ApplyAssets, AssetRef, OwnedFields};
+pub use elevated::{
+    ElevatedApplyItem, ElevatedIconApplier, ElevatedOutcome, ElevatedRestoreItem,
+};
 pub use error::{PortError, PortResult};
 pub use fingerprint::Fingerprint;
 pub use item::{DesktopItem, IconRef, IconSourceKind, ItemId, ItemKind, ItemState, ItemTarget};

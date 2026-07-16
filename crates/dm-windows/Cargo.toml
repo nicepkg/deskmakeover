@@ -15,6 +15,8 @@ dm-domain = { path = "../dm-domain" }
 # offline-clean and the debounce/event-mapping core is unit-testable on the Mac host. `-full` (not
 # `-mini`) tracks file ids to fold installer temp-write→rename storms into one settled event.
 notify-debouncer-full = "0.7.0"
+# Diagnostics for the signature gate (dev-unsigned warning). Facade only — the host binds the sink.
+log = "0.4"
 
 [dev-dependencies]
 # Temp dirs for the host-side durability/atomic-replace tests (durable::write_atomic).
@@ -47,6 +49,11 @@ windows = { version = "0.61", features = [
     "Win32_System_SystemInformation",
     "Win32_Storage_FileSystem",
     "Win32_Security",
+    # A1/C3 signature gate (signing.rs): WinVerifyTrust on dm-elevated.exe BEFORE the `runas`, so a
+    # swapped helper in the user-writable install dir cannot run elevated (LPE guard). The
+    # WINTRUST_DATA structs are gated behind the Cryptography feature in windows-rs.
+    "Win32_Security_WinTrust",
+    "Win32_Security_Cryptography",
     # Calm profile probe (system_tweaks): RtlGetVersion (unshimmed OS version + wProductType) and
     # GetCurrentPackageFullName (package-identity detection), so is_workstation / packaged are read
     # from authoritative APIs rather than derived/hardcoded (codex W2 R1 Major-3).

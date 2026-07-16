@@ -1109,6 +1109,7 @@ version = "0.0.0"
 dependencies = [
  "dm-domain",
  "image",
+ "log",
  "notify-debouncer-full",
  "tempfile",
  "windows",

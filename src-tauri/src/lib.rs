@@ -120,8 +120,16 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
             extractor: Arc::new(dm_windows::WindowsIconSourceExtractor::new(exec.clone())),
             reader: Arc::new(dm_windows::WindowsStateReader::new(exec.clone())),
             applier: Arc::new(dm_windows::WindowsIconApplier::new(exec.clone())),
-            overlay: Arc::new(dm_windows::WindowsOverlayControl::new(helper)),
+            overlay: Arc::new(dm_windows::WindowsOverlayControl::new(helper.clone())),
             refresher: Arc::new(dm_windows::WindowsExplorerRefresher),
+            // Privileged shared items (Public Desktop / ProgramData `.lnk`s) style through the same
+            // signed helper (its own verb pair), one UAC per batch. Staging (manifest + original
+            // bytes) lives under the app data dir; the helper reads it capped + re-validates.
+            elevated: Some(Arc::new(dm_windows::WindowsElevatedIconApplier::new(
+                helper,
+                data_dir.join("elevated-staging"),
+                exec.clone(),
+            ))),
             geometry: Arc::new(dm_windows::WindowsDesktopGeometry::new(exec)),
         };
         // Real active-profile count is a [WINDOWS-VERIFY] ProfileList enum; default single-user.
@@ -139,6 +147,9 @@ fn build_icon_host(data_dir: &Path, settings: Arc<SettingsStore>) -> Result<Icon
             applier: Arc::new(devhost_icons::DevIconApplier(desk)),
             overlay: Arc::new(devhost_icons::DevOverlayControl),
             refresher: Arc::new(devhost_icons::DevExplorerRefresher),
+            // No privileged scope on the dev host (`Unprivileged` below) → the elevated path is never
+            // taken, so no port is wired. The operations-layer unit tests exercise it with a fake.
+            elevated: None,
             geometry: Arc::new(devhost_icons::DevDesktopGeometry),
         };
         // The dev host has no shared/privileged desktop scope — nothing is scope-excluded.
@@ -466,8 +477,13 @@ fn run_startup_recovery(data_dir: &Path) -> Result<(), String> {
         let reader = WindowsStateReader::new(exec);
         let mut journal = FileJournal::new(&journal_path);
         let mut ledger = JsonLedgerStore::new(&ledger_path);
+        // §14 scope: the SAME fail-closed known-folder resolution the icon host uses. Recovery is now
+        // scope-aware — a privileged item a prior crash left wearing the elevated helper's style
+        // (which the unelevated applier here can never revert) is ADOPTED FORWARD into the ledger
+        // rather than driven into a doomed restore that would wedge every future apply/reset.
+        let scope = resolve_scope_roots();
         let outcome =
-            recover_from_journal(&mut journal, &reader, &applier, &mut ledger).map_err(|e| e.to_string())?;
+            recover_from_journal(&mut journal, &reader, &applier, &mut ledger, &scope).map_err(|e| e.to_string())?;
         log::info!(
             "startup recovery: {} aborted, {} reconciled, {} preserved (left as found), {} clean txns",
             outcome.aborted.len(),

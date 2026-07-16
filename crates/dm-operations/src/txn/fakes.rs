@@ -8,8 +8,9 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use dm_domain::{
-    ApplyAssets, AssetRef, AssetStore, Fingerprint, IconApplier, ItemStateReader, ItemTarget,
-    PortError, PortResult, RestoreAnchor,
+    ApplyAssets, AssetRef, AssetStore, ElevatedApplyItem, ElevatedIconApplier, ElevatedOutcome,
+    ElevatedRestoreItem, Fingerprint, IconApplier, ItemStateReader, ItemTarget, PortError,
+    PortResult, RestoreAnchor,
 };
 
 use crate::error::{OperationError, Result};
@@ -364,6 +365,97 @@ impl JournalSink for FailingJournal {
 
     fn read_all(&self) -> Result<Vec<JournalRecord>> {
         self.inner.read_all()
+    }
+}
+
+/// The deterministic bytes the fake ELEVATED helper writes when it styles a privileged item — keyed
+/// on the staged asset path so `plan` (pure) and `apply` (write) agree, exactly as the real port's
+/// `expected_after_apply`-then-`SetIconLocation` pair does. A different scheme from `styled_bytes` so
+/// a test can tell an elevated-styled item apart from a driver-styled one.
+///
+/// Its only consumers are the `not(windows)`-gated icon-ops tests, so it reads as dead on Windows
+/// (the txn tests, which DO run on Windows, exercise the elevated crash path through the driver +
+/// journal directly). `allow(dead_code)` keeps the Windows test build warning-clean.
+#[allow(dead_code)]
+pub fn elevated_styled(asset_path: &str) -> Vec<u8> {
+    format!("STYLED-ELEV:{asset_path}").into_bytes()
+}
+
+/// A fake elevated desktop-item applier over a shared `World`, modelling `dm-elevated`'s all-or-nothing
+/// batch: on `Applied` it writes the styled/original bytes for every item and records them; on
+/// `Declined` (UAC cancel) or `Failed` it writes NOTHING (the real helper never wrote / LIFO-rolled
+/// back its own writes), so the desktop is left untouched. `plan` derives each item's post-apply
+/// fingerprint WITHOUT writing, so the operations layer can journal it before the batch runs.
+///
+/// Consumed only by the `not(windows)`-gated icon-ops tests, so `allow(dead_code)` keeps the Windows
+/// test build clean (its trait impl still references the elevated types, so no unused imports).
+#[allow(dead_code)]
+pub struct FakeElevatedIconApplier {
+    world: Rc<RefCell<World>>,
+    outcome: RefCell<ElevatedOutcome>,
+    applied: RefCell<Vec<String>>,
+    restored: RefCell<Vec<String>>,
+}
+
+#[allow(dead_code)]
+impl FakeElevatedIconApplier {
+    /// A helper that styles/reverts successfully (Applied).
+    pub fn new(world: Rc<RefCell<World>>) -> Self {
+        Self {
+            world,
+            outcome: RefCell::new(ElevatedOutcome::Applied),
+            applied: RefCell::new(Vec::new()),
+            restored: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Sets the outcome the next `apply`/`restore` returns (Declined models a UAC cancel; Failed a
+    /// helper fault). A non-Applied outcome leaves the world untouched.
+    pub fn set_outcome(&self, outcome: ElevatedOutcome) {
+        *self.outcome.borrow_mut() = outcome;
+    }
+
+    /// The target paths the helper styled (for assertions).
+    pub fn applied_paths(&self) -> Vec<String> {
+        self.applied.borrow().clone()
+    }
+
+    /// The target paths the helper reverted (for assertions).
+    pub fn restored_paths(&self) -> Vec<String> {
+        self.restored.borrow().clone()
+    }
+}
+
+impl ElevatedIconApplier for FakeElevatedIconApplier {
+    fn plan(&self, items: &[ElevatedApplyItem]) -> PortResult<Vec<Fingerprint>> {
+        Ok(items
+            .iter()
+            .map(|it| Fingerprint::of_bytes(&elevated_styled(&it.asset_path)))
+            .collect())
+    }
+
+    fn apply(&self, items: &[ElevatedApplyItem]) -> PortResult<ElevatedOutcome> {
+        let outcome = self.outcome.borrow().clone();
+        if outcome == ElevatedOutcome::Applied {
+            let mut world = self.world.borrow_mut();
+            for it in items {
+                world.put(&it.target.path, &elevated_styled(&it.asset_path));
+                self.applied.borrow_mut().push(it.target.path.clone());
+            }
+        }
+        Ok(outcome)
+    }
+
+    fn restore(&self, items: &[ElevatedRestoreItem]) -> PortResult<ElevatedOutcome> {
+        let outcome = self.outcome.borrow().clone();
+        if outcome == ElevatedOutcome::Applied {
+            let mut world = self.world.borrow_mut();
+            for it in items {
+                world.put(&it.target.path, &it.original_bytes);
+                self.restored.borrow_mut().push(it.target.path.clone());
+            }
+        }
+        Ok(outcome)
     }
 }
 

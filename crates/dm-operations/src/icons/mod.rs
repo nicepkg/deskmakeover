@@ -25,15 +25,18 @@ use std::collections::HashSet;
 
 use dm_contracts::IconStyle;
 use dm_domain::{
-    AssetStore, DesktopItem, Fingerprint, IconApplier, ItemId, ItemStateReader, OwnedFields,
-    PortError,
+    AssetRef, AssetStore, DesktopItem, ElevatedApplyItem, ElevatedIconApplier, ElevatedOutcome,
+    ElevatedRestoreItem, Fingerprint, IconApplier, ItemId, ItemKind, ItemStateReader, ItemTarget,
+    OwnedFields, PortError, RestoreAnchor,
 };
 
-use crate::error::Result;
+use crate::error::{OperationError, Result};
+use crate::ledger::entry::{LedgerEntry, TxnState};
 use crate::ledger::{LedgerStore, LookHistoryStore, LookVersion};
 use crate::settings_store::SettingsStore;
 use crate::txn::{
-    recover_from_journal, ApplyRequest, JournalRecord, JournalSink, TxnDriver, TxnIdAllocator,
+    recover_from_journal, ApplyOutcome, ApplyRequest, JournalRecord, JournalSink, TxnDriver,
+    TxnIdAllocator,
 };
 
 /// The immutable platform ports one apply/reset drives.
@@ -262,6 +265,8 @@ impl<'a> IconOps<'a> {
         created_at: i64,
         scan: &[ScannedItem],
         restore_ids: &[String],
+        scope: &scope::ScopeRoots,
+        elevated: Option<&dyn ElevatedIconApplier>,
         txn: &mut TxnIdAllocator,
         journal: &mut dyn JournalSink,
         ledger: &mut dyn LedgerStore,
@@ -270,7 +275,7 @@ impl<'a> IconOps<'a> {
         // #5 commit→ledger gap: reconcile any journal-committed-but-unledgered transaction into the
         // ledger (and checkpoint the journal) BEFORE preparing, so the CAS anchors + the GC live set
         // below are computed against a ledger that reflects every durable commit. Idempotent.
-        let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
+        let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger, scope)?;
         // Recovery of a PRIOR crash's journal either could not fully reconcile (`degraded`, codex
         // R4-Block 5) OR cleanly ABORTED an interrupted transaction — which RESTORES the desktop
         // (codex R5-#3). In EITHER case do NOT stack a new apply on top: the abort already mutated the
@@ -394,6 +399,8 @@ impl<'a> IconOps<'a> {
         let by_id: std::collections::HashMap<&str, &ScannedItem> =
             scan.iter().map(|s| (s.item.id.as_str(), s)).collect();
         let mut requests = Vec::with_capacity(packaged.len());
+        // The privileged shared items (Public Desktop / ProgramData) that ride ONE elevated batch.
+        let mut privileged: Vec<ApplyRequest> = Vec::new();
         // Hand-edited restore skips count as conflicts so an apply whose only intent was such a revert
         // reports a no-effect, not a clean success (codex R7-#3). Folded in before the driver so both
         // the driver-fault early-return and the normal path carry them.
@@ -407,7 +414,7 @@ impl<'a> IconOps<'a> {
                 conflicts.push(scanned.item.id.clone());
                 continue;
             }
-            requests.push(ApplyRequest {
+            let req = ApplyRequest {
                 target: scanned.item.target(),
                 expected_fingerprint: scanned.fingerprint,
                 owned: OwnedFields::icon_only(),
@@ -415,11 +422,25 @@ impl<'a> IconOps<'a> {
                 asset_bytes: pkg.primary.bytes.clone(),
                 empty_asset_bytes: pkg.empty.as_ref().map(|e| e.bytes.clone()),
                 pinned_seed: None,
-            });
+            };
+            // Partition by write scope. A privileged-scope target (Public Desktop / ProgramData) an
+            // unelevated write can NEVER touch (Access Denied) routes to the elevated batch IFF a port
+            // is wired AND its kind is one the helper writes (a real `.lnk`: Shortcut / AppxShortcut).
+            // Any other privileged case is an honest `conflict` (skipped) — never a doomed unelevated
+            // write that always fails, then rolls the WHOLE user-desktop batch back (the on-box bug).
+            if scope.classify(&req.target.path).is_some() {
+                if elevated.is_some() && is_elevatable_kind(req.target.kind) {
+                    privileged.push(req);
+                } else {
+                    conflicts.push(req.target.id.clone());
+                }
+            } else {
+                requests.push(req);
+            }
         }
 
         let txn_id = txn.next_id();
-        let apply = match TxnDriver::new(self.platform.reader, self.platform.applier, self.platform.assets)
+        let mut apply = match TxnDriver::new(self.platform.reader, self.platform.applier, self.platform.assets)
             .apply(txn_id, requests, journal, ledger)
         {
             Ok(a) => a,
@@ -448,7 +469,31 @@ impl<'a> IconOps<'a> {
                 });
             }
         };
-        conflicts.extend(apply.conflicts);
+        // The privileged shared items run as ONE elevated batch (one UAC), AFTER the user's own icons
+        // (so a UAC cancel still lands the unelevated apply). Its outcome folds into `apply` so every
+        // downstream verdict — committed / conflicts / desktop_mutated / error / heal-fence — treats
+        // both batches uniformly. A privileged Declined (UAC cancel) reports its items as conflicts (a
+        // retryable skip), not an error; a Failed/port-fault surfaces as an error.
+        if let (Some(elev), false) = (elevated, privileged.is_empty()) {
+            let priv_txn = txn.next_id();
+            match self.apply_privileged_batch(privileged, elev, priv_txn, journal, ledger) {
+                Ok(mut e) => {
+                    apply.committed.append(&mut e.committed);
+                    apply.conflicts.append(&mut e.conflicts);
+                    apply.healed.append(&mut e.healed);
+                    apply.desktop_mutated |= e.desktop_mutated;
+                    apply.error = join_errors(apply.error.take(), e.error);
+                }
+                Err(e) => {
+                    // A journal/ledger fault escaped the elevated batch's envelope (bare Err); the
+                    // helper may have written before an append faulted, so treat the desktop as
+                    // possibly-changed (never "nothing changed") and record the repair note.
+                    repair.push(format!("elevated apply driver: {e}"));
+                    apply.desktop_mutated = true;
+                }
+            }
+        }
+        conflicts.append(&mut apply.conflicts);
 
         // Persist ② (saved-style) + push ③ (look-history) ONLY on a clean apply. A batch that
         // preflight-failed or rolled back reports `Ok(ApplyOutcome { error: Some(..) })` with the
@@ -523,6 +568,164 @@ impl<'a> IconOps<'a> {
         })
     }
 
+    /// Applies the privileged shared items (Public Desktop / ProgramData `.lnk`s) as ONE elevated
+    /// batch (one UAC), wrapped in the SAME durable journal + ledger envelope the in-process driver
+    /// uses — so a privileged item is exactly as reversible + crash-safe as a user-desktop one. The
+    /// caller folds the returned [`ApplyOutcome`] into the main apply outcome.
+    ///
+    /// Journal order (crash-safety — every window recovers to a consistent, reversible terminal; full
+    /// table in `docs/plans/2026-07-16-elevated-desktop-items-wiring.md`): TxnBegin → per item
+    /// {ItemPrepared (anchor durable) → assets.put + AssetWritten} → per item ItemApplied{new_fp =
+    /// `elevated.plan`} (the DERIVED post-apply fingerprint, written BEFORE the helper so scope-aware
+    /// recovery recognises a helper-styled item as ours and adopts it forward) → `elevated.apply` (ONE
+    /// UAC). Applied → TxnCommitted + ledger.upsert(all); Declined (UAC cancel) → TxnRolledBack + the
+    /// items reported as conflicts (a retryable skip, not a failure); Failed / port-Err → TxnRolledBack
+    /// + error. The helper LIFO-rolls-back its OWN writes on any internal failure, so a Failed leaves
+    /// the desktop original; a crash mid-helper is adopted forward per item by recovery.
+    fn apply_privileged_batch(
+        &self,
+        requests: Vec<ApplyRequest>,
+        elevated: &dyn ElevatedIconApplier,
+        txn_id: u64,
+        journal: &mut dyn JournalSink,
+        ledger: &mut dyn LedgerStore,
+    ) -> Result<ApplyOutcome> {
+        let mut outcome = ApplyOutcome::default();
+        let driver =
+            TxnDriver::new(self.platform.reader, self.platform.applier, self.platform.assets);
+        // Phase 1 (CAS + anchor capture) — the SAME trust-first logic the in-process driver runs.
+        let prepared = match driver.prepare_batch(requests, ledger) {
+            Ok(p) => p,
+            Err(e) => {
+                outcome.error = Some(format!("elevated apply preflight failed: {e}"));
+                return Ok(outcome);
+            }
+        };
+        outcome.conflicts = prepared.conflicts;
+        outcome.healed = prepared.healed;
+        if prepared.proceeding.is_empty() {
+            return Ok(outcome);
+        }
+
+        // Monotonic txn guard (mirrors the driver): a reused id would merge two txns' records into one
+        // recovery group. Nothing has been journaled or mutated yet, so a violation aborts cleanly.
+        let max_seen = journal.read_all()?.iter().map(|r| r.txn()).max().unwrap_or(0);
+        if txn_id <= max_seen {
+            return Err(OperationError::Journal(format!(
+                "elevated txn id {txn_id} is not monotonic (journal holds up to {max_seen}); ids must never be reused"
+            )));
+        }
+        journal.append(&JournalRecord::TxnBegin {
+            txn: txn_id,
+            items: prepared.proceeding.iter().map(|(r, ..)| r.target.id.clone()).collect(),
+        })?;
+
+        // Per item: journal the restore anchor (ItemPrepared) + stage the styled ICO (AssetWritten),
+        // both flushed BEFORE any elevated write, so recovery always has the anchor + asset ref.
+        let mut items: Vec<ElevatedApplyItem> = Vec::with_capacity(prepared.proceeding.len());
+        let mut rows: Vec<PreparedRow> = Vec::with_capacity(prepared.proceeding.len());
+        for (req, anchor, original_fp, expected) in &prepared.proceeding {
+            journal.append(&JournalRecord::ItemPrepared {
+                txn: txn_id,
+                item: req.target.id.clone(),
+                target: req.target.clone(),
+                anchor: anchor.clone(),
+                original_fingerprint: *original_fp,
+                expected_fingerprint: *expected,
+                asset_hash: req.asset_hash.clone(),
+                owned: req.owned,
+                pinned_seed: req.pinned_seed,
+            })?;
+            let asset = self.platform.assets.put(&req.asset_hash, &req.asset_bytes)?;
+            journal.append(&JournalRecord::AssetWritten {
+                txn: txn_id,
+                item: req.target.id.clone(),
+                asset: asset.clone(),
+                empty: None,
+            })?;
+            items.push(ElevatedApplyItem {
+                target: req.target.clone(),
+                asset_path: asset.path.clone(),
+            });
+            rows.push(PreparedRow {
+                target: req.target.clone(),
+                anchor: anchor.clone(),
+                original_fingerprint: *original_fp,
+                owned: req.owned,
+                pinned_seed: req.pinned_seed,
+                asset,
+            });
+        }
+
+        // The DERIVED post-apply fingerprint per item — identical to what the in-process applier's
+        // `expected_after_apply` produces — journaled as ItemApplied BEFORE the helper runs. This is
+        // the crux of crash-safety: recovery recognises a helper-styled privileged item (live ==
+        // new_fingerprint) as ours and adopts it forward, rather than attempting a doomed unelevated
+        // restore. `plan` is pure + read-only (no UAC, no write).
+        let planned = elevated.plan(&items)?;
+        if planned.len() != items.len() {
+            journal.append(&JournalRecord::TxnRolledBack { txn: txn_id })?;
+            outcome.error = Some("elevated plan returned a mismatched fingerprint count".into());
+            return Ok(outcome);
+        }
+        for (item, fp) in items.iter().zip(&planned) {
+            journal.append(&JournalRecord::ItemApplied {
+                txn: txn_id,
+                item: item.target.id.clone(),
+                new_fingerprint: *fp,
+            })?;
+        }
+
+        // ONE elevated call (one UAC). The helper independently re-confirms every target + icon,
+        // CAS-re-checks, writes, and atomically LIFO-rolls-back its OWN writes on any internal failure.
+        match elevated.apply(&items) {
+            Ok(ElevatedOutcome::Applied) => {
+                journal.append(&JournalRecord::TxnCommitted { txn: txn_id })?;
+                for (row, new_fp) in rows.into_iter().zip(planned) {
+                    let version = ledger.next_version()?;
+                    let id = row.target.id.clone();
+                    ledger.upsert(LedgerEntry {
+                        item: id.clone(),
+                        target: row.target,
+                        original_fingerprint: row.original_fingerprint,
+                        original_anchor: row.anchor,
+                        last_applied_fingerprint: new_fp,
+                        owned: row.owned,
+                        asset: row.asset,
+                        empty_asset: None,
+                        state: TxnState::Committed,
+                        pinned_seed: row.pinned_seed,
+                        version,
+                    })?;
+                    outcome.committed.push(id);
+                }
+                outcome.desktop_mutated = true;
+            }
+            // A UAC cancel is a user CHOICE, not a failure: the helper never wrote, so the desktop is
+            // untouched. Report the items as conflicts (a retryable skip) — never a hard error, which
+            // would withhold the chosen style's ②③ persistence for the icons that DID apply.
+            Ok(ElevatedOutcome::Declined) => {
+                journal.append(&JournalRecord::TxnRolledBack { txn: txn_id })?;
+                for it in &items {
+                    outcome.conflicts.push(it.target.id.clone());
+                }
+            }
+            // The helper ran and failed (a real problem — an untrusted-signer refusal, a write fault);
+            // it LIFO-rolled-back its own writes, so the desktop is original. Surface the error.
+            Ok(ElevatedOutcome::Failed(e)) => {
+                journal.append(&JournalRecord::TxnRolledBack { txn: txn_id })?;
+                outcome.error = Some(format!("elevated apply failed: {e}"));
+            }
+            // The port itself faulted before/around the helper (could not stage or launch) — nothing
+            // was written. Roll the txn back and surface the error.
+            Err(e) => {
+                journal.append(&JournalRecord::TxnRolledBack { txn: txn_id })?;
+                outcome.error = Some(format!("elevated apply port error: {e}"));
+            }
+        }
+        Ok(outcome)
+    }
+
     /// Reads stores ②③ + the ledger for the finalize read-back; on a runtime read fault (after the
     /// desktop already committed) it records a repair note and returns a minimal safe snapshot rather
     /// than bubbling a bare Err (codex R3-Block 4). `history.all()` is an in-memory clone (infallible).
@@ -563,6 +766,7 @@ impl<'a> IconOps<'a> {
     pub fn reset_to_original(
         &self,
         scope: &scope::ScopeRoots,
+        elevated: Option<&dyn ElevatedIconApplier>,
         journal: &mut dyn JournalSink,
         ledger: &mut dyn LedgerStore,
         history: &LookHistoryStore,
@@ -574,7 +778,7 @@ impl<'a> IconOps<'a> {
         // original — and its stale fingerprint then reads as a user hand-edit forever. The checkpoint
         // is STRICT here (not the recovery path's best-effort): if the journal cannot be emptied we
         // abort before touching the ledger, so a restart never revives a half-reset state.
-        let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger)?;
+        let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger, scope)?;
         // Recovery of a prior crash either could not fully reconcile (`degraded`, codex R4-Block 5) OR
         // cleanly ABORTED an interrupted transaction — restoring the desktop (codex R5-#3). In either
         // case do NOT reset on top: the strict `journal.checkpoint(&[])?` below is a bare `?` that, if
@@ -621,6 +825,9 @@ impl<'a> IconOps<'a> {
         let mut repair: Vec<String> = Vec::new();
         let mut restored = Vec::new();
         let mut skipped = Vec::new();
+        // Privileged (Public Desktop / ProgramData) rows still wearing our style, collected here and
+        // reverted as ONE elevated batch after the walk (one UAC, not one per item).
+        let mut privileged_restores: Vec<ElevatedRestoreItem> = Vec::new();
         for entry in ledger.all()? {
             match self.platform.reader.read_fingerprint(&entry.target) {
                 // The user deleted the icon: clear its row (its ICO becomes collectable below).
@@ -643,26 +850,28 @@ impl<'a> IconOps<'a> {
                 Ok(cur) if cur != entry.last_applied_fingerprint => skipped.push(entry.item),
                 // Still exactly our applied state: revert to the true original and drop the row.
                 Ok(_) => {
-                    // §14 red-line (audit F2b, owner#6 = SKIP + surface): a privileged-scope target
-                    // still in OUR applied state — a Public Desktop / ProgramData row that only the
-                    // legitimate ELEVATED path may have styled — cannot be reverted by the NON-elevated
-                    // applier. Leave the row AND the desktop untouched and count it toward `skipped`
-                    // (an accurate "left this item alone" count, ok:true, never a false "restored" nor a
-                    // runtime-fault `degraded`), rather than attempting a restore that only fails. The
-                    // gate is DEEP — inside this arm only — so the SAFE ledger-healing arms above (a
-                    // deleted icon's stale-row drop, an already-original heal-remove) still run for a
-                    // privileged row: they touch only the local ledger, never the privileged desktop
-                    // (codex F2b-review). `Unresolved` scope classifies every still-applied row
-                    // privileged → an unwired host reverts nothing.
-                    //
-                    // Reason-text caveat (codex F2b-review 🟡): this rides the hand-edit `skipped`
-                    // bucket, whose toast reads "你自己改过" — imprecise for a privileged item, whose real
-                    // reason is "needs elevation". A DISTINCT needs-elevation surface (its own outcome
-                    // field + toast key) is M8 elevated-feature work, and UNREACHABLE until then: no
-                    // elevated apply path exists yet, so no privileged row can enter the ledger to hit
-                    // this arm. Deferred, not conflated silently.
+                    // §14 (audit F2b): a privileged-scope target (Public Desktop / ProgramData) still in
+                    // OUR applied style cannot be reverted by the NON-elevated applier. Route it to the
+                    // elevated restore BATCH (one UAC, run after the walk) when a port is wired AND the
+                    // kind + anchor are ones the helper replays (a real `.lnk` FileBytes anchor — arm 3
+                    // above already filtered a user re-edit, so a collected row is genuinely still ours).
+                    // Otherwise — no port (unwired / `Unresolved` scope), or a kind/anchor the helper
+                    // does not write — leave the row AND the desktop untouched and count it `skipped` (an
+                    // accurate "left this item alone", never a doomed unelevated restore). The gate is
+                    // DEEP (this arm only), so the SAFE ledger-healing arms above (deleted-row drop,
+                    // already-original heal-remove) still run for a privileged row: they touch only the
+                    // local ledger, never the privileged desktop (codex F2b-review).
                     if scope.classify(&entry.target.path).is_some() {
-                        skipped.push(entry.item);
+                        match (elevated, is_elevatable_kind(entry.target.kind), &entry.original_anchor) {
+                            (Some(_), true, RestoreAnchor::FileBytes { bytes }) => {
+                                privileged_restores.push(ElevatedRestoreItem {
+                                    target: entry.target.clone(),
+                                    original_bytes: bytes.clone(),
+                                    applied_icon: entry.asset.path.clone(),
+                                });
+                            }
+                            _ => skipped.push(entry.item),
+                        }
                         continue;
                     }
                     if let Err(e) = self.platform.applier.restore(&entry.target, &entry.original_anchor) {
@@ -678,6 +887,41 @@ impl<'a> IconOps<'a> {
                 // the operator still learns the restore path is compromised (via `degraded`), but the
                 // items already reverted are not abandoned to a bare Err (spec 07 §10 / codex R3-Block 4).
                 Err(e) => repair.push(format!("reset read {}: {e}", entry.item.as_str())),
+            }
+        }
+        // Revert the privileged rows through ONE elevated call (one UAC), replaying each captured
+        // original `.lnk` bytes (CAS-guarded in the helper). No journal needed: the LEDGER holds the
+        // durable anchor and the replay is idempotent, so a crash mid-restore self-heals on the next
+        // reset via the already-original heal-remove arm — the SAME crash model as the unelevated reset
+        // above. Applied → drop each row + count restored; Declined (UAC cancel) → keep the rows + count
+        // them skipped (retryable, no fault); Failed / port-Err → keep the rows + skipped + a note.
+        if let (Some(elev), false) = (elevated, privileged_restores.is_empty()) {
+            match elev.restore(&privileged_restores) {
+                Ok(ElevatedOutcome::Applied) => {
+                    for it in &privileged_restores {
+                        if let Err(e) = ledger.remove(&it.target.id) {
+                            repair.push(format!("reset ledger remove {}: {e}", it.target.id.as_str()));
+                        }
+                        restored.push(it.target.id.clone());
+                    }
+                }
+                Ok(ElevatedOutcome::Declined) => {
+                    for it in &privileged_restores {
+                        skipped.push(it.target.id.clone());
+                    }
+                }
+                Ok(ElevatedOutcome::Failed(e)) => {
+                    repair.push(format!("elevated reset failed: {e}"));
+                    for it in &privileged_restores {
+                        skipped.push(it.target.id.clone());
+                    }
+                }
+                Err(e) => {
+                    repair.push(format!("elevated reset port error: {e}"));
+                    for it in &privileged_restores {
+                        skipped.push(it.target.id.clone());
+                    }
+                }
             }
         }
         // Collect every asset the now-shrunk ledger no longer references. Skipped rows keep theirs;
@@ -708,6 +952,37 @@ impl<'a> IconOps<'a> {
             deferred: false,
             stores,
         })
+    }
+}
+
+/// One privileged item's captured apply material, carried from Phase-1 prepare through the
+/// post-helper ledger upsert (the elevated batch cannot interleave apply+upsert per item the way the
+/// in-process driver's `Prepared` does — the whole batch styles in one helper call).
+struct PreparedRow {
+    target: ItemTarget,
+    anchor: RestoreAnchor,
+    original_fingerprint: Fingerprint,
+    owned: OwnedFields,
+    pinned_seed: Option<u32>,
+    asset: AssetRef,
+}
+
+/// Whether a privileged-scope item of this kind can be styled through the elevated helper today. v1
+/// covers the real `.lnk` kinds (Shortcut / AppxShortcut — the overwhelming majority of Public
+/// Desktop items, e.g. Chrome), which the helper writes via COM `SetIconLocation`. Privileged `.url`
+/// / folder / loose-file kinds use a different write mechanism and stay honest conflicts (§follow-ups
+/// in the wiring plan), never a doomed unelevated write.
+fn is_elevatable_kind(kind: ItemKind) -> bool {
+    matches!(kind, ItemKind::Shortcut | ItemKind::AppxShortcut)
+}
+
+/// Joins the in-process and elevated batches' failure reasons into one message (either alone passes
+/// through; both present are joined so neither is swallowed).
+fn join_errors(a: Option<String>, b: Option<String>) -> Option<String> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(format!("{a}; {b}")),
+        (Some(a), None) => Some(a),
+        (None, b) => b,
     }
 }
 

@@ -68,6 +68,16 @@ pub struct ApplyOutcome {
     pub error: Option<String>,
 }
 
+/// The result of Phase 1 (CAS + anchor capture, NO mutation): the items cleared to proceed — each
+/// with its captured `(anchor, original_fp, expected_fp)` — plus the benign skips. Shared by the
+/// in-process [`TxnDriver::apply`] and the elevated batch (`apply_privileged_batch`), so both run the
+/// identical trust-first CAS/heal/anchor logic before their (in-process vs `runas`) mutation.
+pub struct PreparedBatch {
+    pub proceeding: Vec<(ApplyRequest, dm_domain::RestoreAnchor, Fingerprint, Fingerprint)>,
+    pub conflicts: Vec<ItemId>,
+    pub healed: Vec<ItemId>,
+}
+
 /// Phase-1 verdict for one item: proceed with `(anchor, original_fp, expected_fp)`, skip as a benign
 /// conflict, or skip as a HEALED conflict (a stale poison row was dropped — the host must fence the
 /// scan revision so a same-revision retry can't slip through the now-row-less fresh CAS, codex R9-#1).
@@ -119,36 +129,21 @@ impl<'p> TxnDriver<'p> {
     ) -> Result<ApplyOutcome> {
         let mut outcome = ApplyOutcome::default();
 
-        // Phase 1 (no mutation): CAS + anchor capture. Partition into proceeding vs conflict.
-        let mut proceeding: Vec<(ApplyRequest, dm_domain::RestoreAnchor, Fingerprint, Fingerprint)> =
-            Vec::new();
-        for req in requests {
-            match self.prepare_item(&req, ledger) {
-                Ok(PrepareVerdict::Proceed(anchor, original_fp, expected)) => {
-                    proceeding.push((req, anchor, original_fp, expected))
-                }
-                // Benign, safe-to-skip: the item is gone, externally modified, or has no restore
-                // material.
-                Ok(PrepareVerdict::Conflict) => outcome.conflicts.push(req.target.id.clone()),
-                // A stale poison row was dropped and the item conflicted on the AMBIGUOUS tuple
-                // (codex R8-#1). It also lands in `healed` so the host can FENCE the scan revision:
-                // a same-revision retry would otherwise find no ledger row and pass the ordinary
-                // fresh CAS, silently overwriting a possible manual restore-to-original.
-                Ok(PrepareVerdict::HealedConflict) => {
-                    outcome.conflicts.push(req.target.id.clone());
-                    outcome.healed.push(req.target.id.clone());
-                }
-                // A real infrastructure failure (a non-NotFound COM/IO error from the reader, or a
-                // corrupt/unreadable ledger) is NOT a benign per-item conflict. Misreporting it as
-                // one — with `outcome.error` left None — hides that the restore path may be
-                // compromised. Fail the whole batch instead; nothing has been journaled or mutated
-                // yet, so we abort cleanly with the error surfaced (P2-5).
-                Err(e) => {
-                    outcome.error = Some(format!("apply preflight failed: {e}"));
-                    return Ok(outcome);
-                }
+        // Phase 1 (no mutation): CAS + anchor capture, shared with the elevated batch (DRY).
+        let prepared = match self.prepare_batch(requests, ledger) {
+            Ok(p) => p,
+            // A real infrastructure failure (a non-NotFound COM/IO error from the reader, or a
+            // corrupt/unreadable ledger) is NOT a benign per-item conflict. Misreporting it as one —
+            // with `outcome.error` left None — hides that the restore path may be compromised. Fail
+            // the whole batch; nothing has been journaled or mutated yet (P2-5).
+            Err(e) => {
+                outcome.error = Some(format!("apply preflight failed: {e}"));
+                return Ok(outcome);
             }
-        }
+        };
+        outcome.conflicts = prepared.conflicts;
+        outcome.healed = prepared.healed;
+        let proceeding = prepared.proceeding;
 
         if proceeding.is_empty() {
             return Ok(outcome);
@@ -248,6 +243,36 @@ impl<'p> TxnDriver<'p> {
         }
 
         Ok(outcome)
+    }
+
+    /// Runs Phase 1 (CAS + anchor capture, NO desktop mutation) over `requests`, partitioning them
+    /// into proceeding / conflict / healed. Returns `Err` ONLY on a real infrastructure fault (a
+    /// non-NotFound reader error or a corrupt ledger) — the caller must fail the whole batch, since
+    /// nothing has been journaled or mutated yet. Benign skips (gone, externally modified, no restore
+    /// material) land in `conflicts`; a dropped stale poison row lands in BOTH `conflicts` + `healed`.
+    pub fn prepare_batch(
+        &self,
+        requests: Vec<ApplyRequest>,
+        ledger: &mut dyn LedgerStore,
+    ) -> Result<PreparedBatch> {
+        let mut prepared = PreparedBatch { proceeding: Vec::new(), conflicts: Vec::new(), healed: Vec::new() };
+        for req in requests {
+            match self.prepare_item(&req, ledger)? {
+                PrepareVerdict::Proceed(anchor, original_fp, expected) => {
+                    prepared.proceeding.push((req, anchor, original_fp, expected))
+                }
+                PrepareVerdict::Conflict => prepared.conflicts.push(req.target.id.clone()),
+                // A stale poison row was dropped and the item conflicted on the AMBIGUOUS tuple (codex
+                // R8-#1). It also lands in `healed` so the host FENCES the scan revision: a
+                // same-revision retry would otherwise find no ledger row and pass the ordinary fresh
+                // CAS, silently overwriting a possible manual restore-to-original.
+                PrepareVerdict::HealedConflict => {
+                    prepared.conflicts.push(req.target.id.clone());
+                    prepared.healed.push(req.target.id.clone());
+                }
+            }
+        }
+        Ok(prepared)
     }
 
     /// Phase-1 CAS + anchor capture for one item. `Proceed` when the item may be styled, `Conflict`

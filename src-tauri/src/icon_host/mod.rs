@@ -14,8 +14,8 @@ use std::sync::{Arc, Mutex};
 
 use dm_contracts::ArrowOverlayDto;
 use dm_domain::{
-    DesktopGeometryReader, DesktopScanner, ExplorerRefresher, IconApplier, IconSourceExtractor,
-    ItemStateReader, OverlayControl,
+    DesktopGeometryReader, DesktopScanner, ElevatedIconApplier, ExplorerRefresher, IconApplier,
+    IconSourceExtractor, ItemStateReader, OverlayControl,
 };
 use dm_operations::icons::scope::ScopeRoots;
 use dm_operations::icons::version_switch::OutputCache;
@@ -77,6 +77,10 @@ pub struct IconHostPorts {
     pub overlay: Arc<dyn OverlayControl + Send + Sync>,
     pub refresher: Arc<dyn ExplorerRefresher + Send + Sync>,
     pub geometry: Arc<dyn DesktopGeometryReader + Send + Sync>,
+    /// Styles privileged shared items (Public Desktop / ProgramData `.lnk`s) via the elevated helper
+    /// (one UAC per batch). `None` where no privileged scope exists — the dev host's virtual desktop
+    /// still wires a fake so the elevated apply/reset paths are exercised off-Windows.
+    pub elevated: Option<Arc<dyn ElevatedIconApplier + Send + Sync>>,
 }
 
 pub struct IconHost {
@@ -87,6 +91,8 @@ pub struct IconHost {
     overlay: Arc<dyn OverlayControl + Send + Sync>,
     refresher: Arc<dyn ExplorerRefresher + Send + Sync>,
     geometry: Arc<dyn DesktopGeometryReader + Send + Sync>,
+    /// The elevated desktop-item applier (privileged shared items). See [`IconHostPorts::elevated`].
+    elevated: Option<Arc<dyn ElevatedIconApplier + Send + Sync>>,
     assets: FsAssetStore,
     settings: Arc<SettingsStore>,
     mut_state: Mutex<IconMutState>,
@@ -149,6 +155,7 @@ impl IconHost {
             overlay: ports.overlay,
             refresher: ports.refresher,
             geometry: ports.geometry,
+            elevated: ports.elevated,
             assets: FsAssetStore::new(data_dir.join("icon-assets")),
             settings,
             op_gate: Mutex::new(()),
@@ -209,6 +216,13 @@ impl IconHost {
             IconPlatform::new(&*self.reader, &*self.applier, &self.assets),
             &self.settings,
         )
+    }
+
+    /// The elevated applier as a bare trait ref for the ops apply/reset calls (`None` on a host with
+    /// no privileged scope — the ops then leave privileged items as honest skips, fail-closed).
+    pub(super) fn elevated(&self) -> Option<&dyn ElevatedIconApplier> {
+        // Drop the `+ Send + Sync` marker bounds the storage carries — the ops take a plain trait ref.
+        self.elevated.as_deref().map(|e| e as &dyn ElevatedIconApplier)
     }
 }
 

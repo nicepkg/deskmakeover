@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 use dm_domain::{IconApplier, ItemStateReader, ItemTarget, PortError, RestoreAnchor};
 
 use crate::error::{OperationError, Result};
+use crate::icons::scope::ScopeRoots;
 use crate::ledger::entry::{LedgerEntry, TxnState};
 use crate::ledger::store::LedgerStore;
 use crate::txn::journal::{JournalRecord, JournalSink};
@@ -92,9 +93,10 @@ pub fn recover_from_journal(
     reader: &dyn ItemStateReader,
     applier: &dyn IconApplier,
     ledger: &mut dyn LedgerStore,
+    scope: &ScopeRoots,
 ) -> Result<RecoveryOutcome> {
     let records = journal.read_all()?;
-    let mut outcome = recover(&records, reader, applier, ledger)?;
+    let mut outcome = recover(&records, reader, applier, ledger, scope)?;
     // Truncate the reconciled history ONLY on a clean pass with something to truncate. An EMPTY journal
     // has nothing to recover, so it must NOT checkpoint (codex R7-#4): an empty checkpoint tries to
     // DELETE the log file, and a zero-byte log that cannot be deleted (an ACL fault) would otherwise
@@ -161,6 +163,7 @@ pub fn recover(
     reader: &dyn ItemStateReader,
     applier: &dyn IconApplier,
     ledger: &mut dyn LedgerStore,
+    scope: &ScopeRoots,
 ) -> Result<RecoveryOutcome> {
     let mut txns: HashMap<u64, TxnRecovery> = HashMap::new();
     let mut txn_order: Vec<u64> = Vec::new();
@@ -223,7 +226,7 @@ pub fn recover(
         } else if group.committed {
             reconcile_committed(&group, reader, ledger, &mut outcome)?;
         } else {
-            abort_incomplete(&group, txn, &committed_owner, reader, applier, ledger, &mut outcome)?;
+            abort_incomplete(&group, txn, &committed_owner, reader, applier, ledger, scope, &mut outcome)?;
         }
     }
     Ok(outcome)
@@ -285,6 +288,7 @@ fn abort_incomplete(
     reader: &dyn ItemStateReader,
     applier: &dyn IconApplier,
     ledger: &mut dyn LedgerStore,
+    scope: &ScopeRoots,
     outcome: &mut RecoveryOutcome,
 ) -> Result<()> {
     // LIFO: mirror the driver's rollback order.
@@ -402,6 +406,19 @@ fn abort_incomplete(
             }
             continue;
         }
+        // §14 elevated crash-recovery (M8): the live surface is this txn's APPLIED style (`is_ours`
+        // held and `live != original` was ruled out just above, so `live == new_fingerprint`). If the
+        // target is privileged-scope (Public Desktop / ProgramData), it can ONLY have been styled by
+        // the ELEVATED helper, and the unelevated `applier` here can NEVER revert it (Access Denied) —
+        // a doomed `restore` would degrade recovery forever (the exact wedge the on-box report hit).
+        // Since the desktop provably wears OUR style, ADOPT it FORWARD instead of rolling back: rebuild
+        // the committed ledger row from the journal so desktop == ledger and the item stays reversible
+        // via the (now-wired) elevated reset path. This fires ONLY for `live == new_fingerprint`, so a
+        // user's own elevated edit (`live == other`) never reaches here — it was `preserve`d above.
+        if scope.classify(&rec.target.path).is_some() {
+            reconcile_committed_row(rec, id, ledger, outcome);
+            continue;
+        }
         // Best-effort (codex R4-Block 5): a restore/remove fault on one item must not bail with a bare
         // Err over the items this recovery already restored. Record it as degraded and press on;
         // restore is idempotent, so a later retry finishes the unreconciled items. The row is only
@@ -427,60 +444,75 @@ fn reconcile_committed(
     outcome: &mut RecoveryOutcome,
 ) -> Result<()> {
     for id in &group.order {
-        let rec = &group.items[id.as_str()];
-        let (Some(asset), Some(new_fp)) = (rec.asset.clone(), rec.new_fingerprint) else {
-            // Reached commit without a full apply record for this item — impossible under the
-            // driver's ordering, but skip defensively rather than fabricate an entry.
-            continue;
-        };
-        // Skip an already-reconciled row ONLY when it matches the journal in full — including the
-        // paired empty ref. A legacy row committed before empty_asset existed loads as `None`; if we
-        // skipped it on the fingerprint alone, the exact empty ref the journal carries would never be
-        // persisted and would then be checkpointed away, orphaning the empty ICO (new-P1, wave-2R).
-        // Best-effort (codex R4-Block 5): a ledger read/write fault reconciling ONE committed item
-        // must not bail the whole recovery — this path never touches the desktop (the committed txn
-        // already applied before the crash), so a fault just leaves the row unreconciled for an
-        // idempotent retry. Record + continue.
-        let already = match ledger.get(id) {
-            Ok(row) => row
-                .map(|e| {
-                    e.state.is_committed()
-                        && e.last_applied_fingerprint == new_fp
-                        && e.empty_asset == rec.empty_asset
-                })
-                .unwrap_or(false),
-            Err(e) => {
-                outcome.degraded.push(format!("recover reconcile read {}: {e}", id.as_str()));
-                continue;
-            }
-        };
-        if already {
-            continue;
-        }
-        let version = match ledger.next_version() {
-            Ok(v) => v,
-            Err(e) => {
-                outcome.degraded.push(format!("recover reconcile version {}: {e}", id.as_str()));
-                continue;
-            }
-        };
-        if let Err(e) = ledger.upsert(LedgerEntry {
-            item: id.clone(),
-            target: rec.target.clone(),
-            original_fingerprint: rec.original_fingerprint,
-            original_anchor: rec.anchor.clone(),
-            last_applied_fingerprint: new_fp,
-            owned: rec.owned,
-            asset,
-            empty_asset: rec.empty_asset.clone(),
-            state: TxnState::Committed,
-            pinned_seed: rec.pinned_seed,
-            version,
-        }) {
-            outcome.degraded.push(format!("recover reconcile upsert {}: {e}", id.as_str()));
-            continue;
-        }
-        outcome.reconciled.push(id.clone());
+        reconcile_committed_row(&group.items[id.as_str()], id, ledger, outcome);
     }
     Ok(())
+}
+
+/// Rebuild ONE item's committed ledger row from its journal records (asset + confirmed
+/// `new_fingerprint` + anchor) and upsert it, unless the ledger already matches. Shared by
+/// [`reconcile_committed`] (the crash-in-commit→upsert-gap close) AND `abort_incomplete`'s §14
+/// elevated adopt-forward (a privileged item the elevated helper styled that the unelevated applier
+/// cannot revert). Best-effort: any ledger fault is recorded in `outcome.degraded` (the journal then
+/// stays for an idempotent retry) rather than bailing the whole recovery — this never touches the
+/// desktop, only the ledger. Pushes the id to `outcome.reconciled` on a real upsert.
+fn reconcile_committed_row(
+    rec: &ItemRecovery,
+    id: &dm_domain::ItemId,
+    ledger: &mut dyn LedgerStore,
+    outcome: &mut RecoveryOutcome,
+) {
+    let (Some(asset), Some(new_fp)) = (rec.asset.clone(), rec.new_fingerprint) else {
+        // Reached this row without a full apply record (asset + new_fingerprint) — impossible under
+        // the driver's / elevated batch's ordering (both journal AssetWritten + ItemApplied before a
+        // commit or an elevated helper call), but skip defensively rather than fabricate an entry.
+        return;
+    };
+    // Skip an already-reconciled row ONLY when it matches the journal in full — including the
+    // paired empty ref. A legacy row committed before empty_asset existed loads as `None`; if we
+    // skipped it on the fingerprint alone, the exact empty ref the journal carries would never be
+    // persisted and would then be checkpointed away, orphaning the empty ICO (new-P1, wave-2R).
+    // Best-effort (codex R4-Block 5): a ledger read/write fault reconciling ONE item must not bail
+    // the whole recovery — this path never touches the desktop (the item already sits at its styled
+    // state), so a fault just leaves the row unreconciled for an idempotent retry. Record + continue.
+    let already = match ledger.get(id) {
+        Ok(row) => row
+            .map(|e| {
+                e.state.is_committed()
+                    && e.last_applied_fingerprint == new_fp
+                    && e.empty_asset == rec.empty_asset
+            })
+            .unwrap_or(false),
+        Err(e) => {
+            outcome.degraded.push(format!("recover reconcile read {}: {e}", id.as_str()));
+            return;
+        }
+    };
+    if already {
+        return;
+    }
+    let version = match ledger.next_version() {
+        Ok(v) => v,
+        Err(e) => {
+            outcome.degraded.push(format!("recover reconcile version {}: {e}", id.as_str()));
+            return;
+        }
+    };
+    if let Err(e) = ledger.upsert(LedgerEntry {
+        item: id.clone(),
+        target: rec.target.clone(),
+        original_fingerprint: rec.original_fingerprint,
+        original_anchor: rec.anchor.clone(),
+        last_applied_fingerprint: new_fp,
+        owned: rec.owned,
+        asset,
+        empty_asset: rec.empty_asset.clone(),
+        state: TxnState::Committed,
+        pinned_seed: rec.pinned_seed,
+        version,
+    }) {
+        outcome.degraded.push(format!("recover reconcile upsert {}: {e}", id.as_str()));
+        return;
+    }
+    outcome.reconciled.push(id.clone());
 }

@@ -36,13 +36,27 @@ Assets via wrangler, auto-deployed from CI.
   carry the technical register.
 - **The 3D display IS the hero, and the camera moves.** A physically-shaded three.js
   all-in-one display (iMac-inspired: thin aluminum slab, white glass front, wedge
-  stand, NO logo — never a black monitor) sits in the FIRST viewport, right of
-  left-aligned copy. The camera opens on a wide 3/4 product view, then dollies
-  smoothly INTO the screen (easeInOutQuint, ~2.5 s) until the glass fills ~96% of
-  the canvas height — the real desktop becomes the hero background. Only after
-  arrival does the screen shader play: hold before → coral scan wipe to after →
-  dwell → restore → loop. Pointer peek + breathing after arrival. This is the only
-  3D on the page. `?dm3d=wide|before|scan|after` freezes states for visual tests.
+  stand, NO logo — never a black monitor) owns the ENTIRE hero as a full-bleed
+  background layer (never a clipped column); the copy floats above it behind a
+  white fade. The camera opens on a wide 3/4 product view, then dollies smoothly
+  INTO the screen (easeInOutQuint, ~2.5 s) — the real desktop becomes the hero
+  background. Only after arrival does the screen shader play: hold before → coral
+  scan wipe to after → dwell → restore → loop. Pointer peek + breathing after
+  arrival. `?dm3d=wide|before|scan|after` freezes states for visual tests.
+- **The machine crosses the fold.** The scene canvas extends ~42vh below the hero;
+  chin, stand and foot stand into screen two over a transparent background — never
+  cropped by a section edge. The mono spec strip belongs to screen two, below the
+  machine (`SpecStrip`, `lg:mt-[44vh]`), keeping screen one a clean stage.
+- **Materials must read as a real product, not a toy.** Real studio HDRI
+  (Poly Haven studio_small_09 1k, CC0, `assets-src/env/studio.hdr` → RGBELoader →
+  PMREM) is the light source — the standard setup for Apple-style device renders;
+  a procedural softbox scene remains as fallback. Satin anisotropic aluminum with
+  a subtle brushed roughness map; one continuous cover-glass sheet with faint
+  environment streaks over panel AND bezel. No dark panel seam (owner-rejected).
+- **The icon side leads the frame.** The close framing anchors the screen's LEFT
+  edge beside the copy column: the icon-dense side is always fully visible, the
+  right side may bleed offstage; the machine stays small enough that screen two
+  is one short scroll away (spec strip gap 8vh).
 - **The product name is the largest text on screen.** H1 is "DeskMakeover" /
   「桌面美颜」; the category line ("The desktop studio for Windows" / "Windows
   桌面工作室") is a subordinate tagline, never the headline.

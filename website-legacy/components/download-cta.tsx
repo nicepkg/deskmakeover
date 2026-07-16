@@ -3,14 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckIcon, CopyIcon, DownloadSimpleIcon, EnvelopeSimpleIcon, GithubLogoIcon } from "@/components/icons";
 import type { Dict } from "@/content/types";
-import { DOWNLOAD_URL, RELEASE_READY, SITE_URL } from "@/lib/site";
+import { GITHUB_URL, RELEASES_LATEST_URL, RELEASE_READY, SITE_URL } from "@/lib/site";
 
 /**
- * The download moment. Dual build state (pre-release capture vs
- * releases/latest). Non-Windows clients: pre-release the GitHub capture CTA
- * works everywhere so it stays; post-release the useless .exe button swaps
- * for copy-link / mail-yourself. Server render (and no-JS) shows the full
- * download UI.
+ * The download moment, kept minimal: one flat button (or a Coming-soon state
+ * with a GitHub watch link) plus a single requirements line. Non-Windows
+ * clients get copy-link / mail-yourself instead of a useless .exe button.
  */
 export function DownloadCta({ dict }: { dict: Dict }) {
   const d = dict.download;
@@ -42,15 +40,30 @@ export function DownloadCta({ dict }: { dict: Dict }) {
 
   return (
     <div className="flex flex-col items-center">
-      {!hideDownload && (
-        <a
-          href={DOWNLOAD_URL}
-          data-analytics="download"
-          className="inline-flex items-center gap-2.5 rounded-full bg-gradient-to-br from-coral-deep to-coral-ink px-8 py-4 text-[19px] font-bold text-white shadow-[0_8px_32px_-8px_var(--coral-glow)] transition-[filter,transform] duration-150 hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral active:scale-[0.98]"
-        >
-          {RELEASE_READY ? <DownloadSimpleIcon size={20} aria-hidden="true" /> : <GithubLogoIcon size={20} aria-hidden="true" />}
-          {RELEASE_READY ? d.ctaRelease : d.ctaPending}
-        </a>
+      {RELEASE_READY ? (
+        !hideDownload && (
+          <a
+            href={RELEASES_LATEST_URL}
+            data-analytics="download"
+            className="inline-flex items-center gap-2.5 rounded-btn bg-coral-deep px-8 py-4 text-[17px] font-semibold text-white transition-colors duration-150 hover:bg-coral focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral active:scale-[0.99]"
+          >
+            <DownloadSimpleIcon size={20} aria-hidden="true" />
+            {d.ctaRelease}
+          </a>
+        )
+      ) : (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <span className="inline-flex items-center gap-2.5 rounded-btn bg-coral-deep px-8 py-4 text-[17px] font-semibold text-white">
+            {d.ctaPending}
+          </span>
+          <a
+            href={GITHUB_URL}
+            className="inline-flex items-center gap-2 rounded-btn border border-hairline px-6 py-4 text-[15px] font-medium text-text-mid transition-colors hover:border-text-dim hover:text-text-hi"
+          >
+            <GithubLogoIcon size={18} aria-hidden="true" />
+            {d.watchGithub}
+          </a>
+        </div>
       )}
       {!RELEASE_READY && <p className="mt-3 max-w-[46ch] text-center text-[13.5px] text-text-dim">{d.pendingNote}</p>}
       <p className="mt-3 text-[13px] text-text-dim">{d.requirements}</p>
@@ -61,14 +74,14 @@ export function DownloadCta({ dict }: { dict: Dict }) {
             <button
               type="button"
               onClick={copy}
-              className="inline-flex items-center gap-1.5 rounded-full border border-hairline px-4 py-2 text-[14px] font-medium text-text-mid transition-colors hover:border-coral hover:text-text-hi"
+              className="inline-flex items-center gap-1.5 rounded-btn border border-hairline px-4 py-2 text-[14px] font-medium text-text-mid transition-colors hover:border-coral-deep hover:text-text-hi"
             >
               {copied ? <CheckIcon size={16} aria-hidden="true" /> : <CopyIcon size={16} aria-hidden="true" />}
               {copied ? d.copied : d.copyLink}
             </button>
             <a
               href={mailto}
-              className="inline-flex items-center gap-1.5 rounded-full border border-hairline px-4 py-2 text-[14px] font-medium text-text-mid transition-colors hover:border-coral hover:text-text-hi"
+              className="inline-flex items-center gap-1.5 rounded-btn border border-hairline px-4 py-2 text-[14px] font-medium text-text-mid transition-colors hover:border-coral-deep hover:text-text-hi"
             >
               <EnvelopeSimpleIcon size={16} aria-hidden="true" />
               {d.mailLink}

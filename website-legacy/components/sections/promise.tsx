@@ -45,12 +45,12 @@ export function Promise({ dict }: { dict: Dict }) {
               </div>
             </div>
             <div className="mt-5 flex justify-center">
-              <div role="group" className="inline-flex rounded-full border border-hairline bg-surface-1 p-1">
+              <div role="group" className="inline-flex rounded-btn border border-hairline bg-surface-1 p-1">
                 <button
                   type="button"
                   aria-pressed={!styled}
                   onClick={() => setStyled(false)}
-                  className={`rounded-full px-5 py-2 text-[14px] font-semibold transition-colors duration-150 ${
+                  className={`rounded-[8px] px-5 py-2 text-[14px] font-semibold transition-colors duration-150 ${
                     !styled ? "bg-surface-2 text-text-hi" : "text-text-dim hover:text-text-mid"
                   }`}
                 >
@@ -60,8 +60,8 @@ export function Promise({ dict }: { dict: Dict }) {
                   type="button"
                   aria-pressed={styled}
                   onClick={() => setStyled(true)}
-                  className={`rounded-full px-5 py-2 text-[14px] font-semibold transition-colors duration-150 ${
-                    styled ? "bg-coral-ink text-white" : "text-text-dim hover:text-text-mid"
+                  className={`rounded-[8px] px-5 py-2 text-[14px] font-semibold transition-colors duration-150 ${
+                    styled ? "bg-coral-deep text-white" : "text-text-dim hover:text-text-mid"
                   }`}
                 >
                   {p.toggleStyled}

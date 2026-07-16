@@ -64,19 +64,12 @@ export interface Dict {
     rows: { title: string; body: string }[];
     imgAlt: string;
   };
-  zones: {
-    title: string;
-    body: string;
-    imgAlt: string;
-    zoneLabels: [string, string, string];
-    arrowTitle: string;
-    arrowBody: string;
-  };
   download: {
     title: string;
     body: string;
     ctaRelease: string;
     ctaPending: string;
+    watchGithub: string;
     pendingNote: string;
     smartscreenLead: string;
     smartscreenDetail: string;

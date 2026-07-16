@@ -109,11 +109,12 @@ async function main() {
   }
 
   const geometry = JSON.parse(await readFile(path.join(desktopSrc, "featured.json"), "utf8"));
+  const allCells = JSON.parse(await readFile(path.join(desktopSrc, "cells.json"), "utf8"));
   const chips = {};
   for (const style of STYLES) {
     chips[style] = await emitChip(style, geometry.chipCell);
   }
-  manifest.__meta = { chips, featured: geometry.featured };
+  manifest.__meta = { chips, featured: geometry.featured, cells: allCells.cells };
 
   await copyFile(path.join(ghAssets, "social-card.png"), path.join(websiteRoot, "public/social-card.png"));
   await copyFile(path.join(ghAssets, "logo.png"), path.join(websiteRoot, "public/logo.png"));

@@ -3,7 +3,7 @@ import manifest from "@/lib/image-manifest.json";
 type Variant = { w: number; h: number; avif: string; webp: string };
 type ManifestEntry = { w: number; h: number; variants: Variant[] };
 type Cell = { x: number; y: number; w: number; h: number };
-type Meta = { chips: Record<string, { avif: string; webp: string }>; featured: Cell[] };
+type Meta = { chips: Record<string, { avif: string; webp: string }>; featured: Cell[]; cells: Cell[] };
 
 const { __meta, ...images } = manifest as unknown as Record<string, ManifestEntry> & { __meta: Meta };
 

@@ -38,16 +38,22 @@ export function Hero({ dict }: { dict: Dict }) {
             <StaggeredLine text={h.headline2} from={isZh ? 2 : 6} coral />
           </h1>
           <p className="mx-auto mt-4 max-w-[52ch] text-[clamp(1.05rem,1.4vw,1.3rem)] text-text-mid">{h.sub}</p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
-            <a
-              href={RELEASE_READY ? DOWNLOAD_URL : "#download"}
-              className="rounded-full bg-gradient-to-br from-coral-deep to-coral-ink px-7 py-3.5 text-[19px] font-bold text-white shadow-[0_8px_32px_-8px_var(--coral-glow)] transition-[filter,transform] duration-150 hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral active:scale-[0.98]"
-            >
-              {RELEASE_READY ? h.ctaRelease : h.ctaPending}
-            </a>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            {RELEASE_READY ? (
+              <a
+                href={DOWNLOAD_URL}
+                className="rounded-btn bg-coral-deep px-7 py-3.5 text-[17px] font-semibold text-white transition-colors duration-150 hover:bg-coral focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral active:scale-[0.99]"
+              >
+                {h.ctaRelease}
+              </a>
+            ) : (
+              <span className="rounded-btn bg-coral-deep px-7 py-3.5 text-[17px] font-semibold text-white">
+                {h.ctaPending}
+              </span>
+            )}
             <a
               href="#looks"
-              className="group rounded-full border border-hairline px-6 py-3.5 text-[16px] font-medium text-text-mid transition-colors hover:border-text-dim hover:text-text-hi"
+              className="group rounded-btn border border-hairline px-6 py-3.5 text-[16px] font-medium text-text-mid transition-colors hover:border-text-dim hover:text-text-hi"
             >
               {h.ctaSecondary}
               <span aria-hidden="true" className="ml-1.5 inline-block transition-transform duration-200 group-hover:translate-x-0.5">

@@ -22,9 +22,6 @@ export function SiteNav({ dict }: { dict: Dict }) {
           <a href={`${home}#proof`} className="transition-colors hover:text-ink">
             {dict.nav.proof.toUpperCase()}
           </a>
-          <a href={`${home}#zones`} className="transition-colors hover:text-ink">
-            {dict.nav.zones.toUpperCase()}
-          </a>
           <a href={engineHref} className="transition-colors hover:text-ink">
             {dict.nav.engine.toUpperCase()}
           </a>

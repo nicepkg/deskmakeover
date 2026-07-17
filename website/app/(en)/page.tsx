@@ -1,6 +1,6 @@
 import { Landing } from "@/components/landing";
-import { en } from "@/content/en";
+import { getDict } from "@/content";
 
 export default function HomePage() {
-  return <Landing dict={en} />;
+  return <Landing dict={getDict("en")} />;
 }

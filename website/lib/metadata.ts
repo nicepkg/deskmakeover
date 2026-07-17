@@ -1,29 +1,26 @@
 import type { Metadata } from "next";
 import type { Dict } from "@/content/types";
+import { alternatePaths, localeDef, ogAlternates } from "@/lib/locales";
 import { SITE_URL } from "@/lib/site";
 
 export function buildMetadata(dict: Dict): Metadata {
-  const path = dict.locale === "zh" ? "/zh/" : "/";
+  const def = localeDef(dict.locale);
   return {
     metadataBase: new URL(SITE_URL),
     title: dict.meta.title,
     description: dict.meta.description,
     alternates: {
-      canonical: path,
-      languages: {
-        en: "/",
-        "zh-CN": "/zh/",
-        "x-default": "/",
-      },
+      canonical: def.path,
+      languages: alternatePaths(),
     },
     openGraph: {
       type: "website",
-      url: path,
+      url: def.path,
       siteName: "DeskMakeover",
       title: dict.meta.title,
       description: dict.meta.description,
-      locale: dict.locale === "zh" ? "zh_CN" : "en_US",
-      alternateLocale: [dict.locale === "zh" ? "en_US" : "zh_CN"],
+      locale: def.ogLocale,
+      alternateLocale: ogAlternates(dict.locale),
       images: [
         {
           url: "/social-card.png",

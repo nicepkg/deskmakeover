@@ -1,4 +1,7 @@
-export type Locale = "en" | "zh";
+import type { LocaleCode } from "@/lib/locales";
+
+/** Alias of the registry's LocaleCode — lib/locales.ts is the source of truth. */
+export type Locale = LocaleCode;
 
 export interface StyleEntry {
   /** style key matching assets-src/desktop/<key>.webp */

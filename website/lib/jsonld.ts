@@ -1,4 +1,5 @@
 import type { Dict } from "@/content/types";
+import { localeDef, pageUrl as localePageUrl, siteLanguages } from "@/lib/locales";
 import { GITHUB_URL, RELEASES_LATEST_URL, RELEASE_READY, SITE_URL } from "@/lib/site";
 
 /**
@@ -15,8 +16,8 @@ const SITE_ID = `${SITE_URL}/#website`;
 const APP_ID = `${SITE_URL}/#software`;
 
 export function jsonLdScript(dict: Dict): string {
-  const pageUrl = dict.locale === "zh" ? `${SITE_URL}/zh/` : `${SITE_URL}/`;
-  const inLanguage = dict.locale === "zh" ? "zh-CN" : "en";
+  const pageUrl = localePageUrl(dict.locale);
+  const inLanguage = localeDef(dict.locale).hreflang;
   return JSON.stringify({
     "@context": "https://schema.org",
     "@graph": [
@@ -33,7 +34,7 @@ export function jsonLdScript(dict: Dict): string {
         "@id": SITE_ID,
         url: `${SITE_URL}/`,
         name: "DeskMakeover",
-        inLanguage: ["en", "zh-CN"],
+        inLanguage: siteLanguages(),
         publisher: { "@id": ORG_ID },
       },
       {

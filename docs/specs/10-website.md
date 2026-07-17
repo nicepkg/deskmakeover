@@ -109,6 +109,15 @@ re-shoot must go through the real app, never mockups.
 ## Routing & i18n
 
 - `/` = English, `/zh` = Chinese; both fully static-prerendered.
+- **`lib/locales.ts` is the single locale registry** (code, path, hreflang, html lang,
+  og:locale, navigator prefixes). Metadata alternates, og locale + alternates, the
+  sitemap, JSON-LD language tags, the first-visit redirect script and the shared root
+  document (`components/locale-html.tsx`) all derive from it — never hardcode a locale
+  ternary elsewhere. Adding a language = one registry entry + `content/<code>.ts`
+  (+ its line in `content/index.ts`) + thin `app/(<code>)/<code>/{layout,page}.tsx`
+  wrappers mirroring `app/(zh)` (locale-specific display fonts stay in that layout so
+  next/font preloads them only there). The single header/footer switch link assumes two
+  locales; at three or more replace it with a menu.
 - Automatic first-visit locale routing (owner decision 2026-07-17, reversing the earlier
   no-redirect rule): the root page inlines a tiny blocking script (`lib/lang-redirect.ts`)
   that walks `navigator.languages` in preference order — first zh* match routes to `/zh/`

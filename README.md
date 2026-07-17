@@ -145,6 +145,18 @@ Yes. Pick a look, check the preview, click apply. No commands, no technical sett
 
 <div align="center"><br/><img src=".github/assets/rule-hairline.svg" width="880" alt="" /><br/><br/></div>
 
+## 🧬 One pixel core, computed the same every time
+
+Every look is rendered by [`dm-icon-core`](crates/dm-icon-core), a single ~12,000-line pure-Rust pipeline with no I/O and no platform dependencies. It reads each icon before touching it — classification, background detection, subject/background separation, dominant colour — then restyles it under hard rules. No ML, no cloud, no telemetry: the same input produces the same pixels, every time, offline.
+
+- **Preview = result, provably.** The core compiles to WASM (live preview) and native (final bake); a determinism contract — [`libm`](crates/dm-icon-core/src/color.rs)-only transcendentals, no FMA/SIMD, no order-dependent reductions — keeps both builds byte-for-byte identical, certified against a 1,487-icon corpus ([`tests/parity_determinism.rs`](crates/dm-icon-core/tests/parity_determinism.rs)).
+- **Perception-first colour.** All colour math runs in OKLab / linear-light sRGB. The auto-separation rescue that keeps a subject from melting into its plate uses paired colour-distance and lightness thresholds ([`separation.rs`](crates/dm-icon-core/src/separation.rs)) — because at the spatial frequency of a 32 px icon, the eye reads lightness far better than chroma.
+- **Your brand colour stays your brand colour.** A hard rule in [`compose/field.rs`](crates/dm-icon-core/src/compose/field.rs): subject pixels are never recoloured. Icons are told apart by plate, outline, and shadow — and colliding plate hues are deterministically rotated apart ([`hue_spread.rs`](crates/dm-icon-core/src/hue_spread.rs)).
+- **Standard methods, wired together deliberately.** Otsu subject/plate splitting, IoU silhouette matching, linear-light premultiplied-alpha area resampling, and a faithful port of Figma's MIT corner-smoothing math ([`shapes/smooth.rs`](crates/dm-icon-core/src/shapes/smooth.rs)) — composed, not reinvented.
+- **Fails closed.** [`#![forbid(unsafe_code)]`](crates/dm-icon-core/src/lib.rs) across the core; the only unsafe is the thin WASM FFI boundary, every allocation overflow-checked ([`dm-icon-wasm`](crates/dm-icon-wasm/src/lib.rs)). Degenerate inputs return error codes, never panics — and the app snapshots your desktop before touching anything.
+
+Watch the pipeline run step by step — and drive the same WASM build live in your browser — at **[dm.xiaominglab.com/engine](https://dm.xiaominglab.com/engine/)**.
+
 ## 🏗️ Architecture and tech choices
 
 DeskMakeover is a **Tauri 2 + Rust** desktop app with a **React 19 + TypeScript** UI rendered in the system WebView (WebView2). The pixels are owned by one Rust icon core:

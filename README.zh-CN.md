@@ -145,6 +145,18 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 
 <div align="center"><br/><img src=".github/assets/rule-hairline.svg" width="880" alt="" /><br/><br/></div>
 
+## 🧬 一套像素核心，每次算出同样的结果
+
+每一套外观都由 [`dm-icon-core`](crates/dm-icon-core) 渲染。这是一条约 12,000 行的纯 Rust 像素管线，零 I/O、零平台依赖。它先读懂每颗图标再动手：分类、背景检测、主体与背景分离、主色提取，然后在硬规则下重新造型。没有机器学习，没有云端，没有数据上报：同样的输入永远得到同样的像素，完全离线。
+
+- **预览即结果，可证明。** 核心同时编译为 WASM（实时预览）与原生（最终落盘）。一份确定性契约（超越函数只走 [`libm`](crates/dm-icon-core/src/color.rs)、禁 FMA/SIMD、禁顺序相关归约）让两个构建的输出逐字节一致，并在 1,487 颗真实图标语料上持续认证（[`tests/parity_determinism.rs`](crates/dm-icon-core/tests/parity_determinism.rs)）。
+- **感知优先的色彩。** 全部颜色数学运行在 OKLab 与 linear-light sRGB 上。防止主体融进底盘的自动分离救援用「色距 + 亮度差」双门限判定（[`separation.rs`](crates/dm-icon-core/src/separation.rs)），依据是在 32 px 图标的空间频率下，人眼对亮度的分辨远好于色度。
+- **品牌色永远是品牌色。** [`compose/field.rs`](crates/dm-icon-core/src/compose/field.rs) 里的一条铁律：主体像素永不重上色。图标之间靠底盘、描边和阴影区分；相撞的底盘色相被确定性地旋转分开（[`hue_spread.rs`](crates/dm-icon-core/src/hue_spread.rs)）。
+- **标准方法，用心组装。** Otsu 主体底盘分割、IoU 轮廓匹配、linear-light 预乘 alpha 面积平均重采样，以及对 Figma MIT 圆角平滑数学的忠实移植（[`shapes/smooth.rs`](crates/dm-icon-core/src/shapes/smooth.rs)）：是组合，不是重新发明。
+- **出错即收敛。** 核心全程 [`#![forbid(unsafe_code)]`](crates/dm-icon-core/src/lib.rs)；唯一的 unsafe 是极薄的 WASM FFI 边界，每次分配都做溢出检查（[`dm-icon-wasm`](crates/dm-icon-wasm/src/lib.rs)）。退化输入返回错误码而不是 panic；应用层动手之前先给桌面拍快照。
+
+想看这条管线逐步运行，并在浏览器里亲手驱动同一个 WASM 构建，请访问 **[dm.xiaominglab.com/zh/engine](https://dm.xiaominglab.com/zh/engine/)**。
+
 ## 🏗️ 架构与技术选型
 
 DeskMakeover 是 **Tauri 2 + Rust** 桌面应用，UI 是渲染在系统 WebView（WebView2）里的 **React 19 + TypeScript**，像素由一个 Rust 图标内核统一拥有：

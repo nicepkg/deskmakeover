@@ -1,0 +1,5 @@
+# Workers Static Assets header rules (copied verbatim into out/ by the export).
+# Plain-text files carry no in-band encoding declaration, so without an explicit
+# charset browsers guess a legacy encoding and the Chinese in llms*.txt mojibakes.
+/*.txt
+  Content-Type: text/plain; charset=utf-8

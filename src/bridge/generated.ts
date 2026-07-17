@@ -139,8 +139,10 @@ export type IconItemDto = {
 	isShortcut: boolean,
 	styleable: boolean,
 	/**
-	 *  Host-localized human reason when `styleable` is false (e.g. a genuinely unreadable item);
-	 *  `None` when styleable.
+	 *  A STABLE i18n KEY the FRONTEND localizes (e.g. `Icons_Reason_StyledResidue`) when
+	 *  `styleable` is false; `None` when styleable. A key needing an interpolation arg (an extract
+	 *  error detail) is `\t`-joined with it: `"Icons_Reason_ExtractFailed\t<detail>"`. The host has
+	 *  no locale, so it must never emit display text here (an English user saw Chinese otherwise).
 	 */
 	statusReason: string | null,
 	x: number,

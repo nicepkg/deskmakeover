@@ -3,7 +3,7 @@ import { RELEASE } from "@/lib/release";
 export const SITE_URL = "https://dm.xiaominglab.com";
 
 /** Bump when page copy/facts materially change; feeds sitemap lastmod + llms.txt. */
-export const CONTENT_UPDATED = "2026-07-17";
+export const CONTENT_UPDATED = "2026-07-18";
 export const GITHUB_URL = "https://github.com/nicepkg/deskmakeover";
 export const RELEASES_LATEST_URL = `${GITHUB_URL}/releases/latest`;
 

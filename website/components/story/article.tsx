@@ -35,7 +35,7 @@ const liCls = "mb-2.5 text-[16px] leading-[1.7] text-ink";
 export function Article() {
   return (
     <article className="pt-2">
-      <div className="mx-auto max-w-[70ch]">
+      <div className="max-w-[70ch]">
         <p className="font-mono text-[11.5px] tracking-[0.2em] text-coral-ink">{ARTICLE.kicker}</p>
         <h2 className="mb-2 mt-4 text-[clamp(26px,5vw,44px)] font-bold leading-[1.14] tracking-[-0.02em]">
           {ARTICLE.title}

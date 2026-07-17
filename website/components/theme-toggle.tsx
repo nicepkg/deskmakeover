@@ -64,7 +64,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
     <div
       role="radiogroup"
       aria-label="配色主题"
-      className={`flex border border-line bg-canvas ${className}`}
+      className={`box-border flex h-8 border border-line bg-canvas ${className}`}
     >
       {(["light", "auto", "dark"] as const).map((m) => (
         <button
@@ -77,7 +77,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
             setMode(m);
             apply(m);
           }}
-          className={`grid h-7 w-7 place-items-center transition-colors [&_svg]:h-[14px] [&_svg]:w-[14px] ${
+          className={`grid h-full w-[30px] place-items-center transition-colors [&_svg]:h-[14px] [&_svg]:w-[14px] ${
             mode === m ? "bg-panel text-ink" : "text-ink-3 hover:text-ink"
           }`}
         >

@@ -48,7 +48,7 @@ export function SiteNav({ dict }: { dict: Dict }) {
           <ThemeToggle />
           <a
             href={RELEASE_READY ? DOWNLOAD_URL : "#download"}
-            className="bg-ink px-3.5 py-1.5 text-[13px] font-semibold text-canvas transition-colors hover:bg-coral-deep hover:text-white"
+            className="inline-flex h-8 items-center bg-ink px-3.5 text-[13px] font-semibold text-canvas transition-colors hover:bg-coral-deep hover:text-white"
           >
             {dict.nav.download}
           </a>

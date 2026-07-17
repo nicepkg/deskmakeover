@@ -69,6 +69,8 @@ async function fetchLatestRelease() {
 }
 
 function renderLlms(release, updated) {
+  // public/ may not exist on a fresh checkout (all its contents are generated)
+  mkdirSync(path.join(ROOT, "public"), { recursive: true });
   const lastReviewed =
     release.ready && release.publishedAt > updated ? release.publishedAt : updated;
   const statusEn = release.ready

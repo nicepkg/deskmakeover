@@ -28,8 +28,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # deploys arm themselves once the CLOUDFLARE_API_TOKEN repo secret exists
-      # (CLOUDFLARE_ACCOUNT_ID is already set); empty means "build only"
+      # Both CF secrets are nicepkg ORG secrets (visibility: all). They only
+      # reach this repo because it is PUBLIC — on GitHub Free, org secrets are
+      # invisible to private repos, and "all repositories" silently means "all
+      # public repositories" (this workflow saw an empty token until
+      # 2026-07-17, when the repo went public). Kept as a guard so a rotated /
+      # removed secret degrades to build-only instead of a red deploy, and so
+      # fork PRs never try to deploy.
       CF_DEPLOY_READY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
     defaults:
       run:

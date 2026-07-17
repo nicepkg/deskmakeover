@@ -24,7 +24,8 @@ Assets via wrangler, auto-deployed from CI.
 
 ## Assumptions
 
-- The repo is public by the time the site is announced (Star/Watch links 404 otherwise).
+- The repo is public (went public 2026-07-17; Star/Watch/badge links and the site's
+  GitHub CTAs 404'd for visitors while it was private).
 - v0.1.0 installer may not exist at first deploy — the Download CTA has a build-time
   dual state (see §Download).
 - `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` GitHub secrets are created by the owner
@@ -214,9 +215,12 @@ Cloudflare Web Analytics beacon only (no cookies), injected only when
 - CI: `.github/workflows/website.yml` — push to main (path-filtered to `website/**`),
   `release: [published, edited, deleted]`, `workflow_dispatch` (used by release.yml
   post-publish), PR preview versions. Builds with bun, deploys with wrangler 4; the
-  deploy step needs repo secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`
-  (repo-level — org secrets don't reach a private repo on the free plan) and skips
-  with a visible flag until the token secret exists.
+  deploy step reads `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` from the **nicepkg
+  org secrets** (visibility: all) — no repo-level copies, so rotating them once in the
+  org covers every repo. ⚠️ Org secrets only reach this repo because it is PUBLIC: on
+  GitHub Free, "all repositories" means all *public* repositories and private repos
+  silently receive an empty string. If the repo ever goes private again, the deploy
+  degrades to build-only until repo-level secrets are added.
 
 ## Performance budget (acceptance)
 

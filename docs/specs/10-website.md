@@ -205,6 +205,27 @@ re-shoot must go through the real app, never mockups.
   writes `lib/image-manifest.json`; pages use `<picture>` with explicit width/height.
   Hero 3D texture payload is budget-gated (fails the build over 420 KB).
 
+## Download modal (owner request 2026-07-17)
+
+- Every download CTA opens a dialog instead of jumping to the Releases page;
+  all downloads inside are DIRECT asset links. Progressive enhancement: the
+  server-rendered CTA stays a plain link to releases/latest, upgraded on click
+  (`components/download/button.tsx` -> `components/download/modal.tsx`).
+- Fully static: `scripts/fetch-release.mjs` bakes the WHOLE release history
+  (one `/releases` call, newest first) into `lib/release-data.json`; the modal
+  renders the current version prominently and older versions in a collapsed
+  history list. No runtime API calls.
+- Advisory device detection (`components/download/detect.ts`): UA-CH high
+  entropy where available, UA sniffing fallback. Win x64 -> "ready" line;
+  ARM / 32-bit / old Windows / macOS / Linux / mobile get honest caution lines
+  — the download is NEVER blocked. Windows 11 vs 10 is not claimed.
+- Mainland-China mirrors (`RELEASE_MIRRORS` in lib/site.ts): third-party
+  public proxies in prefix form, speed-tested before adoption (2026-07-17:
+  gh-proxy.org 7.8 MB/s, ghfast.top 2.5 MB/s; ghproxy.net rejected). zh pages
+  show them as prominent secondary buttons, en pages as one quiet line. A
+  disclaimer marks them unaffiliated; rotate the list here if a proxy dies.
+- The SmartScreen walkthrough surfaces only after a download actually starts.
+
 ## Download contract (dual state, fully automated)
 
 - Release state is resolved at BUILD TIME from the latest GitHub Release —

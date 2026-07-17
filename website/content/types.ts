@@ -93,6 +93,29 @@ export interface Dict {
     smartscreenDetail: string;
     requirements: string;
   };
+  /** the click-to-download dialog (only rendered once a release exists) */
+  downloadModal: {
+    title: string;
+    /** advisory device-support line per detected OS; unknown renders nothing */
+    device: {
+      "win-x64": string;
+      "win-unknown": string;
+      "win-arm": string;
+      "win-32": string;
+      "win-old": string;
+      "desktop-other": string;
+      mobile: string;
+    };
+    primaryCta: string;
+    viaGithub: string;
+    mirrorsLead: string;
+    mirrorNote: string;
+    historyLabel: string;
+    releaseNotes: string;
+    /** shown after a download actually starts (SmartScreen walkthrough) */
+    smartscreenStarted: string;
+    close: string;
+  };
   faq: {
     kicker: string;
     title: string;

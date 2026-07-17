@@ -119,6 +119,32 @@ export const en: Dict = {
       "It is Windows being cautious with newer software few people have downloaded yet. Click More info, then Run anyway. DeskMakeover is open source, so anyone can read exactly what it does.",
     requirements: "WIN 10 1809+ / WIN 11 · 64-BIT",
   },
+  downloadModal: {
+    title: "Download DeskMakeover",
+    device: {
+      "win-x64": "Your device runs 64-bit Windows. Ready to install",
+      "win-unknown": "Your device runs Windows. The installer is 64-bit",
+      "win-arm":
+        "Your device may be Windows on ARM. Only an x64 installer exists today; it may still run, with reduced performance",
+      "win-32":
+        "This Windows is 32-bit. DeskMakeover needs 64-bit Windows 10 (1809+) or Windows 11; you can still download it for later",
+      "win-old":
+        "This Windows version is older than supported. DeskMakeover needs Windows 10 (1809+) or Windows 11; you can still download it for later",
+      "desktop-other":
+        "DeskMakeover is Windows-only. You can still grab the installer and copy it to a Windows PC",
+      mobile:
+        "Windows apps do not install on phones. Open this page on a PC, or download now and transfer later",
+    },
+    primaryCta: "Download installer",
+    viaGithub: "Direct from GitHub",
+    mirrorsLead: "Slow or blocked in mainland China? Mirrors",
+    mirrorNote: "Mirrors are third-party public proxies, unaffiliated with this project. Prefer the official link when in doubt.",
+    historyLabel: "Previous versions",
+    releaseNotes: "Release notes",
+    smartscreenStarted:
+      "Download started. If Windows shows the blue \u201cWindows protected your PC\u201d screen during install, click More info, then Run anyway. It is not a virus warning, just caution around newly published software.",
+    close: "Close",
+  },
   faq: {
     kicker: "FAQ",
     title: "Questions people ask",

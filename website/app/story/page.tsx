@@ -14,12 +14,14 @@ import {
   StatRow,
   ValenceHist,
 } from "@/components/story/charts";
+import { DownloadModal } from "@/components/download/modal";
 import { StoryFooter, StoryNav } from "@/components/story/chrome";
 import { WordCloud } from "@/components/story/cloud";
 import { DriftChart } from "@/components/story/drift";
 import { StoryFx } from "@/components/story/fx";
 import { Insights, Quotes } from "@/components/story/insights";
 import { TideChart } from "@/components/story/tide";
+import { getDict } from "@/content";
 import { ARC_CARD, CLOUD_LEGEND, DRIFT_AXIS, HEADS, HERO, LENGTH_CARD } from "@/content/story";
 import { TONE } from "@/components/story/palette";
 
@@ -255,6 +257,7 @@ export default function StoryPage() {
         </Section>
       </main>
       <StoryFooter />
+      <DownloadModal dict={getDict("zh")} />
       <StoryFx />
     </>
   );

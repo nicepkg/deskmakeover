@@ -36,28 +36,9 @@ function contentUpdated() {
   return m[1];
 }
 
-async function fetchLatestRelease() {
-  if (process.env.DM_FAKE_RELEASE === "1") {
-    console.warn("[fetch-release] DM_FAKE_RELEASE=1 — using a FAKE release (testing only)");
-    return {
-      ready: true,
-      version: "0.1.0",
-      tag: "v0.1.0",
-      publishedAt: "2026-07-20",
-      notesUrl: `${RELEASES_URL}/tag/v0.1.0`,
-      installer: { name: "DeskMakeover_0.1.0_x64-setup.exe", url: `${RELEASES_URL}/download/v0.1.0/DeskMakeover_0.1.0_x64-setup.exe`, sizeMB: 12.4 },
-    };
-  }
-  const headers = { accept: "application/vnd.github+json", "user-agent": "deskmakeover-website-build" };
-  if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers });
-  if (res.status === 404) return { ready: false }; // no releases yet — a fact, not a failure
-  if (!res.ok) throw new Error(`GitHub API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const rel = await res.json();
-  if (rel.draft || rel.prerelease) return { ready: false }; // only full releases count
+function toEntry(rel) {
   const asset = (rel.assets ?? []).find((a) => /-setup\.exe$|\.msi$/i.test(a.name));
   return {
-    ready: true,
     version: String(rel.tag_name).replace(/^v/, ""),
     tag: rel.tag_name,
     publishedAt: String(rel.published_at).slice(0, 10),
@@ -66,6 +47,31 @@ async function fetchLatestRelease() {
       ? { installer: { name: asset.name, url: asset.browser_download_url, sizeMB: Math.round((asset.size / 1048576) * 10) / 10 } }
       : {}),
   };
+}
+
+async function fetchLatestRelease() {
+  if (process.env.DM_FAKE_RELEASE === "1") {
+    console.warn("[fetch-release] DM_FAKE_RELEASE=1 — using a FAKE release (testing only)");
+    const fake = (v, date) => ({
+      version: v,
+      tag: `v${v}`,
+      publishedAt: date,
+      notesUrl: `${RELEASES_URL}/tag/v${v}`,
+      installer: { name: `DeskMakeover_${v}_x64-setup.exe`, url: `${RELEASES_URL}/download/v${v}/DeskMakeover_${v}_x64-setup.exe`, sizeMB: 12.4 },
+    });
+    const releases = [fake("0.2.0", "2026-07-24"), fake("0.1.1", "2026-07-21"), fake("0.1.0", "2026-07-17")];
+    return { ready: true, ...releases[0], releases };
+  }
+  // one call for the WHOLE history: newest-first, the download modal lists old
+  // versions and the head entry doubles as "latest"
+  const headers = { accept: "application/vnd.github+json", "user-agent": "deskmakeover-website-build" };
+  if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=100`, { headers });
+  if (!res.ok) throw new Error(`GitHub API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const all = await res.json();
+  const releases = all.filter((r) => !r.draft && !r.prerelease).map(toEntry);
+  if (releases.length === 0) return { ready: false, releases: [] }; // none yet — a fact, not a failure
+  return { ready: true, ...releases[0], releases };
 }
 
 function renderLlms(release, updated) {

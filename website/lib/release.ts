@@ -12,6 +12,15 @@ export interface InstallerInfo {
   sizeMB: number;
 }
 
+export interface ReleaseEntry {
+  version: string;
+  tag: string;
+  /** YYYY-MM-DD */
+  publishedAt: string;
+  notesUrl: string;
+  installer?: InstallerInfo;
+}
+
 export interface ReleaseInfo {
   ready: boolean;
   version?: string;
@@ -20,6 +29,8 @@ export interface ReleaseInfo {
   publishedAt?: string;
   notesUrl?: string;
   installer?: InstallerInfo;
+  /** every published full release, newest first (the download modal's history) */
+  releases?: ReleaseEntry[];
 }
 
 export const RELEASE = raw as ReleaseInfo;

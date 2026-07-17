@@ -1,5 +1,6 @@
 import type { Dict } from "@/content/types";
 import { LangSwitch } from "@/components/lang";
+import { DownloadCta } from "@/components/download/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { DOWNLOAD_URL, GITHUB_URL, RELEASE_READY } from "@/lib/site";
 
@@ -46,12 +47,21 @@ export function SiteNav({ dict }: { dict: Dict }) {
             {dict.nav.langLabel}
           </LangSwitch>
           <ThemeToggle />
-          <a
-            href={RELEASE_READY ? DOWNLOAD_URL : "#download"}
-            className="inline-flex h-8 items-center bg-ink px-3.5 text-[13px] font-semibold text-canvas transition-colors hover:bg-coral-deep hover:text-white"
-          >
-            {dict.nav.download}
-          </a>
+          {RELEASE_READY ? (
+            <DownloadCta
+              href={DOWNLOAD_URL}
+              className="inline-flex h-8 items-center bg-ink px-3.5 text-[13px] font-semibold text-canvas transition-colors hover:bg-coral-deep hover:text-white"
+            >
+              {dict.nav.download}
+            </DownloadCta>
+          ) : (
+            <a
+              href="#download"
+              className="inline-flex h-8 items-center bg-ink px-3.5 text-[13px] font-semibold text-canvas transition-colors hover:bg-coral-deep hover:text-white"
+            >
+              {dict.nav.download}
+            </a>
+          )}
         </div>
       </div>
     </header>

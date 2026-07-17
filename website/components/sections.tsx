@@ -3,6 +3,7 @@ import { BeforeAfter } from "@/components/before-after";
 import { StyleWall } from "@/components/style-wall";
 import { Reveal } from "@/components/reveal";
 import { Zoomable } from "@/components/zoomable";
+import { DownloadCta } from "@/components/download/button";
 import { DOWNLOAD_URL, GITHUB_URL, RELEASE_READY } from "@/lib/site";
 
 function SectionHeader({ head, className }: { head: SectionHead; className?: string }) {
@@ -132,13 +133,13 @@ export function DownloadSection({ dict }: { dict: Dict }) {
           <p className="mt-4 max-w-[38rem] text-[16px] leading-[1.6] text-white/90">{s.body}</p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
             {RELEASE_READY ? (
-              <a
+              // fixed white-on-coral chip: themed ink would flip light in dark mode
+              <DownloadCta
                 href={DOWNLOAD_URL}
-                // fixed white-on-coral chip: themed ink would flip light in dark mode
                 className="w-full bg-white px-7 py-3.5 text-center text-[16px] font-semibold text-[#16181d] transition-colors hover:bg-white/85 sm:w-auto"
               >
                 {s.ctaRelease}
-              </a>
+              </DownloadCta>
             ) : (
               <span className="w-full bg-white/20 px-7 py-3.5 text-center text-[16px] font-semibold text-white sm:w-auto">
                 {s.ctaPending}

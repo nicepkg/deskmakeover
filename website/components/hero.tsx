@@ -1,4 +1,5 @@
 import type { Dict } from "@/content/types";
+import { DownloadCta } from "@/components/download/button";
 import { MonitorScene } from "@/components/monitor-scene";
 import { texture } from "@/lib/manifest";
 import { DOWNLOAD_URL, GITHUB_URL, RELEASE_READY } from "@/lib/site";
@@ -49,12 +50,21 @@ export function Hero({ dict }: { dict: Dict }) {
               </p>
               <p className="mt-5 max-w-[26rem] text-[17px] leading-[1.6] text-ink-2">{h.sub}</p>
               <div className="mt-9 flex flex-wrap items-center gap-3">
-                <a
-                  href={RELEASE_READY ? DOWNLOAD_URL : "#download"}
-                  className="bg-coral px-6 py-3 text-[15px] font-semibold text-white transition-colors hover:bg-coral-deep"
-                >
-                  {RELEASE_READY ? h.ctaRelease : h.ctaPending}
-                </a>
+                {RELEASE_READY ? (
+                  <DownloadCta
+                    href={DOWNLOAD_URL}
+                    className="bg-coral px-6 py-3 text-[15px] font-semibold text-white transition-colors hover:bg-coral-deep"
+                  >
+                    {h.ctaRelease}
+                  </DownloadCta>
+                ) : (
+                  <a
+                    href="#download"
+                    className="bg-coral px-6 py-3 text-[15px] font-semibold text-white transition-colors hover:bg-coral-deep"
+                  >
+                    {h.ctaPending}
+                  </a>
+                )}
                 <a
                   href={GITHUB_URL}
                   target="_blank"

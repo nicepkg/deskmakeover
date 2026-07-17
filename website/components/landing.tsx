@@ -10,6 +10,7 @@ import {
   FaqSection,
 } from "@/components/sections";
 import { SiteFooter } from "@/components/site-footer";
+import { DownloadModal } from "@/components/download/modal";
 
 export function Landing({ dict }: { dict: Dict }) {
   return (
@@ -26,6 +27,7 @@ export function Landing({ dict }: { dict: Dict }) {
         <FaqSection dict={dict} />
       </main>
       <SiteFooter dict={dict} />
+      <DownloadModal dict={dict} />
     </>
   );
 }

@@ -203,6 +203,22 @@ p {
   }
 }
 
+/* download dialog on the native top layer — same motion family as the lightbox */
+dialog.dm-modal::backdrop {
+  background: color-mix(in srgb, var(--color-canvas) 90%, transparent);
+  backdrop-filter: blur(8px);
+  animation: dm-fade 200ms var(--ease-swift) both;
+}
+dialog.dm-modal[open] {
+  animation: dm-pop 280ms var(--ease-swift) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog.dm-modal::backdrop,
+  dialog.dm-modal[open] {
+    animation: none;
+  }
+}
+
 /* fullscreen image viewer on the native dialog top layer */
 dialog.dm-lightbox::backdrop {
   background: color-mix(in srgb, var(--color-canvas) 94%, transparent);

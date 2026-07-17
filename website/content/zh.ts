@@ -119,6 +119,27 @@ export const zh: Dict = {
       "只是 Windows 对下载人数还不多的新软件比较谨慎。点「更多信息」，再点「仍要运行」。DeskMakeover 完全开源，任何人都能读到它到底做了什么。",
     requirements: "WIN 10 1809+ / WIN 11 · 64 位",
   },
+  downloadModal: {
+    title: "下载 DeskMakeover",
+    device: {
+      "win-x64": "你的设备是 64 位 Windows，可直接安装",
+      "win-unknown": "你的设备是 Windows，安装包为 64 位版",
+      "win-arm": "你的设备可能是 ARM 版 Windows。目前只有 x64 安装包，仍可尝试安装，性能可能受影响",
+      "win-32": "这台 Windows 是 32 位的。DeskMakeover 需要 64 位的 Windows 10（1809 及以上）或 Windows 11，仍可下载留作备用",
+      "win-old": "这个 Windows 版本偏旧。DeskMakeover 需要 Windows 10（1809 及以上）或 Windows 11，仍可下载留作备用",
+      "desktop-other": "DeskMakeover 只支持 Windows。可以先下载安装包，回头拷到 Windows 电脑安装",
+      mobile: "手机装不了 Windows 应用。把这个页面发到电脑上打开，或先下载稍后传过去",
+    },
+    primaryCta: "下载安装包",
+    viaGithub: "GitHub 官方直链",
+    mirrorsLead: "大陆下载慢或打不开，用加速线路",
+    mirrorNote: "加速线路由第三方公益代理提供，与本项目无关。介意请走官方直链。",
+    historyLabel: "历史版本",
+    releaseNotes: "发布说明",
+    smartscreenStarted:
+      "已开始下载。安装时如果 Windows 弹出蓝色的「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」。这不是病毒警告，只是新软件下载人数还不多。",
+    close: "关闭",
+  },
   faq: {
     kicker: "常见问题",
     title: "大家常问的问题",

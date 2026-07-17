@@ -1,8 +1,9 @@
 # 10 — Website (dm.xiaominglab.com landing page)
 
 Status: approved direction v4 (owner, 2026-07-17). v1 light-editorial, v2 dark-cinema and
-v3 flat-shader takes were all owner-rejected; v3 lives in `website-legacy/` for reference
-and the v4 rewrite shares no visual DNA with it. Original panel + owner Q&A decisions:
+v3 flat-shader takes were all owner-rejected; v3 lived in `website-legacy/` until the
+owner ordered its deletion (2026-07-17, git history keeps it) and the v4 rewrite shares
+no visual DNA with it. Original panel + owner Q&A decisions:
 `docs/plans/2026-07-16-landing-page.md` §Decisions (routing/hosting decisions still stand;
 the art direction sections of that plan are superseded by this spec).
 

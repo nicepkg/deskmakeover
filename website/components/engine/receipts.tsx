@@ -4,11 +4,11 @@ import type { EngineReceipt } from "@/content/engine-types";
  * The receipts strip — every metric deep-links to the exact source on
  * GitHub. Unlinked numbers read as padding; linked ones are evidence.
  */
-export function Receipts({ lead, receipts }: { lead: string; receipts: EngineReceipt[] }) {
+export function Receipts({ lead, receipts }: { lead?: string; receipts: EngineReceipt[] }) {
   return (
     <div>
-      <p className="max-w-[46rem] text-[14px] leading-[1.6] text-ink-2">{lead}</p>
-      <div className="mt-5 grid gap-px border border-line bg-line sm:grid-cols-3">
+      {lead ? <p className="mb-5 max-w-[46rem] text-[14px] leading-[1.6] text-ink-2">{lead}</p> : null}
+      <div className="grid gap-px border border-line bg-line sm:grid-cols-3">
         {receipts.map((r, i) => (
           <a
             key={r.href + r.value}

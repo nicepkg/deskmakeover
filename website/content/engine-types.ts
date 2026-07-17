@@ -1,18 +1,18 @@
 /**
- * /engine/ — the pixel-engine deep-dive page (spec: docs/specs/10-website.md
- * §"/engine/"). One EngineDict per locale (engine-en.ts / engine-zh.ts).
+ * /engine/ — the pixel-engine deep-dive page, v2 (owner-directed redesign
+ * 2026-07-17: real Windows icons everywhere, three.js layer explosion,
+ * plain-language copy; spec: docs/specs/10-website.md §"/engine/").
  *
- * Wording iron laws (owner-approved, 2026-07-17 panel): the claim is
- * "purpose-built, fully deterministic pixel pipeline" — never "original
- * algorithm", never "AI". Standard methods are credited by name; byte-parity
- * claims stay scoped to WASM ↔ native from the same Rust source. Every number
- * shown on the page must deep-link to source (receipts, not vanity metrics).
+ * Wording iron laws (owner-approved): "purpose-built, fully deterministic
+ * pixel pipeline" — never "original algorithm", never "AI". Copy is written
+ * for ordinary people; the technical receipts live in §receipts and every
+ * number deep-links to source.
  */
 
 export interface EngineHead {
   /** mono index label, e.g. "01" */
   index: string;
-  /** mono uppercase kicker, e.g. "PORTRAIT" */
+  /** mono uppercase kicker, e.g. "READ" */
   kicker: string;
   title: string;
   body: string;
@@ -43,47 +43,56 @@ export interface EngineDict {
     title: string;
     sub: string;
     stats: EngineStat[];
+    /** the 3D layer-explosion labels (bottom → top) + its caption */
+    stack: {
+      raw: string;
+      plate: string;
+      final: string;
+      caption: string;
+    };
   };
-  portrait: EngineHead & {
+  /** 01 — the per-icon checkup (portrait) */
+  read: EngineHead & {
     steps: { key: string; label: string }[];
-    probeCaption: string;
-    iouLabel: string;
-  };
-  separate: EngineHead & {
-    stages: { title: string; detail: string }[];
-    floodCaption: string;
-    replay: string;
-  };
-  rescue: EngineHead & {
-    beats: { key: string; title: string; detail: string }[];
-    gauges: { deltaE: string; deltaL: string; melt: string };
     caption: string;
   };
-  invariant: EngineHead & {
+  /** 02 — subject/background separation on a real white-plate icon */
+  cut: EngineHead & {
+    caption: string;
+    replay: string;
+    maskNote: string;
+    /** floating 3D layer labels */
+    layers: { bg: string; art: string; final: string };
+  };
+  /** 03 — auto-separation rescue, real A/B */
+  rescue: EngineHead & {
+    beats: { key: string; title: string; detail: string }[];
+    offLabel: string;
+    onLabel: string;
+    caption: string;
+    /** floating 3D layer labels */
+    layers: { tile: string; rescue: string };
+  };
+  /** 04 — subject pixels never recoloured + hue spread trio */
+  promise: EngineHead & {
     rule: string;
-    ruleNote: string;
-    wheelCaption: string;
+    before: string;
+    after: string;
+    caption: string;
   };
-  color: EngineHead & {
-    points: { title: string; detail: string }[];
-  };
+  /** 05 — finishes computed live on a real icon */
   finish: EngineHead & {
     finishes: {
       key: "glass" | "pixel" | "sticker";
       kicker: string;
       name: string;
-      recipe: string[];
+      line: string;
     }[];
   };
-  guarantee: EngineHead & {
-    items: { title: string; detail: string }[];
-    receiptsLead: string;
-    receipts: EngineReceipt[];
-  };
-  playground: EngineHead & {
-    /** the "this demo is the product" badge */
+  /** 06 — the playground */
+  live: EngineHead & {
     badge: string;
-    sampleLabel: string;
+    castLabel: string;
     uploadCta: string;
     uploadNote: string;
     controls: {
@@ -99,10 +108,13 @@ export interface EngineDict {
       looks: { tag: string; label: string }[];
       finishes: { tag: string; label: string }[];
     };
-    /** the derived-plate chip on the hue slider */
     autoHue: string;
     loading: string;
     fallbackNote: string;
+  };
+  /** 07 — the engineer's receipts */
+  receipts: EngineHead & {
+    receipts: EngineReceipt[];
   };
   cta: {
     title: string;
@@ -110,4 +122,6 @@ export interface EngineDict {
     download: string;
     github: string;
   };
+  /** user-facing names for the real-icon cast (components/engine/lab.ts ids) */
+  castNames: Record<string, string>;
 }

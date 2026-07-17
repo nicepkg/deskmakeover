@@ -181,87 +181,6 @@ p {
   transition: none;
 }
 
-/* ---- /engine/ scene FX ------------------------------------------------
-   Server markup renders every scene in its FINAL state (no-JS, crawlers,
-   print). StoryFx keeps .fx-wait on a [data-fx] scope from arming until
-   play, so these rules express: default = final, .fx-wait = initial,
-   .fx-in = final again but with transitions. Engineering-precision motion
-   only — scanlines are linear, settles are critically damped, nothing
-   bounces. */
-
-/* 01 portrait — scanline sweeps once, then hides */
-.eng-scan {
-  left: 100%;
-  opacity: 0;
-}
-.fx-wait .eng-scan {
-  left: 0;
-  opacity: 1;
-}
-.fx-in .eng-scan {
-  transition:
-    left 1.2s linear,
-    opacity 0.25s linear 1.25s;
-}
-/* probes + step chips light as the scan passes (--fxd per element) */
-.eng-lit {
-  opacity: 1;
-}
-.fx-wait .eng-lit {
-  opacity: 0.18;
-}
-.fx-in .eng-lit {
-  transition: opacity 0.3s var(--ease-swift);
-  transition-delay: var(--fxd, 0ms);
-}
-
-/* 03 rescue — three beats via delayed transitions */
-.eng-beat {
-  opacity: 1;
-}
-.fx-wait .eng-beat {
-  opacity: 0;
-}
-.fx-in .eng-beat {
-  transition: opacity 0.4s var(--ease-swift);
-  transition-delay: var(--fxd, 0ms);
-}
-/* the rescue outline draws on along the silhouette */
-.eng-draw {
-  stroke-dashoffset: 0;
-}
-.fx-wait .eng-draw {
-  stroke-dashoffset: var(--dash, 400);
-}
-.fx-in .eng-draw {
-  transition: stroke-dashoffset 0.7s var(--ease-swift);
-  transition-delay: var(--fxd, 0ms);
-}
-/* gauge fills (width) with per-gauge delay */
-.eng-gauge {
-  transform: scaleX(1);
-  transform-origin: left center;
-}
-.fx-wait .eng-gauge {
-  transform: scaleX(0);
-}
-.fx-in .eng-gauge {
-  transition: transform 0.6s var(--ease-swift);
-  transition-delay: var(--fxd, 0ms);
-}
-
-/* 04 hue wheel — colliding plate dots rotate apart; critically damped */
-.eng-rot {
-  transform: rotate(var(--rot, 0deg));
-}
-.fx-wait .eng-rot {
-  transform: rotate(var(--rot0, 0deg));
-}
-.fx-in .eng-rot {
-  transition: transform 0.9s var(--ease-swift);
-  transition-delay: var(--fxd, 0ms);
-}
-
 /* the playground hue slider — flat square thumb over the hue track */
 .eng-hue {
   -webkit-appearance: none;
@@ -287,25 +206,6 @@ p {
 .eng-hue:focus-visible {
   outline: 2px solid var(--color-coral);
   outline-offset: 2px;
-}
-
-@media (prefers-reduced-motion: reduce), print {
-  .eng-scan {
-    opacity: 0 !important;
-  }
-  .eng-lit,
-  .eng-beat {
-    opacity: 1 !important;
-  }
-  .eng-draw {
-    stroke-dashoffset: 0 !important;
-  }
-  .eng-gauge {
-    transform: scaleX(1) !important;
-  }
-  .eng-rot {
-    transform: rotate(var(--rot, 0deg)) !important;
-  }
 }
 
 /* the live "ticker" cursor at the head of the tide line (stock-chart feel) */

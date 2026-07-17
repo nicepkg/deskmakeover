@@ -81,6 +81,7 @@ interface WasmExports {
   dm_session_register(s: number, idPtr: number, idLen: number, hash: bigint, srcPtr: number, w: number, h: number): number;
   dm_session_set_config(s: number, cfgPtr: number, cfgLen: number): number;
   dm_session_render(s: number, idPtr: number, idLen: number, isShortcut: number, showOriginal: number, size: number, hasFieldSeed: number, fieldSeed: number, out: number): number;
+  dm_session_seed_of(s: number, idPtr: number, idLen: number, out7: number): number;
 }
 
 async function loadWasm(url: string): Promise<WasmExports> {
@@ -132,6 +133,13 @@ export class EngineRenderer {
 
   private writeId(id: string): number {
     return this.enc.encodeInto(id, this.mem().subarray(this.idPtr, this.idPtr + this.idCap)).written ?? 0;
+  }
+
+  /** The artwork's decode-time hue seed ("#RRGGBB"), or null for the no-hue tail. */
+  seedOf(id: string): string | null {
+    const idLen = this.writeId(id);
+    if (this.wasm.dm_session_seed_of(this.session, this.idPtr, idLen, this.outPtr) !== 1) return null;
+    return new TextDecoder().decode(this.mem().subarray(this.outPtr, this.outPtr + 7));
   }
 
   /** Register (or replace) a 256² straight-alpha RGBA source under an id. */

@@ -62,3 +62,24 @@ scroll-jacking, no fake loading, no neon/glitch.
 | Route + nav | `/engine/`, nav 引擎 / Engine |
 
 Spec landed in `docs/specs/10-website.md` §"/engine/ — the pixel engine page".
+
+## v2 redirection (owner, 2026-07-18)
+
+The shipped v1 scenes were owner-rejected: hand-drawn sample icons ("小学生水平"),
+flat 2D overlays that failed to visualise the process, copy both too cute
+("拆开给你看" reads like an ad) and too obscure. Owner directives:
+1. Real, complex icons only — "随便拿一个真实的图标都好过你自己画一个".
+2. three.js / Lottie-grade motion: layered 3D decomposition ("打散"), user-drag
+   interactivity on every model, sudden collapse→burst choreography.
+3. Copy reframed as in-house-technology confidence (car-engine analogy): the
+   page presents 自研像素计算引擎 capability, plain language for ordinary users.
+4. "启用顶级 Subagent 首席设计师去写代码" — the three.js scene module
+   (`components/engine/three/scenes3d.ts`) was authored by a chief-creative-
+   technologist subagent against a typed contract; the orchestrator integrated,
+   fixed framing/anchor clamping, and added fine beats per owner review.
+
+Execution: real-icon cast from the app's fixture pack (folder/pics/bin/thispc/
+camera/mail/maps/panel), oracle mask drives the CUT split, rescue layer = real
+render diff, all five scenes drag-orbitable with double-click replay. Owner
+verdict on the round: 「现在这个版本已经进步很大了，给予认可」 with follow-ups
+(no visible canvas clipping, finer beats, full interactivity) applied same-day.

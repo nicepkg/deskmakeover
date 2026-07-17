@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EngineDict } from "@/content/engine-types";
 import { Head } from "../head";
-import { EngineRenderer, MASTER_SIZE, type PlaygroundConfig } from "./renderer";
-import { SAMPLES, rasterizeSample, rasterizeUserImage } from "./samples";
+import { CAST, getLab, rawImage, type Lab } from "../lab";
+import { MASTER_SIZE, type PlaygroundConfig } from "./renderer";
+import { rasterizeUserImage } from "./samples";
 
 type Status = "idle" | "loading" | "ready" | "failed";
 
@@ -56,22 +57,60 @@ function ControlRow({ label, children }: { label: string; children: React.ReactN
   );
 }
 
+/** A rail thumbnail: the real icon's raw artwork, drawn once the lab is up. */
+function CastThumb({
+  lab,
+  id,
+  name,
+  active,
+  onClick,
+}: {
+  lab: Lab | null;
+  id: string;
+  name: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!lab) return;
+    const img = rawImage(lab, id);
+    if (img) ref.current?.getContext("2d")?.putImageData(img, 0, 0);
+  }, [lab, id]);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={name}
+      title={name}
+      className={`h-[56px] w-[56px] border bg-card p-1.5 transition-colors ${
+        active ? "border-coral" : "border-line hover:border-ink-3"
+      }`}
+    >
+      <canvas ref={ref} width={MASTER_SIZE} height={MASTER_SIZE} className="h-full w-full" />
+    </button>
+  );
+}
+
 /**
  * The finale: dm-icon-wasm — the exact pipeline the desktop app ships —
- * running live in the page. Lazy-loads on approach; every frame is computed
- * on the spot (rAF-coalesced). No WASM → an honest pre-rendered fallback.
+ * running live in the page over the real-icon cast. Lazy-boots on approach;
+ * every frame is computed on the spot (rAF-coalesced). No WASM → an honest
+ * pre-rendered fallback.
  */
 export function Playground({ engine }: { engine: EngineDict }) {
-  const p = engine.playground;
+  const p = engine.live;
   const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<EngineRenderer | null>(null);
+  const labRef = useRef<Lab | null>(null);
   const rafRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const userThumbRef = useRef<HTMLCanvasElement>(null);
 
   const [status, setStatus] = useState<Status>("idle");
-  const [sel, setSel] = useState("note");
+  const [lab, setLab] = useState<Lab | null>(null);
+  const [sel, setSel] = useState("folder");
   const [shape, setShape] = useState("Apple");
   const [look, setLook] = useState("Original");
   const [finish, setFinish] = useState("None");
@@ -89,17 +128,13 @@ export function Playground({ engine }: { engine: EngineDict }) {
         if (!records.some((r) => r.isIntersecting)) return;
         io.disconnect();
         setStatus("loading");
-        (async () => {
-          try {
-            if (typeof WebAssembly !== "object") throw new Error("no wasm");
-            const renderer = await EngineRenderer.create();
-            for (const s of SAMPLES) renderer.registerSource(s.id, rasterizeSample(s.draw));
-            rendererRef.current = renderer;
+        getLab()
+          .then((l) => {
+            labRef.current = l;
+            setLab(l);
             setStatus("ready");
-          } catch {
-            setStatus("failed");
-          }
-        })();
+          })
+          .catch(() => setStatus("failed"));
       },
       { rootMargin: "600px" },
     );
@@ -107,17 +142,15 @@ export function Playground({ engine }: { engine: EngineDict }) {
     return () => io.disconnect();
   }, [status]);
 
-  useEffect(() => () => rendererRef.current?.dispose(), []);
-
   // one render per animation frame, latest settings win
   const hueHex = hue == null ? null : hslHex(hue, 62, 58);
   useEffect(() => {
     if (status !== "ready") return;
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => {
-      const renderer = rendererRef.current;
+      const l = labRef.current;
       const canvas = canvasRef.current;
-      if (!renderer || !canvas) return;
+      if (!l || !canvas) return;
       const config: PlaygroundConfig = {
         shape,
         subject: look,
@@ -135,7 +168,7 @@ export function Playground({ engine }: { engine: EngineDict }) {
       };
       const t0 = performance.now();
       try {
-        const rgba = renderer.render(sel, config, original, MASTER_SIZE);
+        const rgba = l.renderer.render(sel, config, original, MASTER_SIZE);
         if (!rgba) return;
         canvas.getContext("2d")?.putImageData(new ImageData(rgba, MASTER_SIZE, MASTER_SIZE), 0, 0);
         setMs(performance.now() - t0);
@@ -147,13 +180,13 @@ export function Playground({ engine }: { engine: EngineDict }) {
   }, [status, sel, shape, look, finish, hueHex, original]);
 
   const onUpload = useCallback(async (file: File) => {
-    const renderer = rendererRef.current;
-    if (!renderer) return;
+    const l = labRef.current;
+    if (!l) return;
     try {
       const bitmap = await createImageBitmap(file);
       const rgba = rasterizeUserImage(bitmap);
       bitmap.close();
-      renderer.registerSource("user", rgba);
+      l.renderer.registerSource("user", rgba);
       const thumb = userThumbRef.current;
       if (thumb) {
         const tctx = thumb.getContext("2d");
@@ -163,7 +196,7 @@ export function Playground({ engine }: { engine: EngineDict }) {
       setHasUser(true);
       setSel("user");
     } catch {
-      // unreadable image — leave the current selection in place
+      // unreadable image — keep the current selection
     }
   }, []);
 
@@ -176,10 +209,17 @@ export function Playground({ engine }: { engine: EngineDict }) {
           {/* controls */}
           <div className="space-y-7 lg:col-span-5">
             <div>
-              <p className="font-mono text-[10.5px] tracking-[0.18em] text-ink-3">{p.sampleLabel.toUpperCase()}</p>
+              <p className="font-mono text-[10.5px] tracking-[0.18em] text-ink-3">{p.castLabel.toUpperCase()}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {SAMPLES.map((s) => (
-                  <SampleThumb key={s.id} id={s.id} draw={s.draw} active={sel === s.id} onClick={() => setSel(s.id)} />
+                {CAST.map((c) => (
+                  <CastThumb
+                    key={c.id}
+                    lab={lab}
+                    id={c.id}
+                    name={engine.castNames[c.id] ?? c.id}
+                    active={sel === c.id}
+                    onClick={() => setSel(c.id)}
+                  />
                 ))}
                 <button
                   type="button"
@@ -322,37 +362,5 @@ export function Playground({ engine }: { engine: EngineDict }) {
         </div>
       </div>
     </section>
-  );
-}
-
-function SampleThumb({
-  id,
-  draw,
-  active,
-  onClick,
-}: {
-  id: string;
-  draw: (ctx: CanvasRenderingContext2D, size: number) => void;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const c = ref.current;
-    const ctx = c?.getContext("2d");
-    if (c && ctx) draw(ctx, c.width);
-  }, [draw]);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={id}
-      className={`h-[56px] w-[56px] border bg-card p-1.5 transition-colors ${
-        active ? "border-coral" : "border-line hover:border-ink-3"
-      }`}
-    >
-      <canvas ref={ref} width={96} height={96} className="h-full w-full" />
-    </button>
   );
 }

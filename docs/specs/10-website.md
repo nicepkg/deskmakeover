@@ -181,36 +181,32 @@ icon pipeline: scrollytelling first, a live WASM playground as the finale.
 - Every number on the page deep-links to the exact GitHub source line or test
   file (receipts, not vanity metrics).
 
-**Structure (7 sections + finale):**
-1. `01 PORTRAIT` — the per-icon profile: five-step classification, edge/shape-ring
-   background probes, dominant colour in OKLab, silhouette↔shape match.
-2. `02 SEPARATE` — subject/background: alpha silhouette or border-seeded BFS
-   flood; Otsu plate split.
-3. `03 RESCUE` — auto separation: rim-band sampling on composited colour, OKLab
-   distance + lightness double threshold (chromatic acuity rationale), melt-share
-   trigger.
-4. `04 INVARIANT` — subject pixels are never recoloured; deterministic hue spread
-   (≥12° gap, ±18° cap) told on a hue wheel.
-5. `05 COLOR` — linear-light sRGB + OKLab everywhere, tonal duotone LUT, squircle
-   corner math, area-average resampling.
-6. `06 FINISH` — glass / pixel / sticker as algorithms (fresnel + refraction,
-   grid average → candy palette → contour ring, chamfer-distance die-cut).
-7. `07 GUARANTEE` — degenerate-input tests, checked allocation, render-size caps,
-   error codes over panics, snapshot-first restore; the receipts strip lives here.
-8. **Playground finale** — the real `dm-icon-wasm` module (≈88 KB gzip, lazy-loaded
-   on approach) rendering 256 px tiles rAF-coalesced on the main thread (one tile
-   per frame is ms-scale; the app's worker pool exists for hundreds of tiles).
-   Controls: shape, look, plate hue, finish toggles. Sources: a self-made sample icon set
-   (no third-party marks) + local user upload ("your image never leaves the
-   browser"). WASM unavailable → pre-rendered frame fallback with an honest note;
-   the sliders switch to stepping the pre-rendered set.
+**Structure (owner-directed v2, 2026-07-18 — real icons + three.js):**
+The page is a technology showcase ("this pixel engine is built in-house"), not a
+teardown toy. Every visual is REAL engine output over REAL Windows icons (the
+app's own fixture pack, copied to `public/engine/icons/`; no hand-drawn stand-ins,
+no third-party brand marks). One shared wasm lab (`components/engine/lab.ts`)
+boots `dm-icon-wasm` once and feeds every scene and the playground.
 
-**Motion:** engineering-precision only — scanline sweeps are linear (scanners
-don't ease), BFS flood advances in visible discrete steps, rescue plays a
-three-beat danger/detect/save sequence, hue-wheel points settle critically damped
-(determinism doesn't bounce). No particles, no spring overshoot, no
-scroll-jacking, no fake progress bars. Every module has a static
-`prefers-reduced-motion` state and is complete without JS.
+Five three.js layer scenes (`components/engine/three/scenes3d.ts`, one shared
+Stage: drag-orbit + inertia, idle sway, label projection clamped inside the
+canvas, IO/visibility-paused RAF, full dispose; wrappers own captions/chips):
+1. Hero — the Pictures-folder icon exploded into its three real layers (raw /
+   derived plate / final) on frosted glass cards; collapsed, then bursts apart;
+   double-click replays.
+2. `01 READ` — a coral scan sweeps the This PC icon; the outline layer lifts,
+   the seed-colour chip flies out, profile ticks appear.
+3. `02 CUT` — the Control Panel icon splits along the ORACLE mask (the desktop
+   engine's real per-pixel verdict): base blinks, flushes coral, peels away; the
+   finished tile rises in.
+4. `03 RESCUE` — the Mail icon on a plate matched to its own seed; the diff
+   between rescue-off/on renders floats as "the rescue layer", then merges.
+   Off/on toggle is a real A/B (autoSeparation is the only changed bit).
+5. `04 PROMISE` — three blue-family tiles; plate layers recolour and step
+   aside, artwork layers never move (the iron law, visible).
+6. `05 FINISH` — glass/pixel/sticker cards, each a live render of the folder icon.
+7. `06 LIVE` — the playground (real-icon cast rail + upload; rAF-coalesced).
+8. `07 RECEIPTS` — deep-linked source receipts; closing CTA band.
 
 **Routing:** normal locale page (`/engine/` + `/zh/engine/`) inside both trees
 with hreflang alternates — unlike `/story/`, which stays single-language. Engine

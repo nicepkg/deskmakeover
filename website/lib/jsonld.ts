@@ -1,5 +1,6 @@
 import type { Dict } from "@/content/types";
 import { localeDef, pageUrl as localePageUrl, siteLanguages } from "@/lib/locales";
+import { RELEASE } from "@/lib/release";
 import { GITHUB_URL, RELEASES_LATEST_URL, RELEASE_READY, SITE_URL } from "@/lib/site";
 
 /**
@@ -58,8 +59,15 @@ export function jsonLdScript(dict: Dict): string {
           url: "https://github.com/2214962083",
         },
         inLanguage,
-        // version should come from the actual published release, not a guess
-        ...(RELEASE_READY ? { downloadUrl: RELEASES_LATEST_URL } : {}),
+        // real facts from the actual published release, resolved at build time
+        ...(RELEASE_READY
+          ? {
+              softwareVersion: RELEASE.version,
+              datePublished: RELEASE.publishedAt,
+              downloadUrl: RELEASES_LATEST_URL,
+              releaseNotes: RELEASE.notesUrl,
+            }
+          : {}),
       },
       {
         "@type": "FAQPage",

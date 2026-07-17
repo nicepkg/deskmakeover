@@ -4,7 +4,7 @@ Canonical sites: https://dm.xiaominglab.com/ (English) · https://dm.xiaominglab
 Source: https://github.com/nicepkg/deskmakeover
 License: MIT (https://github.com/nicepkg/deskmakeover/blob/main/LICENSE)
 Publisher: nicepkg (https://github.com/nicepkg)
-Last reviewed: 2026-07-17
+Last reviewed: __LAST_REVIEWED__
 
 ## What it is
 
@@ -19,14 +19,13 @@ DeskMakeover（桌面美颜）是一款免费开源的 Windows 桌面美化工�
 它用九套手工调校的外观给桌面图标换装，在壁纸上圈出半透明的整理分区，还能替换或去掉快捷
 方式小箭头。所有改动之前都会先给桌面拍快照（图标、箭头、壁纸），一键即可还原到和原来
 一模一样。它只在本机运行：没有账号，没有遥测，什么都不上传。
+发布状态：__AVAILABILITY_ZH__
 
 ## Requirements and availability
 
 - Supported: 64-bit Windows 10 version 1809 or newer, and Windows 11.
 - Not available for macOS or Linux.
-- Release status: beta, pre-release. No public installer is available yet as of
-  2026-07-17. The first installer will ship at
-  https://github.com/nicepkg/deskmakeover/releases (empty until then).
+__AVAILABILITY_EN__
 - Price: free forever. Open source under the MIT license.
 
 ## Features

@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: write # create the Release + upload the signed installer
+  actions: write # dispatch the website workflow after publishing
 
 concurrency:
   group: release-${{ github.ref }}
@@ -105,3 +106,14 @@ jobs:
           $want = '${{ github.ref_name }}'.Substring(1)
           if ($installer.Name -notmatch [regex]::Escape($want)) { throw "installer $($installer.Name) does not carry version $want" }
           gh release create "${{ github.ref_name }}" "$($installer.FullName)" --title "${{ github.ref_name }}" --generate-notes
+
+      # Releases created with GITHUB_TOKEN do not fire other workflows'
+      # `release:` triggers (GitHub's recursion guard) — workflow_dispatch is
+      # the documented exception, so kick the website rebuild explicitly. The
+      # site then bakes this release's facts in at build time.
+      - name: Rebuild the website with the new release facts
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run website.yml --ref main

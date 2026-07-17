@@ -153,14 +153,28 @@ re-shoot must go through the real app, never mockups.
   writes `lib/image-manifest.json`; pages use `<picture>` with explicit width/height.
   Hero 3D texture payload is budget-gated (fails the build over 420 KB).
 
-## Download contract (dual state)
+## Download contract (dual state, fully automated)
 
-- Build-time constant `RELEASE_READY` in `lib/site.ts`.
-  - `false`: hero + download CTAs read "Coming soon"; download block links Watch-on-GitHub
-    and explains the installer is on the way. No dead link to an empty Releases page.
-  - `true`: CTAs link `releases/latest` (never a direct .exe URL) and the SmartScreen
-    honesty note ("More info → Run anyway", open-source assurance) appears in the
-    download block.
+- Release state is resolved at BUILD TIME from the latest GitHub Release —
+  `scripts/fetch-release.mjs` runs first in `prebuild`, writes the gitignored
+  `lib/release-data.json` (typed by `lib/release.ts`; `lib/site.ts` derives
+  `RELEASE_READY`), and renders `public/llms{,-full}.txt` from
+  `scripts/templates/`. **Nothing is flipped by hand, ever.**
+  - no published release (API 404, drafts/prereleases ignored): hero + download CTAs
+    read "Coming soon"; download block links Watch-on-GitHub. No dead link to an empty
+    Releases page; JSON-LD and llms.txt carry no version/download facts.
+  - release published: CTAs link `releases/latest` (never a direct .exe URL), the
+    SmartScreen honesty note appears, JSON-LD gains softwareVersion/datePublished/
+    downloadUrl/releaseNotes, llms files state the version + date, sitemap lastmod
+    advances to the release date.
+  - fetch failure: local builds keep the previous snapshot (warn); release-driven CI
+    builds run with `RELEASE_FETCH_STRICT=1` and fail loudly instead of shipping stale
+    facts. `DM_FAKE_RELEASE=1` fakes the released state for local testing only.
+- Automation chain: tag push → `release.yml` (self-hosted signed build) publishes the
+  Release, then dispatches `website.yml` (releases created with GITHUB_TOKEN cannot
+  fire `release:` triggers — GitHub's recursion guard; workflow_dispatch is the
+  documented exception). `website.yml` also listens to `release: [published, edited,
+  deleted]` for human-published releases, and both paths rebuild + deploy.
 - No client-side OS sniffing, no copy-link/mailto widgets (owner removed them in v4).
 
 ## SEO / GEO
@@ -197,8 +211,12 @@ Cloudflare Web Analytics beacon only (no cookies), injected only when
   `assets: { directory: "./out" }`, `workers_dev: true`. No Worker script file: requests
   are served from assets and bill nothing. Custom-domain route `dm.xiaominglab.com`
   (`custom_domain: true`; xiaominglab.com is a zone in the account) binds on deploy.
-- CI: `.github/workflows/website.yml`, path-filtered to `website/**`; builds with bun,
-  deploys with wrangler 4 on push to main (deploy step gated on the CF token secret).
+- CI: `.github/workflows/website.yml` — push to main (path-filtered to `website/**`),
+  `release: [published, edited, deleted]`, `workflow_dispatch` (used by release.yml
+  post-publish), PR preview versions. Builds with bun, deploys with wrangler 4; the
+  deploy step needs repo secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`
+  (repo-level — org secrets don't reach a private repo on the free plan) and skips
+  with a visible flag until the token secret exists.
 
 ## Performance budget (acceptance)
 

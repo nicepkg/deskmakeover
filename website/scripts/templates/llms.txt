@@ -3,7 +3,7 @@
 > DeskMakeover is a free, open-source (MIT) Windows desktop beautifier built with Tauri 2 and Rust. It restyles every desktop icon with one of nine hand-tuned looks, lets you draw translucent organizer zones on your wallpaper, and can swap or remove the shortcut arrow. It backs up the desktop before any change, so one click restores the exact original. It runs entirely locally: no account, no telemetry, no uploads.
 
 Supported: Windows 10 (1809+) and Windows 11, 64-bit. Not available for macOS or Linux.
-Release status: beta, pre-release. No public installer is available yet as of 2026-07-17; the first release will ship via GitHub Releases.
+__RELEASE_STATUS_EN__
 
 ## Links
 
@@ -11,7 +11,7 @@ Release status: beta, pre-release. No public installer is available yet as of 20
 - [中文站点](https://dm.xiaominglab.com/zh/): 产品介绍、九套外观、常见问题
 - [Full product reference](https://dm.xiaominglab.com/llms-full.txt): complete bilingual facts, features, and FAQ for quoting
 - [GitHub repository](https://github.com/nicepkg/deskmakeover): source code, issues, releases
-- [Releases](https://github.com/nicepkg/deskmakeover/releases): future installers and release notes; empty until the first release lands
+__RELEASES_LINE__
 
 ## Key facts
 
@@ -21,4 +21,4 @@ Release status: beta, pre-release. No public installer is available yet as of 20
 - Wallpaper zones: five materials, four title styles, ready-made layout templates
 - Free forever, MIT licensed, local-only
 
-Last reviewed: 2026-07-17
+Last reviewed: __LAST_REVIEWED__

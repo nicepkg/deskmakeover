@@ -1,15 +1,15 @@
 import type { MetadataRoute } from "next";
 import { LOCALES, alternateUrls, pageUrl } from "@/lib/locales";
-import { CONTENT_UPDATED } from "@/lib/site";
+import { LAST_CONTENT_DATE } from "@/lib/site";
 
 export const dynamic = "force-static";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const languages = alternateUrls();
-  // lastModified is a real content date maintained in source, never build time
+  // a real date (hand-maintained content date or release date), never build time
   return LOCALES.map((l) => ({
     url: pageUrl(l.code),
-    lastModified: CONTENT_UPDATED,
+    lastModified: LAST_CONTENT_DATE,
     alternates: { languages },
   }));
 }

@@ -48,3 +48,8 @@ next-env.d.ts
 
 # font source archives (subset output in app/fonts/ is committed)
 /fonts-src/
+
+# generated at build time by scripts/fetch-release.mjs
+/lib/release-data.json
+/public/llms.txt
+/public/llms-full.txt

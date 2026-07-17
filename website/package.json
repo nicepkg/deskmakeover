@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "prebuild": "bun scripts/build-images.mjs && bun scripts/subset-zh-font.mjs",
-    "dev": "bun scripts/build-images.mjs && bun scripts/subset-zh-font.mjs && next dev",
+    "prebuild": "bun scripts/fetch-release.mjs && bun scripts/build-images.mjs && bun scripts/subset-zh-font.mjs",
+    "dev": "bun scripts/fetch-release.mjs && bun scripts/build-images.mjs && bun scripts/subset-zh-font.mjs && next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "deploy": "bun run build && wrangler deploy"
+    "deploy": "bun run build && wrangler deploy",
+    "pretypecheck": "bun scripts/fetch-release.mjs"
   },
   "dependencies": {
     "next": "16.2.10",

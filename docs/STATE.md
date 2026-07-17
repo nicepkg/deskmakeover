@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-16
+updated: 2026-07-17
 version: 0.1.0 pre-release (owner-named 2026-07-15; root package.json + src-tauri/tauri.conf.json = 0.1.0; stays 0.x until the owner-supervised Windows WRITE surface is human-verified, then 1.0)
 branch: main (repo is PRIVATE; making it public is the owner's call at release)
 ---
@@ -154,6 +154,15 @@ what is in flight, and what comes next.
 
 ## Recently shipped (one line each — detail in journal/CHANGELOG)
 
+- 2026-07-17 **自动分离 auto-separation (owner "icon 颜色与背景非常接近…应该给 icon 加一个描边")**:
+  a bare subject that perceptually melts into its plate (white-on-white BareWhite, preset/user
+  plates matching the artwork, bimodal rims) gets a die-cut contrast stroke outside its silhouette
+  — OKLab melt detection on plate-composited rim samples (source-res, size-invariant, stratified
+  splitmix64 sampling), ink = `field_shadow_tone(plate)`. New `Config::auto_separation` (ABI byte
+  11): false = frozen-oracle bytes (M6 four-way cert re-run 0-diff), stamped true at resolve time
+  (effectiveTileConfig + style_resolve), never persisted in presets. Spec 06 §1.5;
+  `separation.rs` + 10 compose-level regressions; codex 2-round APPROVE. Also fixed a
+  pre-existing parallel-test race (NATIVE_ARROW global vs output-cache key-stability tests).
 - 2026-07-16 **Elevated apply/restore WIRED (owner "更新桌面还是不行 / 我要所有图标都可修改 / 必须提权")**:
   the main app now routes privileged shared items (`C:\Users\Public\Desktop\*.lnk` — Chrome et al.,
   ACL-protected → unelevated Access-Denied → the whole batch rolled back) through the `dm-elevated`

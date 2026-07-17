@@ -108,6 +108,14 @@ pub struct IconHost {
     sources: Mutex<SourceCache>,
     /// Monotonic revision: bumps each scan, cache-busting every source URL.
     revision: AtomicU32,
+    /// Last-good desktop icon positions (name → (x,y)) and cell grid, retained so a scan that RACES an
+    /// Explorer restart — during which the desktop shell view is momentarily unreadable — reuses the
+    /// true layout instead of collapsing the preview to a synthetic grid / approximated cell size
+    /// (owner box 2026-07-17: "after a preset apply the preview file positions scramble"). The apply's
+    /// Explorer restart does not MOVE the icons, so the last-good values ARE the correct ones; a fresh
+    /// read only overwrites the cache when it actually succeeds.
+    last_positions: Mutex<std::collections::HashMap<String, (i32, i32)>>,
+    last_grid: Mutex<Option<dm_domain::DesktopIconGrid>>,
     /// The native shortcut-arrow overlay state (ADR-0021), persisted to `arrow_marker` so it
     /// survives a restart (codex Block 5 — the overlay is machine-wide + outlives the process).
     arrow_overlay: Mutex<ArrowOverlayDto>,
@@ -189,6 +197,8 @@ impl IconHost {
             }),
             sources: Mutex::new(SourceCache::new(SOURCE_CACHE_CAP)),
             revision: AtomicU32::new(0),
+            last_positions: Mutex::new(std::collections::HashMap::new()),
+            last_grid: Mutex::new(None),
             arrow_overlay: Mutex::new(arrow),
             arrow_marker,
             overlay_ico,

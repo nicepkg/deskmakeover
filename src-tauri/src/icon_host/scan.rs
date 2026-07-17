@@ -89,13 +89,27 @@ impl IconHost {
         // Live positions (technique A) matched BY NAME, the oracle's own matching rule; an
         // unreadable layout (headless session, denied QI) or an unmatched item degrades to the
         // synthetic grid slot — positions are a mirror nicety, never fatal.
-        let live_slots: HashMap<String, (i32, i32)> = self
-            .geometry
-            .positions()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|s| (s.name, (s.x, s.y)))
-            .collect();
+        // A scan can RACE an apply's Explorer restart, during which the desktop shell view is briefly
+        // unreadable and `positions()` returns nothing. Use + cache a fresh read only when it actually
+        // yields positions; otherwise reuse the last-good layout, so the preview keeps the icons where
+        // they are instead of collapsing to a synthetic grid (owner box 2026-07-17). The restart never
+        // moves the icons, so the retained positions are the correct ones.
+        let live_slots: HashMap<String, (i32, i32)> = {
+            let fresh: HashMap<String, (i32, i32)> = self
+                .geometry
+                .positions()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|s| (s.name, (s.x, s.y)))
+                .collect();
+            let mut cache = self.last_positions.lock().unwrap();
+            if fresh.is_empty() {
+                cache.clone()
+            } else {
+                *cache = fresh.clone();
+                fresh
+            }
+        };
         let mut next_sources: HashMap<String, Vec<u8>> = HashMap::new();
         // Hard per-scan source-preview budget (codex R2 B-5). The source cache pins the whole live
         // generation (a live key is never evicted mid-serve), so without an upstream bound a
@@ -267,13 +281,29 @@ impl IconHost {
         let grid = self
             .geometry
             .geometry()
-            .map(|g| GridMetricsDto {
-                screen_width: g.screen_width,
-                screen_height: g.screen_height,
-                taskbar_height: g.taskbar_height,
-                cell_width: g.icon_grid.map(|ig| ig.cell_width),
-                cell_height: g.icon_grid.map(|ig| ig.cell_height),
-                icon_px: g.icon_grid.map(|ig| ig.icon_px),
+            .map(|g| {
+                // Screen dims are user32 metrics (readable even mid-restart); the CELL grid comes from
+                // the desktop shell view, which is not — so cache the last-good grid and reuse it when a
+                // fresh read has none, keeping true cell sizes through an Explorer restart (owner
+                // 2026-07-17). A `None` here else falls the FRONTEND back to approximation constants.
+                let cell = {
+                    let mut cache = self.last_grid.lock().unwrap();
+                    match g.icon_grid {
+                        Some(ig) => {
+                            *cache = Some(ig);
+                            Some(ig)
+                        }
+                        None => *cache,
+                    }
+                };
+                GridMetricsDto {
+                    screen_width: g.screen_width,
+                    screen_height: g.screen_height,
+                    taskbar_height: g.taskbar_height,
+                    cell_width: cell.map(|ig| ig.cell_width),
+                    cell_height: cell.map(|ig| ig.cell_height),
+                    icon_px: cell.map(|ig| ig.icon_px),
+                }
             })
             .unwrap_or(GridMetricsDto {
                 screen_width: 1920,

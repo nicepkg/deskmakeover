@@ -1,4 +1,5 @@
 import type { Dict } from "@/content/types";
+import { LangSwitch } from "@/components/lang";
 import { DOWNLOAD_URL, GITHUB_URL, RELEASE_READY } from "@/lib/site";
 
 export function SiteNav({ dict }: { dict: Dict }) {
@@ -33,12 +34,13 @@ export function SiteNav({ dict }: { dict: Dict }) {
           </a>
         </nav>
         <div className="flex items-center gap-3">
-          <a
+          <LangSwitch
             href={dict.nav.langHref}
+            lang={dict.locale === "zh" ? "en" : "zh"}
             className="font-mono text-[12px] tracking-[0.08em] text-ink-3 transition-colors hover:text-ink"
           >
             {dict.nav.langLabel}
-          </a>
+          </LangSwitch>
           <a
             href={RELEASE_READY ? DOWNLOAD_URL : "#download"}
             className="bg-ink px-3.5 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-coral-deep"

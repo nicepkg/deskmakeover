@@ -23,6 +23,7 @@ export function buildMetadata(dict: Dict): Metadata {
       title: dict.meta.title,
       description: dict.meta.description,
       locale: dict.locale === "zh" ? "zh_CN" : "en_US",
+      alternateLocale: [dict.locale === "zh" ? "en_US" : "zh_CN"],
       images: [
         {
           url: "/social-card.png",
@@ -36,7 +37,7 @@ export function buildMetadata(dict: Dict): Metadata {
       card: "summary_large_image",
       title: dict.meta.title,
       description: dict.meta.description,
-      images: ["/social-card.png"],
+      images: [{ url: "/social-card.png", alt: dict.meta.ogAlt }],
     },
     icons: {
       icon: "/logo.png",

@@ -26,7 +26,7 @@ function Points({ points }: { points: PointEntry[] }) {
     <div className="mt-8 space-y-6">
       {points.map((p) => (
         <div key={p.title}>
-          <p className="text-[15px] font-semibold text-ink">{p.title}</p>
+          <h3 className="text-[15px] font-semibold text-ink">{p.title}</h3>
           <p className="mt-1 text-[15px] leading-[1.6] text-ink-2">{p.body}</p>
         </div>
       ))}

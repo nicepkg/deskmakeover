@@ -108,9 +108,14 @@ re-shoot must go through the real app, never mockups.
 
 ## Routing & i18n
 
-- `/` = English, `/zh` = Chinese; both fully static-prerendered. No automatic locale
-  redirect of any kind (no meta refresh, no JS sniffing). Header carries an explicit
-  language switch.
+- `/` = English, `/zh` = Chinese; both fully static-prerendered.
+- Automatic first-visit locale routing (owner decision 2026-07-17, reversing the earlier
+  no-redirect rule): the root page inlines a tiny blocking script (`lib/lang-redirect.ts`)
+  that walks `navigator.languages` in preference order — first zh* match routes to `/zh/`
+  before paint, first en* match stays. An explicit language-switch click stores
+  `dm-lang` in localStorage (`components/lang.tsx`) and always wins afterwards; `/zh/`
+  never auto-redirects, so shared links and crawlers keep stable, indexable URLs.
+  Header and footer carry the explicit language switch.
 - Dictionaries are plain TypeScript objects (`content/{types,en,zh}.ts`); no i18n library.
 - `hreflang` alternates on both pages (`en`, `zh-CN`, `x-default` → `/`).
 
@@ -152,13 +157,24 @@ re-shoot must go through the real app, never mockups.
 ## SEO / GEO
 
 - Next metadata API: per-locale title/description/canonical/OG/Twitter
-  (`summary_large_image`, `social-card.png`).
-- JSON-LD inline: `SoftwareApplication` (UtilitiesApplication, Windows 10/11, price 0,
-  MIT, downloadUrl) + `FAQPage`. No aggregateRating until real ratings exist.
-- `app/sitemap.ts` + `app/robots.ts` (`force-static`); robots explicitly allows GPTBot,
-  ClaudeBot, Claude-Web, PerplexityBot, OAI-SearchBot, Google-Extended and peers.
-- Static `public/llms.txt` (short product description + key links).
+  (`summary_large_image`, `social-card.png` with alt), `og:locale` + alternate.
+- JSON-LD inline: one `@graph` per page — `Organization` (nicepkg, sameAs GitHub) →
+  `WebSite` → `SoftwareApplication` (UtilitiesApplication, Windows 10/11, price 0, MIT,
+  publisher by `@id`) → `FAQPage`, joined by stable `@id`s. Release facts (downloadUrl,
+  softwareVersion) are emitted ONLY when `RELEASE_READY` is true — never publish a
+  version or download link for an empty Releases page. No aggregateRating until real
+  ratings exist.
+- `app/sitemap.ts` (x-default alternate; `lastModified` from `CONTENT_UPDATED` in
+  `lib/site.ts`, a source-maintained content date, never build time) + `app/robots.ts`
+  (`force-static`); robots explicitly allows GPTBot, ClaudeBot, Claude-Web,
+  PerplexityBot, OAI-SearchBot, Google-Extended and peers.
+- Static `public/llms.txt` (short description + key facts + honest release status,
+  last-reviewed date) linking `public/llms-full.txt` (bilingual quotation-ready corpus:
+  descriptions, features, preset names en/zh, requirements, FAQ, privacy). Keep both in
+  sync with `RELEASE_READY`.
 - FAQ answers are self-contained (name the product + platform) so LLMs can quote them.
+- Branded bilingual 404 via `app/global-not-found.tsx` (noindex, links to both locales);
+  Cloudflare `not_found_handling: "404-page"` serves it with a real 404 status.
 
 ## Analytics
 

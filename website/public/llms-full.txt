@@ -1,0 +1,94 @@
+# DeskMakeover (桌面美颜) — full product reference
+
+Canonical sites: https://dm.xiaominglab.com/ (English) · https://dm.xiaominglab.com/zh/ (中文)
+Source: https://github.com/nicepkg/deskmakeover
+License: MIT (https://github.com/nicepkg/deskmakeover/blob/main/LICENSE)
+Publisher: nicepkg (https://github.com/nicepkg)
+Last reviewed: 2026-07-17
+
+## What it is
+
+DeskMakeover is a free, open-source Windows desktop beautifier built with Tauri 2 and Rust
+(React UI in the system WebView2). It restyles every desktop icon with one of nine
+hand-tuned looks, draws translucent organizer zones onto the wallpaper, and can swap or
+remove the shortcut-arrow overlay. Before any change it snapshots the desktop (icons,
+shortcut arrows, wallpaper), so one click restores the exact original state. It runs
+entirely on the user's machine: no account, no telemetry, no uploads.
+
+DeskMakeover（桌面美颜）是一款免费开源的 Windows 桌面美化工具，基于 Tauri 2 和 Rust。
+它用九套手工调校的外观给桌面图标换装，在壁纸上圈出半透明的整理分区，还能替换或去掉快捷
+方式小箭头。所有改动之前都会先给桌面拍快照（图标、箭头、壁纸），一键即可还原到和原来
+一模一样。它只在本机运行：没有账号，没有遥测，什么都不上传。
+
+## Requirements and availability
+
+- Supported: 64-bit Windows 10 version 1809 or newer, and Windows 11.
+- Not available for macOS or Linux.
+- Release status: beta, pre-release. No public installer is available yet as of
+  2026-07-17. The first installer will ship at
+  https://github.com/nicepkg/deskmakeover/releases (empty until then).
+- Price: free forever. Open source under the MIT license.
+
+## Features
+
+- Nine built-in icon looks, applied to every icon in one click. English names:
+  Squircle, Blueprint, Pixel Era, Gleam, Glaze, Die-Cut, Porthole, Scrapbook, Creekstone.
+  中文名：方圆、蓝图、像素纪元、浮光、釉光、随形贴、圆窗、拼贴手帐、溪石。
+- Full customization beyond the presets: eleven icon shapes, plus coloring, plates,
+  finishes, and shortcut marks, each adjustable independently; apps, folders, and plain
+  files can each wear their own style; per-icon restyle via right-click; undo/redo.
+- Style library: save your own combinations, export them as files, import style packs.
+- Wallpaper zones: translucent organizer regions drawn onto the wallpaper with five
+  materials and four title styles; ready-made layout templates apply in one click; the
+  original wallpaper is backed up and zones remove in one click.
+- Shortcut arrow: swap the default overlay for a cleaner mark or remove it entirely
+  (a whitelisted elevated helper changes one Shell Icons registry value, snapshotted
+  first and restorable like everything else).
+- Calm helper: optionally quiets some of Windows' noisier defaults; asks before every
+  change and every change can be turned back.
+- Reversibility as an architectural constraint: every write goes through a snapshot and
+  transaction ledger; one-click restore returns the desktop to its exact prior state.
+- Live preview: what you see in the app is rendered by the same Rust icon core that
+  bakes the final icons (WASM in preview, native on apply).
+
+## FAQ (English)
+
+Q: Can DeskMakeover break my PC, or leave me stuck?
+A: No. DeskMakeover snapshots the Windows desktop (icons, shortcut arrows, wallpaper)
+   before changing anything, and every change is one click to undo, back to exactly how
+   it was.
+
+Q: Will DeskMakeover slow my computer down?
+A: Not noticeably. DeskMakeover does the heavy work once on apply; the rest of the time
+   it sits quietly and puts the look back if Windows resets the desktop.
+
+Q: Is DeskMakeover really free?
+A: DeskMakeover is free and MIT-licensed, with the source on GitHub. It runs only on the
+   user's machine: no account, no telemetry, nothing uploaded.
+
+Q: Does DeskMakeover work on macOS or Linux?
+A: No. DeskMakeover is built for 64-bit Windows 10 (version 1809 or newer) and
+   Windows 11 only.
+
+## FAQ（中文）
+
+问：DeskMakeover 会不会把电脑搞坏，或者回不去了？
+答：不会。DeskMakeover（桌面美颜）动手之前先给 Windows 桌面拍快照，图标、快捷方式箭头、
+    壁纸都在内，每处改动都能一键还原到和原来一模一样。
+
+问：DeskMakeover 会拖慢电脑吗？
+答：感觉不到。重活只在点应用的那一下发生，其余时间它安静待着，Windows 重置桌面时再帮
+    你把外观补回来。
+
+问：DeskMakeover 真的免费吗？
+答：完全免费，MIT 许可证，源码就在 GitHub。它只在本机运行：没有账号，没有遥测，什么
+    都不上传。
+
+问：macOS 或 Linux 能用 DeskMakeover 吗？
+答：不能。DeskMakeover 只面向 64 位 Windows 10（1809 及以上）和 Windows 11。
+
+## Privacy
+
+DeskMakeover runs entirely locally. It requires no account, collects no telemetry, and
+uploads nothing. The only elevated operation is the optional shortcut-arrow registry
+change, performed by a small whitelisted helper and snapshotted before it runs.

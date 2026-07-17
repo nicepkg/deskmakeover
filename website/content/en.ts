@@ -124,15 +124,15 @@ export const en: Dict = {
     items: [
       {
         q: "Can DeskMakeover break my PC, or leave me stuck?",
-        a: "No. It snapshots your desktop before changing anything, and every change is one click to undo, back to exactly how it was. Experiment freely.",
+        a: "No. DeskMakeover snapshots the Windows desktop (icons, shortcut arrows, wallpaper) before changing anything, and every change is one click to undo, back to exactly how it was. Experiment freely.",
       },
       {
         q: "Will it slow my computer down?",
-        a: "Not noticeably. The heavy work happens once when you hit apply. The rest of the time DeskMakeover sits quietly and puts your look back if Windows resets the desktop.",
+        a: "Not noticeably. DeskMakeover does the heavy work once when you hit apply. The rest of the time it sits quietly and puts your look back if Windows resets the desktop.",
       },
       {
         q: "Is it really free? What is the catch?",
-        a: "Free and MIT-licensed, source on GitHub. It runs only on your machine: no account, no telemetry, nothing uploaded.",
+        a: "DeskMakeover is free and MIT-licensed, with the source on GitHub. It runs only on your machine: no account, no telemetry, nothing uploaded.",
       },
       {
         q: "Does it work on macOS or Linux?",

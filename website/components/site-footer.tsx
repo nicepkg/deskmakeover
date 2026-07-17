@@ -1,4 +1,5 @@
 import type { Dict } from "@/content/types";
+import { LangSwitch } from "@/components/lang";
 
 export function SiteFooter({ dict }: { dict: Dict }) {
   const f = dict.footer;
@@ -43,9 +44,13 @@ export function SiteFooter({ dict }: { dict: Dict }) {
               {l.label}
             </a>
           ))}
-          <a href={dict.nav.langHref} className="transition-colors hover:text-ink">
+          <LangSwitch
+            href={dict.nav.langHref}
+            lang={dict.locale === "zh" ? "en" : "zh"}
+            className="transition-colors hover:text-ink"
+          >
             {dict.nav.langLabel}
-          </a>
+          </LangSwitch>
           <span className="text-ink-3">© 2026 nicepkg</span>
         </div>
       </div>

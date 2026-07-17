@@ -1,6 +1,6 @@
 ---
 updated: 2026-07-17
-version: 0.1.0 pre-release (owner-named 2026-07-15; root package.json + src-tauri/tauri.conf.json = 0.1.0; stays 0.x until the owner-supervised Windows WRITE surface is human-verified, then 1.0)
+version: 0.1.0 RELEASED 2026-07-17 (tag v0.1.0, signed installer on the GitHub Release; stays 0.x until the owner-supervised Windows WRITE surface is fully human-verified, then 1.0)
 branch: main (repo went PUBLIC 2026-07-17 — see the ci org-secrets commit b298d68)
 ---
 

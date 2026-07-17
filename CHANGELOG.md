@@ -3,12 +3,20 @@
 All notable changes to DeskMakeover. The format follows
 [Keep a Changelog](https://keepachangelog.com/); dates are ISO-8601.
 
-> **Nothing has been released yet.** The version is `0.1.0` (root `package.json` +
-> `src-tauri/tauri.conf.json`), staged for the first tagged release. Cut one with
-> `bun run release <version> --commit --tag --push` (see `docs/signing-setup.md`). The
-> authoritative moving picture lives in `docs/STATE.md` + `docs/journal/`.
+> Cut releases with `bun run release <version> --commit --tag --push` (see
+> `docs/signing-setup.md`). The authoritative moving picture lives in
+> `docs/STATE.md` + `docs/journal/`.
 
 ## Unreleased
+
+Nothing yet.
+
+## [0.1.0] - 2026-07-17
+
+First public release. Signed NSIS installer (Authenticode, CN=Yang Jinming via
+Certum + RFC-3161 timestamp; the app exe, the `dm-elevated` privileged helper,
+and the uninstaller all ship signed) built and published by the self-hosted
+signing runner (`.github/workflows/release.yml`).
 
 v3 "Premium Flat" (ADR-0013), web-first. The visible UI is a React app in the system WebView
 (WebView2); a Rust workspace owns everything native — `dm-icon-core` is the one pixel truth

@@ -8,12 +8,13 @@
 
 **给你的 Windows 桌面换个好看的样子。不喜欢，一键变回原样。**
 
-[![状态](https://img.shields.io/badge/beta-v0.1.0-FF6F5E?labelColor=2f363d)](#-怎么安装)
+[![官网](https://img.shields.io/badge/%E5%AE%98%E7%BD%91-dm.xiaominglab.com-FF6F5E?labelColor=2f363d)](https://dm.xiaominglab.com/zh/)
+[![状态](https://img.shields.io/badge/beta-v0.1.0-464f58?labelColor=2f363d)](#-怎么安装)
 [![Windows](https://img.shields.io/badge/Windows-10%20%C2%B7%2011-464f58?labelColor=2f363d)](#-怎么安装)
 [![许可证](https://img.shields.io/badge/License-MIT-464f58?labelColor=2f363d)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%202-464f58?labelColor=2f363d)](https://v2.tauri.app/)
 
-[English](README.md) · **中文**
+[English](README.md) · **中文** · [官网 dm.xiaominglab.com](https://dm.xiaominglab.com/zh/)
 
 <br/>
 
@@ -110,7 +111,7 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 ## 🎛️ 走进工作台
 
 <div align="center">
-<img src=".github/assets/app-studio.webp" width="880" alt="DeskMakeover 主窗口的壁纸标签页：左边实时镜像上是分区，右边是材质、配色和标题样式" />
+<img src=".github/assets/app-studio.webp" width="880" alt="DeskMakeover 主窗口的壁纸标签页：左边实时镜像上铺着三个分区，右边是分区列表" />
 <br/>
 <sub>每个标签页都是这个用法：右边调整，左边的真实桌面实时跟着变。</sub>
 </div>
@@ -118,6 +119,8 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 ## 📦 怎么安装
 
 首个安装包正在准备，做好会放到 [Releases](https://github.com/nicepkg/deskmakeover/releases) 页面。到时候：下载、双击、开用，只装给你自己的账户。
+
+想先看看完整介绍？官网在 **[dm.xiaominglab.com](https://dm.xiaominglab.com/zh/)**。
 
 > 看到蓝色的「Windows 已保护你的电脑」别慌：不是病毒警告，只是 Windows 对下载人数还不多的新软件比较谨慎。点「更多信息」，再点「仍要运行」即可。
 
@@ -197,6 +200,6 @@ React UI、Rust 内核、文档、本地化、Windows 兼容性测试都欢迎�
 
 <img src=".github/assets/rule-gradient.svg" width="880" alt="" />
 
-<img src=".github/assets/logo.png" width="40" alt="" /><br/><b>DeskMakeover · 桌面美颜</b><br/><sub>[Releases](https://github.com/nicepkg/deskmakeover/releases) · [Issues](https://github.com/nicepkg/deskmakeover/issues) · [English](README.md) · 中文</sub>
+<img src=".github/assets/logo.png" width="40" alt="" /><br/><b>DeskMakeover · 桌面美颜</b><br/><sub>[官网](https://dm.xiaominglab.com/zh/) · [Releases](https://github.com/nicepkg/deskmakeover/releases) · [Issues](https://github.com/nicepkg/deskmakeover/issues) · [English](README.md) · 中文</sub>
 
 </div>

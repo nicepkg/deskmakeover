@@ -1,4 +1,4 @@
-export const SITE_URL = "https://dm.nicepkg.cn";
+export const SITE_URL = "https://dm.xiaominglab.com";
 export const GITHUB_URL = "https://github.com/nicepkg/deskmakeover";
 export const RELEASES_LATEST_URL = `${GITHUB_URL}/releases/latest`;
 

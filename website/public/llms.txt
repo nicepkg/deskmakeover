@@ -7,8 +7,8 @@ Status: beta; the first installer ships via GitHub Releases.
 
 ## Links
 
-- [English site](https://dm.nicepkg.cn/): product overview, nine preset gallery, FAQ
-- [中文站点](https://dm.nicepkg.cn/zh/): 产品介绍、九套外观、常见问题
+- [English site](https://dm.xiaominglab.com/): product overview, nine preset gallery, FAQ
+- [中文站点](https://dm.xiaominglab.com/zh/): 产品介绍、九套外观、常见问题
 - [GitHub repository](https://github.com/nicepkg/deskmakeover): source code, issues, releases
 - [Downloads](https://github.com/nicepkg/deskmakeover/releases): installers and release notes
 

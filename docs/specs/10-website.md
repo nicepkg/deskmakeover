@@ -1,4 +1,4 @@
-# 10 — Website (dm.nicepkg.cn landing page)
+# 10 — Website (dm.xiaominglab.com landing page)
 
 Status: approved direction v4 (owner, 2026-07-17). v1 light-editorial, v2 dark-cinema and
 v3 flat-shader takes were all owner-rejected; v3 lives in `website-legacy/` for reference
@@ -8,7 +8,8 @@ the art direction sections of that plan are superseded by this spec).
 
 ## Scope
 
-One static marketing page for DeskMakeover at `dm.nicepkg.cn`, bilingual (`/` English,
+One static marketing page for DeskMakeover at `dm.xiaominglab.com` (originally planned
+as dm.nicepkg.cn; the owner remapped 2026-07-17), bilingual (`/` English,
 `/zh` Chinese), with a Download call-to-action, deployed to Cloudflare Workers Static
 Assets via wrangler, auto-deployed from CI.
 
@@ -168,9 +169,8 @@ Cloudflare Web Analytics beacon only (no cookies), injected only when
 - `website/` inside this repo, own `package.json` (root has no `workspaces`; keep it so).
 - Hosting: Cloudflare **Workers Static Assets** — `wrangler.jsonc` with
   `assets: { directory: "./out" }`, `workers_dev: true`. No Worker script file: requests
-  are served from assets and bill nothing. Custom-domain route for `dm.nicepkg.cn` is
-  commented until the zone moves into the Cloudflare account (currently on Aliyun DNS;
-  interim: CNAME `dm` → `deskmakeover-site.2214962083.workers.dev`).
+  are served from assets and bill nothing. Custom-domain route `dm.xiaominglab.com`
+  (`custom_domain: true`; xiaominglab.com is a zone in the account) binds on deploy.
 - CI: `.github/workflows/website.yml`, path-filtered to `website/**`; builds with bun,
   deploys with wrangler 4 on push to main (deploy step gated on the CF token secret).
 
@@ -191,7 +191,7 @@ Cloudflare Web Analytics beacon only (no cookies), injected only when
 3. The 3D monitor renders in viewport 1 at 1600×900 and 390×844; scan wipe, restore
    loop, state chip, pointer parallax and pause-offscreen verified in a real browser.
 4. Lighthouse (mobile emulation) meets the performance budget on the deployed URL.
-5. `wrangler deploy` from `website/` serves both locales on the workers.dev URL (and
-   dm.nicepkg.cn once DNS lands).
+5. `wrangler deploy` from `website/` serves both locales on the workers.dev URL and
+   dm.xiaominglab.com.
 6. CI deploys on a `website/**` push to main and skips on unrelated pushes.
 7. JSON-LD validates; hreflang pair resolves; zh subset build gate passes.

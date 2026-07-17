@@ -8,12 +8,13 @@
 
 **Give your Windows desktop a look you actually like. Don't like it? One click puts everything back.**
 
-[![Status](https://img.shields.io/badge/beta-v0.1.0-FF6F5E?labelColor=2f363d)](#-how-to-install)
+[![Website](https://img.shields.io/badge/Website-dm.xiaominglab.com-FF6F5E?labelColor=2f363d)](https://dm.xiaominglab.com)
+[![Status](https://img.shields.io/badge/beta-v0.1.0-464f58?labelColor=2f363d)](#-how-to-install)
 [![Windows](https://img.shields.io/badge/Windows-10%20%C2%B7%2011-464f58?labelColor=2f363d)](#-how-to-install)
 [![License](https://img.shields.io/badge/License-MIT-464f58?labelColor=2f363d)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%202-464f58?labelColor=2f363d)](https://v2.tauri.app/)
 
-**English** · [中文](README.zh-CN.md)
+**English** · [中文](README.zh-CN.md) · [dm.xiaominglab.com](https://dm.xiaominglab.com)
 
 <br/>
 
@@ -110,7 +111,7 @@ Find that arrow ugly? Swap it for a cleaner mark, or remove it. The app does it 
 ## 🎛️ Inside the studio
 
 <div align="center">
-<img src=".github/assets/app-studio.webp" width="880" alt="The DeskMakeover window on the wallpaper tab: zones on the live desktop mirror, materials and title styles on the right" />
+<img src=".github/assets/app-studio.webp" width="880" alt="The DeskMakeover window on the wallpaper tab: the Apps, Work and Doing zones live on the desktop mirror, the zone list on the right" />
 <br/>
 <sub>Every tab works the same way: adjust on the right, watch your real desktop change live on the left.</sub>
 </div>
@@ -118,6 +119,8 @@ Find that arrow ugly? Swap it for a cleaner mark, or remove it. The app does it 
 ## 📦 How to install
 
 The first installer is being prepared and will land on the [Releases](https://github.com/nicepkg/deskmakeover/releases) page. Then it's: download, double-click, done. It installs just for your account.
+
+Want the full tour first? The official site is at **[dm.xiaominglab.com](https://dm.xiaominglab.com)**.
 
 > If Windows shows a blue "Windows protected your PC" screen, don't worry. It's not a virus warning, just Windows being cautious with newer software. Click **More info**, then **Run anyway**.
 
@@ -197,6 +200,6 @@ The React UI, the Rust core, docs, localization, and Windows compatibility testi
 
 <img src=".github/assets/rule-gradient.svg" width="880" alt="" />
 
-<img src=".github/assets/logo.png" width="40" alt="" /><br/><b>DeskMakeover · 桌面美颜</b><br/><sub>[Releases](https://github.com/nicepkg/deskmakeover/releases) · [Issues](https://github.com/nicepkg/deskmakeover/issues) · English · [中文](README.zh-CN.md)</sub>
+<img src=".github/assets/logo.png" width="40" alt="" /><br/><b>DeskMakeover · 桌面美颜</b><br/><sub>[dm.xiaominglab.com](https://dm.xiaominglab.com) · [Releases](https://github.com/nicepkg/deskmakeover/releases) · [Issues](https://github.com/nicepkg/deskmakeover/issues) · English · [中文](README.zh-CN.md)</sub>
 
 </div>

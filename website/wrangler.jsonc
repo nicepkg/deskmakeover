@@ -10,10 +10,8 @@
     "not_found_handling": "404-page"
   },
   "workers_dev": true,
-  // Custom domain: nicepkg.cn is not a zone in this Cloudflare account
-  // (verified 2026-07-17: only ai-peer.chat / cron-pulse.com / revra.dev /
-  // via-app.cn / xiaoming.app / xiaominglab.com). Re-enable once the zone
-  // question is resolved with the owner.
-  // "routes": [{ "pattern": "dm.nicepkg.cn", "custom_domain": true }]
-  "routes": []
+  // Custom domain: dm.xiaominglab.com (xiaominglab.com is a zone in this
+  // Cloudflare account; the owner mapped the domain 2026-07-17). Declared
+  // here so deploys keep the binding reproducible.
+  "routes": [{ "pattern": "dm.xiaominglab.com", "custom_domain": true }]
 }

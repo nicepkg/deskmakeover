@@ -28,8 +28,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # org secrets only reach public repos on a free-plan org; empty means
-      # "build only, skip deploy" until the repo goes public
+      # deploys arm themselves once the CLOUDFLARE_API_TOKEN repo secret exists
+      # (CLOUDFLARE_ACCOUNT_ID is already set); empty means "build only"
       CF_DEPLOY_READY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
     defaults:
       run:

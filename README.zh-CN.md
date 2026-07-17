@@ -4,9 +4,7 @@
 
 # DeskMakeover
 
-<img src=".github/assets/name-zh-pill.png" height="22" alt="桌面美颜" />
-
-**给你的 Windows 桌面换个好看的样子。不喜欢，一键变回原样。**
+**桌面美颜：给你的 Windows 桌面换个好看的样子。不喜欢，一键变回原样。**
 
 [![官网](https://img.shields.io/badge/%E5%AE%98%E7%BD%91-dm.xiaominglab.com-FF6F5E?labelColor=2f363d)](https://dm.xiaominglab.com/zh/)
 [![状态](https://img.shields.io/badge/beta-v0.1.0-464f58?labelColor=2f363d)](#-怎么安装)
@@ -14,7 +12,7 @@
 [![许可证](https://img.shields.io/badge/License-MIT-464f58?labelColor=2f363d)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%202-464f58?labelColor=2f363d)](https://v2.tauri.app/)
 
-[English](README.md) · **中文** · [官网 dm.xiaominglab.com](https://dm.xiaominglab.com/zh/)
+[English](README.md) · **中文**
 
 <br/>
 

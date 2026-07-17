@@ -4,8 +4,6 @@
 
 # DeskMakeover
 
-<a href="README.zh-CN.md"><img src=".github/assets/name-zh-pill.png" height="22" alt="桌面美颜" /></a>
-
 **Give your Windows desktop a look you actually like. Don't like it? One click puts everything back.**
 
 [![Website](https://img.shields.io/badge/Website-dm.xiaominglab.com-FF6F5E?labelColor=2f363d)](https://dm.xiaominglab.com)
@@ -14,7 +12,7 @@
 [![License](https://img.shields.io/badge/License-MIT-464f58?labelColor=2f363d)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%202-464f58?labelColor=2f363d)](https://v2.tauri.app/)
 
-**English** · [中文](README.zh-CN.md) · [dm.xiaominglab.com](https://dm.xiaominglab.com)
+**English** · [中文](README.zh-CN.md)
 
 <br/>
 

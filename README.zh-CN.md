@@ -35,7 +35,7 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 - **只在你电脑上跑**：不注册、不联网、不上传
 - **不用碰任何技术设置**：挑、预览、点一下，就这三件事
 
-<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+<div align="center"><br/><img src=".github/assets/rule-hairline.svg" width="880" alt="" /><br/><br/></div>
 
 ## ✨ 九套现成外观，一键上身
 
@@ -106,7 +106,7 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 
 > 内置的「清爽」小助手还能安静掉 Windows 一些吵闹的默认设置。改哪条都先问你，也都能改回来。
 
-<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+<div align="center"><br/><img src=".github/assets/rule-hairline.svg" width="880" alt="" /><br/><br/></div>
 
 ## 🎛️ 走进工作台
 
@@ -145,7 +145,7 @@ DeskMakeover（桌面美颜）把乱糟糟的 Windows 桌面收拾成看着顺�
 
 > **说句实在话：** 现在还是 Beta，首个安装包在准备中，会有毛边。它只负责桌面图标和壁纸分区，不给整个 Windows 换主题。别指望一键完美，但怎么调都能一键收回，放心试。
 
-<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+<div align="center"><br/><img src=".github/assets/rule-hairline.svg" width="880" alt="" /><br/><br/></div>
 
 ## 🏗️ 架构与技术选型
 
@@ -198,7 +198,7 @@ React UI、Rust 内核、文档、本地化、Windows 兼容性测试都欢迎�
 
 **桌面变好看了？[给个 ⭐](https://github.com/nicepkg/deskmakeover) 让更多人看到它。**
 
-<img src=".github/assets/rule-gradient.svg" width="880" alt="" />
+<img src=".github/assets/rule-hairline.svg" width="880" alt="" />
 
 <img src=".github/assets/logo.png" width="40" alt="" /><br/><b>DeskMakeover · 桌面美颜</b><br/><sub>[官网](https://dm.xiaominglab.com/zh/) · [Releases](https://github.com/nicepkg/deskmakeover/releases) · [Issues](https://github.com/nicepkg/deskmakeover/issues) · [English](README.md) · 中文</sub>
 

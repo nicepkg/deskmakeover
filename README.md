@@ -35,7 +35,7 @@ Want to tidy your desktop but scared of breaking it? That "can't get it back" fe
 - **Runs only on your computer**: no account, no upload, nothing online
 - **Nothing technical to touch**: pick, preview, click. That's the whole job
 
-<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+<div align="center"><br/><img src=".github/assets/rule-hairline.svg" width="880" alt="" /><br/><br/></div>
 
 ## ✨ Nine looks built in
 
@@ -106,7 +106,7 @@ Find that arrow ugly? Swap it for a cleaner mark, or remove it. The app does it 
 
 > There's also a built-in Calm helper that quiets some of Windows' noisier defaults. It asks before every change, and every change can be turned back.
 
-<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+<div align="center"><br/><img src=".github/assets/rule-hairline.svg" width="880" alt="" /><br/><br/></div>
 
 ## 🎛️ Inside the studio
 
@@ -145,7 +145,7 @@ Yes. Pick a look, check the preview, click apply. No commands, no technical sett
 
 > **Straight talk:** this is beta, the first installer is on the way, and there will be rough edges. It styles your icons and wallpaper zones; it isn't a full theme for all of Windows. Don't expect one-click perfection, but whatever you try, one click takes it back.
 
-<div align="center"><br/><img src=".github/assets/rule-gradient.svg" width="880" alt="" /><br/><br/></div>
+<div align="center"><br/><img src=".github/assets/rule-hairline.svg" width="880" alt="" /><br/><br/></div>
 
 ## 🏗️ Architecture and tech choices
 
@@ -198,7 +198,7 @@ The React UI, the Rust core, docs, localization, and Windows compatibility testi
 
 **Made your desktop nicer? [Give it a ⭐](https://github.com/nicepkg/deskmakeover) so more people find it.**
 
-<img src=".github/assets/rule-gradient.svg" width="880" alt="" />
+<img src=".github/assets/rule-hairline.svg" width="880" alt="" />
 
 <img src=".github/assets/logo.png" width="40" alt="" /><br/><b>DeskMakeover · 桌面美颜</b><br/><sub>[dm.xiaominglab.com](https://dm.xiaominglab.com) · [Releases](https://github.com/nicepkg/deskmakeover/releases) · [Issues](https://github.com/nicepkg/deskmakeover/issues) · English · [中文](README.zh-CN.md)</sub>
 

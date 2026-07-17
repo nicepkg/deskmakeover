@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-17
 version: 0.1.0 pre-release (owner-named 2026-07-15; root package.json + src-tauri/tauri.conf.json = 0.1.0; stays 0.x until the owner-supervised Windows WRITE surface is human-verified, then 1.0)
-branch: main (repo is PRIVATE; making it public is the owner's call at release)
+branch: main (repo went PUBLIC 2026-07-17 — see the ci org-secrets commit b298d68)
 ---
 
 # State
@@ -288,8 +288,8 @@ what is in flight, and what comes next.
   (no window) for this row, or a real board deep-link if one is ever found. Non-blocking; current copy
   is honest.
 - Release version number + name (release time).
-- Repo visibility: `nicepkg/deskmakeover` is PRIVATE — make public at release (the About card +
-  免费开源 chip promise it).
+- ~~Repo visibility~~ — RESOLVED 2026-07-17: `nicepkg/deskmakeover` is now PUBLIC (owner flipped it;
+  org secrets reach CI, commit b298d68). The About card's 免费开源 chip promise is honored.
 - Signing entity/name for the OV certificate (release gate).
 - Distribution channel (direct download + pinned comment reply).
 - **Elevated-helper hardening — A1 IMPLEMENTED 2026-07-16, on-box verify pending.** `signing.rs`

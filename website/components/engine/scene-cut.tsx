@@ -6,8 +6,8 @@ import { maskLayers, renderTile } from "./lab";
 import type { CutAssets } from "./three/contract";
 import { LABEL_CLASS, useScene } from "./three/use-scene";
 
-const CUT_ID = "panel";
-const MASK_URL = "/engine/icons/panel-mask.png";
+const CUT_ID = "bin";
+const MASK_URL = "/engine/icons/bin-mask.png";
 
 async function prepare(lab: Lab): Promise<CutAssets | null> {
   const layers = await maskLayers(lab, CUT_ID, MASK_URL);
@@ -18,9 +18,10 @@ async function prepare(lab: Lab): Promise<CutAssets | null> {
 const loadInit = () => import("./three/scenes3d").then((m) => m.createCutScene);
 
 /**
- * 02 CUT — the real Control Panel icon splits into the engine's own verdict
- * layers: the base flushes coral, peels away, and the finished plate rises in.
- * The per-pixel split IS the desktop engine's real output (oracle mask).
+ * 02 CUT — the real Recycle Bin splits into the engine's own verdict layers:
+ * the glass basket (judged base) flushes coral and shatters into its own
+ * pixels; the recycle glyph (judged artwork) never moves; the finished plate
+ * rises in. The per-pixel split IS the desktop engine's real output.
  */
 export function CutScene({ engine }: { engine: EngineDict }) {
   const c = engine.cut;

@@ -122,7 +122,9 @@ mod imp {
         GetTokenInformation, TokenUser, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, TOKEN_QUERY,
         TOKEN_USER,
     };
-    use windows::Win32::Storage::FileSystem::{FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX};
+    use windows::Win32::Storage::FileSystem::{
+        FlushFileBuffers, FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX,
+    };
     use windows::Win32::System::Pipes::{
         ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeClientProcessId,
         PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
@@ -165,8 +167,14 @@ mod imp {
             let handle = create_instance(&full, &sd, first)?;
             first = false;
             let served = serve_one(handle, client_pid, client_created, client);
-            // Always tear the instance down before the next accept.
+            // Always tear the instance down before the next accept. CRITICAL: FlushFileBuffers FIRST
+            // — on a named pipe it blocks until the client has drained everything we wrote, so the
+            // response is delivered before we sever the connection. Without it, DisconnectNamedPipe
+            // DISCARDS the still-unread response and the client's read fails with ERROR_PIPE_NOT_
+            // CONNECTED (233), which read as "session unreliable" and forced the per-op UAC fallback —
+            // the whole "6 prompts per apply" regression (owner box 2026-07-17).
             unsafe {
+                let _ = FlushFileBuffers(handle);
                 let _ = DisconnectNamedPipe(handle);
                 let _ = CloseHandle(handle);
             }

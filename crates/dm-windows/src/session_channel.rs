@@ -80,13 +80,15 @@ impl SessionElevated {
     /// `Ok(SessionSend)` = the request reached the helper (or the user declined the launch);
     /// `Err` = the session could NOT be established — the caller should fall back to per-op `runas`.
     pub fn send(&self, argv: &[&str]) -> PortResult<SessionSend> {
-        // ENABLED after a three-round codex security review APPROVED the hardening (2026-07-17): P1
-        // (identity is the server-verified (pid, creation-time) pair, RE-checked per connection), P2
-        // (client authenticates the pipe server's pid == the helper it launched, with a post-connect
-        // fail-closed aliveness re-check), P2b (DACL from the CLIENT's SID), P2c (helper handle owned,
-        // not leaked). The channel remains a pure OPTIMISATION: any establish/round-trip failure falls
-        // back to per-op `runas` (see the caller), so it can only ever REDUCE prompts, never break
-        // elevation. Set DESKMAKEOVER_SESSION_ELEVATION_OFF=1 to force the per-op path (a kill switch).
+        // ENABLED (2026-07-17). Security: a three-round codex review APPROVED the hardening (per-
+        // connection (pid, creation-time) re-verification, server authentication, client-SID DACL,
+        // owned handles, fail-closed waits). Reliability: the initial round-trip failure ("pipe other
+        // end no process", os error 233 → ~6 UAC prompts per apply) was a PROTOCOL race, NOT a
+        // security or identity problem — the server flushed the response then IMMEDIATELY
+        // DisconnectNamedPipe'd, discarding it; `FlushFileBuffers` before the disconnect (session.rs)
+        // fixed it, verified by a medium-IL multi-round-trip harness. The channel is a pure
+        // OPTIMISATION: any failure falls back to per-op `runas`, so it can only reduce prompts, never
+        // break elevation. Kill switch: DESKMAKEOVER_SESSION_ELEVATION_OFF=1.
         if std::env::var_os("DESKMAKEOVER_SESSION_ELEVATION_OFF").is_some() {
             return Err(PortError::Com("session elevation disabled by DESKMAKEOVER_SESSION_ELEVATION_OFF".into()));
         }

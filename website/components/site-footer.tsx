@@ -33,6 +33,12 @@ export function SiteFooter({ dict }: { dict: Dict }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-7 gap-y-2 font-mono text-[12px] tracking-[0.1em] text-ink-2">
+          <a
+            href={dict.locale === "zh" ? "/zh/engine/" : "/engine/"}
+            className="transition-colors hover:text-ink"
+          >
+            {dict.nav.engine}
+          </a>
           <a href="/story/" className="transition-colors hover:text-ink">
             {dict.nav.story}
           </a>

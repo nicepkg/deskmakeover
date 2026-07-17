@@ -78,6 +78,61 @@ export function storyJsonLdScript(meta: {
   });
 }
 
+/**
+ * /engine/ — the pixel-engine deep-dive. A TechArticle node per locale joined
+ * to the same Organization / WebSite / SoftwareApplication graph.
+ */
+export function engineJsonLdScript(dict: Dict, meta: { title: string; description: string }): string {
+  const def = localeDef(dict.locale);
+  const url = `${SITE_URL}${def.path}engine/`;
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": ORG_ID,
+        name: "nicepkg",
+        url: "https://github.com/nicepkg",
+        logo: `${SITE_URL}/logo.png`,
+        sameAs: [GITHUB_URL],
+      },
+      {
+        "@type": "WebSite",
+        "@id": SITE_ID,
+        url: `${SITE_URL}/`,
+        name: "DeskMakeover",
+        inLanguage: siteLanguages(),
+        publisher: { "@id": ORG_ID },
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": APP_ID,
+        name: "DeskMakeover",
+        alternateName: "桌面美颜",
+        url: `${SITE_URL}/`,
+      },
+      {
+        "@type": "TechArticle",
+        "@id": `${url}#article`,
+        headline: meta.title,
+        description: meta.description,
+        inLanguage: def.hreflang,
+        url,
+        mainEntityOfPage: url,
+        image: `${SITE_URL}/social-card.png`,
+        isPartOf: { "@id": SITE_ID },
+        about: { "@id": APP_ID },
+        publisher: { "@id": ORG_ID },
+        author: {
+          "@type": "Person",
+          name: "Jinming Yang",
+          url: "https://github.com/2214962083",
+        },
+      },
+    ],
+  });
+}
+
 export function jsonLdScript(dict: Dict): string {
   const pageUrl = localePageUrl(dict.locale);
   const inLanguage = localeDef(dict.locale).hreflang;

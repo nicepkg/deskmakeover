@@ -18,6 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import subsetFont from "subset-font";
 import { zh } from "../content/zh.ts";
+import { ENGINE_ZH_DISPLAY_STRINGS } from "../content/engine-zh.ts";
 import { STORY_DISPLAY_STRINGS } from "../content/story.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -31,10 +32,13 @@ const landingStrings = [
   zh.looks.title,
   zh.zones.title,
   zh.studio.title,
+  zh.engineBand.title,
   zh.download.title,
   zh.faq.title,
   ...zh.faq.items.map((i) => i.q),
   zh.footer.tagline,
+  // /zh/engine/ lives in the same (zh) tree and shares this face
+  ...ENGINE_ZH_DISPLAY_STRINGS,
 ];
 
 const SUBSETS = [

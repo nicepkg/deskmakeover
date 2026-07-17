@@ -14,6 +14,7 @@ export const en: Dict = {
     looks: "Looks",
     zones: "Zones",
     story: "Story",
+    engine: "Engine",
     download: "Download",
     github: "GitHub",
     langLabel: "中文",
@@ -104,6 +105,12 @@ export const en: Dict = {
       },
     ],
     imgAlt: "The DeskMakeover icons studio: a live desktop mirror with 126 styled icons and shape, subject, plate, filter and shortcut controls",
+  },
+  engineBand: {
+    kicker: "Engine",
+    title: "Not a filter. An engine that reads your icons.",
+    body: "Behind every look is a purpose-built, fully deterministic pixel pipeline. It studies each icon before touching it, and renders byte-identical pixels in the browser and on the desktop.",
+    cta: "See how it works",
   },
   download: {
     index: "05",

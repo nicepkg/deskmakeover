@@ -6,6 +6,7 @@ import { DOWNLOAD_URL, GITHUB_URL, RELEASE_READY } from "@/lib/site";
 
 export function SiteNav({ dict }: { dict: Dict }) {
   const home = dict.locale === "zh" ? "/zh/" : "/";
+  const engineHref = dict.locale === "zh" ? "/zh/engine/" : "/engine/";
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-canvas/85 backdrop-blur-sm">
       <div className="mx-auto flex h-14 max-w-[1200px] items-center justify-between px-5 md:px-8">
@@ -17,14 +18,18 @@ export function SiteNav({ dict }: { dict: Dict }) {
           </span>
         </a>
         <nav className="hidden items-center gap-7 font-mono text-[12px] tracking-[0.12em] text-ink-2 md:flex">
-          <a href="#proof" className="transition-colors hover:text-ink">
+          {/* home-prefixed so section anchors keep working from /engine/ */}
+          <a href={`${home}#proof`} className="transition-colors hover:text-ink">
             {dict.nav.proof.toUpperCase()}
           </a>
-          <a href="#looks" className="transition-colors hover:text-ink">
+          <a href={`${home}#looks`} className="transition-colors hover:text-ink">
             {dict.nav.looks.toUpperCase()}
           </a>
-          <a href="#zones" className="transition-colors hover:text-ink">
+          <a href={`${home}#zones`} className="transition-colors hover:text-ink">
             {dict.nav.zones.toUpperCase()}
+          </a>
+          <a href={engineHref} className="transition-colors hover:text-ink">
+            {dict.nav.engine.toUpperCase()}
           </a>
           <a href="/story/" className="transition-colors hover:text-ink">
             {dict.nav.story.toUpperCase()}

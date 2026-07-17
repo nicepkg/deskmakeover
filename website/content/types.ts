@@ -43,6 +43,8 @@ export interface Dict {
     zones: string;
     /** the /story/ making-of page entry */
     story: string;
+    /** the /engine/ pixel-engine page entry */
+    engine: string;
     download: string;
     github: string;
     langLabel: string;
@@ -83,6 +85,13 @@ export interface Dict {
   studio: SectionHead & {
     points: PointEntry[];
     imgAlt: string;
+  };
+  /** un-numbered hairline strip between Studio and Download linking to /engine/ */
+  engineBand: {
+    kicker: string;
+    title: string;
+    body: string;
+    cta: string;
   };
   download: SectionHead & {
     ctaRelease: string;

@@ -31,10 +31,13 @@ export function StoryFx() {
       scopes.filter((el) => el.getBoundingClientRect().top < window.innerHeight),
     );
 
-    const counters = new Map<HTMLElement, { target: number; decimals: number }>();
+    const counters = new Map<HTMLElement, { target: number; decimals: number; grouped: boolean }>();
 
     for (const scope of scopes) {
-      scope.classList.add("fx-armed"); // disables transitions while zeroing
+      // fx-wait persists from arming until play — pure-CSS scene elements
+      // (engine scenes) key their initial state off it; fx-armed only spans
+      // the zeroing commit below.
+      scope.classList.add("fx-armed", "fx-wait");
       for (const el of scope.querySelectorAll<HTMLElement>("[data-fx-w]")) el.style.width = "0%";
       for (const el of scope.querySelectorAll<HTMLElement>("[data-fx-h]")) el.style.height = "0%";
       for (const el of scope.querySelectorAll<HTMLElement>("[data-fx-grow]"))
@@ -45,10 +48,11 @@ export function StoryFx() {
         el.style.clipPath = "inset(0 100% 0 0)";
       for (const el of scope.querySelectorAll<HTMLElement>("[data-fx-count]")) {
         const raw = el.textContent ?? "0";
-        const target = parseFloat(raw);
+        const grouped = raw.includes(","); // "11,946" keeps its thousands grouping
+        const target = parseFloat(raw.replace(/,/g, ""));
         if (Number.isNaN(target)) continue;
         const decimals = raw.includes(".") ? raw.split(".")[1].length : 0;
-        counters.set(el, { target, decimals });
+        counters.set(el, { target, decimals, grouped });
         el.textContent = (0).toFixed(decimals);
       }
       void scope.offsetWidth; // commit the zero state before re-enabling transitions
@@ -56,6 +60,7 @@ export function StoryFx() {
     }
 
     const play = (scope: HTMLElement) => {
+      scope.classList.remove("fx-wait");
       scope.classList.add("fx-in");
       for (const el of scope.querySelectorAll<HTMLElement>("[data-fx-w]"))
         el.style.width = `${el.dataset.fxW}%`;
@@ -75,7 +80,10 @@ export function StoryFx() {
         const tick = (now: number) => {
           const t = Math.min(1, (now - start) / dur);
           const eased = 1 - Math.pow(1 - t, 3);
-          el.textContent = (spec.target * eased).toFixed(spec.decimals);
+          const v = spec.target * eased;
+          el.textContent = spec.grouped
+            ? Math.round(v).toLocaleString("en-US")
+            : v.toFixed(spec.decimals);
           if (t < 1) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);

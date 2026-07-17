@@ -9,6 +9,7 @@ __RELEASE_STATUS_EN__
 
 - [English site](https://dm.xiaominglab.com/): product overview, nine preset gallery, FAQ
 - [中文站点](https://dm.xiaominglab.com/zh/): 产品介绍、九套外观、常见问题
+- [The Pixel Engine](https://dm.xiaominglab.com/engine/): deep dive into the purpose-built deterministic pixel pipeline (byte-identical WASM/native rendering, OKLab colour science, subject/background separation) with a live in-browser demo — [中文版](https://dm.xiaominglab.com/zh/engine/)
 - [创作实录（中文）](https://dm.xiaominglab.com/story/): how v1 was built in nine days by one person directing two AI models — data-driven making-of report
 - [Full product reference](https://dm.xiaominglab.com/llms-full.txt): complete bilingual facts, features, and FAQ for quoting
 - [GitHub repository](https://github.com/nicepkg/deskmakeover): source code, issues, releases

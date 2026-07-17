@@ -14,6 +14,7 @@ export const zh: Dict = {
     looks: "九套外观",
     zones: "壁纸分区",
     story: "创作历程",
+    engine: "像素引擎",
     download: "下载",
     github: "GitHub",
     langLabel: "English",
@@ -104,6 +105,12 @@ export const zh: Dict = {
       },
     ],
     imgAlt: "DeskMakeover 图标工作室：实时桌面镜像里 126 个图标已换装，右侧是形状、主体、底板、质感和快捷标记控件",
+  },
+  engineBand: {
+    kicker: "引擎",
+    title: "不是滤镜，是读懂图标的引擎",
+    body: "每一套外观背后是一条自研确定性像素管线。它先读懂每颗图标再动手，浏览器与桌面端输出字节级一致的像素。",
+    cta: "看它如何工作",
   },
   download: {
     index: "05",

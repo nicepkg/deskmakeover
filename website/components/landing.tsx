@@ -10,6 +10,7 @@ import {
   FaqSection,
 } from "@/components/sections";
 import { SiteFooter } from "@/components/site-footer";
+import { EngineBand } from "@/components/engine-band";
 import { DownloadModal } from "@/components/download/modal";
 
 export function Landing({ dict }: { dict: Dict }) {
@@ -23,6 +24,7 @@ export function Landing({ dict }: { dict: Dict }) {
         <LooksSection dict={dict} />
         <ZonesSection dict={dict} />
         <StudioSection dict={dict} />
+        <EngineBand dict={dict} />
         <DownloadSection dict={dict} />
         <FaqSection dict={dict} />
       </main>

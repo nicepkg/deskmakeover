@@ -90,12 +90,16 @@ Assets via wrangler, auto-deployed from CI.
 4. **03 Zones** — real zones-editor screenshot (applied Workbench template) + three
    fact points.
 5. **04 Studio** — real icons-studio screenshot + three fact points, mirrored split.
-6. **05 Download** — full-bleed flat coral block: dual-state CTA, watch-on-GitHub,
+6. **Engine band (un-numbered)** — a hairline strip between Studio and Download:
+   one-line claim (not a filter — a purpose-built deterministic pixel pipeline
+   reading every icon before touching it) + CTA into `/engine/`. No mono index so
+   the existing 01–05 numbering is untouched.
+7. **05 Download** — full-bleed flat coral block: dual-state CTA, watch-on-GitHub,
    pending note (or SmartScreen honesty when released), mono requirements line.
-7. **FAQ + footer** — four plain-text Q/As (no accordion), hairline footer.
+8. **FAQ + footer** — four plain-text Q/As (no accordion), hairline footer.
 
-The header nav and footer both carry a **创作历程 / Story** entry to `/story/` — the
-making-of page (see its section below).
+The header nav and footer both carry **创作历程 / Story** (`/story/`) and
+**引擎 / Engine** (`/engine/`, locale-aware) entries.
 
 Copy voice: short, spec-sheet confident, consumer-safe. Chinese copy contains no dashes
 and no exclamation marks; zh display headings may carry a manual `\n` break point.
@@ -157,6 +161,61 @@ re-shoot must go through the real app, never mockups.
   the final state is complete without JS (crawlers, print).
 - Entry points: header nav + footer on both locales, sitemap entry, Article JSON-LD
   (`storyJsonLdScript`), llms.txt link.
+
+## /engine/ — the pixel engine page (像素引擎)
+
+Owner request 2026-07-17; design converged by a three-seat panel
+(`docs/reviews/2026-07-17-engine-page-panel.md`). A bilingual deep-dive into the
+icon pipeline: scrollytelling first, a live WASM playground as the finale.
+
+**Wording iron laws (owner-approved):**
+- The claim is "purpose-built, fully deterministic pixel pipeline" (zh 自研确定性
+  像素管线) — never "original algorithm", never "AI", never "magic". The pipeline
+  is zero-ML and that IS the selling point (reproducible, offline, private).
+- Standard methods are credited by name (Otsu, OKLab, IoU; the corner smoothing is
+  a faithful port of Figma's MIT squircle math) — composed, not reinvented.
+- Byte-parity claims stay scoped: WASM preview ↔ native bake from the same Rust
+  source, certified over the 1,487-icon corpus. Core is `#![forbid(unsafe_code)]`;
+  the only unsafe is the thin overflow-checked WASM FFI boundary — never say
+  "zero unsafe" globally.
+- Every number on the page deep-links to the exact GitHub source line or test
+  file (receipts, not vanity metrics).
+
+**Structure (7 sections + finale):**
+1. `01 PORTRAIT` — the per-icon profile: five-step classification, edge/shape-ring
+   background probes, dominant colour in OKLab, silhouette↔shape match.
+2. `02 SEPARATE` — subject/background: alpha silhouette or border-seeded BFS
+   flood; Otsu plate split.
+3. `03 RESCUE` — auto separation: rim-band sampling on composited colour, OKLab
+   distance + lightness double threshold (chromatic acuity rationale), melt-share
+   trigger.
+4. `04 INVARIANT` — subject pixels are never recoloured; deterministic hue spread
+   (≥12° gap, ±18° cap) told on a hue wheel.
+5. `05 COLOR` — linear-light sRGB + OKLab everywhere, tonal duotone LUT, squircle
+   corner math, area-average resampling.
+6. `06 FINISH` — glass / pixel / sticker as algorithms (fresnel + refraction,
+   grid average → candy palette → contour ring, chamfer-distance die-cut).
+7. `07 GUARANTEE` — degenerate-input tests, checked allocation, render-size caps,
+   error codes over panics, snapshot-first restore; the receipts strip lives here.
+8. **Playground finale** — the real `dm-icon-wasm` module (≈88 KB gzip, lazy-loaded
+   on approach) rendering 256 px tiles rAF-coalesced on the main thread (one tile
+   per frame is ms-scale; the app's worker pool exists for hundreds of tiles).
+   Controls: shape, look, plate hue, finish toggles. Sources: a self-made sample icon set
+   (no third-party marks) + local user upload ("your image never leaves the
+   browser"). WASM unavailable → pre-rendered frame fallback with an honest note;
+   the sliders switch to stepping the pre-rendered set.
+
+**Motion:** engineering-precision only — scanline sweeps are linear (scanners
+don't ease), BFS flood advances in visible discrete steps, rescue plays a
+three-beat danger/detect/save sequence, hue-wheel points settle critically damped
+(determinism doesn't bounce). No particles, no spring overshoot, no
+scroll-jacking, no fake progress bars. Every module has a static
+`prefers-reduced-motion` state and is complete without JS.
+
+**Routing:** normal locale page (`/engine/` + `/zh/engine/`) inside both trees
+with hreflang alternates — unlike `/story/`, which stays single-language. Engine
+zh display headings join the landing MiSans subset inputs. TechArticle JSON-LD,
+sitemap entries, llms.txt link.
 
 ## Motion discipline
 

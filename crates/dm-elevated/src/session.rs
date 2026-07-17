@@ -16,10 +16,16 @@
 //!    per-op CLI did not: only overlay apply/restore (validated ICO) and desktop-items apply/restore
 //!    (targets re-validated under the Public-desktop/ProgramData roots). `serve-session` itself is
 //!    refused over the pipe — no nested servers.
-//! 2. **Client identity** — the pipe's DACL admits only the current user, and on EVERY connection
-//!    the server checks `GetNamedPipeClientProcessId` equals the exact `client_pid` the launcher
-//!    passed. A different same-user process (which could otherwise reach the pipe) is rejected before
-//!    a byte is read.
+//! 2. **Client identity** — the pipe's DACL admits only the LAUNCHING user (its SID read from the
+//!    client's own token, so over-the-shoulder UAC — where the server runs as a different admin —
+//!    cannot lock the launcher out; codex P2b). Identity is the (pid, creation-time) PAIR, never a
+//!    bare pid: a terminated process's pid is reusable, so on EVERY connection the server re-opens the
+//!    connecting process and re-checks `GetProcessTimes` equals the launcher-passed `client_created`
+//!    (a pid recycled to an impostor names a later-created process → reject), and first refuses
+//!    outright if the launching app has already exited (closing the death-watch scheduling window;
+//!    codex 2026-07-17 High). The CLIENT independently authenticates the SERVER: it verifies the
+//!    pipe's server pid equals the elevated helper it launched, so a name-squatting impostor is
+//!    refused (codex P2).
 //! 3. **Lifetime** — a watcher thread waits on the client process handle and force-exits this server
 //!    the instant the app dies, so consent never outlives the app that obtained it.
 //!
@@ -106,8 +112,8 @@ mod imp {
 
     use windows::core::{HSTRING, PWSTR};
     use windows::Win32::Foundation::{
-        CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, HANDLE, HLOCAL, INVALID_HANDLE_VALUE,
-        LocalFree, WAIT_OBJECT_0,
+        CloseHandle, FILETIME, GetLastError, ERROR_PIPE_CONNECTED, HANDLE, HLOCAL,
+        INVALID_HANDLE_VALUE, LocalFree, WAIT_OBJECT_0, WAIT_TIMEOUT,
     };
     use windows::Win32::Security::Authorization::{
         ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
@@ -123,8 +129,8 @@ mod imp {
         PIPE_WAIT,
     };
     use windows::Win32::System::Threading::{
-        GetCurrentProcess, OpenProcess, OpenProcessToken, WaitForSingleObject, INFINITE,
-        PROCESS_SYNCHRONIZE,
+        GetProcessTimes, OpenProcess, OpenProcessToken, WaitForSingleObject, INFINITE,
+        PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
     };
 
     use super::{MAX_ARGC, MAX_REQUEST_BYTES};
@@ -132,25 +138,33 @@ mod imp {
     /// Serve until the launching app (`client_pid`) exits. Every error before the loop is fatal
     /// (the caller maps it to a non-zero exit); inside the loop a per-connection error is logged to
     /// stderr and the loop continues (one bad/rejected client must not kill the session).
-    pub fn run_serve_session(pipe: &str, client_pid: u32) -> Result<(), String> {
+    pub fn run_serve_session(pipe: &str, client_pid: u32, client_created: u64) -> Result<(), String> {
         let full = format!(r"\\.\pipe\{pipe}");
-        // The client process handle (SYNCHRONIZE only — we never touch its memory). Opening it also
-        // proves the pid currently names a live process we can wait on.
-        let client = open_client(client_pid)?;
+        // Open the launching app (SYNCHRONIZE to wait on it + QUERY to read its creation time and
+        // token). Verify the opened process's `GetProcessTimes` creation time equals `client_created`
+        // — a pid reused between launch and now names a DIFFERENT process → FAIL CLOSED. This handle
+        // is for the death-watch (lifetime) and the DACL SID ONLY; it is NOT an identity guard for
+        // later connections (a terminated pid is reusable even while its handle stays valid), so every
+        // connection re-verifies independently in `serve_one` (codex 2026-07-17 High).
+        let client = open_client_verified(client_pid, client_created)?;
+        // The DACL must admit the LAUNCHING user, derived from the client's OWN token — NOT the
+        // server's (with over-the-shoulder UAC the elevated process runs as a DIFFERENT admin, whose
+        // SID would lock the launching user's medium-IL app out of its own pipe) (codex P2b).
+        let client_sid = user_sid_of_process(client)?;
         // Watcher: the instant the app exits, force this elevated server down. A dedicated thread so
-        // a blocked ConnectNamedPipe can never outlive the app.
+        // a blocked ConnectNamedPipe can never outlive the app. It takes over ownership of `client`.
         spawn_death_watch(client);
 
-        // Security descriptor: DACL = LocalSystem + the current user only; SACL = a MEDIUM
+        // Security descriptor: DACL = LocalSystem + the launching user only; SACL = a MEDIUM
         // mandatory label so the medium-integrity app can open the pipe a high-integrity process
         // created (without it the default high-IL label blocks the peer). Built ONCE and reused.
-        let sd = SecurityDescriptor::current_user_medium()?;
+        let sd = SecurityDescriptor::for_user_medium(&client_sid)?;
 
         let mut first = true;
         loop {
             let handle = create_instance(&full, &sd, first)?;
             first = false;
-            let served = serve_one(handle, client_pid);
+            let served = serve_one(handle, client_pid, client_created, client);
             // Always tear the instance down before the next accept.
             unsafe {
                 let _ = DisconnectNamedPipe(handle);
@@ -162,10 +176,10 @@ mod imp {
         }
     }
 
-    /// Accept one connection, verify the client pid, process exactly one request, reply. The pipe
-    /// HANDLE stays owned by the caller (Disconnect/Close there); I/O borrows it through a
-    /// `ManuallyDrop<File>` that never closes it.
-    fn serve_one(pipe: HANDLE, client_pid: u32) -> Result<(), String> {
+    /// Accept one connection, RE-VERIFY the client's full identity, process exactly one request,
+    /// reply. The pipe HANDLE stays owned by the caller (Disconnect/Close there); I/O borrows it
+    /// through a `ManuallyDrop<File>` that never closes it.
+    fn serve_one(pipe: HANDLE, client_pid: u32, client_created: u64, client: HANDLE) -> Result<(), String> {
         // ConnectNamedPipe blocks until a client connects; the death-watch thread force-exits the
         // process if the app dies first, so this never strands the server.
         let connected = unsafe { ConnectNamedPipe(pipe, None) };
@@ -176,13 +190,28 @@ mod imp {
                 return Err(format!("ConnectNamedPipe failed: {code:?}"));
             }
         }
-        // IDENTITY GATE: only the exact launching app process may drive us.
+        // Refuse unless the launching app is DEFINITELY still alive. FAIL-CLOSED: only `WAIT_TIMEOUT`
+        // (handle not signaled → running) may proceed; a signaled handle (exited), `WAIT_FAILED`, or
+        // any other result refuses. This closes the window between the app terminating and the async
+        // death-watch calling process::exit, during which its pid could be recycled to an impostor
+        // (codex 2026-07-17 High + the fail-closed Low).
+        if unsafe { WaitForSingleObject(client, 0) } != WAIT_TIMEOUT {
+            return Err("the launching app is not verifiably alive; refusing the connection".into());
+        }
+        // IDENTITY GATE. A bare pid is NOT enough even though we hold the startup handle: a terminated
+        // process's pid IS reusable (the handle only keeps the HANDLE valid, not the pid — codex High).
+        // So RE-VERIFY the full (pid, creation-time) identity on THIS connection: match the pid, then
+        // open the CONNECTING process and confirm its creation time equals `client_created`. A reused
+        // pid names a process created later, so its time differs → reject. Hold the connection handle
+        // across dispatch so the verified process cannot be swapped mid-request.
         let mut pid = 0u32;
         unsafe { GetNamedPipeClientProcessId(pipe, &mut pid) }
             .map_err(|e| format!("GetNamedPipeClientProcessId failed: {e}"))?;
         if pid != client_pid {
             return Err(format!("rejected connection from pid {pid} (expected {client_pid})"));
         }
+        let conn = verify_connecting_client(pid, client_created)?;
+        let _conn_guard = HandleGuard(conn);
         // Borrow the pipe for buffered framing WITHOUT taking ownership of the handle (ManuallyDrop
         // never closes it; the caller Disconnects/Closes). Deref to the inner `File`, which is what
         // implements Read/Write.
@@ -262,12 +291,64 @@ mod imp {
         Ok(handle)
     }
 
-    /// Open the launching app for lifetime-watching. SYNCHRONIZE is the ONLY right we request — we
-    /// wait on it, never read its memory. A failure here means the pid is already gone/invalid.
-    fn open_client(pid: u32) -> Result<HANDLE, String> {
-        let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid) }
+    /// Open the launching app and PROVE it is the intended process at startup, not a pid-reuse
+    /// impostor: its `GetProcessTimes` creation time must equal `client_created`. SYNCHRONIZE lets us
+    /// wait on it (death-watch); PROCESS_QUERY_INFORMATION lets us read its creation time + token (for
+    /// the DACL SID). On any mismatch the handle is closed and we fail closed. The returned handle is
+    /// used ONLY for the death-watch + the one-time SID read — NOT as a per-connection identity guard.
+    fn open_client_verified(pid: u32, client_created: u64) -> Result<HANDLE, String> {
+        let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_QUERY_INFORMATION, false, pid) }
             .map_err(|e| format!("OpenProcess({pid}) failed: {e}"))?;
+        let created = match process_creation_time(handle) {
+            Ok(t) => t,
+            Err(e) => {
+                unsafe { let _ = CloseHandle(handle); }
+                return Err(e);
+            }
+        };
+        if created != client_created {
+            unsafe { let _ = CloseHandle(handle); }
+            return Err(format!(
+                "client pid {pid} creation time {created} != expected {client_created} (pid reuse)"
+            ));
+        }
         Ok(handle)
+    }
+
+    /// Per-connection identity re-verification (codex High): open the CONNECTING client by pid and
+    /// confirm its creation time equals `client_created`. Returns the still-open handle so the caller
+    /// can hold it across the request (the process cannot then be swapped out under a reused pid). On
+    /// any mismatch the handle is closed and the connection is refused. PROCESS_QUERY_LIMITED_INFORMATION
+    /// is all that GetProcessTimes needs — no token access here (the SID was taken once at startup).
+    fn verify_connecting_client(pid: u32, client_created: u64) -> Result<HANDLE, String> {
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
+            .map_err(|e| format!("OpenProcess({pid}) for re-verification failed: {e}"))?;
+        let created = match process_creation_time(handle) {
+            Ok(t) => t,
+            Err(e) => {
+                unsafe { let _ = CloseHandle(handle); }
+                return Err(e);
+            }
+        };
+        if created != client_created {
+            unsafe { let _ = CloseHandle(handle); }
+            return Err(format!(
+                "connecting pid {pid} creation time {created} != expected {client_created} (pid reuse)"
+            ));
+        }
+        Ok(handle)
+    }
+
+    /// The process's creation time as a u64 (the FILETIME's high/low dwords packed). Stable for the
+    /// process's lifetime and unique enough with the pid to defeat reuse.
+    fn process_creation_time(handle: HANDLE) -> Result<u64, String> {
+        let mut creation = FILETIME::default();
+        let mut exit = FILETIME::default();
+        let mut kernel = FILETIME::default();
+        let mut user = FILETIME::default();
+        unsafe { GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) }
+            .map_err(|e| format!("GetProcessTimes failed: {e}"))?;
+        Ok(((creation.dwHighDateTime as u64) << 32) | (creation.dwLowDateTime as u64))
     }
 
     /// A thread that force-exits this server the instant the app dies (so consent never outlives it).
@@ -287,12 +368,17 @@ mod imp {
     /// An owned `PSECURITY_DESCRIPTOR` (LocalFree on drop) plus a live handle for FFI.
     struct SecurityDescriptor(PSECURITY_DESCRIPTOR);
     impl SecurityDescriptor {
-        /// DACL: LocalSystem (`SY`) + the current user, generic-all; SACL: MEDIUM mandatory label,
-        /// no-write-up. The medium label is what lets the unelevated (medium-IL) app open a pipe
-        /// this high-IL process created; the user-only DACL keeps other users out; the per-request
-        /// pid check keeps other same-user processes out.
-        fn current_user_medium() -> Result<Self, String> {
-            let sid = current_user_sid_string()?;
+        /// DACL: LocalSystem (`SY`) + the given user SID, generic-all; SACL: MEDIUM mandatory label,
+        /// no-write-up. `sid` is the LAUNCHING user's SID (read from the client's token, not ours —
+        /// codex P2b). The medium label is what lets the unelevated (medium-IL) app open a pipe this
+        /// high-IL process created; the user-only DACL keeps other users out; the per-request pid
+        /// check keeps other same-user processes out.
+        fn for_user_medium(sid: &str) -> Result<Self, String> {
+            // The SID string is derived from a token via ConvertSidToStringSidW, so it is `S-1-...`
+            // with no SDDL metacharacters; guard anyway before interpolating into the descriptor.
+            if !sid.starts_with("S-") || !sid.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+                return Err(format!("refusing to build a descriptor from a malformed SID {sid:?}"));
+            }
             // SDDL: Owner = user; DACL grants SYSTEM + the user generic-all; SACL sets a medium
             // integrity label with no-write-up (blocks lower-IL subjects).
             let sddl = format!("O:{sid}D:(A;;GA;;;SY)(A;;GA;;;{sid})S:(ML;;NW;;;ME)");
@@ -317,11 +403,13 @@ mod imp {
         }
     }
 
-    /// The current process user's SID as an SDDL string (e.g. `S-1-5-21-...`).
-    fn current_user_sid_string() -> Result<String, String> {
+    /// The user SID (as an SDDL string, e.g. `S-1-5-21-...`) of the process `handle`'s token. `handle`
+    /// must carry PROCESS_QUERY_INFORMATION. Used on the CLIENT process so the pipe DACL admits the
+    /// LAUNCHING user, whoever the elevated server itself runs as (codex P2b).
+    fn user_sid_of_process(handle: HANDLE) -> Result<String, String> {
         unsafe {
             let mut token = HANDLE::default();
-            OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)
+            OpenProcessToken(handle, TOKEN_QUERY, &mut token)
                 .map_err(|e| format!("OpenProcessToken failed: {e}"))?;
             let _guard = HandleGuard(token);
             // Size probe, then read the TOKEN_USER.
@@ -361,8 +449,12 @@ mod tests {
     #[test]
     fn dispatch_refuses_non_privileged_and_nested_verbs() {
         // A nested serve-session over the pipe is refused (no server spawns another server).
-        let (code, _) = dispatch(&["serve-session".into(), "--pipe".into(), "x".into(), "--client-pid".into(), "5".into()]);
+        let (code, msg) = dispatch(&[
+            "serve-session".into(), "--pipe".into(), "x".into(),
+            "--client-pid".into(), "5".into(), "--client-created".into(), "1".into(),
+        ]);
         assert_eq!(code, 2);
+        assert!(msg.contains("not permitted"), "a valid serve-session is refused over the pipe, not merely unparsed: {msg}");
         // Bare/unknown verbs are refused with exit 2 (never silently run).
         assert_eq!(dispatch(&["version".into()]).0, 2);
         assert_eq!(dispatch(&["do-evil".into()]).0, 2);

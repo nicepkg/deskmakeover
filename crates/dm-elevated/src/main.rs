@@ -56,10 +56,10 @@ fn main() -> ExitCode {
         args::Command::RestoreDesktopItems { manifest } => {
             finish_desktop_items(desktop_items::run_restore_file(&manifest))
         }
-        args::Command::ServeSession { pipe, client_pid } => {
+        args::Command::ServeSession { pipe, client_pid, client_created } => {
             // The session server runs until the launching app exits (then it force-exits itself).
             // Reaching here with an Ok is the app-died path; an Err is a fatal setup failure.
-            match session::run_serve_session(&pipe, client_pid) {
+            match session::run_serve_session(&pipe, client_pid, client_created) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) => {
                     eprintln!("session server failed: {e}");

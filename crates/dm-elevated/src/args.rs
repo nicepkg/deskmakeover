@@ -43,12 +43,15 @@ pub enum Command {
     /// Restore those same protected targets to their captured originals (the reverse batch).
     RestoreDesktopItems { manifest: String },
     /// Run as a SESSION-SCOPED elevated server: create the named pipe `pipe`, accept ONLY the
-    /// unelevated app process `client_pid` (verified via `GetNamedPipeClientProcessId`), and execute
-    /// the SAME whitelisted verbs above — one UAC per app launch instead of one per operation
-    /// (owner 2026-07-17). Every request string is re-parsed through THIS grammar, so the pipe grants
-    /// no capability the CLI does not. The server exits when `client_pid` dies (never a lingering
+    /// unelevated app process identified by BOTH `client_pid` AND `client_created` (the launcher's
+    /// process-creation FILETIME as a u64), and execute the SAME whitelisted verbs above — one UAC per
+    /// app launch instead of one per operation (owner 2026-07-17). The (pid, creation-time) pair is
+    /// the identity: a bare pid is forgeable by PID reuse, so the server verifies the connecting (and
+    /// watched) process's `GetProcessTimes` creation time equals `client_created` before trusting it
+    /// (codex 2026-07-17 P1). Every request string is re-parsed through THIS grammar, so the pipe
+    /// grants no capability the CLI does not. The server exits when the client dies (never a lingering
     /// elevated process).
-    ServeSession { pipe: String, client_pid: u32 },
+    ServeSession { pipe: String, client_pid: u32, client_created: u64 },
     /// An unknown or non-whitelisted verb → rejected (exit 2).
     Unknown(String),
 }
@@ -83,6 +86,7 @@ pub fn parse(args: &[String]) -> Command {
 fn parse_serve_session(rest: &[String]) -> Command {
     let mut pipe: Option<String> = None;
     let mut client_pid: Option<u32> = None;
+    let mut client_created: Option<u64> = None;
     let mut i = 0;
     while i < rest.len() {
         match rest[i].to_ascii_lowercase().as_str() {
@@ -113,12 +117,29 @@ fn parse_serve_session(rest: &[String]) -> Command {
                 }
                 i += 2;
             }
+            "--client-created" => {
+                let Some(val) = rest.get(i + 1).filter(|v| !is_flag(v)) else {
+                    return Command::Unknown("serve-session: --client-created needs a value".into());
+                };
+                if client_created.is_some() {
+                    return Command::Unknown("serve-session: duplicate --client-created".into());
+                }
+                match val.trim().parse::<u64>() {
+                    Ok(t) if t != 0 => client_created = Some(t),
+                    _ => return Command::Unknown("serve-session: --client-created must be a non-zero u64".into()),
+                }
+                i += 2;
+            }
             other => return Command::Unknown(format!("serve-session: unexpected argument {other:?}")),
         }
     }
-    match (pipe, client_pid) {
-        (Some(pipe), Some(client_pid)) => Command::ServeSession { pipe, client_pid },
-        _ => Command::Unknown("serve-session: --pipe and --client-pid are both required".into()),
+    match (pipe, client_pid, client_created) {
+        (Some(pipe), Some(client_pid), Some(client_created)) => {
+            Command::ServeSession { pipe, client_pid, client_created }
+        }
+        _ => Command::Unknown(
+            "serve-session: --pipe, --client-pid and --client-created are all required".into(),
+        ),
     }
 }
 
@@ -295,28 +316,32 @@ mod tests {
     }
 
     #[test]
-    fn serve_session_requires_a_safe_pipe_and_a_nonzero_pid() {
+    fn serve_session_requires_a_safe_pipe_a_nonzero_pid_and_a_creation_time() {
         assert_eq!(
-            parse(&argv(&["serve-session", "--pipe", "dm-abc123", "--client-pid", "4242"])),
-            Command::ServeSession { pipe: "dm-abc123".into(), client_pid: 4242 }
+            parse(&argv(&["serve-session", "--pipe", "dm-abc123", "--client-pid", "4242", "--client-created", "133700000000000000"])),
+            Command::ServeSession { pipe: "dm-abc123".into(), client_pid: 4242, client_created: 133_700_000_000_000_000 }
         );
-        // Strict privilege-boundary grammar.
-        assert!(matches!(parse(&argv(&["serve-session"])), Command::Unknown(_)), "both required");
-        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x"])), Command::Unknown(_)), "pid required");
-        assert!(matches!(parse(&argv(&["serve-session", "--client-pid", "1"])), Command::Unknown(_)), "pipe required");
-        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "0"])), Command::Unknown(_)), "pid nonzero");
-        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "-1"])), Command::Unknown(_)), "pid u32");
-        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "notnum"])), Command::Unknown(_)), "pid numeric");
+        // Strict privilege-boundary grammar: all three are required (the (pid, creation-time) pair is
+        // the identity — a bare pid is forgeable, so `--client-created` is mandatory).
+        assert!(matches!(parse(&argv(&["serve-session"])), Command::Unknown(_)), "all required");
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "5"])), Command::Unknown(_)), "created required");
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-created", "1"])), Command::Unknown(_)), "pid required");
+        assert!(matches!(parse(&argv(&["serve-session", "--client-pid", "5", "--client-created", "1"])), Command::Unknown(_)), "pipe required");
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "0", "--client-created", "1"])), Command::Unknown(_)), "pid nonzero");
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "-1", "--client-created", "1"])), Command::Unknown(_)), "pid u32");
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "5", "--client-created", "0"])), Command::Unknown(_)), "created nonzero");
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "x", "--client-pid", "5", "--client-created", "notnum"])), Command::Unknown(_)), "created numeric");
         // Pipe name must be a safe single segment — no path escape into the pipe namespace.
         for bad in [r"..\evil", r"a\b", "a/b", "", ".", "..", "has space", "semi;colon"] {
             assert!(
-                matches!(parse(&argv(&["serve-session", "--pipe", bad, "--client-pid", "5"])), Command::Unknown(_)),
+                matches!(parse(&argv(&["serve-session", "--pipe", bad, "--client-pid", "5", "--client-created", "1"])), Command::Unknown(_)),
                 "pipe {bad:?} must be rejected"
             );
         }
         // Duplicates + surplus refuse.
-        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "a", "--pipe", "b", "--client-pid", "5"])), Command::Unknown(_)));
-        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "a", "--client-pid", "5", "surplus"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "a", "--pipe", "b", "--client-pid", "5", "--client-created", "1"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "a", "--client-pid", "5", "--client-created", "1", "--client-created", "2"])), Command::Unknown(_)));
+        assert!(matches!(parse(&argv(&["serve-session", "--pipe", "a", "--client-pid", "5", "--client-created", "1", "surplus"])), Command::Unknown(_)));
     }
 
     #[test]

@@ -208,7 +208,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "ConsentArrow": "应用美化时，我们会隐藏 Windows 自带的快捷方式小箭头，改由 DeskMakeover 统一绘制，让图标更清爽。这项改动对整台电脑生效，也会影响桌面以外、以及本机其他账户的快捷方式；随时可以在设置里一键恢复。", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "ConsentCancel": "再想想",
   "ConsentNot": "不会发生：不删除、不移动、不修改你的任何文件",
-  "ConsentTitle": "开始前，说清楚三件事",
+  "ConsentRefresh": "为刷新桌面图标，已打开的文件夹窗口会被关闭",
+  "ConsentTitle": "开始前，说清楚这几件事",
   "ConsentUac": "需要一次管理员授权，Windows 会弹出确认框",
   "ConsentWhatFormat": "会发生：美化 {0} 个图标的外观，并把快捷方式小箭头换成精致标记",
   "Corner_Square": "直角",

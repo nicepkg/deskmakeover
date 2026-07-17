@@ -57,3 +57,4 @@ Desktop.ini
 
 # ── Agent worktrees (git worktree add .worktrees/<task>) ──────
 .worktrees/
+target-review/

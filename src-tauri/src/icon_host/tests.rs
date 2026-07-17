@@ -3,7 +3,7 @@
     use super::*;
     use super::export::utc_stamp;
     use std::collections::HashMap;
-    use dm_contracts::{IconChunkItemDto, IconKindDto, IconScanDto};
+    use dm_contracts::{IconChunkItemDto, IconKindDto, IconOpResultDto, IconScanDto};
     use dm_domain::{DecodedImage, OverlayOutcome};
     use crate::devhost_icons::{
         DevDesktopGeometry, DevDesktopScanner, DevExplorerRefresher, DevIconApplier,
@@ -61,6 +61,7 @@
                 applier: Arc::new(DevIconApplier(desk.clone())),
                 overlay,
                 refresher: Arc::new(DevExplorerRefresher),
+                elevated: None,
                 geometry: Arc::new(DevDesktopGeometry),
             },
             settings,
@@ -386,6 +387,7 @@
                 applier: Arc::new(DevIconApplier(desk)),
                 overlay: Arc::new(DevOverlayControl),
                 refresher: Arc::new(DevExplorerRefresher),
+                elevated: None,
                 geometry: Arc::new(DevDesktopGeometry),
             },
             settings,
@@ -481,6 +483,7 @@
                 applier: Arc::new(DevIconApplier(desk)),
                 overlay: Arc::new(DevOverlayControl),
                 refresher: Arc::new(DevExplorerRefresher),
+                elevated: None,
                 geometry: Arc::new(DevDesktopGeometry),
             },
             settings,
@@ -697,4 +700,142 @@
             !h.get_persisted().unwrap().applied,
             "a terminal (rolled-back) txn awaiting checkpoint never spuriously shows restore"
         );
+    }
+
+    /// An [`ExplorerRefresher`] that counts `restart_shell()` calls, so a test can assert exactly
+    /// when a desktop-mutating op restarts the shell (the reliable folder/.url refresh, owner box
+    /// 2026-07-17). The `notify_*` methods no-op like the dev refresher.
+    struct RecordingRefresher(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+    impl ExplorerRefresher for RecordingRefresher {
+        fn notify_icons_changed(&self) -> dm_domain::PortResult<()> {
+            Ok(())
+        }
+        fn restart_shell(&self) -> dm_domain::PortResult<()> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    /// A 256×256 solid-color master PNG. Distinct colors bake to DISTINCT bytes, so a re-style with a
+    /// new color is a real desktop mutation (not a content-addressed CAS-skip).
+    fn solid_master(rgb: [u8; 3]) -> String {
+        use base64::Engine;
+        use image::ImageEncoder;
+        let img = image::RgbaImage::from_pixel(256, 256, image::Rgba([rgb[0], rgb[1], rgb[2], 255]));
+        let mut png = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut png)
+            .write_image(&img, 256, 256, image::ExtendedColorType::Rgba8)
+            .unwrap();
+        base64::engine::general_purpose::STANDARD.encode(png)
+    }
+
+    /// Build a host whose refresher counts shell restarts.
+    fn host_recording(
+        dir: &std::path::Path,
+        restarts: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> IconHost {
+        let desk = DevIconDesktop::new();
+        let settings = Arc::new(SettingsStore::open(&dir.join("settings.sqlite3")).unwrap());
+        IconHost::new(
+            IconHostPorts {
+                scanner: Arc::new(DevDesktopScanner),
+                extractor: Arc::new(DevIconSourceExtractor(desk.clone())),
+                reader: Arc::new(DevIconReader(desk.clone())),
+                applier: Arc::new(DevIconApplier(desk.clone())),
+                overlay: Arc::new(DevOverlayControl),
+                refresher: Arc::new(RecordingRefresher(restarts)),
+                elevated: None,
+                geometry: Arc::new(DevDesktopGeometry),
+            },
+            settings,
+            dir,
+            1,
+            ScopeRoots::Unprivileged,
+        )
+    }
+
+    /// Style a SINGLE item to a solid color under a labelled version.
+    fn apply_one(h: &IconHost, rev: u32, id: &str, seed: i64, rgb: [u8; 3], label: &str) -> IconOpResultDto {
+        let sid = h.apply_baked_begin(rev, 1).unwrap();
+        h.apply_baked_chunk(&sid, vec![IconChunkItemDto {
+            id: id.into(),
+            source_index: 0,
+            master_png: solid_master(rgb),
+        }])
+        .unwrap();
+        h.apply_baked_commit(&sid, style_json(seed), vec![], Some(label.into())).unwrap()
+    }
+
+    #[test]
+    fn every_desktop_mutating_op_restarts_the_shell_but_an_idempotent_reapply_does_not() {
+        // owner box 2026-07-17: a SECOND preset applied over a first left the desktop's FOLDER
+        // (`desktop.ini`) / `.url` custom icons stuck on their stale first-preset bitmap. The desktop
+        // caches container-kind icons and — pixel-verified — ONLY an Explorer restart reliably
+        // re-resolves them; `.lnk` self-refresh masked the bug. So the target here is `docs`, the fake
+        // desktop's FOLDER item (NOT a `.lnk`, which would refresh on its own and prove nothing): every
+        // desktop-MUTATING op on it (first apply, a re-styling second preset, a restore) must restart
+        // the shell, while an idempotent re-apply that changes nothing must NOT (no gratuitous flash).
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let restarts = Arc::new(AtomicUsize::new(0));
+        let dir = tempfile::tempdir().unwrap();
+        let h = host_recording(dir.path(), restarts.clone());
+        // The target is a FOLDER, the exact kind the desktop caches (the bug's real surface).
+        let scan = h.scan().unwrap();
+        assert_eq!(
+            scan.items.iter().find(|i| i.id == "docs").unwrap().kind,
+            IconKindDto::Folder,
+            "the regression target must be the container kind that actually got stuck"
+        );
+
+        // Preset A styles the folder → the shell restarts once.
+        assert!(apply_one(&h, scan.revision, "docs", 1, [120, 90, 200], "vA").ok);
+        assert_eq!(restarts.load(Ordering::SeqCst), 1, "the first apply restarts the shell");
+
+        // Preset B (different baked bytes) re-styles the folder — THE 2ND-PRESET REGRESSION: it too
+        // must restart, or the folder stays on preset A's cached icon.
+        let scan2 = h.scan().unwrap();
+        assert!(apply_one(&h, scan2.revision, "docs", 2, [20, 200, 80], "vB").ok);
+        assert_eq!(restarts.load(Ordering::SeqCst), 2, "a second, different preset also restarts the shell");
+
+        // Re-applying preset B unchanged is a content-addressed CAS-skip (nothing committed). Assert
+        // the folder is STILL styled (a genuine no-op, not a failure that reverted — else the "no
+        // restart" check would pass spuriously, codex 2026-07-17), then that no restart fired.
+        let scan3 = h.scan().unwrap();
+        let reapply = apply_one(&h, scan3.revision, "docs", 2, [20, 200, 80], "vB");
+        assert!(reapply.persisted.applied, "the idempotent re-apply left the folder styled");
+        assert_eq!(restarts.load(Ordering::SeqCst), 2, "an idempotent re-apply does not restart the shell");
+
+        // Restore reverts the folder → the shell restarts so the default folder icon re-resolves.
+        assert!(h.restore().unwrap().ok);
+        assert_eq!(restarts.load(Ordering::SeqCst), 3, "restore restarts the shell");
+    }
+
+    #[test]
+    fn switching_appearance_version_restarts_the_shell_only_when_the_desktop_changes() {
+        // switchVersion is the third desktop-mutating verb; its restart gate is
+        // `!committed.is_empty() || desktop_mutated` — NOT `committed` alone. A switch whose driver
+        // writes then rolls back / bare-errors leaves `committed` EMPTY yet `desktop_mutated` TRUE, and
+        // the folder would keep a cached transient icon if the host skipped the restart (codex
+        // 2026-07-17 Block). DO NOT simplify the gate back to a `committed`-only check.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let restarts = Arc::new(AtomicUsize::new(0));
+        let dir = tempfile::tempdir().unwrap();
+        let h = host_recording(dir.path(), restarts.clone());
+
+        // Two saved versions of the FOLDER's look; the desktop ends on vB.
+        let scan = h.scan().unwrap();
+        let ra = apply_one(&h, scan.revision, "docs", 1, [200, 40, 40], "vA");
+        let va = ra.persisted.history.iter().find(|v| v.label.as_deref() == Some("vA")).unwrap().id.clone();
+        let scan2 = h.scan().unwrap();
+        assert!(apply_one(&h, scan2.revision, "docs", 2, [40, 40, 200], "vB").ok);
+        assert_eq!(restarts.load(Ordering::SeqCst), 2, "the two applies each restarted the shell");
+
+        // Switch the folder back to vA — a real re-style (vB → vA) → the shell restarts.
+        assert!(h.switch_version(&va).unwrap().ok);
+        assert_eq!(restarts.load(Ordering::SeqCst), 3, "a version switch that re-styles the folder restarts the shell");
+
+        // Switch to vA again — the folder already wears vA → CAS-skip, nothing committed, desktop
+        // untouched → NO restart (no gratuitous flash).
+        let _ = h.switch_version(&va).unwrap();
+        assert_eq!(restarts.load(Ordering::SeqCst), 3, "a no-op version switch does not restart the shell");
     }

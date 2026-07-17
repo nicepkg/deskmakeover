@@ -226,33 +226,6 @@ impl IconHost {
         self.sources.lock().unwrap().get(key)
     }
 
-    /// Reloads the machine-wide shortcut-overlay icon (`HKLM ...\Shell Icons\29`) after it TRANSITIONS
-    /// between the transparent overlay and the native arrow. Explorer caches that value at STARTUP and
-    /// `SHChangeNotify` does NOT reload it, so a fresh apply writes the transparent `.ico` yet the ugly
-    /// native arrow keeps showing until Explorer restarts (owner report 2026-07-16). This is the
-    /// standard shortcut-arrow-tweak refresh; it runs ONLY on a native↔transparent transition (≈once
-    /// per makeover / reset), never on a repeat apply, so the desktop flickers at most once. Best-effort
-    /// — a refresh fault never fails the op. The conditional restart avoids a stray Explorer window if
-    /// the shell auto-respawns. [WINDOWS-VERIFY] runtime.
-    pub(super) fn refresh_shell_icon_overlay(&self) {
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            let _ = std::process::Command::new("powershell")
-                .args([
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-Command",
-                    "Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; \
-                     Start-Sleep -Milliseconds 700; \
-                     if (-not (Get-Process -Name explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }",
-                ])
-                .creation_flags(CREATE_NO_WINDOW)
-                .spawn();
-        }
-    }
-
     /// Records the effective overlay signature just installed (`hidden:<sha>` / `native`) and returns
     /// whether it DIFFERS from the previously-installed one — i.e. whether Explorer must reload for
     /// the change to become visible. A repeat apply of the SAME overlay returns false (no flicker); a

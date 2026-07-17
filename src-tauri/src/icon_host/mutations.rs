@@ -242,12 +242,11 @@ impl IconHost {
                         if let Err(e) = self.set_arrow(ArrowOverlayDto::Hidden) {
                             overlay_incomplete = true;
                             log::warn!("icons apply: arrow overlay installed but its state was not persisted: {e}");
-                        } else if self.overlay_install_changed(&overlay_sig) {
-                            // The effective overlay CHANGED (a native→hidden transition, or the overlay asset
-                            // content changed across an app update) — Explorer caches Shell Icons\29 at
-                            // startup, so reload it or the ugly native arrow / a stale overlay keeps showing
-                            // (owner report 2026-07-16). A repeat apply of the same overlay does NOT flicker.
-                            self.refresh_shell_icon_overlay();
+                        } else {
+                            // Keep the overlay-install marker current (its side effect enables the next
+                            // apply's UAC skip). The Explorer restart that makes any overlay change visible
+                            // now fires UNCONDITIONALLY at the end of a desktop-mutating apply — see below.
+                            let _ = self.overlay_install_changed(&overlay_sig);
                         }
                     }
                     other => {
@@ -262,6 +261,13 @@ impl IconHost {
         // folder needs SHCNE_UPDATEDIR or Explorer keeps showing its cached desktop.ini icon.
         for (path, is_dir) in &touched_paths {
             let _ = self.refresher.notify_item_changed(path, *is_dir);
+        }
+        // Restart the shell so the DESKTOP re-resolves every re-styled folder/.url/recyclebin custom
+        // icon — the ONLY reliable refresh (owner choice 2026-07-17, pixel-verified; the notifications
+        // above are a best-effort head start that `.lnk` items honor). Gated on a real desktop change,
+        // so an idempotent re-apply (every icon a CAS-skip) never flashes.
+        if committed_any || outcome.desktop_mutated {
+            let _ = self.refresher.restart_shell();
         }
         // A finalize step failed AFTER the desktop committed (codex R3-Block 4): log the detail for
         // the operator, surface a generic "applied but finalize incomplete" toast, and return ok:false
@@ -381,6 +387,7 @@ impl IconHost {
 
         let mut overlay_failed = false;
         let mut autoformat_off_failed = false;
+        let mut overlay_lifted = false;
         if !deferred {
             // §10 three-part coupling (spec 07 §8.4): clearing ② (done in the ops) is paired with
             // turning auto-format OFF so the resident stays dormant after a reset. A write fault here is
@@ -402,9 +409,11 @@ impl IconHost {
                             // Fail-safe: the arrow IS native on the machine; a lost marker only costs an
                             // extra idempotent restore next launch (codex R2 B-3), not a reset failure.
                             log::warn!("icons reset: arrow restored but its state was not persisted: {e}");
-                        } else if self.overlay_install_changed("native") {
-                            // hidden→native transition: reload Explorer so the arrow actually comes back.
-                            self.refresh_shell_icon_overlay();
+                        } else {
+                            // hidden→native transition needs the shell to reload Shell Icons\29 for the
+                            // arrow to return; the unconditional restart below (gated on this flag OR any
+                            // reverted icon) does it. Capture whether the overlay actually transitioned.
+                            overlay_lifted = self.overlay_install_changed("native");
                         }
                     }
                     _ => overlay_failed = true,
@@ -416,6 +425,12 @@ impl IconHost {
         // shows once Explorer re-reads the directory (SHCNE_UPDATEDIR).
         for (path, is_dir) in &restored_paths {
             let _ = self.refresher.notify_item_changed(path, *is_dir);
+        }
+        // Restart the shell so the desktop drops every cached custom folder/.url/recyclebin icon and
+        // the native arrow returns — the reliable refresh (owner choice 2026-07-17). Gated on a real
+        // change (an icon reverted, or the overlay lifted), so a no-op reset never flashes.
+        if !restored_paths.is_empty() || overlay_lifted {
+            let _ = self.refresher.restart_shell();
         }
         // A finalize step failed after some icons already reverted (codex R3-Block 4): log the detail,
         // return ok:false + a repair toast + the authoritative state. Surface the trust-first skips, or
@@ -495,6 +510,16 @@ impl IconHost {
                     log::warn!("icons switchVersion: arrow overlay not installed ({other:?}) — native arrow remains");
                 }
             }
+        }
+
+        // Restart the shell so the desktop re-resolves every re-styled folder/.url/recyclebin custom
+        // icon — the reliable refresh (owner choice 2026-07-17). Gated on a real desktop change: NOT
+        // just `committed`, but the full mutation contract — a write-then-rollback / abandon / durable
+        // journal fault leaves `committed` EMPTY yet `desktop_mutated` TRUE (version_switch also forces
+        // it on a driver bare-error), and the desktop then shows a cached transient icon that only the
+        // restart clears (codex 2026-07-17 Block). Mirrors the apply gate; a no-op switch never flashes.
+        if !outcome.outcome.committed.is_empty() || outcome.outcome.desktop_mutated {
+            let _ = self.refresher.restart_shell();
         }
 
         let (ok, toast) = if outcome.deferred {

@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { CtaButton } from '@/components/common/cta-button'
 import { Confetti, useCelebration } from '@/components/common/confetti'
-import { ConfirmSheet, DoneCard } from '@/components/common/ceremony'
+import { ConfirmSheet } from '@/components/common/ceremony'
 import { usePaperHero } from '@/lib/hero'
 import { IconAction, Reveal, useFooterClearance } from '@/components/common/inspector'
 import { ArchiveRestore, Download, ImageUp, Layers, MousePointerClick, RotateCcw, X } from 'lucide-react'
@@ -30,7 +30,6 @@ export function WallpaperPanel() {
   const sourceUrl = useWallpaper((s) => s.sourceUrl)
   const { apply, restore, importSourceViaPicker, resetSource, exportImage } = useWallpaper.getState()
   const [restoreOpen, setRestoreOpen] = React.useState(false)
-  const [doneOpen, setDoneOpen] = React.useState(false)
   // First destructive apply over a live (slideshow/dynamic) wallpaper is confirmed
   // once, then remembered per screen for the session (§A4).
   const [dynamicConfirmOpen, setDynamicConfirmOpen] = React.useState(false)
@@ -51,14 +50,13 @@ export function WallpaperPanel() {
       : ctaText
 
   const doApply = async () => {
-    // Gate the DoneCard on THIS apply's result — hasBackup stays true from any
+    // Gate the celebration on THIS apply's result — hasBackup stays true from any
     // earlier success and would celebrate a failed apply (codex review M6).
     const ok = await apply()
     if (!ok) return
-    // Same celebration as the icons apply (DRY): confetti on the FIRST successful
-    // wallpaper apply of each launch, then the DoneCard.
+    // Same as the icons apply (owner 2026-07-17): a brief confetti on the FIRST successful wallpaper
+    // apply of each launch — no completion modal (the CTA's synced state is the confirmation).
     celebrate()
-    setDoneOpen(true)
   }
 
   const runApply = async () => {
@@ -223,12 +221,6 @@ export function WallpaperPanel() {
           void doApply()
         }}
         onCancel={() => setDynamicConfirmOpen(false)}
-      />
-      <DoneCard
-        open={doneOpen}
-        onClose={() => setDoneOpen(false)}
-        note={t('Done_LastStep')}
-        ctaLabel={t('Done_GoOrganize')}
       />
 
       {/* First-of-launch confetti — same shared celebration as the icons apply. */}

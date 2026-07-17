@@ -206,7 +206,8 @@ export const en = {
   "ConsentArrow": "When you apply a look, we hide the small shortcut arrow Windows adds and let DeskMakeover draw a cleaner one instead. This takes effect for the whole computer, so it also touches shortcuts outside the desktop and on other accounts on this PC; you can restore it any time in Settings with one click.", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "ConsentCancel": "Not yet",
   "ConsentNot": "What does not happen: no files are deleted, moved, or modified",
-  "ConsentTitle": "Before we start, three plain facts",
+  "ConsentRefresh": "To refresh the desktop icons, any open folder windows will be closed",
+  "ConsentTitle": "Before we start, a few plain facts",
   "ConsentUac": "One administrator approval is needed; Windows will show a confirmation",
   "ConsentWhatFormat": "What happens: {0} icons get a new look, and the shortcut arrow becomes a refined mark",
   "Corner_Square": "Square",

@@ -40,4 +40,43 @@ impl ExplorerRefresher for WindowsExplorerRefresher {
         };
         Ok(())
     }
+
+    /// Restart the shell AND purge Explorer's icon-cache DBs, then relaunch one `explorer.exe` only if
+    /// Winlogon's AutoRestartShell did not already bring it back (the conditional relaunch avoids a
+    /// stray window). The reliable desktop-icon refresh (see the trait doc + owner box 2026-07-17).
+    ///
+    /// The icon-cache purge is NOT optional: the on-disk arrow-overlay `.ico` (`HKLM ...\Shell
+    /// Icons\29`) is fully transparent, but Explorer caches the RENDERED overlay bitmap in
+    /// `%LOCALAPPDATA%\...\Explorer\iconcache*.db`. Once a cold reload rendered a BLACK bitmap for it,
+    /// every later restart re-served that cached black block over every shortcut (owner box
+    /// 2026-07-17: "the small arrow became a huge black square on the second apply"). A restart alone
+    /// re-reads the registry but still trusts the poisoned cache; deleting the cache DBs (only
+    /// possible while Explorer is down — it holds them open) forces a fresh render from the
+    /// transparent `.ico`. This mirrors the proven reference tool's `Refresh-ExplorerIconCache`.
+    ///
+    /// Async (`.spawn()`) — the PowerShell owns the stop→purge→relaunch chain, so the caller returns
+    /// without blocking and all desktop writes are already flushed. Best-effort: a spawn fault is
+    /// swallowed (a stale icon must never fail the whole op).
+    fn restart_shell(&self) -> PortResult<()> {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                // Stop Explorer so the icon-cache DBs it holds open can be deleted, purge them, then
+                // relaunch only if the shell did not auto-respawn (no stray window).
+                "Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; \
+                 Start-Sleep -Milliseconds 500; \
+                 Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'IconCache.db') -Force -ErrorAction SilentlyContinue; \
+                 Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'Microsoft\\Windows\\Explorer') -Filter 'iconcache*.db' -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue; \
+                 & (Join-Path $env:windir 'System32\\ie4uinit.exe') -show; \
+                 Start-Sleep -Milliseconds 300; \
+                 if (-not (Get-Process -Name explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+        Ok(())
+    }
 }

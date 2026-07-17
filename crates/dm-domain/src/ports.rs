@@ -161,6 +161,18 @@ pub trait ExplorerRefresher {
         let _ = (path, is_dir);
         Ok(())
     }
+
+    /// Restart the shell (Explorer) so the DESKTOP re-resolves every custom icon. This is the ONLY
+    /// reliable way to refresh a re-styled desktop icon whose kind is cached by the DESKTOP container
+    /// rather than its own file — a FOLDER (`desktop.ini`), a `.url`, the Recycle Bin, a System icon.
+    /// `.lnk` shortcuts self-refresh on their file change and honor `notify_*`; the container kinds do
+    /// NOT — owner box 2026-07-17 pixel-verified that every in-place refresh (ASSOCCHANGED / UPDATEDIR
+    /// / UPDATEITEM / `ie4uinit -show` / F5 / toggle-desktop-icons) is non-deterministic, while an
+    /// Explorer restart flips the icon 100% of the time both ways. Default no-op for fakes / platforms
+    /// without a shell (a browser dev host must NOT kill the user's Explorer).
+    fn restart_shell(&self) -> PortResult<()> {
+        Ok(())
+    }
 }
 
 /// The privileged global shortcut-overlay verb pair (ADR-0021), invoked out-of-process via the

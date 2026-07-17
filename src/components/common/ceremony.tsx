@@ -122,6 +122,9 @@ export function ConsentSheet({
   const rows: { glyph: string; text: string }[] = [
     { glyph: '✓', text: t('ConsentWhatFormat').replace('{0}', String(count)) },
     { glyph: '🛡', text: t('ConsentNot') },
+    // Informed consent (owner 2026-07-17): applying restarts the shell so the desktop re-resolves
+    // folder/.url custom icons (the only reliable refresh) — that closes any open folder windows.
+    { glyph: '📂', text: t('ConsentRefresh') },
     { glyph: '🔐', text: t('ConsentUac') },
   ]
   return (

@@ -13,7 +13,7 @@ import { KeptBar, KindTypeSection } from '@/components/panels/icons-participatio
 import { CURATED_SHAPES, MORE_SHAPES, TYPE_PLATE_SWATCHES, paleOf } from '@/components/panels/icon-axis-options'
 import { PRESET_NAME, PresetCard, PresetMiniCanvas, PresetMinis, StyleLibraryPopover } from '@/components/panels/icons-style-library'
 import { CtaButton } from '@/components/common/cta-button'
-import { ArrowGateSheet, ConfirmSheet, ConsentSheet, DoneCard } from '@/components/common/ceremony'
+import { ArrowGateSheet, ConfirmSheet, ConsentSheet } from '@/components/common/ceremony'
 import { Segmented } from '@/components/common/segmented'
 import { activePresetIdOf, resumeStatusKey, useIcons } from '@/stores/icons'
 import { useApp } from '@/stores/app'
@@ -22,7 +22,7 @@ import { useIconsHero } from '@/lib/hero'
 import { format, useT } from '@/lib/i18n'
 import type { StringKey } from '@/lib/i18n'
 import type { ConfigDto, FilterStyle, IconShape, MarkStyle, TypeOverrides } from '@/bridge/types'
-import { consentSatisfied, showDoneArrowNote } from '@/lib/arrow-overlay'
+import { consentSatisfied } from '@/lib/arrow-overlay'
 import { cn } from '@/lib/utils'
 
 // The icons INSPECTOR (spec 02 v3): height is scarce, and axes GROW over time —
@@ -64,7 +64,6 @@ export function IconsPanel() {
   const [consentOpen, setConsentOpen] = React.useState(false)
   const [arrowGateOpen, setArrowGateOpen] = React.useState(false)
   const [restoreOpen, setRestoreOpen] = React.useState(false)
-  const [doneOpen, setDoneOpen] = React.useState(false)
   // Milestone celebration (owner decree 2026-07-10): a full-window confetti burst
   // from the two bottom corners (shared useCelebration — same as wallpaper apply,
   // first success of each launch) PLUS a coral ripple from the CTA.
@@ -91,20 +90,16 @@ export function IconsPanel() {
   // BEHIND this window, the doorway says so.
   const runApply = async () => {
     const ok = await apply()
-    // Gate the completion card on THIS attempt's result — not the persisted
-    // `applied` flag, which stays true from an earlier apply and would pop a
-    // false DoneCard (and its "arrow is now hidden" line) after a failed or
-    // overlay-declined re-apply (review P2-1). The DoneCard's arrow line reads
-    // the live overlay state, so it never claims a hide that did not happen.
+    // No completion popup (owner 2026-07-17): the CTA's own "✓ 已与桌面同步" state IS the
+    // confirmation — a second modal after every apply is noise. A failed / overlay-declined apply
+    // returns ok:false and simply leaves the draft dirty for a retry (never a false success card).
     if (!ok) return
-    // First successful apply of this launch → celebrate (confetti + CTA ripple).
+    // First successful apply of this launch → a brief confetti + CTA ripple (celebration, not a modal).
     const fired = celebrate()
     if (fired && !reduced) {
       const r = ctaWrapRef.current?.getBoundingClientRect()
       if (r) setRipple({ key: Date.now(), cx: r.left + r.width / 2, cy: r.top + r.height / 2 })
     }
-    const beat = reduced ? 0 : 220
-    window.setTimeout(() => setDoneOpen(true), beat)
   }
   // First-run consent gate (owner disposition #3): v2 consent carries the
   // machine-wide arrow disclosure and is required to skip. A legacy (pre-
@@ -833,7 +828,7 @@ export function IconsPanel() {
         </div>
       </div>
 
-      {/* First-apply confetti cannons — full-window, ABOVE the DoneCard. */}
+      {/* First-apply confetti cannons — full-window, brief celebration (no modal after). */}
       <Confetti fireKey={celebrateKey} />
 
       {/* First-apply coral ripple — a bright ring + wash bursting from the CTA into
@@ -894,14 +889,6 @@ export function IconsPanel() {
           mutate({ distinction: 'Keep' })
         }}
         onCancel={() => setArrowGateOpen(false)}
-      />
-      {/* DoneCard reinforcement (panel record 2026-07-11): the arrow line only
-          appears when the overlay is ACTUALLY hidden now — a failed or overlay-
-          declined apply never claims it (review P2-1). */}
-      <DoneCard
-        open={doneOpen}
-        note={showDoneArrowNote(state.arrowOverlay) ? t('DoneArrow') : undefined}
-        onClose={() => setDoneOpen(false)}
       />
     </aside>
   )

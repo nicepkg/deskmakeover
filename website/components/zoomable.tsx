@@ -99,8 +99,10 @@ export function Lightbox({
         if (e.target === dialogRef.current) dialogRef.current?.close();
       }}
     >
-      <div className="pointer-events-none flex h-full w-full items-center justify-center overflow-hidden">
-        <picture className="pointer-events-auto">
+      {/* the toolbar zone (bottom ~5.5rem) is reserved via padding so the
+          FULL image is always visible above it, never covered or cut */}
+      <div className="pointer-events-none flex h-full w-full items-center justify-center overflow-hidden px-4 pb-24 pt-4">
+        <picture className="pointer-events-auto flex max-h-full max-w-full items-center justify-center">
           <source type="image/avif" srcSet={avif} sizes="96vw" />
           <source type="image/webp" srcSet={webp} sizes="96vw" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -116,11 +118,17 @@ export function Lightbox({
             onPointerUp={onPointerUp}
             onWheel={onWheel}
             style={{
+              // inline (survives any CSS pipeline hiccup): full fit against
+              // the viewport minus the reserved toolbar strip
+              maxWidth: "min(96vw, calc(100vw - 2rem))",
+              maxHeight: "calc(100vh - 7.5rem)",
+              width: "auto",
+              height: "auto",
               transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale})`,
               transition: dragging ? "none" : "transform 260ms var(--ease-swift)",
               cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
             }}
-            className="dm-lightbox-img max-h-[94svh] w-auto max-w-[96vw] select-none object-contain"
+            className="dm-lightbox-img select-none object-contain"
           />
         </picture>
       </div>

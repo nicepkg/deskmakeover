@@ -342,7 +342,7 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
   // where the LEFT bezel width faces the lens — with a slight push-in.
   // The whole screen content stays inside the viewport once settled.
   const YAW_A = 0.45;
-  const YAW_B = -0.42;
+  const YAW_B = -0.58;
   const LOOK_A = new THREE.Vector3();
   const LOOK_B = new THREE.Vector3();
   const POS_A = new THREE.Vector3();
@@ -370,7 +370,7 @@ export async function mount(host: HTMLElement, opts: MountOptions): Promise<() =
     const fillH = cssNum("--dm-fill", isWideStage ? 0.62 : 0.8);
     // never crop the panel horizontally: back off to whichever fit is farther
     // (1.25 covers the yaw-projected near edge plus the bezel)
-    const vhB = Math.max(PANEL_H / fillH, (PANEL_W * 1.25) / (0.96 * a));
+    const vhB = Math.max(PANEL_H / fillH, (PANEL_W * 1.35) / (0.96 * a));
     const vwB = vhB * a;
     const zB = PANEL_Z + vhB / (2 * ht);
     const oyB = (0.5 - cy) * vhB;

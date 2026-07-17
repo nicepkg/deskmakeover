@@ -227,6 +227,9 @@ export function Heatmap() {
         <span>{HEAT_AXIS.y}</span>
         <span>{HEAT_AXIS.x}</span>
       </div>
+      <p className="mb-2 text-center font-mono text-[10.5px] tracking-[0.08em] text-ink-3 md:hidden">
+        ← 左右滑动查看 24 小时 →
+      </p>
       <div className="overflow-x-auto">
         <div className="grid min-w-[640px] gap-[3px]">
           {HEAT_DAYS.map((day, di) => (

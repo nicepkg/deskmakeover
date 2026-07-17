@@ -3,12 +3,11 @@
  * docs/session-analysis/speech-dashboard.html (ai-command-center repo) by
  * scratchpad/extract-story-data.mjs. Do not hand-edit numbers; re-extract.
  *
- * Source: Claude Code session c69bf900 (2026-07-08 → 2026-07-17), 341 human
+ * Source: a nine-day Claude Code session (2026-07-08 → 2026-07-17), 341 human
  * messages after stripping tool results / system noise.
  */
 
 export const META = {
-  "sid": "c69bf900",
   "span": "2026-07-08 → 2026-07-17",
   "days": 10,
   "turns": 341,

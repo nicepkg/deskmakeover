@@ -107,8 +107,13 @@ export interface Dict {
       mobile: string;
     };
     primaryCta: string;
+    /** mobile-first action: copy the direct link to send to a PC */
+    mobileCopyCta: string;
+    mobileCopied: string;
+    mobileStillDownload: string;
     viaGithub: string;
     mirrorsLead: string;
+    /** "{size}" is replaced with the installer size in MB */
     mirrorNote: string;
     historyLabel: string;
     releaseNotes: string;

@@ -67,15 +67,18 @@ function DeviceLine({ dict, os }: { dict: Dict; os: OsKind | null }) {
 function MirrorLinks({
   dict,
   url,
+  sizeMB,
   onStart,
   prominent,
 }: {
   dict: Dict;
   url: string;
+  sizeMB: number;
   onStart: () => void;
   prominent: boolean;
 }) {
   const m = dict.downloadModal;
+  const note = m.mirrorNote.replace("{size}", String(sizeMB));
   if (prominent) {
     return (
       <div>
@@ -93,7 +96,7 @@ function MirrorLinks({
             </a>
           ))}
         </div>
-        <p className="mt-2 text-[11.5px] leading-[1.5] text-ink-3">{m.mirrorNote}</p>
+        <p className="mt-2 text-[11.5px] leading-[1.5] text-ink-3">{note}</p>
       </div>
     );
   }
@@ -128,6 +131,7 @@ export function DownloadModal({ dict }: { dict: Dict }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [os, setOs] = useState<OsKind | null>(null);
   const [started, setStarted] = useState(false);
+  const [copied, setCopied] = useState(false);
   const m = dict.downloadModal;
   const zh = dict.locale === "zh";
   const current = RELEASE;
@@ -193,24 +197,51 @@ export function DownloadModal({ dict }: { dict: Dict }) {
               {current.tag} · {current.publishedAt} · {asset.sizeMB} MB
             </span>
           </div>
-          <a
-            href={asset.url}
-            onClick={onStart}
-            className="mt-4 flex w-full items-center justify-center gap-2.5 bg-coral px-6 py-3 text-[15px] font-semibold text-white transition-colors hover:bg-coral-deep"
-          >
-            <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
-              <path d="M7 1.5v8m0 0L3.8 6.3M7 9.5l3.2-3.2M1.8 12.5h10.4" />
-            </svg>
-            {m.primaryCta}
-          </a>
-          <p className="mt-2 text-center font-mono text-[10.5px] tracking-[0.08em] text-ink-3">
-            {m.viaGithub}
-          </p>
+          {os === "mobile" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(asset.url).then(() => setCopied(true));
+                }}
+                className="mt-4 flex w-full items-center justify-center gap-2.5 bg-coral px-6 py-3 text-[15px] font-semibold text-white transition-colors hover:bg-coral-deep"
+              >
+                <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                  <rect x="4.5" y="4.5" width="8" height="8" />
+                  <path d="M9.5 4.5v-3h-8v8h3" />
+                </svg>
+                {copied ? m.mobileCopied : m.mobileCopyCta}
+              </button>
+              <a
+                href={asset.url}
+                onClick={onStart}
+                className="mt-2.5 block text-center font-mono text-[11.5px] text-ink-3 underline decoration-line underline-offset-2 transition-colors hover:text-ink"
+              >
+                {m.mobileStillDownload}
+              </a>
+            </>
+          ) : (
+            <>
+              <a
+                href={asset.url}
+                onClick={onStart}
+                className="mt-4 flex w-full items-center justify-center gap-2.5 bg-coral px-6 py-3 text-[15px] font-semibold text-white transition-colors hover:bg-coral-deep"
+              >
+                <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+                  <path d="M7 1.5v8m0 0L3.8 6.3M7 9.5l3.2-3.2M1.8 12.5h10.4" />
+                </svg>
+                {m.primaryCta}
+              </a>
+              <p className="mt-2 text-center font-mono text-[10.5px] tracking-[0.08em] text-ink-3">
+                {m.viaGithub}
+              </p>
+            </>
+          )}
         </div>
 
         {/* mirrors: prominent for zh, one quiet line for en */}
         <div className="mt-5">
-          <MirrorLinks dict={dict} url={asset.url} onStart={onStart} prominent={zh} />
+          <MirrorLinks dict={dict} url={asset.url} sizeMB={asset.sizeMB} onStart={onStart} prominent={zh} />
         </div>
 
         {/* SmartScreen walkthrough appears once a download actually starts */}

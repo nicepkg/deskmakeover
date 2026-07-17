@@ -138,7 +138,7 @@ re-shoot must go through the real app, never mockups.
 ## /story/ — the making-of page (创作历程)
 
 - A Chinese-language data-story: the full session analysis of how v1 was built in
-  nine days (341 human messages, Claude Code session c69bf900). Content is migrated
+  nine days (341 human messages, one continuous Claude Code session). Content is migrated
   VERBATIM from `docs/session-analysis/speech-dashboard.html` in the owner's
   ai-command-center repo — the analysis copy, quotes, verdict and every dataset are
   preserved unabridged (nothing may be cut when editing this page).

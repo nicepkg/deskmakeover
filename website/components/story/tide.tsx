@@ -60,10 +60,13 @@ export function TideChart() {
 
       let grid = "";
       const labelEvery = W < 560 ? 2 : 1;
+      let lastLabelX = -Infinity;
       DAY_FIRST.forEach((idx, k) => {
         const gx = x(idx);
         grid += `<line x1="${gx.toFixed(1)}" y1="${padT}" x2="${gx.toFixed(1)}" y2="${H - padB}" stroke="${c.line}" stroke-width="1" stroke-dasharray="2 4"/>`;
         if (k % labelEvery !== 0) return;
+        if (gx - lastLabelX < 34) return; // short days bunch up at the tail — skip colliding labels
+        lastLabelX = gx;
         grid += `<text x="${gx.toFixed(1)}" y="${H - 9}" fill="${c.ink3}" font-size="10" font-family="var(--font-mono)" text-anchor="${k === 0 ? "start" : "middle"}">${DAY_LIST[k].slice(-2)}日</text>`;
       });
       for (const v of [3, 1.5, 0, -1.5, -3]) {
@@ -84,7 +87,10 @@ export function TideChart() {
       let fig = `<path d="${area}" fill="${c.gold}" opacity="0.17" clip-path="url(#tideClipPos)"/>`;
       fig += `<path d="${area}" fill="${c.coral}" opacity="0.17" clip-path="url(#tideClipNeg)"/>`;
       fig += `<path id="tideLine" d="${lineD}" fill="none" stroke="${c.ink2}" stroke-width="1.6" stroke-linejoin="round" opacity="0.85"/>`;
-      for (const a of ANNOS) {
+      // narrow screens: the right-third annotations collide — keep a spread subset
+      const narrowKeep = new Set([0, 1, 3, 4, 7]);
+      const annos = W < 560 ? ANNOS.filter((_, k) => narrowKeep.has(k)) : ANNOS;
+      for (const a of annos) {
         const ax = x(a.i);
         const ay = y(SMOOTH[a.i]);
         const up = a.dir === "up";

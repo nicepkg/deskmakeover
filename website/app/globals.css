@@ -81,6 +81,10 @@
 html {
   scroll-behavior: smooth;
 }
+/* anchored sections land below the sticky nav, not underneath it */
+section[id] {
+  scroll-margin-top: 4.5rem;
+}
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

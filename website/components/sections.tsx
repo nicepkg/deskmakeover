@@ -130,7 +130,7 @@ export function DownloadSection({ dict }: { dict: Dict }) {
           <h2 className="mt-4 text-[34px] font-bold leading-[1.1] tracking-[-0.015em] !text-white md:text-[48px]">
             {s.title}
           </h2>
-          <p className="mt-4 max-w-[38rem] text-[16px] leading-[1.6] text-white/90">{s.body}</p>
+          <p className="mt-4 max-w-[38rem] text-[16px] leading-[1.6] text-white">{s.body}</p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
             {RELEASE_READY ? (
               // fixed white-on-coral chip: themed ink would flip light in dark mode
@@ -157,14 +157,14 @@ export function DownloadSection({ dict }: { dict: Dict }) {
           {RELEASE_READY ? (
             <div className="mt-8 max-w-[44rem] border-t border-white/25 pt-6">
               <p className="text-[14px] font-semibold text-white">{s.smartscreenLead}</p>
-              <p className="mt-2 text-[14px] leading-[1.6] text-white/95">{s.smartscreenDetail}</p>
+              <p className="mt-2 text-[14px] font-medium leading-[1.6] text-white">{s.smartscreenDetail}</p>
             </div>
           ) : (
-            <p className="mt-8 max-w-[44rem] text-[14px] leading-[1.6] text-white/95">
+            <p className="mt-8 max-w-[44rem] text-[14px] font-medium leading-[1.6] text-white">
               {s.pendingNote}
             </p>
           )}
-          <p className="mt-6 font-mono text-[11px] tracking-[0.14em] text-white/90">
+          <p className="mt-6 font-mono text-[11px] tracking-[0.14em] text-white">
             {s.requirements}
           </p>
         </Reveal>

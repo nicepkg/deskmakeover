@@ -133,16 +133,19 @@ export const en: Dict = {
       "desktop-other":
         "DeskMakeover is Windows-only. You can still grab the installer and copy it to a Windows PC",
       mobile:
-        "Windows apps do not install on phones. Open this page on a PC, or download now and transfer later",
+        "DeskMakeover is a Windows desktop app. Copy the download link and open it on a PC",
     },
     primaryCta: "Download installer",
+    mobileCopyCta: "Copy download link",
+    mobileCopied: "Copied. Paste it on your PC",
+    mobileStillDownload: "Download the installer here anyway",
     viaGithub: "Direct from GitHub",
     mirrorsLead: "Slow or blocked in mainland China? Mirrors",
-    mirrorNote: "Mirrors are third-party public proxies, unaffiliated with this project. Prefer the official link when in doubt.",
+    mirrorNote: "Mirrors are third-party public proxies, unaffiliated with this project. The downloaded file should be {size} MB.",
     historyLabel: "Previous versions",
     releaseNotes: "Release notes",
     smartscreenStarted:
-      "Download started. If Windows shows the blue \u201cWindows protected your PC\u201d screen during install, click More info, then Run anyway. It is not a virus warning, just caution around newly published software.",
+      "Download should have started. If Windows shows the blue \u201cWindows protected your PC\u201d screen during install, click More info, then Run anyway. It is not a virus warning, just caution around newly published software.",
     close: "Close",
   },
   faq: {

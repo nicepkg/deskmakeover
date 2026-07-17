@@ -12,7 +12,7 @@ export function SiteNav({ dict }: { dict: Dict }) {
         <a href={home} className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="" width={22} height={22} className="h-[22px] w-[22px]" />
-          <span className="font-display text-[15px] font-semibold tracking-tight text-ink">
+          <span className="hidden font-display text-[15px] font-semibold tracking-tight text-ink min-[420px]:inline">
             DeskMakeover
           </span>
         </a>

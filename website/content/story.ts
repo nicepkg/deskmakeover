@@ -1,6 +1,6 @@
 /**
  * Copy for /story/ — the making-of dashboard for DeskMakeover v1, generated
- * from a full analysis of Claude Code session c69bf900 (2026-07-08 → 07-17).
+ * from a full analysis of a nine-day Claude Code session (2026-07-08 → 07-17).
  * All analysis copy is preserved VERBATIM from the source report
  * (speech-dashboard.html); only page chrome strings are original here.
  * Chinese-language page by nature: the raw quotes and the whole session
@@ -21,7 +21,7 @@ export const STORY_META = {
 export const STORY_ENTRY = { zh: "创作历程", en: "Story" };
 
 export const HERO = {
-  eyebrow: "发言语料分析 · Claude Code Session c69bf900",
+  eyebrow: "发言语料分析 · Claude Code 全量会话记录",
   titlePre: "死磕像素的",
   titleAccent: "九日",
   // sub renders in JSX with 「341 句话」 bolded
@@ -306,7 +306,7 @@ export const ARTICLE = {
     { value: "有风险", tone: "coral", label: "盲区：Windows 全靠盲写 + 更弱 AI 后验" },
   ] as const,
   byline:
-    "述评 · 子策（Ace）｜ 基于会话 c69bf900 全量 341 条发言与工程记录，独立成文，未经润色迎合。",
+    "述评 · 子策（Ace）｜ 基于该会话全量 341 条发言与工程记录，独立成文，未经润色迎合。",
 };
 
 /** Every string that renders in the zh display face on /story/ (h1/h2/h3 + pullquote). */

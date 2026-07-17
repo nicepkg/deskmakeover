@@ -41,6 +41,8 @@ export interface Dict {
     proof: string;
     looks: string;
     zones: string;
+    /** the /story/ making-of page entry */
+    story: string;
     download: string;
     github: string;
     langLabel: string;

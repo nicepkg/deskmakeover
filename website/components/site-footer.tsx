@@ -33,6 +33,9 @@ export function SiteFooter({ dict }: { dict: Dict }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-7 gap-y-2 font-mono text-[12px] tracking-[0.1em] text-ink-2">
+          <a href="/story/" className="transition-colors hover:text-ink">
+            {dict.nav.story}
+          </a>
           {f.links.map((l) => (
             <a
               key={l.href}

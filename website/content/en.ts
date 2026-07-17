@@ -13,6 +13,7 @@ export const en: Dict = {
     proof: "Proof",
     looks: "Looks",
     zones: "Zones",
+    story: "Story",
     download: "Download",
     github: "GitHub",
     langLabel: "中文",

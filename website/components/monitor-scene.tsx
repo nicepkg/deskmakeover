@@ -51,7 +51,7 @@ export function MonitorScene({ before, after, alt }: { before: string; after: st
   if (failed) {
     return (
       <div className="relative h-full w-full">
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border border-line bg-white p-2 lg:left-[38%] lg:right-6">
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border border-line bg-card p-2 lg:left-[38%] lg:right-6">
           <Pic
             id="desk-squircle"
             alt={alt}

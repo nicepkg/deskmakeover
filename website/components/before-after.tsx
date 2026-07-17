@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { img } from "@/lib/manifest";
 
 function Layer({ id, alt, sizes }: { id: string; alt: string; sizes: string }) {
@@ -28,8 +28,10 @@ function Layer({ id, alt, sizes }: { id: string; alt: string; sizes: string }) {
 
 /**
  * The proof wipe: both frames are real app captures of the same desktop.
- * A full-surface range input drives the divider — draggable anywhere,
- * keyboard-accessible, no pointer math.
+ * AFTER lives LEFT of the divider, BEFORE right (the styled desktop leads,
+ * matching the 3D hero's left-to-right scan). On first view the divider
+ * sweeps left -> right to the resting point, then a full-surface range input
+ * drives it — draggable anywhere, keyboard-accessible, no pointer math.
  */
 export function BeforeAfter({
   dragHint,
@@ -40,23 +42,59 @@ export function BeforeAfter({
   altBefore: string;
   altAfter: string;
 }) {
-  const [pos, setPos] = useState(42);
+  const REST = 58;
+  const [pos, setPos] = useState(REST);
+  const rootRef = useRef<HTMLDivElement>(null);
   const sizes = "(min-width: 1280px) 1136px, 92vw";
   // the native 44px range thumb travels [22px, 100% - 22px]; the divider and
   // the clip edge must use the same coordinate or they drift near the edges
   const cut = `calc(22px + (100% - 44px) * ${pos / 100})`;
 
+  // entrance: sweep the divider from the left edge to its resting point once
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let raf = 0;
+    const io = new IntersectionObserver(
+      (records) => {
+        for (const r of records) {
+          if (!r.isIntersecting) continue;
+          io.disconnect();
+          const start = performance.now();
+          const dur = 1400;
+          const tick = (now: number) => {
+            const t = Math.min(1, (now - start) / dur);
+            const e = 1 - Math.pow(1 - t, 3);
+            setPos(REST * e);
+            if (t < 1) raf = requestAnimationFrame(tick);
+          };
+          raf = requestAnimationFrame(tick);
+        }
+      },
+      { threshold: 0.45 },
+    );
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
   return (
-    <div className="relative select-none overflow-hidden border border-line bg-white">
+    <div
+      ref={rootRef}
+      className="relative select-none overflow-hidden border border-line bg-card"
+    >
       <div className="relative aspect-[16/9]">
         <div className="absolute inset-0">
-          <Layer id="desk-squircle" alt={altAfter} sizes={sizes} />
+          <Layer id="desk-before" alt={altBefore} sizes={sizes} />
         </div>
         <div
           className="absolute inset-0"
           style={{ clipPath: `inset(0 calc(100% - (${cut})) 0 0)` }}
         >
-          <Layer id="desk-before" alt={altBefore} sizes={sizes} />
+          <Layer id="desk-squircle" alt={altAfter} sizes={sizes} />
         </div>
 
         <input

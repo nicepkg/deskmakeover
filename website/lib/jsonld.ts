@@ -16,6 +16,68 @@ const ORG_ID = `${SITE_URL}/#organization`;
 const SITE_ID = `${SITE_URL}/#website`;
 const APP_ID = `${SITE_URL}/#software`;
 
+/**
+ * /story/ — the making-of report. An Article node joined to the same
+ * Organization / WebSite / SoftwareApplication graph via stable @ids, so
+ * engines link the build story to the product entity.
+ */
+export function storyJsonLdScript(meta: {
+  path: string;
+  title: string;
+  description: string;
+  datePublished: string;
+}): string {
+  const url = `${SITE_URL}${meta.path}`;
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": ORG_ID,
+        name: "nicepkg",
+        url: "https://github.com/nicepkg",
+        logo: `${SITE_URL}/logo.png`,
+        sameAs: [GITHUB_URL],
+      },
+      {
+        "@type": "WebSite",
+        "@id": SITE_ID,
+        url: `${SITE_URL}/`,
+        name: "DeskMakeover",
+        inLanguage: siteLanguages(),
+        publisher: { "@id": ORG_ID },
+      },
+      {
+        // slim reference node — the full software facts live on the landing pages
+        "@type": "SoftwareApplication",
+        "@id": APP_ID,
+        name: "DeskMakeover",
+        alternateName: "桌面美颜",
+        url: `${SITE_URL}/`,
+      },
+      {
+        "@type": "Article",
+        "@id": `${url}#article`,
+        headline: meta.title,
+        description: meta.description,
+        inLanguage: "zh-CN",
+        datePublished: meta.datePublished,
+        url,
+        mainEntityOfPage: url,
+        image: `${SITE_URL}/social-card.png`,
+        isPartOf: { "@id": SITE_ID },
+        about: { "@id": APP_ID },
+        publisher: { "@id": ORG_ID },
+        author: {
+          "@type": "Person",
+          name: "Jinming Yang",
+          url: "https://github.com/2214962083",
+        },
+      },
+    ],
+  });
+}
+
 export function jsonLdScript(dict: Dict): string {
   const pageUrl = localePageUrl(dict.locale);
   const inLanguage = localeDef(dict.locale).hreflang;

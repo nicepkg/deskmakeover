@@ -107,7 +107,7 @@ export function StyleWall({
           type="button"
           onClick={() => setZoomed(true)}
           aria-label={`${altPrefix} ${styles.find((s) => s.key === active)?.name ?? active} — ${zoomHint}`}
-          className="group relative block w-full cursor-zoom-in overflow-hidden border border-line bg-white transition-colors hover:border-ink-3"
+          className="group relative block w-full cursor-zoom-in overflow-hidden border border-line bg-card transition-colors hover:border-ink-3"
         >
           <div className="relative aspect-[16/9]">
             {[
@@ -130,7 +130,7 @@ export function StyleWall({
                 />
               ))}
           </div>
-          <span className="pointer-events-none absolute bottom-3 right-3 border border-line bg-white/92 px-2 py-1 font-mono text-[11px] tracking-[0.1em] text-ink-3 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="pointer-events-none absolute bottom-3 right-3 border border-line bg-card/90 px-2 py-1 font-mono text-[11px] tracking-[0.1em] text-ink-3 opacity-0 transition-opacity group-hover:opacity-100">
             {zoomHint}
           </span>
         </button>

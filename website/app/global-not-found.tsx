@@ -28,13 +28,13 @@ export default function GlobalNotFound() {
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <a
               href="/"
-              className="border border-line bg-white px-4 py-2 text-[14px] font-semibold text-ink transition-colors hover:border-ink-3"
+              className="border border-line bg-card px-4 py-2 text-[14px] font-semibold text-ink transition-colors hover:border-ink-3"
             >
               English home
             </a>
             <a
               href="/zh/"
-              className="border border-line bg-white px-4 py-2 text-[14px] font-semibold text-ink transition-colors hover:border-ink-3"
+              className="border border-line bg-card px-4 py-2 text-[14px] font-semibold text-ink transition-colors hover:border-ink-3"
             >
               中文首页
             </a>

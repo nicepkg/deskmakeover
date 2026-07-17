@@ -94,6 +94,9 @@ Assets via wrangler, auto-deployed from CI.
    pending note (or SmartScreen honesty when released), mono requirements line.
 7. **FAQ + footer** — four plain-text Q/As (no accordion), hairline footer.
 
+The header nav and footer both carry a **创作历程 / Story** entry to `/story/` — the
+making-of page (see its section below).
+
 Copy voice: short, spec-sheet confident, consumer-safe. Chinese copy contains no dashes
 and no exclamation marks; zh display headings may carry a manual `\n` break point.
 
@@ -128,6 +131,32 @@ re-shoot must go through the real app, never mockups.
   Header and footer carry the explicit language switch.
 - Dictionaries are plain TypeScript objects (`content/{types,en,zh}.ts`); no i18n library.
 - `hreflang` alternates on both pages (`en`, `zh-CN`, `x-default` → `/`).
+- `/story/` sits OUTSIDE the locale trees (own root layout, `html lang="zh-CN"`,
+  canonical only, no alternates) — it is a single-language document, not a locale of
+  the landing page. It never auto-redirects and the root redirect never targets it.
+
+## /story/ — the making-of page (创作历程)
+
+- A Chinese-language data-story: the full session analysis of how v1 was built in
+  nine days (341 human messages, Claude Code session c69bf900). Content is migrated
+  VERBATIM from `docs/session-analysis/speech-dashboard.html` in the owner's
+  ai-command-center repo — the analysis copy, quotes, verdict and every dataset are
+  preserved unabridged (nothing may be cut when editing this page).
+- Data lives in `content/story-data.ts` (machine-extracted from the source JSON —
+  re-extract rather than hand-edit numbers) + `content/story.ts` (plain-string copy;
+  rich prose is JSX in `components/story/`).
+- 12 numbered sections: word cloud (canvas), top-concern bars, sentiment spectrum,
+  emotional tide, focus drift, activity heatmap, circadian rhythm, daily arc +
+  message length, behavioral signals, five insights, verbatim quotes, the long-form
+  article + independent verdict, methodology footer.
+- Motion: every number counts up from zero (`components/story/fx.tsx` arms
+  server-rendered final states; above-fold plays on load, below-fold on
+  intersection); bars/columns/segments grow in; heat cells cascade; the tide chart
+  plays like a live stock ticker (clip-window sweep + cursor dot riding the line
+  head, radar ping at rest). All of it no-ops under `prefers-reduced-motion`, and
+  the final state is complete without JS (crawlers, print).
+- Entry points: header nav + footer on both locales, sitemap entry, Article JSON-LD
+  (`storyJsonLdScript`), llms.txt link.
 
 ## Motion discipline
 
@@ -139,13 +168,35 @@ re-shoot must go through the real app, never mockups.
 - `prefers-reduced-motion: reduce` → no scene; the styled render in a flat frame.
   Any WebGL failure falls back the same way.
 
+## Theming (light / dark / auto)
+
+- Site-wide dark mode (owner request 2026-07-17). Preference model: AUTO follows
+  `prefers-color-scheme` by default; an explicit choice is stored in localStorage
+  `dm-theme` and stamped pre-paint as `html[data-theme]` by the blocking snippet in
+  `lib/theme.ts` (inlined by every root layout — no flash).
+- All color tokens live in `app/globals.css` `@theme`; the dark values are two
+  IDENTICAL override blocks (system-dark-on-auto + forced-dark) that must stay in
+  sync. Every Tailwind color utility and every chart flips with them — components
+  never hardcode a themed hex. Raised surfaces use the `--color-card` token
+  (white in light, a step above canvas in dark).
+- Charts resolve tones at paint time: server markup embeds `var()` / `color-mix()`
+  strings; canvas/SVG builders read computed values via
+  `components/story/palette.ts#readTones` and re-render on `onThemeChange`
+  (data-theme mutations + system scheme changes).
+- The control is a sun / monitor / moon segmented radio (`components/theme-toggle.tsx`)
+  in both navs. Deliberately fixed colors: the white CTA chip on the coral download
+  block and the white wipe divider stay white in both themes.
+
 ## Fonts
 
 - Latin: self-hosted Satoshi Variable (≈ 42 KB woff2), `font-display: swap`.
 - Chinese body: system stack (`PingFang SC`, `Microsoft YaHei`, `Noto Sans SC`) — 0 bytes.
-- Chinese display: build-time MiSans Semibold subset covering exactly the zh h1–h3
+- Chinese display: build-time MiSans Semibold subsets covering exactly the zh h1–h3
   glyphs (`scripts/subset-zh-font.mjs`; regenerates when `fonts-src/misans/` exists,
-  otherwise verifies the committed subset and fails the build on copy drift).
+  otherwise verifies the committed subsets and fails the build on copy drift). Two
+  independent subsets so neither page tree pays for the other: `misans-display-zh`
+  (landing, `lib/fonts-zh.ts`) and `misans-display-story` (/story/ headings,
+  `lib/fonts-story.ts`).
 
 ## Images
 

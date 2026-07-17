@@ -3,6 +3,7 @@ import { jsonLdScript } from "@/lib/jsonld";
 import { LANG_REDIRECT_JS } from "@/lib/lang-redirect";
 import { DEFAULT_LOCALE, localeDef } from "@/lib/locales";
 import { CF_BEACON_TOKEN } from "@/lib/site";
+import { THEME_INIT_JS } from "@/lib/theme";
 
 /**
  * Shared root document for every locale tree. Locale layouts stay thin
@@ -21,6 +22,8 @@ export function LocaleHtml({
   return (
     <html lang={localeDef(dict.locale).htmlLang} className={fontClass}>
       <body>
+        {/* blocking on purpose: stamps an explicit theme choice before paint */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_JS }} />
         {dict.locale === DEFAULT_LOCALE ? (
           // blocking on purpose: routes first visits before paint
           <script dangerouslySetInnerHTML={{ __html: LANG_REDIRECT_JS }} />

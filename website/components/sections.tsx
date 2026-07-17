@@ -134,7 +134,8 @@ export function DownloadSection({ dict }: { dict: Dict }) {
             {RELEASE_READY ? (
               <a
                 href={DOWNLOAD_URL}
-                className="w-full bg-white px-7 py-3.5 text-center text-[16px] font-semibold text-ink transition-colors hover:bg-panel sm:w-auto"
+                // fixed white-on-coral chip: themed ink would flip light in dark mode
+                className="w-full bg-white px-7 py-3.5 text-center text-[16px] font-semibold text-[#16181d] transition-colors hover:bg-white/85 sm:w-auto"
               >
                 {s.ctaRelease}
               </a>

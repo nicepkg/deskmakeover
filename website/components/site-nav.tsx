@@ -1,5 +1,6 @@
 import type { Dict } from "@/content/types";
 import { LangSwitch } from "@/components/lang";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { DOWNLOAD_URL, GITHUB_URL, RELEASE_READY } from "@/lib/site";
 
 export function SiteNav({ dict }: { dict: Dict }) {
@@ -24,6 +25,9 @@ export function SiteNav({ dict }: { dict: Dict }) {
           <a href="#zones" className="transition-colors hover:text-ink">
             {dict.nav.zones.toUpperCase()}
           </a>
+          <a href="/story/" className="transition-colors hover:text-ink">
+            {dict.nav.story.toUpperCase()}
+          </a>
           <a
             href={GITHUB_URL}
             target="_blank"
@@ -41,9 +45,10 @@ export function SiteNav({ dict }: { dict: Dict }) {
           >
             {dict.nav.langLabel}
           </LangSwitch>
+          <ThemeToggle />
           <a
             href={RELEASE_READY ? DOWNLOAD_URL : "#download"}
-            className="bg-ink px-3.5 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-coral-deep"
+            className="bg-ink px-3.5 py-1.5 text-[13px] font-semibold text-canvas transition-colors hover:bg-coral-deep hover:text-white"
           >
             {dict.nav.download}
           </a>

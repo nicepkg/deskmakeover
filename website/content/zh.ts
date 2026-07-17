@@ -13,6 +13,7 @@ export const zh: Dict = {
     proof: "实拍对比",
     looks: "九套外观",
     zones: "壁纸分区",
+    story: "创作历程",
     download: "下载",
     github: "GitHub",
     langLabel: "English",

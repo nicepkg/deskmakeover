@@ -138,7 +138,7 @@ export function Lightbox({
         type="button"
         onClick={() => dialogRef.current?.close()}
         aria-label={closeLabel}
-        className="dm-lightbox-bar pointer-events-auto fixed right-4 top-4 flex h-10 w-10 items-center justify-center border border-line bg-white/92 text-ink backdrop-blur-sm transition-colors hover:bg-panel"
+        className="dm-lightbox-bar pointer-events-auto fixed right-4 top-4 flex h-10 w-10 items-center justify-center border border-line bg-card/90 text-ink backdrop-blur-sm transition-colors hover:bg-panel"
       >
         <svg width="13" height="13" viewBox="0 0 12 12" fill="none" aria-hidden>
           <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" />

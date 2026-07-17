@@ -161,6 +161,12 @@ export interface ConfigDto {
    *  bare icons); 'white' = 本色 lane (own boards anchored 1:1, bare icons
    *  white, classic pipeline — no silhouette shadows). */
   plateFallback: 'derived' | 'white'
+  /** 自动分离 (engine behaviour, NOT a persisted style axis): rescue a bare
+   *  subject that perceptually melts into its plate with a die-cut contrast
+   *  stroke. NEVER stored in presets/history — `effectiveTileConfig` folds
+   *  `true` into every resolved config at render time; absent (old parity
+   *  fixtures, frozen goldens) encodes as 0 = frozen-oracle bytes. */
+  autoSeparation?: boolean
 }
 
 export interface GridDto {

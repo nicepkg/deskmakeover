@@ -100,6 +100,7 @@ fn cfg(shape: IconShape, mark: MarkStyle, distinction: Distinction) -> Config {
         filter: FilterStyle::None,
         plate_color: None,
         plate_fallback: PlateFallback::Derived,
+        auto_separation: false,
     }
 }
 

@@ -53,6 +53,9 @@ export function encodeConfig(c: ConfigDto): Uint8Array {
   b[8] = c.shortcutShape == null ? 0xff : tag(SHAPE, c.shortcutShape, 'shortcutShape')
   b[9] = c.markColor == null ? 0 : 1
   b[10] = c.plateColor == null ? 0 : 1
+  // Byte 11 (formerly reserved-0): 自动分离. Parity fixtures never set the field,
+  // so frozen-golden runs still encode 0 — the oracle's bytes.
+  b[11] = c.autoSeparation ? 1 : 0
   dv.setUint32(12, hexToInt(c.tint), true)
   if (c.markColor != null) dv.setUint32(16, hexToInt(c.markColor), true)
   if (c.plateColor != null) dv.setUint32(20, hexToInt(c.plateColor), true)

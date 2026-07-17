@@ -228,6 +228,9 @@ fn parse_config(v: &Value) -> Config {
             "white" => PlateFallback::White,
             o => panic!("plateFallback {o}"),
         },
+        // Corpus configs are frozen-oracle fixtures: absent => false keeps the
+        // golden byte-parity; a fixture may opt in explicitly.
+        auto_separation: v["autoSeparation"].as_bool().unwrap_or(false),
     }
 }
 

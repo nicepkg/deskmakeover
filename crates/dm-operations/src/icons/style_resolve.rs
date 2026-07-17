@@ -357,6 +357,12 @@ pub fn to_core_config(cfg: &ConfigDtoJson) -> Result<CoreConfig> {
             None => None,
         },
         plate_fallback,
+        // 自动分离 is an ENGINE behaviour, not a persisted style axis: the frontend
+        // folds `autoSeparation: true` into every resolved config at render time
+        // (stores/icons.ts `effectiveTileConfig`), and this native resolver is its
+        // mirror — persisted style JSON never carries the flag, both resolvers
+        // stamp it on. Parity surfaces bypass this resolver entirely.
+        auto_separation: true,
     })
 }
 

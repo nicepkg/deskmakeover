@@ -220,6 +220,7 @@ mod tests {
             filter: FilterStyle::None,
             plate_color: None,
             plate_fallback: PlateFallback::Derived,
+            auto_separation: false,
         }
     }
 

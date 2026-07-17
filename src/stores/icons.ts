@@ -240,7 +240,11 @@ export function effectiveTileConfig(
   // when the bucket didn't assert one. Per-icon overrides stay the highest
   // styling authority below styleable/keep.
   const bucket = kindBucket(item.kind)
-  const typed = resolveTypeConfig(config, typeOverrides, bucket)
+  // 自动分离 is stamped on at RESOLVE time, never persisted (types.ts ConfigDto):
+  // every render — old preset or new — gets the contrast rescue uniformly, and
+  // presets/history stay clean. The native resident resolver mirrors this
+  // (dm-operations style_resolve.rs `to_core_config`).
+  const typed = { ...resolveTypeConfig(config, typeOverrides, bucket), autoSeparation: true }
   const resolved =
     item.isShortcut && typed.shortcutShape && !typeAssertsShape(typeOverrides, bucket)
       ? { ...typed, shape: typed.shortcutShape }

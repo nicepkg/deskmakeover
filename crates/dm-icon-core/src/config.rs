@@ -85,4 +85,9 @@ pub struct Config {
     /// `hexToInt(config.plateColor)`; None = 随图标 (derived).
     pub plate_color: Option<u32>,
     pub plate_fallback: PlateFallback,
+    /// 自动分离 (`separation.rs`): rescue a bare subject that melts into its plate
+    /// with a die-cut contrast stroke. POST-FREEZE engine behaviour — `false` is
+    /// the frozen-oracle bytes, and every parity surface (corpus cert, m6
+    /// differential) pins it there; the live app resolves it `true`.
+    pub auto_separation: bool,
 }

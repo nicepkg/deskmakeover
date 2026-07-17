@@ -22,7 +22,8 @@
 //!  8  shortcut_shape  u8   0xFF None, else IconShape tag
 //!  9  has_mark_color  u8   0 | 1   (markColor null → 0)
 //! 10  has_plate_color u8   0 | 1   (plateColor null → 0)
-//! 11  (reserved)      u8   0
+//! 11  auto_separation u8   0 | 1   (formerly reserved-0, so the old encoder's
+//!                          records decode as `false` — the frozen-parity bytes)
 //! 12  tint            u32  hexToInt(config.tint)
 //! 16  mark_color      u32  hexToInt(config.markColor), valid iff has_mark_color
 //! 20  plate_color     u32  hexToInt(config.plateColor), valid iff has_plate_color
@@ -146,6 +147,11 @@ pub fn parse_config(b: &[u8]) -> Option<Config> {
         filter: filter_from_tag(b[6])?,
         plate_color: (b[10] != 0).then(|| u32le(20)),
         plate_fallback: fallback_from_tag(b[7])?,
+        auto_separation: match b[11] {
+            0 => false,
+            1 => true,
+            _ => return None,
+        },
     })
 }
 
@@ -187,6 +193,19 @@ mod tests {
         assert_eq!(c.mark_color, None);
         assert_eq!(c.plate_color, None);
         assert_eq!(c.tint, 0xff6f5e);
+        // Byte 11 was reserved-0 before 自动分离: an old encoder's record MUST
+        // decode to the frozen-oracle behaviour.
+        assert!(!c.auto_separation);
+    }
+
+    #[test]
+    fn auto_separation_byte_decodes_zero_one_and_rejects_junk() {
+        let mut b = spectrum_bytes();
+        assert!(!parse_config(&b).unwrap().auto_separation); // 0 = frozen bytes
+        b[11] = 1;
+        assert!(parse_config(&b).unwrap().auto_separation);
+        b[11] = 2; // any other tag is a marshalling bug, never silently false
+        assert!(parse_config(&b).is_none());
     }
 
     #[test]

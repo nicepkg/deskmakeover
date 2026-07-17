@@ -27,6 +27,7 @@ use crate::source_facts::{
 use crate::raster::{clip_to_mask, from_rgb_int, over_at, shape_mask, Raster, WHITE};
 use crate::render_scratch::RenderScratch;
 use crate::sampling::{draw_scaled, sample_bilinear};
+use crate::separation::{bare_plate_stroke_ink, draw_separation_stroke};
 
 /// Per-icon inputs resolved OUTSIDE the tile (compose.ts `RenderOpts`).
 /// `field_seed` is the hue-spread-adjusted seed already parsed via `hexToInt`
@@ -388,12 +389,35 @@ fn compose_tile(
             diag.lane = ComposeLane::BareWhite;
             let fill = plate.unwrap_or(WHITE);
             fill_region(&mut content, size, pad, card_size, fill.r, fill.g, fill.b);
-            draw_centred(artwork, content_bounds(source_facts, artwork), &mut content, size, pad, card_size, content_box(shape, card_size));
+            let free = content_bounds(source_facts, artwork);
+            let box_ = content_box(shape, card_size);
+            // 自动分离: a bare subject on the classic white/user plate — the very
+            // lane where a white glyph vanishes silently (this lane draws no
+            // shadow at all). When the rim melts, route through a layer so the
+            // die-cut stroke can ride under the subject; otherwise the original
+            // direct draw stays byte-untouched.
+            match bare_plate_stroke_ink(config, artwork, fill) {
+                Some(ink) => {
+                    let mut layer = Raster::new(size, size);
+                    draw_centred(artwork, free, &mut layer, size, pad, card_size, box_);
+                    draw_separation_stroke(&mut content, &layer, size, ink);
+                    composite_over(&mut content, &layer);
+                }
+                None => draw_centred(artwork, free, &mut content, size, pad, card_size, box_),
+            }
         } else if inscribe_shapes(shape) {
             diag.lane = ComposeLane::InscribeWhite;
             let fill = plate.unwrap_or(WHITE);
             fill_region(&mut content, size, pad, card_size, fill.r, fill.g, fill.b);
-            inscribe_content(artwork, &mut content, size, pad, card_size, shape, shape_facts);
+            match bare_plate_stroke_ink(config, artwork, fill) {
+                Some(ink) => {
+                    let mut layer = Raster::new(size, size);
+                    inscribe_content(artwork, &mut layer, size, pad, card_size, shape, shape_facts);
+                    draw_separation_stroke(&mut content, &layer, size, ink);
+                    composite_over(&mut content, &layer);
+                }
+                None => inscribe_content(artwork, &mut content, size, pad, card_size, shape, shape_facts),
+            }
         } else {
             diag.lane = ComposeLane::Stretch;
             let full = ContentBounds { left: 0, top: 0, right: artwork.width, bottom: artwork.height };
@@ -459,7 +483,7 @@ pub fn render_slice_tile(artwork: &Raster, size: usize) -> Raster {
     let box_size = field_content_box(IconShape::Circle, card_size);
     fill_region(&mut tile, size, 0, card_size, WHITE.r, WHITE.g, WHITE.b);
     let mut render_scratch = RenderScratch::new();
-    field::draw_bare_with_shadow(artwork, &mut tile, size, 0, card_size, box_size, WHITE, field::ShadowMode::Dock, None, &mut render_scratch);
+    field::draw_bare_with_shadow(artwork, &mut tile, size, 0, card_size, box_size, WHITE, field::ShadowMode::Dock, None, &mut render_scratch, None);
     let card_mask = shape_mask(IconShape::Circle, size, card_size, 0.0, 0.0);
     clip_to_mask(&mut tile, &card_mask);
     let mut target = Raster::new(size, size);

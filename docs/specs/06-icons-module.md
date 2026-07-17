@@ -58,6 +58,40 @@ now the certifying oracle for the Rust core, ADR-0019.)
   transcendentals, no FMA, no SIMD in core v1). Golden updates require reviewed
   `--bless`; the corpus lives in `testdata/icons/`.
 
+## 1.5 自动分离 (auto separation) — post-freeze contrast rescue
+
+Problem (owner report 2026-07-17): an irregular bare subject whose rim colour sits
+perceptually close to the plate behind it melts into that plate — worst on the classic
+`BareWhite` lane (white glyph on white fill, zero shadow) and on user/preset plates that
+happen to match the artwork. `dm-icon-core/src/separation.rs`; regression suite
+`tests/auto_separation.rs`.
+
+- **Detection** — pixel-level perceptual proximity, SOURCE resolution (size-invariant:
+  the 256 master and every preview size reach the same verdict). The outermost rim band
+  (erosion, depth `max(2, min(w,h)/64)`, solid-first alpha passes) is sampled in OKLab
+  (≤512 probes); a probe MELTS when both ΔE_OK < 0.12 **and** |ΔL| < 0.10 against the
+  plate — at 32–48 px chroma-only contrast does not survive, so lightness gates the
+  verdict. The rescue fires only when ≥30% of the rim melts (a FRACTION, never a mean:
+  a bimodal rim whose light half vanishes must trigger).
+- **Rescue** — a thin die-cut stroke ring strictly outside the silhouette (the sticker
+  filter's chamfer-coverage geometry), width `max(1.25, size×0.025)` (~6.4 px on the 256
+  master — survives the ICO ladder's area-average downscale to ≥ ~0.8 px at the 32 rung),
+  inked `field_shadow_tone(plate)` (the plate's opposing tone, same hue family as the
+  silhouette shadow). Subject pixels are never recoloured (iron law, compose/field.rs).
+  Derived plates are NOT re-derived: a derived plate melts essentially only on a bimodal
+  rim, which melts on both lightness sides — re-deriving cannot help and would break the
+  desktop-wide shared plate-lightness line.
+- **Lanes covered (v1)** — Field `UserPlateBare` + `DerivedBareShadow`, classic
+  `BareWhite` + `InscribeWhite` (subject Original only — those lanes post-map
+  Mono/BlackWhite over plate and subject alike, so the probed plate colour would be
+  wrong). Own-board artwork is untouched: its contrast is the icon author's.
+- **Parity discipline** — `Config::auto_separation` gates every path; `false` is the
+  frozen-oracle bytes and every parity surface pins it there (corpus configs, m6
+  differential, ABI byte 11 was reserved-0). The flag is an ENGINE behaviour, never a
+  persisted style axis: `effectiveTileConfig` (web) and `style_resolve::to_core_config`
+  (native resident) both stamp `true` at resolve time; presets/history stay clean. With
+  the flag on, a NON-melting rim still renders byte-identical (regression-tested).
+
 ## 2. Bridge contract (icons.*)
 
 > **Replatform note (ADR-0019)**: the code truth is `bridge/types.ts`

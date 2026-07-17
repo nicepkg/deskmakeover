@@ -149,10 +149,13 @@ describe('undo granularity', () => {
 })
 
 describe('effective tile config (override folding)', () => {
-  test('follow renders the global config', () => {
+  test('follow renders the global config, with auto-separation stamped at resolve time', () => {
     const eff = effectiveTileConfig(item('a'), config, DEFAULT_KIND_POLICY)
     expect(eff.showOriginal).toBe(false)
-    expect(eff.config).toEqual(config)
+    // autoSeparation is an engine behaviour folded in by the resolver — never
+    // persisted on the raw config (bridge/types.ts ConfigDto).
+    expect(eff.config).toEqual({ ...config, autoSeparation: true })
+    expect(config.autoSeparation).toBeUndefined()
   })
 
   test('keep renders the original artwork', () => {

@@ -15,6 +15,7 @@ use crate::profile::{icon_profile, IconProfile, IconProfileKind};
 use crate::raster::{from_rgb_int, over_at, Raster, Rgba};
 use crate::render_scratch::RenderScratch;
 use crate::sampling::draw_scaled;
+use crate::separation::{draw_separation_stroke, separation_stroke_ink};
 use crate::shape_facts::ShapeFacts;
 use crate::source_facts::{content_bounds, segmentation, SourceFacts};
 
@@ -88,7 +89,10 @@ pub(crate) fn compose_field(
         }
         diag.field_lane = Some(ComposeFieldLane::UserPlateBare);
         fill_region(content, size, pad, card_size, user_plate.r, user_plate.g, user_plate.b);
-        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, user_plate, ShadowMode::Dock, source_facts, scratch);
+        // 自动分离: the user's plate colour is sacred, so a melting rim is rescued
+        // by the die-cut stroke, never by changing the plate.
+        let stroke = separation_stroke_ink(config, artwork, user_plate);
+        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, user_plate, ShadowMode::Dock, source_facts, scratch, stroke);
         return;
     }
 
@@ -114,7 +118,12 @@ pub(crate) fn compose_field(
 
     if profile.transparent_edges {
         diag.field_lane = Some(ComposeFieldLane::DerivedBareShadow);
-        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, plate, ShadowMode::Dock, source_facts, scratch);
+        // 自动分离: a derived plate melts essentially only on a BIMODAL rim (the
+        // contrast-tone derivation already opposes the rim MEAN), and a bimodal rim
+        // melts on BOTH lightness sides — so re-deriving the plate cannot help and
+        // would break the desktop-wide shared plate-lightness line. Stroke instead.
+        let stroke = separation_stroke_ink(config, artwork, plate);
+        draw_bare_with_shadow(artwork, content, size, pad, card_size, box_, plate, ShadowMode::Dock, source_facts, scratch, stroke);
         return;
     }
     diag.field_lane = Some(ComposeFieldLane::DerivedPlate);
@@ -140,6 +149,7 @@ pub(crate) fn draw_bare_with_shadow(
     mode: ShadowMode,
     source_facts: Option<&SourceFacts>,
     scratch: &mut RenderScratch,
+    stroke: Option<Rgba>,
 ) {
     let spec = shadow_spec(mode);
     let sc = &mut scratch.shadow;
@@ -178,6 +188,11 @@ pub(crate) fn draw_bare_with_shadow(
                 clamp_u8_int(js_round(a * 255.0)),
             );
         }
+    }
+    // 自动分离 stroke rides between the soft shadow and the subject: crisp over the
+    // blur, and the subject composites over the ring's inner AA edge.
+    if let Some(ink) = stroke {
+        draw_separation_stroke(content, &sc.layer, size, ink);
     }
     composite_over(content, &sc.layer);
 }

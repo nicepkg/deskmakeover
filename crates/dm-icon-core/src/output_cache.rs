@@ -84,6 +84,7 @@ fn content_key_material(
     m.extend_from_slice(&(config.filter as u32).to_le_bytes());
     push_opt_u32(&mut m, config.plate_color);
     m.extend_from_slice(&(config.plate_fallback as u32).to_le_bytes());
+    m.push(config.auto_separation as u8);
     // Render arguments beyond config.
     m.extend_from_slice(&(size as u64).to_le_bytes());
     m.push(is_shortcut as u8);
@@ -311,6 +312,7 @@ mod tests {
             filter: FilterStyle::None,
             plate_color: None,
             plate_fallback: PlateFallback::Derived,
+            auto_separation: false,
         }
     }
 
@@ -348,6 +350,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fast")]
     fn hit_equals_miss_equals_free_render() {
+        // The content key folds the process-global native arrow; hold the boot-once
+        // test lock so the arrow-mutating marks test can't flip the key mid-test.
+        let _guard = crate::marks::NATIVE_ARROW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let src = blob(128, 200, 60, 40);
         let c = cfg();
         let opts = RenderOpts { field_seed: None };
@@ -363,6 +368,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fast")]
     fn addressed_equals_free_over_job_set_with_repeats() {
+        // Key stability across repeats requires the global arrow to stay put (see
+        // `hit_equals_miss_equals_free_render`).
+        let _guard = crate::marks::NATIVE_ARROW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let sources = [blob(256, 200, 60, 40), blob(128, 40, 200, 60), blob(96, 60, 40, 200)];
         let cfgs = [
             cfg(),
@@ -408,6 +416,7 @@ mod tests {
         mv(content_key(&src, &Config { filter: FilterStyle::Gloss, ..c.clone() }, false, false, 256, &opts), "filter");
         mv(content_key(&src, &Config { plate_color: Some(0x778899), ..c.clone() }, false, false, 256, &opts), "plate_color");
         mv(content_key(&src, &Config { plate_fallback: PlateFallback::White, ..c.clone() }, false, false, 256, &opts), "plate_fallback");
+        mv(content_key(&src, &Config { auto_separation: true, ..c.clone() }, false, false, 256, &opts), "auto_separation");
         mv(content_key(&src, &c, true, false, 256, &opts), "is_shortcut");
         mv(content_key(&src, &c, false, true, 256, &opts), "show_original");
         mv(content_key(&src, &c, false, false, 128, &opts), "size");

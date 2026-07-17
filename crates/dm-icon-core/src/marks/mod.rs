@@ -205,6 +205,15 @@ const ARROW_GLYPH: Rgba = Rgba { r: 46, g: 50, b: 56, a: 255 };
 // over Mutex — worker threads read concurrently.
 static NATIVE_ARROW: RwLock<Option<Raster>> = RwLock::new(None);
 
+/// Test-only serialization of the `NATIVE_ARROW` boot-once contract ("do NOT call
+/// `set_native_arrow_raster` while renders are in flight", batch.rs): a test that
+/// MUTATES the global and a test whose assertions depend on it staying put (the
+/// output-cache hit/miss suite folds the arrow into the content key) must not run
+/// concurrently in the parallel harness. Production sets the arrow once at boot,
+/// so the lock exists only under cfg(test).
+#[cfg(test)]
+pub(crate) static NATIVE_ARROW_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// marks.ts `setNativeArrowRaster`.
 pub fn set_native_arrow_raster(raster: Option<Raster>) {
     // Self-heal a poisoned lock (unwrap_or_else → the inner value): a panic on any
@@ -331,6 +340,9 @@ mod tests {
     #[test]
     fn native_arrow_visible_across_render_threads() {
         const SIZE: usize = 64;
+        // Mutating the process-global arrow: hold the boot-once test lock so the
+        // output-cache key-stability tests never observe the flip mid-assert.
+        let _guard = NATIVE_ARROW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         // --- Phase 1: native raster installed on this thread ---
         set_native_arrow_raster(Some(sentinel_arrow()));

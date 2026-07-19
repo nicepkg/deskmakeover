@@ -9,6 +9,12 @@ All notable changes to DeskMakeover. The format follows
 
 ## Unreleased
 
+Nothing yet.
+
+## [0.1.1] - 2026-07-19
+
+Hotfix release: the reboot black-block incident and the first-apply vanish class.
+
 ### Fixed
 - **First-apply vanish class** (customer reports: 首次一键美化后桌面图标全部消失且还原无效):
   four independently confirmed defects closed. (1) the loose-file wrapper's rollback deleted the

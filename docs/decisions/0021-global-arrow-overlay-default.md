@@ -60,3 +60,18 @@ on the desktop is redrawn.
 - Items kept original while the overlay is disabled (feature off) show whatever
   Windows shows natively; the baked classic arrow applies only to styled/kept items
   under an active makeover.
+
+## Amendment (2026-07-19) — the transparent overlay's pixels carry alpha 1, never 0
+
+The v0.1.0 field incident (customer black-block reports): the all-alpha-0 transparent
+overlay ICO renders correctly on live load, but Explorer serializes the system image
+list (arrow slot included) into `iconcache_*.db`; on deserialize an all-zero alpha
+plane trips Windows' legacy "no nonzero alpha byte ⇒ icon has no alpha channel"
+heuristic, and the zero-RGB bitmap comes back as an OPAQUE BLACK arrow stamped over
+every shortcut on the next boot. On-box A/B (2026-07-19) confirmed alpha=1 pixels
+survive the round trip; the alpha-derived AND mask experiment (2026-07-16) is reverted
+codec-wide for the same round-trip reason (`dm-icon-codec/src/ico.rs`). Binding rule:
+**every transparent-overlay pixel ships (0,0,0,alpha=1) — imperceptible (0.4%) but
+alpha-carrying in every consumer path — and every ICO frame keeps an all-zero AND
+mask.** The overlay content hash is the install signature, so shipping this change
+self-heals installed machines on their next apply (one overlay-reinstall UAC).

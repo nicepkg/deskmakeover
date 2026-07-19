@@ -45,6 +45,26 @@ what is in flight, and what comes next.
 
 ## Active work (in flight)
 
+- **Black-block icons after reboot — ROOT-CAUSED + FIXED (2026-07-19, owner: 角标小箭头变大黑块,
+  customer reports).** Desktop fine all day after apply, black tiles next boot. On-box A/B against
+  Explorer's icon cache (real Win11 box, controlled variants + double-restart protocol) found TWO
+  codec root causes: (1) the 2026-07-16 alpha-derived AND mask — fine on live extraction, but the
+  icon-cache serialize→deserialize round trip hands non-trivially-masked 32bpp entries to a legacy
+  compose path that discards alpha → whole tile opaque black; REVERTED to the industry all-zero
+  mask (disc pinned hash reverts byte-exact to pre-experiment). (2) the all-alpha-0 transparent
+  arrow overlay — cache reload reclassifies "no nonzero alpha byte" as legacy no-alpha ⇒ opaque
+  black arrow stamped over EVERY shortcut; overlay pixels now (0,0,0,alpha=1), imperceptible but
+  heuristic-proof. ADR-0021 amended; regression tests `ico::and_mask_is_always_all_zero` +
+  `ladder::transparent_ico_is_invisible_but_never_alpha_zero`; new transparent hash rotates the
+  overlay install signature → installed machines self-heal on next apply (one UAC). Owner's box
+  remediated in place (ProgramData overlay + host copy + marker aligned to 67565c19…, cache
+  rebuilt); styled assets still wear the old mask until the owner's next apply re-bakes them
+  (owner-supervised — NOT auto-run). codex R1 Request-Changes → P1 fixed (the overlay install
+  signature is now hashed from the bytes ACTUALLY on disk via `materialize_overlay_sha` — a
+  failed overwrite atop a stale pre-fix file can no longer pin the new signature onto old
+  poisoned bytes and kill the self-heal; +2 regression tests) + P3 doc fix → **codex R2
+  APPROVE**. Gates: cargo workspace green · bun 661 · bindings ok · WASM rebuilt.
+
 - **Apply/switch reliability round 2 (2026-07-17) — owner-reported: folder never changes, 2nd
   apply reuses 1st icons, double UAC, i18n.** Root causes + fixes, all tested:
   (1) **look-id collision** — the id was minted from a txn counter that RESETS on journal

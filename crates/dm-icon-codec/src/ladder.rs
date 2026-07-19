@@ -50,10 +50,28 @@ pub fn bake_ico(source: &Raster) -> IcoAsset {
     write_ico_asset(&resample_ladder(source))
 }
 
-/// A fully transparent laddered `.ico` (`OverlayBadgeIconFactory.CreateTransparentIco`):
+/// The minimum alpha every transparent-overlay pixel carries. ⛔ Never ship an all-zero alpha
+/// plane into a shell-persisted surface: Windows' "no nonzero alpha byte ⇒ legacy no-alpha
+/// icon" heuristic (Explorer's icon-cache deserialize, image-list adds) reclassifies such a
+/// bitmap as fully OPAQUE, and its zero RGB then paints as a solid BLACK block over every
+/// shortcut (the 2026-07-19 incident's overlay half). Alpha 1/255 ≈ 0.4% is imperceptible on
+/// any background yet defeats the heuristic in every path, live and cached.
+const OVERLAY_MIN_ALPHA: u8 = 1;
+
+/// The visually transparent laddered `.ico` (`OverlayBadgeIconFactory.CreateTransparentIco`):
 /// the ADR-0021 global-overlay slot is invisible so each icon carries its own baked mark.
+/// Pixels are (0,0,0,alpha=1), not (0,0,0,0) — see [`OVERLAY_MIN_ALPHA`].
 pub fn transparent_ico() -> IcoAsset {
-    let frames: Vec<Raster> = OVERLAY_SIZES.iter().map(|&s| Raster::new(s, s)).collect();
+    let frames: Vec<Raster> = OVERLAY_SIZES
+        .iter()
+        .map(|&s| {
+            let mut r = Raster::new(s, s);
+            for px in r.data.chunks_exact_mut(4) {
+                px[3] = OVERLAY_MIN_ALPHA;
+            }
+            r
+        })
+        .collect();
     write_ico_asset(&frames)
 }
 
@@ -67,13 +85,16 @@ mod tests {
         "b8c580a2f7bc4509ccfd44d9bae625df37a59e8f663017166419d607768c681d";
     const CHECKER256_ICO_SHA256: &str =
         "1401770a5bac81ef40340b399083a6a56f1b67396db46b8958d563a9a9950ff2";
-    // Alpha-derived AND mask (2026-07-16 overlay black-block fix): the disc has fully transparent
-    // pixels outside its radius, so its mask (and hash) changed; the fully-transparent overlay's did
-    // too. The opaque gradient/checker are byte-unchanged (no alpha-0 pixel → mask still all-zero).
+    // 2026-07-19 black-icon fix: the AND mask is all-zero again for every profile (the alpha-
+    // derived mask poisoned the Explorer icon-cache round trip), and the transparent overlay
+    // carries alpha=1. The disc reverts to its pre-mask-experiment bytes; the transparent
+    // overlay's bytes (and hash — the overlay install signature) change, which deliberately
+    // triggers a one-time overlay reinstall on the next apply (icon_host reinstalls on any
+    // signature change, self-healing customer machines).
     const DISC256_ICO_SHA256: &str =
-        "883e14c4150b91991de776dc32fa2cba13cffb1c4969607b0a9026c820fc6308";
+        "7ddabb467f7188490b7e733608018b6c1def6b4717c211e23baf58010b89df70";
     const TRANSPARENT_ICO_SHA256: &str =
-        "9bdadf1a36b17a32167b7ff5ff69cd16d24ee7a40b06de86b52a57e702b6e57f";
+        "67565c196340470df1a134980ee4099bf5552556ba7d66d8d6bc7c8f17e14ee1";
 
     fn gradient(size: usize) -> Raster {
         // A deterministic, non-uniform source that exercises every channel + the alpha
@@ -132,15 +153,30 @@ mod tests {
     }
 
     #[test]
-    fn transparent_ico_has_overlay_sizes_and_all_zero_pixels() {
+    fn transparent_ico_is_invisible_but_never_alpha_zero() {
+        // REGRESSION (2026-07-19 incident, overlay half): an all-zero alpha plane gets
+        // reclassified as a legacy no-alpha icon by Explorer's cache/image-list heuristic and
+        // comes back as an OPAQUE BLACK arrow stamped over every shortcut. Every pixel must be
+        // (0,0,0,1): visually nothing, but alpha-carrying in every consumer path. The AND mask
+        // stays all-zero like every other frame (ico::and_mask_is_always_all_zero).
         let asset = transparent_ico();
         let entries = parse(&asset.bytes).expect("valid transparent ICO");
         let sizes: Vec<i32> = entries.iter().map(|e| e.dib_width).collect();
         assert_eq!(sizes, vec![16, 20, 24, 32, 48, 256]);
-        // The COLOR pixels are all zero (transparent black), but the AND MASK is now all-ONES
-        // (every pixel marked transparent) so the shortcut overlay renders invisible, not a black
-        // block. Byte-level mask coverage is in `ico::tests`; here the hash pins the whole file.
-        assert_eq!(asset.content_hash.len(), 64);
+        for (e, &size) in entries.iter().zip(OVERLAY_SIZES.iter()) {
+            let xor_start = e.image_offset as usize + 40;
+            let xor = &asset.bytes[xor_start..xor_start + size * size * 4];
+            // BGRA: colour bytes zero, alpha byte exactly OVERLAY_MIN_ALPHA — no pixel alpha-0.
+            for px in xor.chunks_exact(4) {
+                assert_eq!(px, [0, 0, 0, OVERLAY_MIN_ALPHA]);
+            }
+            let mask_len = ((size + 31) / 32) * 4 * size;
+            let mask_start = xor_start + size * size * 4;
+            assert!(
+                asset.bytes[mask_start..mask_start + mask_len].iter().all(|&b| b == 0),
+                "{size}px overlay frame must keep the all-zero AND mask"
+            );
+        }
     }
 
     fn checkerboard(size: usize) -> Raster {

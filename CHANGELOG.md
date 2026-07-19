@@ -9,7 +9,25 @@ All notable changes to DeskMakeover. The format follows
 
 ## Unreleased
 
-Nothing yet.
+### Fixed
+- **Black-block icons after reboot** (customer reports, 2026-07-19): icons styled by an apply —
+  and the shortcut-arrow badge — turned into opaque black tiles on the NEXT reboot after using
+  the app, while the same desktop looked perfect all day. Root cause, confirmed by on-box A/B
+  against Explorer's icon cache (real Win11, controlled ICO variants, double-restart protocol):
+  the transparent arrow overlay (Shell Icons 29) renders correctly on live load but does NOT
+  survive the icon cache's serialize→deserialize round trip unless its bitmap is trivial in
+  BOTH planes — an all-zero alpha plane trips Windows' "no nonzero alpha byte ⇒ legacy
+  no-alpha icon" heuristic, and a non-trivial AND mask routes the reload through a legacy
+  compose path that discards alpha; either way the overlay comes back as an OPAQUE BLACK
+  bitmap stamped over every shortcut (quarter- or full-tile). Fix in the ICO writer, applied
+  uniformly: overlay pixels now carry alpha 1/255 (imperceptible, defeats the heuristic in
+  every path, live and cached) and the AND mask is ALWAYS all-zero again for every frame —
+  the industry convention for 32bpp alpha frames, reverting the 2026-07-16 alpha-derived-mask
+  experiment (its non-trivial masks were the other half of the poisoning).
+  The overlay content hash change rotates the overlay install signature, so the first apply after
+  updating reinstalls the fixed overlay (one UAC) and re-bakes assets with the safe mask —
+  machines self-heal. Regression tests pin both invariants
+  (`ico::and_mask_is_always_all_zero`, `ladder::transparent_ico_is_invisible_but_never_alpha_zero`).
 
 ## [0.1.0] - 2026-07-17
 

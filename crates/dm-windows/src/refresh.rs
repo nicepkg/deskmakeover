@@ -46,13 +46,16 @@ impl ExplorerRefresher for WindowsExplorerRefresher {
     /// stray window). The reliable desktop-icon refresh (see the trait doc + owner box 2026-07-17).
     ///
     /// The icon-cache purge is NOT optional: the on-disk arrow-overlay `.ico` (`HKLM ...\Shell
-    /// Icons\29`) is fully transparent, but Explorer caches the RENDERED overlay bitmap in
-    /// `%LOCALAPPDATA%\...\Explorer\iconcache*.db`. Once a cold reload rendered a BLACK bitmap for it,
-    /// every later restart re-served that cached black block over every shortcut (owner box
-    /// 2026-07-17: "the small arrow became a huge black square on the second apply"). A restart alone
-    /// re-reads the registry but still trusts the poisoned cache; deleting the cache DBs (only
-    /// possible while Explorer is down — it holds them open) forces a fresh render from the
-    /// transparent `.ico`. This mirrors the proven reference tool's `Refresh-ExplorerIconCache`.
+    /// Icons\29`) is VISUALLY transparent (every pixel `(0,0,0,alpha=1)` — deliberately NOT
+    /// alpha-0, see `dm_icon_codec::ladder::transparent_ico`), but Explorer caches the RENDERED
+    /// overlay bitmap in `%LOCALAPPDATA%\...\Explorer\iconcache*.db`. Once a cold reload rendered
+    /// a BLACK bitmap for it, every later restart re-served that cached black block over every
+    /// shortcut (owner box 2026-07-17: "the small arrow became a huge black square on the second
+    /// apply"; root-caused 2026-07-19: an all-zero-alpha or non-trivially-masked overlay bitmap
+    /// does not survive the cache's serialize→deserialize round trip). A restart alone re-reads
+    /// the registry but still trusts the poisoned cache; deleting the cache DBs (only possible
+    /// while Explorer is down — it holds them open) forces a fresh render from the transparent
+    /// `.ico`. This mirrors the proven reference tool's `Refresh-ExplorerIconCache`.
     ///
     /// Async (`.spawn()`) — the PowerShell owns the stop→purge→relaunch chain, so the caller returns
     /// without blocking and all desktop writes are already flushed. Best-effort: a spawn fault is

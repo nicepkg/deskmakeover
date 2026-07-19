@@ -3,10 +3,15 @@
 //! Pure little-endian integer layout with NO floating point: an `ICONDIR` header, one
 //! 16-byte `ICONDIRENTRY` per frame, then a 32-bit BGRA bottom-up DIB
 //! (`BITMAPINFOHEADER` with `biHeight = height * 2`) plus a 1bpp AND mask
-//! (`stride = ((width + 31) / 32) * 4`) per frame. The mask is DERIVED FROM ALPHA (a fully
-//! transparent pixel is marked transparent) — a deliberate divergence from the retired C#
-//! oracle's all-zero mask, which black-blocked the shortcut overlay (owner report 2026-07-16).
-//! Everything else is a 1:1 port; nothing rounds, so the output is deterministic and the goldens
+//! (`stride = ((width + 31) / 32) * 4`) per frame. The mask is ALWAYS ALL-ZERO — the industry
+//! convention for 32bpp alpha frames, and a hard-won on-box lesson (2026-07-19 black-icon
+//! incident): an alpha-DERIVED mask (the 2026-07-16 experiment) renders fine on live extraction
+//! but turns the whole icon into an opaque BLACK tile after Explorer's icon-cache
+//! serialize→deserialize round trip, so every customer desktop went black on the NEXT reboot
+//! after an apply. The fully-transparent overlay's black-block (what that mask experiment tried
+//! to fix) is instead solved at the pixel layer: `ladder::transparent_ico` ships alpha = 1
+//! (imperceptible), so no consumer's "all-zero alpha ⇒ legacy no-alpha icon" heuristic can ever
+//! reclassify it as opaque. Nothing rounds, so the output is deterministic and the goldens
 //! below pin it byte-for-byte.
 
 use dm_icon_core::raster::Raster;
@@ -77,8 +82,9 @@ fn dimension_byte(v: usize) -> u8 {
 }
 
 /// One frame's DIB payload (`IcoWriter.CreateDibPayload`): `BITMAPINFOHEADER`, then
-/// 32-bit BGRA scanlines BOTTOM-UP, then a 1bpp AND mask derived from alpha (transparent pixels
-/// marked transparent so mask-honouring consumers — the shortcut overlay — never black-block them).
+/// 32-bit BGRA scanlines BOTTOM-UP, then an ALL-ZERO 1bpp AND mask (the 32bpp-alpha
+/// convention; a non-trivial mask poisons the Explorer icon-cache round trip — see the
+/// module header and `and_mask_is_always_all_zero`).
 fn dib_payload(frame: &Raster) -> Vec<u8> {
     let w = frame.width;
     let h = frame.height;
@@ -110,23 +116,14 @@ fn dib_payload(frame: &Raster) -> Vec<u8> {
         }
     }
 
-    // AND mask (1bpp, bottom-up, MSB = leftmost pixel, rows padded to `mask_stride`). A fully
-    // transparent pixel (alpha 0) is marked TRANSPARENT (bit 1) so shell consumers that honour the AND
-    // mask — notably the shortcut-overlay renderer (`Shell Icons\29`) — never paint it as an opaque
-    // BLACK SQUARE (owner report 2026-07-16: the all-transparent overlay showed as a black block; the
-    // reference `Apply-ShortcutOverlay.ps1` fixes the same class with "mark every transparent pixel as
-    // transparent there too"). Any opacity (alpha > 0) stays 0, so the authoritative 32-bit alpha
-    // handles the blend — the alpha-honouring desktop icon renderer is unaffected (a transparent pixel
-    // is transparent either way); only mask-honouring consumers change, and for the better.
-    for y in (0..h).rev() {
-        let mut row = vec![0u8; mask_stride];
-        for x in 0..w {
-            if d[(y * w + x) * 4 + 3] == 0 {
-                row[x / 8] |= 0x80 >> (x % 8);
-            }
-        }
-        p.extend_from_slice(&row);
-    }
+    // AND mask (1bpp, bottom-up, rows padded to `mask_stride`): ALWAYS ALL-ZERO. ⛔ Never derive
+    // it from alpha again. The 2026-07-16 alpha-derived mask rendered fine live (alpha wins on
+    // extraction) but BLACKED every icon after Explorer's icon-cache serialize→deserialize round
+    // trip — the deserializer hands non-trivially-masked 32bpp entries to a legacy compose path
+    // that discards the alpha plane, so the whole tile came back opaque black on the next reboot
+    // (2026-07-19 on-box A/B: identical pixels, mask zeroed → survives; mask non-zero → black).
+    // All-zero matches every mainstream 32bpp-alpha icon writer; alpha stays the one opacity truth.
+    p.extend(std::iter::repeat(0u8).take(mask_stride * h));
 
     p
 }
@@ -334,15 +331,20 @@ mod tests {
     }
 
     #[test]
-    fn a_fully_transparent_frame_marks_the_and_mask_transparent() {
-        // The overlay black-block fix (2026-07-16): a fully transparent pixel (alpha 0) sets its AND
-        // mask bit, so a mask-honouring consumer (the shortcut overlay renderer) paints it INVISIBLE
-        // rather than an opaque black square. For a 2x2 all-transparent frame the trailing 8 mask
-        // bytes (stride 4 × 2 rows) carry the two leftmost bits set per row (0xC0), rest padding.
-        let got = write_ico(&[solid(2, 0, 0, 0, 0)]);
-        let mask = &got[got.len() - 8..];
-        assert_eq!(mask, [0xC0, 0x00, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00]);
-        // An opaque frame keeps an all-zero mask (alpha stays authoritative) — the golden above pins it.
+    fn and_mask_is_always_all_zero() {
+        // REGRESSION (2026-07-19 black-icon incident): the 2026-07-16 alpha-derived AND mask made
+        // every baked icon come back as an opaque BLACK tile after Explorer's icon-cache
+        // serialize→deserialize round trip (live extraction was fine, so it only surfaced on the
+        // NEXT reboot after an apply — "昨天正常，今天全黑"). On-box A/B with identical pixels:
+        // mask zeroed → survives the round trip; mask non-zero → black. The mask must therefore
+        // stay all-zero for EVERY alpha profile — transparent, translucent, and opaque alike;
+        // opacity is expressed through the 32-bit alpha plane only (the transparent overlay
+        // carries alpha=1 for this — see ladder::transparent_ico).
+        for a in [0u8, 1, 96, 255] {
+            let got = write_ico(&[solid(2, 0, 0, 0, a)]);
+            let mask = &got[got.len() - 8..];
+            assert_eq!(mask, [0u8; 8], "alpha={a} frame must keep an all-zero AND mask");
+        }
     }
 
     #[test]

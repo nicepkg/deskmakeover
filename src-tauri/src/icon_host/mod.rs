@@ -152,14 +152,16 @@ impl IconHost {
         active_user_profiles: u32,
         scope: ScopeRoots,
     ) -> Self {
-        // Materialize the transparent overlay ICO once (best-effort) so the elevated helper always
-        // has a real path to validate + copy into ProgramData (codex Block 5). Its content hash is the
-        // overlay's install signature: if it changes across an app update (e.g. the 2026-07-16 AND-mask
-        // black-block fix), the next apply reloads Explorer even without a native↔hidden transition.
+        // Materialize the transparent overlay ICO once so the elevated helper always has a real
+        // path to validate + copy into ProgramData (codex Block 5). Its content hash is the
+        // overlay's install signature: if it changes across an app update (e.g. the 2026-07-19
+        // alpha=1 black-block fix), the next apply reinstalls the overlay even without a
+        // native↔hidden transition. The signature is ALWAYS hashed from the bytes actually ON
+        // DISK, never from the bytes we merely intended to write (codex 2026-07-19 P1: a failed
+        // overwrite atop a stale pre-fix file would otherwise pin the NEW signature onto the OLD
+        // poisoned bytes and permanently skip the self-heal reinstall).
         let overlay_ico = data_dir.join("overlay-transparent.ico");
-        let overlay_asset = dm_icon_codec::transparent_ico();
-        let overlay_ico_sha = overlay_asset.content_hash;
-        let _ = std::fs::write(&overlay_ico, &overlay_asset.bytes);
+        let overlay_ico_sha = materialize_overlay_sha(&overlay_ico, &dm_icon_codec::transparent_ico());
         let overlay_install_marker = data_dir.join("overlay-installed.txt");
         // Resume the persisted arrow state (default Native) — the overlay is machine-wide + survives
         // process restarts, so a fresh process must not forget an installed overlay.
@@ -273,6 +275,71 @@ impl IconHost {
     pub(super) fn elevated(&self) -> Option<&dyn ElevatedIconApplier> {
         // Drop the `+ Send + Sync` marker bounds the storage carries — the ops take a plain trait ref.
         self.elevated.as_deref().map(|e| e as &dyn ElevatedIconApplier)
+    }
+}
+
+/// Writes the freshly generated transparent-overlay ICO to `overlay_ico` and returns the
+/// install-signature hash of the bytes that are ACTUALLY on disk afterwards. On a failed write
+/// atop a stale (e.g. pre-fix) file, the stale bytes' hash is returned, so the recorded
+/// signature keeps describing what the elevated helper would really install and the self-heal
+/// reinstall stays armed until a write succeeds (codex 2026-07-19 P1: hashing the INTENT would
+/// pin the new signature onto old poisoned bytes and permanently skip the reinstall). Only when
+/// nothing is readable at all does it fall back to the intended hash — the apply then fails
+/// loudly at the helper's file read, and the install marker never advances (it moves only after
+/// `OverlayOutcome::Applied`).
+fn materialize_overlay_sha(overlay_ico: &Path, asset: &dm_icon_codec::IcoAsset) -> String {
+    if let Err(e) = std::fs::write(overlay_ico, &asset.bytes) {
+        log::warn!("overlay ico write failed ({e}); install signature falls back to the on-disk bytes");
+    }
+    match std::fs::read(overlay_ico) {
+        Ok(bytes) => dm_icon_codec::content_hash(&bytes),
+        Err(_) => asset.content_hash.clone(),
+    }
+}
+
+#[cfg(test)]
+mod overlay_sha_tests {
+    use super::materialize_overlay_sha;
+
+    fn scratch_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("dm-overlay-sha-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    #[test]
+    fn fresh_write_signs_the_new_bytes() {
+        let dir = scratch_dir("fresh");
+        let ico = dir.join("overlay-transparent.ico");
+        let asset = dm_icon_codec::transparent_ico();
+        let sha = materialize_overlay_sha(&ico, &asset);
+        assert_eq!(sha, asset.content_hash);
+        assert_eq!(std::fs::read(&ico).expect("overlay written"), asset.bytes);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn failed_overwrite_signs_the_stale_disk_bytes_not_the_intent() {
+        // The codex 2026-07-19 P1 scenario: a stale (pre-fix) overlay survives a failed
+        // overwrite. The signature must describe the STALE bytes so the self-heal reinstall
+        // stays armed — never the fresh bytes that did not land.
+        let dir = scratch_dir("stale");
+        let ico = dir.join("overlay-transparent.ico");
+        let stale = b"stale-pre-fix-overlay-bytes".to_vec();
+        std::fs::write(&ico, &stale).expect("seed stale file");
+        let mut perms = std::fs::metadata(&ico).expect("meta").permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&ico, perms.clone()).expect("set readonly");
+
+        let asset = dm_icon_codec::transparent_ico();
+        let sha = materialize_overlay_sha(&ico, &asset);
+        assert_eq!(sha, dm_icon_codec::content_hash(&stale), "signature must hash the disk");
+        assert_ne!(sha, asset.content_hash, "must NOT sign bytes that never landed");
+
+        perms.set_readonly(false);
+        let _ = std::fs::set_permissions(&ico, perms);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

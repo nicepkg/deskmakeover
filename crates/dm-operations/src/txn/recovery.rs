@@ -369,14 +369,22 @@ fn abort_incomplete(
         // unelevated restore is doomed (Access Denied) and would wedge recovery — those keep the
         // existing preserve/adopt-forward arms. A surface read fault degrades to the exact check
         // (fail closed to never-clobber, never to a blind restore).
+        // Ownership needs the WHOLE reported surface, not a fragment (codex R-vanish P1-1): a
+        // multi-location kind (the Recycle Bin's three registry values) can hold one value we
+        // wrote AND another the user edited after the crash — `any()` would claim it and the
+        // anchor replay would destroy the user's value. Claim ONLY when every reported location
+        // is non-empty and resolves into our store; anything mixed/foreign/unstyled preserves
+        // exactly as before. (The `.lnk` icon-surface-vs-whole-file scope limit is the SAME one
+        // the exact-fingerprint arm documents above — no wider here.)
         let is_ours = is_ours_exact
             || (live.is_some()
                 && scope.classify(&rec.target.path).is_none()
                 && matches!(
                     reader.read_styleable_surface(&rec.target),
-                    Ok((_, locations)) if locations
-                        .iter()
-                        .any(|(path, _)| !path.is_empty() && assets.contains_path(path))
+                    Ok((_, locations)) if !locations.is_empty()
+                        && locations
+                            .iter()
+                            .all(|(path, _)| !path.is_empty() && assets.contains_path(path))
                 ));
         if !is_ours {
             // The live state is NOT this txn's original or applied style. Before preserving, RECONCILE

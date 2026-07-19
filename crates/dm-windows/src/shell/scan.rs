@@ -34,16 +34,22 @@ impl DesktopScanner for WindowsScanner {
 /// The scan body, executed on the STA thread. [WINDOWS-VERIFY] runtime.
 fn scan_blocking() -> PortResult<Vec<DesktopItem>> {
     let mut items = Vec::new();
-    let roots = known_folders::desktop_roots()?;
-    for (i, root) in roots.iter().enumerate() {
+    // Labeled resolution (codex R-vanish P2): the user desktop is mandatory and identified by
+    // NAME, never by vector position — a failed user-desktop lookup errors instead of letting
+    // the Public root masquerade as a successful empty scan.
+    let (user_root, public_root) = known_folders::desktop_roots_labeled()?;
+    let roots: Vec<(std::path::PathBuf, bool)> = std::iter::once((user_root, true))
+        .chain(public_root.into_iter().map(|p| (p, false)))
+        .collect();
+    for (root, is_user) in &roots {
         let read_dir = match std::fs::read_dir(root) {
             Ok(rd) => rd,
-            // The USER desktop (first root) failing to enumerate must be LOUD (2026-07-19 vanish
-            // audit): silently treating it as empty binds the apply to a bogus "empty desktop"
-            // snapshot and the UI cannot tell a bare desktop from a broken scan (OneDrive
-            // Files-On-Demand hiccup, transient access denial). The PUBLIC root staying
-            // best-effort is deliberate — it is often absent/ACL-restricted on managed machines.
-            Err(e) if i == 0 => {
+            // The USER desktop failing to enumerate must be LOUD (2026-07-19 vanish audit):
+            // silently treating it as empty binds the apply to a bogus "empty desktop" snapshot
+            // and the UI cannot tell a bare desktop from a broken scan (OneDrive Files-On-Demand
+            // hiccup, transient access denial). The PUBLIC root staying best-effort is deliberate
+            // — it is often absent/ACL-restricted on managed machines.
+            Err(e) if *is_user => {
                 return Err(dm_domain::PortError::Io(format!(
                     "cannot enumerate the desktop folder {}: {e}",
                     root.display()

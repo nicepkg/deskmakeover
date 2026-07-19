@@ -11,6 +11,32 @@ use windows::Win32::UI::Shell::{
     KF_FLAG_DEFAULT,
 };
 
+/// The desktop roots LABELED by identity: `(user desktop, public desktop)`. The USER desktop is
+/// MANDATORY — a failed lookup / missing directory is an error, never silently skipped (codex
+/// R-vanish P2: positional `desktop_roots()` let a failed user-desktop resolution promote the
+/// Public root to index 0, so a broken user desktop masqueraded as a successful empty/public-only
+/// scan). The Public root stays best-effort (`None` on locked-down editions).
+///
+/// [WINDOWS-VERIFY] runtime.
+pub fn desktop_roots_labeled() -> PortResult<(PathBuf, Option<PathBuf>)> {
+    let user = match known_folder(&FOLDERID_Desktop) {
+        Ok(Some(path)) if path.is_dir() => path,
+        Ok(Some(path)) => {
+            return Err(PortError::Io(format!(
+                "the desktop folder {} is not an accessible directory",
+                path.display()
+            )))
+        }
+        Ok(None) => return Err(PortError::Io("the desktop folder did not resolve".into())),
+        Err(e) => return Err(e),
+    };
+    let public = match known_folder(&FOLDERID_PublicDesktop) {
+        Ok(Some(path)) if path.is_dir() => Some(path),
+        _ => None,
+    };
+    Ok((user, public))
+}
+
 /// The existing desktop roots (user first, then public). Missing roots are skipped.
 ///
 /// [WINDOWS-VERIFY] runtime.

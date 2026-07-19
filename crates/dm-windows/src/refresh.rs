@@ -77,9 +77,18 @@ impl ExplorerRefresher for WindowsExplorerRefresher {
         let _gate = RESTART_GATE.lock().unwrap_or_else(|p| p.into_inner());
 
         // 1. Stop Explorer (it holds the icon-cache DBs open) and WAIT for it to actually exit —
-        //    the old fixed 500ms sleep raced Winlogon's respawn against the purge below.
-        run_hidden("taskkill", &["/F", "/IM", "explorer.exe"]); // exit code ignored: may not be running
-        wait_until(EXPLORER_EXIT_WAIT_MS, || !explorer_running());
+        //    the old fixed 500ms sleep raced Winlogon's respawn against the purge below. Both the
+        //    kill and every liveness check below are scoped to THIS process's Windows session
+        //    (codex R-vanish P1-2): on a multi-session box (RDP / fast user switching) an
+        //    image-name-wide kill could hit another session's shell, and another session's
+        //    explorer would fake "alive" while THIS desktop stayed empty.
+        let session = current_session_filter();
+        let mut kill_args = vec!["/F", "/IM", "explorer.exe"];
+        if let Some(f) = session.as_ref() {
+            kill_args.extend(["/FI", f.as_str()]);
+        }
+        run_hidden("taskkill", &kill_args); // exit code ignored: may not be running
+        wait_until(EXPLORER_EXIT_WAIT_MS, || !explorer_running(session.as_deref()));
 
         // 2. Purge the icon caches natively — no child shell to be killed halfway. Per-file faults
         //    are tolerated (a cache Explorer still holds is re-purged on the next restart).
@@ -93,13 +102,13 @@ impl ExplorerRefresher for WindowsExplorerRefresher {
         //    we cannot confirm alive after both attempts is an error — the caller surfaces it
         //    rather than leaving the user staring at an empty desktop wondering what happened.
         for attempt in 0..2 {
-            if wait_until(EXPLORER_ALIVE_WAIT_MS, explorer_running) {
+            if wait_until(EXPLORER_ALIVE_WAIT_MS, || explorer_running(session.as_deref())) {
                 return Ok(());
             }
             log::warn!("restart_shell: explorer not alive after wait (attempt {attempt}); launching it");
             let _ = std::process::Command::new("explorer.exe").spawn();
         }
-        if wait_until(EXPLORER_ALIVE_WAIT_MS, explorer_running) {
+        if wait_until(EXPLORER_ALIVE_WAIT_MS, || explorer_running(session.as_deref())) {
             return Ok(());
         }
         Err(dm_domain::PortError::Io(
@@ -127,13 +136,29 @@ fn wait_until(budget_ms: u64, done: impl Fn() -> bool) -> bool {
     }
 }
 
-/// Whether any `explorer.exe` process exists in this session (tasklist CSV filter — a stable
-/// in-box tool; empty/`INFO:` output means none).
-fn explorer_running() -> bool {
+/// The `tasklist`/`taskkill` filter pinning operations to THIS process's Windows session, or
+/// `None` when the session id cannot be resolved (single-session boxes behave identically).
+fn current_session_filter() -> Option<String> {
+    use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+    use windows::Win32::System::Threading::GetCurrentProcessId;
+    let mut session: u32 = 0;
+    // SAFETY: writes one u32 out-param for the current PID; no ownership taken.
+    unsafe { ProcessIdToSessionId(GetCurrentProcessId(), &mut session) }
+        .ok()
+        .map(|()| format!("SESSION eq {session}"))
+}
+
+/// Whether an `explorer.exe` exists in the given session (tasklist CSV — a stable in-box tool;
+/// the image-name match is ASCII and locale-stable; empty/`INFO:` output means none).
+fn explorer_running(session_filter: Option<&str>) -> bool {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut args = vec!["/FI", "IMAGENAME eq explorer.exe", "/FO", "CSV", "/NH"];
+    if let Some(f) = session_filter {
+        args.extend(["/FI", f]);
+    }
     std::process::Command::new("tasklist")
-        .args(["/FI", "IMAGENAME eq explorer.exe", "/FO", "CSV", "/NH"])
+        .args(&args)
         .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map(|out| String::from_utf8_lossy(&out.stdout).to_ascii_lowercase().contains("explorer.exe"))

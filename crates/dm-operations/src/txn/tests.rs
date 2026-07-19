@@ -1913,7 +1913,7 @@ fn recovery_self_heals_a_half_landed_write_via_assets_provenance() {
     // surface's icon location resolves into OUR asset store, recovery replays the durable anchor.
     struct ProvenanceReader<'a> {
         inner: &'a FakePlatform,
-        location: String,
+        locations: Vec<(String, i32)>,
     }
     impl ItemStateReader for ProvenanceReader<'_> {
         fn read_fingerprint(&self, target: &ItemTarget) -> PortResult<Fingerprint> {
@@ -1926,7 +1926,7 @@ fn recovery_self_heals_a_half_landed_write_via_assets_provenance() {
             &self,
             target: &ItemTarget,
         ) -> PortResult<(Fingerprint, Vec<(String, i32)>)> {
-            Ok((self.inner.read_fingerprint(target)?, vec![(self.location.clone(), 0)]))
+            Ok((self.inner.read_fingerprint(target)?, self.locations.clone()))
         }
     }
 
@@ -1956,7 +1956,7 @@ fn recovery_self_heals_a_half_landed_write_via_assets_provenance() {
 
     // Live icon resolves into OUR store (FakePlatform::contains_path accepts assets/…) → SELF-HEAL:
     // the item is restored to its original and reported aborted, never preserved.
-    let ours = ProvenanceReader { inner: &plat, location: "assets/hashA.ico".into() };
+    let ours = ProvenanceReader { inner: &plat, locations: vec![("assets/hashA.ico".into(), 0)] };
     let mut fresh = MemLedgerStore::new();
     let out = recover(&records, &ours, &plat, &plat, &mut fresh, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(out.preserved, Vec::<dm_domain::ItemId>::new(), "our half-landed write is not residue");
@@ -1986,7 +1986,12 @@ fn recovery_self_heals_a_half_landed_write_via_assets_provenance() {
         })
         .cloned()
         .collect();
-    let foreign = ProvenanceReader { inner: &plat2, location: "C:\\Windows\\some-user-choice.ico".into() };
+    let foreign = ProvenanceReader {
+        inner: &plat2,
+        // codex R-vanish P1-1: a COMPOSITE surface with one location ours and one the user's —
+        // fragment ownership must NOT claim the whole item; it stays never-clobbered.
+        locations: vec![("assets/hashB.ico".into(), 0), ("C:\\Windows\\some-user-choice.ico".into(), 0)],
+    };
     let mut fresh2 = MemLedgerStore::new();
     let out2 = recover(&records2, &foreign, &plat2, &plat2, &mut fresh2, &ScopeRoots::Unprivileged).unwrap();
     assert_eq!(out2.preserved.len(), 1, "a foreign live state stays never-clobbered");

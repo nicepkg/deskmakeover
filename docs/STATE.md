@@ -72,8 +72,13 @@ what is in flight, and what comes next.
   Gates: cargo workspace 32 suites ok · bun 662 · bindings ok. REMAINING (next session): V4
   (dm-elevated temp+ReplaceFileW atomic set_icon/write_bytes), V7 (rescue sweep for
   already-damaged desktops — un-hide Hidden|System wrapper residue on 还原), the overlayStale UI
-  banner + i18n, a restart-failure user-facing toast (currently log-only), and the codex
-  cross-review of this vanish slice. [WINDOWS-VERIFY]: supervised restart on-box.**
+  banner + i18n, a restart-failure user-facing toast (currently log-only), and V8: codex R2's
+  per-component three-state ownership model for the provenance arm (each surface component must be
+  original-or-this-txn, enabling RecycleBin partial-write self-heal AND closing the RegularFile
+  non-icon-field gap - needs per-kind anchor<->surface alignment; commander verdict 2026-07-19:
+  current all()-ours ships as a STRICT improvement over baseline with no regression, the R2 model
+  rides the V4/V7 round). codex R-vanish R1 P1x2+P2 fixed in 1599ef7; R2 verdict on the residual
+  model recorded here. [WINDOWS-VERIFY]: supervised restart on-box.**
 
 - **Black-block icons after reboot — ROOT-CAUSED + FIXED (2026-07-19, owner: 角标小箭头变大黑块,
   customer reports).** Desktop fine all day after apply, black tiles next boot. On-box A/B against

@@ -384,6 +384,8 @@ export interface IconPersistedDto {
   history: LookVersionDto[]
   applied: boolean
   arrowOverlay: 'native' | 'hidden'
+  /** Schema 10: the machine wears our overlay but with pre-fix bytes (needs one repair apply). */
+  overlayStale: boolean
   activeUserProfiles: number
 }
 

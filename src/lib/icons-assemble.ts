@@ -247,6 +247,8 @@ export interface PersistedIcons {
   history: HistoryEntryDto[]
   applied: boolean
   arrowOverlay: 'native' | 'hidden'
+  /** Schema 10 (optional here: older callers/tests may omit it; assemble defaults false). */
+  overlayStale?: boolean
   activeUserProfiles: number
 }
 
@@ -265,6 +267,7 @@ export function assembleIconsState(args: {
     scanning: false,
     working: false,
     applied: persisted.applied,
+    overlayStale: persisted.overlayStale ?? false,
     dirty: false,
     styleableCount: items.filter((i) => i.styleable).length,
     config: { ...draft.config },

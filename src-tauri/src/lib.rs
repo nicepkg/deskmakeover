@@ -470,7 +470,7 @@ fn run_startup_recovery(data_dir: &Path) -> Result<(), String> {
     {
         use std::sync::Arc;
 
-        use dm_operations::{recover_from_journal, FileJournal, JsonLedgerStore};
+        use dm_operations::{recover_from_journal, FileJournal, FsAssetStore, JsonLedgerStore};
         use dm_windows::{StaExecutor, WindowsIconApplier, WindowsStateReader};
 
         // A one-shot STA executor for the recovery pass; the resident apply/scan stack owns its own.
@@ -486,8 +486,13 @@ fn run_startup_recovery(data_dir: &Path) -> Result<(), String> {
         // (which the unelevated applier here can never revert) is ADOPTED FORWARD into the ledger
         // rather than driven into a doomed restore that would wedge every future apply/reset.
         let scope = resolve_scope_roots();
-        let outcome =
-            recover_from_journal(&mut journal, &reader, &applier, &mut ledger, &scope).map_err(|e| e.to_string())?;
+        // The SAME asset store the icon host mounts (icon-assets under the app data dir): recovery's
+        // assets-provenance arm uses it to recognise our own half-landed write (a live icon pointing
+        // into the store) and self-heal it from the durable anchor instead of preserving it as
+        // untouchable residue (the 2026-07-19 vanish fix).
+        let assets = FsAssetStore::new(data_dir.join("icon-assets"));
+        let outcome = recover_from_journal(&mut journal, &reader, &applier, &assets, &mut ledger, &scope)
+            .map_err(|e| e.to_string())?;
         log::info!(
             "startup recovery: {} aborted, {} reconciled, {} preserved (left as found), {} clean txns",
             outcome.aborted.len(),

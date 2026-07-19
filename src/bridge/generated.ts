@@ -193,6 +193,16 @@ export type IconPersistedDto = {
 	applied: boolean,
 	arrowOverlay: ArrowOverlayDto,
 	/**
+	 *  The machine wears OUR arrow overlay but with OUTDATED bytes (the install marker's content
+	 *  signature no longer matches the current build's overlay ICO) — the ADR-0021 needs-repair
+	 *  health state. Shipped for the 2026-07-19 black-block fix: a pre-fix overlay poisons the
+	 *  Explorer icon cache on every reboot until reinstalled, so the frontend shows a repair
+	 *  notice steering the user to run 一键美化 once (which reinstalls the overlay AND re-bakes
+	 *  the assets under the fixed codec — one consented UAC). Always `false` when the arrow is
+	 *  `Native`.
+	 */
+	overlayStale?: boolean,
+	/**
 	 *  Count of active user profiles on this machine (>1 makes the machine-wide arrow disclosure
 	 *  non-skippable; owner disposition 3). Host truth on Windows.
 	 */

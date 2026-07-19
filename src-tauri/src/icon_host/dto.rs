@@ -57,16 +57,24 @@ impl IconHost {
             saved_style_json: stores.saved_style.as_ref().map(style_to_json),
             history: stores.history.iter().map(look_to_dto).collect(),
             applied: stores.applied,
-            // Placeholder arrow; `finish_persisted` stamps the live value (avoids a nested lock while
-            // the mut lock is held).
+            // Placeholder arrow + staleness; `finish_persisted` stamps the live values (avoids a
+            // nested lock while the mut lock is held).
             arrow_overlay: ArrowOverlayDto::Native,
+            overlay_stale: false,
             active_user_profiles: self.active_user_profiles,
         }
     }
 
-    /// Stamps the live arrow-overlay state onto a persisted DTO built while the mut lock was held.
+    /// Stamps the live arrow-overlay state (and its ADR-0021 needs-repair staleness) onto a
+    /// persisted DTO built while the mut lock was held. `overlay_stale` = the machine wears our
+    /// overlay (arrow Hidden) but the install marker's signature is not the current build's
+    /// overlay ICO — e.g. a pre-2026-07-19 poisoned overlay after an app update. The frontend
+    /// steers the user to run 一键美化 once (reinstalls the overlay + re-bakes assets, one UAC).
     pub(super) fn finish_persisted(&self, mut dto: IconPersistedDto) -> IconPersistedDto {
-        dto.arrow_overlay = *self.arrow_overlay.lock().unwrap();
+        let arrow = *self.arrow_overlay.lock().unwrap();
+        dto.arrow_overlay = arrow;
+        dto.overlay_stale = arrow == ArrowOverlayDto::Hidden
+            && !self.overlay_install_is(&format!("hidden:{}", self.overlay_ico_sha));
         dto
     }
 }

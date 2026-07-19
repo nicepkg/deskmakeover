@@ -501,7 +501,7 @@ fn reset_checkpoints_the_journal_so_a_restart_cannot_revive_the_ledger() {
     let mut restart_ledger = MemLedgerStore::new();
     let fake = FakePlatform::new(world.clone());
     let mut restart_journal = crate::txn::FileJournal::new(&journal_path);
-    crate::txn::recover_from_journal(&mut restart_journal, &fake, &fake, &mut restart_ledger, &scope::ScopeRoots::Unprivileged).unwrap();
+    crate::txn::recover_from_journal(&mut restart_journal, &fake, &fake, &fake, &mut restart_ledger, &scope::ScopeRoots::Unprivileged).unwrap();
     assert!(
         restart_ledger.all().unwrap().is_empty(),
         "a restart after reset must NOT revive the deleted ledger rows",

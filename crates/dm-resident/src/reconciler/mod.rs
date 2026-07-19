@@ -153,7 +153,7 @@ impl Reconciler {
         // item to happen along — the reconcile loop itself closes the recovery state machine. A
         // recovery that moved or could not verify the desktop stands the cycle down (don't stack
         // classification/proposals on a just-recovered desktop).
-        let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger, ctx.scope)?;
+        let recovery = recover_from_journal(journal, ports.reader, ports.applier, ports.assets, ledger, ctx.scope)?;
         if !recovery.degraded.is_empty() || recovery.moved_or_uncertain() {
             out.errors.push("recovered a prior crash — re-syncing before the next cycle".into());
             out.deferred_recovery = true; // a re-sync, NOT activity (codex r1-🟡3)
@@ -283,7 +283,7 @@ impl Reconciler {
         };
         // A crash could have happened between propose and confirm — reconcile it before stacking a
         // new apply; a recovery that moved/could-not-verify the desktop defers the whole batch.
-        let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger, ctx.scope)?;
+        let recovery = recover_from_journal(journal, ports.reader, ports.applier, ports.assets, ledger, ctx.scope)?;
         if !recovery.degraded.is_empty() || recovery.moved_or_uncertain() {
             out.errors.push("recovery pending — batch deferred".into());
             out.deferred_recovery = true;
@@ -497,7 +497,7 @@ impl Reconciler {
     ) -> Result<RestoreBatchOutcome> {
         let mut out = RestoreBatchOutcome::default();
         // A crash between the batch and this undo must reconcile first (same law as apply_batch).
-        let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger, scope)?;
+        let recovery = recover_from_journal(journal, ports.reader, ports.applier, ports.assets, ledger, scope)?;
         if !recovery.degraded.is_empty() || recovery.moved_or_uncertain() {
             out.errors.push("recovery pending — undo deferred".into());
             out.deferred_recovery = true;

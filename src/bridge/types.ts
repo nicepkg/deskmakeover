@@ -24,7 +24,7 @@
 // PresetPackageReadDto / PresetEntryDto / PresetSaveDto (dm-contracts); library thumbnails ride
 // the scoped dmpreset:// protocol. Rust owns structure/security; payload SEMANTICS stay with the
 // ONE TS validator (lib/icon-look), so readPackage is PURE and save is the only library writer.
-export const BRIDGE_SCHEMA_VERSION = 9
+export const BRIDGE_SCHEMA_VERSION = 10
 
 // Preset package DTOs (schema 9) are consumed straight from the generated
 // contract — they carry no frontend-only fields, so a hand mirror would be
@@ -319,6 +319,13 @@ export interface IconsStateDto {
    *  the elevated `dm-elevated RestoreOverlay` verb + host contract (schema bump
    *  lands there). */
   arrowOverlay: 'native' | 'hidden'
+  /** The machine wears OUR arrow overlay but with OUTDATED bytes (the install
+   *  marker's signature no longer matches the current build's overlay ICO) —
+   *  the ADR-0021 needs-repair state, shipped for the 2026-07-19 black-block
+   *  fix. The UI steers the user to run 一键美化 once (one UAC reinstalls the
+   *  overlay AND re-bakes assets under the fixed codec). Always false while
+   *  arrowOverlay is 'native'. Mock always reports false. */
+  overlayStale: boolean
   /** [M6-WIRE] Count of active user profiles on this machine. >1 makes the
    *  first-run consent's machine-wide arrow disclosure non-skippable (owner
    *  disposition 3). Mocked in the browser loop; the host reports the real count

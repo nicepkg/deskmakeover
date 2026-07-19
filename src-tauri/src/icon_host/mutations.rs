@@ -267,7 +267,9 @@ impl IconHost {
         // above are a best-effort head start that `.lnk` items honor). Gated on a real desktop change,
         // so an idempotent re-apply (every icon a CAS-skip) never flashes.
         if committed_any || outcome.desktop_mutated {
-            let _ = self.refresher.restart_shell();
+            if let Err(e) = self.refresher.restart_shell() {
+                log::error!("shell restart could not confirm explorer alive: {e}");
+            }
         }
         // A finalize step failed AFTER the desktop committed (codex R3-Block 4): log the detail for
         // the operator, surface a generic "applied but finalize incomplete" toast, and return ok:false
@@ -430,7 +432,9 @@ impl IconHost {
         // the native arrow returns — the reliable refresh (owner choice 2026-07-17). Gated on a real
         // change (an icon reverted, or the overlay lifted), so a no-op reset never flashes.
         if !restored_paths.is_empty() || overlay_lifted {
-            let _ = self.refresher.restart_shell();
+            if let Err(e) = self.refresher.restart_shell() {
+                log::error!("shell restart could not confirm explorer alive: {e}");
+            }
         }
         // A finalize step failed after some icons already reverted (codex R3-Block 4): log the detail,
         // return ok:false + a repair toast + the authoritative state. Surface the trust-first skips, or
@@ -519,7 +523,9 @@ impl IconHost {
         // it on a driver bare-error), and the desktop then shows a cached transient icon that only the
         // restart clears (codex 2026-07-17 Block). Mirrors the apply gate; a no-op switch never flashes.
         if !outcome.outcome.committed.is_empty() || outcome.outcome.desktop_mutated {
-            let _ = self.refresher.restart_shell();
+            if let Err(e) = self.refresher.restart_shell() {
+                log::error!("shell restart could not confirm explorer alive: {e}");
+            }
         }
 
         let (ok, toast) = if outcome.deferred {

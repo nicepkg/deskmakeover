@@ -14,7 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use dm_domain::{IconApplier, ItemStateReader, ItemTarget, PortError, RestoreAnchor};
+use dm_domain::{AssetStore, IconApplier, ItemStateReader, ItemTarget, PortError, RestoreAnchor};
 
 use crate::error::{OperationError, Result};
 use crate::icons::scope::ScopeRoots;
@@ -92,11 +92,12 @@ pub fn recover_from_journal(
     journal: &mut dyn JournalSink,
     reader: &dyn ItemStateReader,
     applier: &dyn IconApplier,
+    assets: &dyn AssetStore,
     ledger: &mut dyn LedgerStore,
     scope: &ScopeRoots,
 ) -> Result<RecoveryOutcome> {
     let records = journal.read_all()?;
-    let mut outcome = recover(&records, reader, applier, ledger, scope)?;
+    let mut outcome = recover(&records, reader, applier, assets, ledger, scope)?;
     // Truncate the reconciled history ONLY on a clean pass with something to truncate. An EMPTY journal
     // has nothing to recover, so it must NOT checkpoint (codex R7-#4): an empty checkpoint tries to
     // DELETE the log file, and a zero-byte log that cannot be deleted (an ACL fault) would otherwise
@@ -162,6 +163,7 @@ pub fn recover(
     records: &[JournalRecord],
     reader: &dyn ItemStateReader,
     applier: &dyn IconApplier,
+    assets: &dyn AssetStore,
     ledger: &mut dyn LedgerStore,
     scope: &ScopeRoots,
 ) -> Result<RecoveryOutcome> {
@@ -226,7 +228,7 @@ pub fn recover(
         } else if group.committed {
             reconcile_committed(&group, reader, ledger, &mut outcome)?;
         } else {
-            abort_incomplete(&group, txn, &committed_owner, reader, applier, ledger, scope, &mut outcome)?;
+            abort_incomplete(&group, txn, &committed_owner, reader, applier, assets, ledger, scope, &mut outcome)?;
         }
     }
     Ok(outcome)
@@ -287,6 +289,7 @@ fn abort_incomplete(
     committed_owner: &HashMap<String, u64>,
     reader: &dyn ItemStateReader,
     applier: &dyn IconApplier,
+    assets: &dyn AssetStore,
     ledger: &mut dyn LedgerStore,
     scope: &ScopeRoots,
     outcome: &mut RecoveryOutcome,
@@ -350,10 +353,31 @@ fn abort_incomplete(
                 continue;
             }
         };
-        let is_ours = matches!(
+        let is_ours_exact = matches!(
             live,
             Some(fp) if fp == rec.original_fingerprint || rec.new_fingerprint == Some(fp)
         );
+        // ASSETS-PROVENANCE ARM (2026-07-19 vanish fix — the STATE 07-17 tracked follow-up): a crash
+        // between `applier.apply` and the `ItemApplied` fsync leaves `new_fingerprint = None` while
+        // the desktop already wears our style, so the exact check above cannot recognise our own
+        // half-landed write and the old code PRESERVED it — dropping the ledger row and checkpointing
+        // the journal, which made the item permanently invisible to 还原 (the field "restore did
+        // nothing" incident). When the live styleable surface's icon location resolves INTO OUR OWN
+        // asset store, the state is provably ours (SHA-256-named private assets; same oracle the
+        // driver's styled-residue guard trusts), so recovery SELF-HEALS by replaying the durable
+        // anchor instead of abandoning it. Restricted to UNPRIVILEGED targets: a privileged item's
+        // unelevated restore is doomed (Access Denied) and would wedge recovery — those keep the
+        // existing preserve/adopt-forward arms. A surface read fault degrades to the exact check
+        // (fail closed to never-clobber, never to a blind restore).
+        let is_ours = is_ours_exact
+            || (live.is_some()
+                && scope.classify(&rec.target.path).is_none()
+                && matches!(
+                    reader.read_styleable_surface(&rec.target),
+                    Ok((_, locations)) if locations
+                        .iter()
+                        .any(|(path, _)| !path.is_empty() && assets.contains_path(path))
+                ));
         if !is_ours {
             // The live state is NOT this txn's original or applied style. Before preserving, RECONCILE
             // the ledger so recovery never leaves a committed row that lies about the live desktop

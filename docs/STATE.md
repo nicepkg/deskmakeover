@@ -45,6 +45,36 @@ what is in flight, and what comes next.
 
 ## Active work (in flight)
 
+- **Vanish-class fixes — first-apply "all icons disappeared + restore did nothing" (2026-07-19,
+  customer reports).** Root causes (3 subagents + codex adversarial hunt, all file:line-verified):
+  (V1) `file_wrapper::restore` removes the wrapper BEFORE un-hiding the Hidden|System original —
+  a failure between leaves the file invisible with no visible entry; (V2) recovery arm-F
+  (never-clobber preserve) drops the ledger row + checkpoints the journal for OUR OWN half-landed
+  write (crash between applier.apply and ItemApplied) → 还原 reads only ledger.all() → silent
+  clean restore of nothing (STATE 07-17 residual, now closing via assets-provenance is_ours);
+  (V3) `restart_shell` fire-and-forget PowerShell force-kills Explorer then hopes an unsupervised
+  tail relaunches it — AV/policy killing the tail leaves the WHOLE shell dead (taskbar+icons gone),
+  restore runs the same dying chain; (V4) dm-elevated `set_icon`/`write_bytes` rewrite Public
+  Desktop .lnk IN PLACE (non-atomic, helper kill → torn file, in-memory rollback lost); (V5)
+  scan treats a failed Desktop-root read_dir as an empty desktop (silent). Victims' files are NOT
+  deleted — Hidden|System residue on disk. FIX SLICE (in progress): V1 order swap +
+  keep-wrapper-on-failure; V2 is_ours ← AssetStore::contains_path provenance (self-heal instead of
+  preserve); V3 supervised native restart (mutex + wait + verified relaunch + honest error); V4
+  temp+ReplaceFileW in the helper; V5 loud root failure; V7 reset-time rescue sweep un-hides
+  wrapper-residue victims (the field remedy — update → 还原 → files reappear); plus Q1
+  `overlayStale` needs-repair banner (contracts field landed, schema bump pending).
+  **BUILT + green (this session): V1 (order swap + keep-wrapper-on-failure), V2 (assets-provenance
+  is_ours self-heal + regression pair incl. never-clobber negative control), V3 (supervised
+  mutexed restart_shell: taskkill → wait-exit → native purge → relaunch → verify-alive, callers
+  log the failure), V5 (user-desktop root enumeration failure is a loud error; Public root stays
+  best-effort), Q1 plumbing (IconPersistedDto.overlayStale serde(default), host stamps from the
+  install marker vs current sha, mock false, BRIDGE_SCHEMA_VERSION 10, bindings regenerated).
+  Gates: cargo workspace 32 suites ok · bun 662 · bindings ok. REMAINING (next session): V4
+  (dm-elevated temp+ReplaceFileW atomic set_icon/write_bytes), V7 (rescue sweep for
+  already-damaged desktops — un-hide Hidden|System wrapper residue on 还原), the overlayStale UI
+  banner + i18n, a restart-failure user-facing toast (currently log-only), and the codex
+  cross-review of this vanish slice. [WINDOWS-VERIFY]: supervised restart on-box.**
+
 - **Black-block icons after reboot — ROOT-CAUSED + FIXED (2026-07-19, owner: 角标小箭头变大黑块,
   customer reports).** Desktop fine all day after apply, black tiles next boot. On-box A/B against
   Explorer's icon cache (real Win11 box, controlled variants + double-restart protocol) found TWO

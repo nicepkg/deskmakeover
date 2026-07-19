@@ -302,6 +302,14 @@ impl AssetStore for FakePlatform {
     fn gc(&self, _live: &[String]) -> PortResult<()> {
         Ok(())
     }
+
+    /// Provenance opt-in matching `put`'s `assets/{hash}.ico` convention, so recovery's
+    /// assets-provenance arm (the 2026-07-19 vanish fix) is exercisable against the fake. The
+    /// default reader reports NO icon locations, so tests only hit this through a reader that
+    /// overrides `read_styleable_surface` — existing never-clobber tests are unaffected.
+    fn contains_path(&self, path: &str) -> bool {
+        path.starts_with("assets/")
+    }
 }
 
 /// A journal that snapshots the world after each durable append. `snapshots[i]` is the world

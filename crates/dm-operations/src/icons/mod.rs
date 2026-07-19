@@ -287,7 +287,7 @@ impl<'a> IconOps<'a> {
         // #5 commit→ledger gap: reconcile any journal-committed-but-unledgered transaction into the
         // ledger (and checkpoint the journal) BEFORE preparing, so the CAS anchors + the GC live set
         // below are computed against a ledger that reflects every durable commit. Idempotent.
-        let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger, scope)?;
+        let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, self.platform.assets, ledger, scope)?;
         // Recovery of a PRIOR crash's journal either could not fully reconcile (`degraded`, codex
         // R4-Block 5) OR cleanly ABORTED an interrupted transaction — which RESTORES the desktop
         // (codex R5-#3). In EITHER case do NOT stack a new apply on top: the abort already mutated the
@@ -862,7 +862,7 @@ impl<'a> IconOps<'a> {
         // original — and its stale fingerprint then reads as a user hand-edit forever. The checkpoint
         // is STRICT here (not the recovery path's best-effort): if the journal cannot be emptied we
         // abort before touching the ledger, so a restart never revives a half-reset state.
-        let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, ledger, scope)?;
+        let recovery = recover_from_journal(journal, self.platform.reader, self.platform.applier, self.platform.assets, ledger, scope)?;
         // Recovery of a prior crash either could not fully reconcile (`degraded`, codex R4-Block 5) OR
         // cleanly ABORTED an interrupted transaction — restoring the desktop (codex R5-#3). In either
         // case do NOT reset on top: the strict `journal.checkpoint(&[])?` below is a bare `?` that, if

@@ -163,6 +163,15 @@ pub struct IconPersistedDto {
     /// frontend's `applied`/restore affordance authority, surviving a cold start.
     pub applied: bool,
     pub arrow_overlay: ArrowOverlayDto,
+    /// The machine wears OUR arrow overlay but with OUTDATED bytes (the install marker's content
+    /// signature no longer matches the current build's overlay ICO) — the ADR-0021 needs-repair
+    /// health state. Shipped for the 2026-07-19 black-block fix: a pre-fix overlay poisons the
+    /// Explorer icon cache on every reboot until reinstalled, so the frontend shows a repair
+    /// notice steering the user to run 一键美化 once (which reinstalls the overlay AND re-bakes
+    /// the assets under the fixed codec — one consented UAC). Always `false` when the arrow is
+    /// `Native`.
+    #[serde(default)]
+    pub overlay_stale: bool,
     /// Count of active user profiles on this machine (>1 makes the machine-wide arrow disclosure
     /// non-skippable; owner disposition 3). Host truth on Windows.
     pub active_user_profiles: u32,
@@ -284,11 +293,13 @@ mod tests {
             history: vec![],
             applied: false,
             arrow_overlay: ArrowOverlayDto::Native,
+            overlay_stale: false,
             active_user_profiles: 1,
         };
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("\"savedStyleJson\":null"), "got {json}");
         assert!(json.contains("\"arrowOverlay\":\"native\""));
+        assert!(json.contains("\"overlayStale\":false"));
         assert!(json.contains("\"activeUserProfiles\":1"));
         let back: IconPersistedDto = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p);
@@ -304,6 +315,7 @@ mod tests {
                 history: vec![],
                 applied: true,
                 arrow_overlay: ArrowOverlayDto::Hidden,
+                overlay_stale: true,
                 active_user_profiles: 2,
             },
         };

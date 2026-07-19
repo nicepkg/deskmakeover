@@ -34,10 +34,25 @@ impl DesktopScanner for WindowsScanner {
 /// The scan body, executed on the STA thread. [WINDOWS-VERIFY] runtime.
 fn scan_blocking() -> PortResult<Vec<DesktopItem>> {
     let mut items = Vec::new();
-    for root in known_folders::desktop_roots()? {
-        let read_dir = match std::fs::read_dir(&root) {
+    let roots = known_folders::desktop_roots()?;
+    for (i, root) in roots.iter().enumerate() {
+        let read_dir = match std::fs::read_dir(root) {
             Ok(rd) => rd,
-            Err(_) => continue, // an unreadable root is skipped, not fatal
+            // The USER desktop (first root) failing to enumerate must be LOUD (2026-07-19 vanish
+            // audit): silently treating it as empty binds the apply to a bogus "empty desktop"
+            // snapshot and the UI cannot tell a bare desktop from a broken scan (OneDrive
+            // Files-On-Demand hiccup, transient access denial). The PUBLIC root staying
+            // best-effort is deliberate — it is often absent/ACL-restricted on managed machines.
+            Err(e) if i == 0 => {
+                return Err(dm_domain::PortError::Io(format!(
+                    "cannot enumerate the desktop folder {}: {e}",
+                    root.display()
+                )))
+            }
+            Err(e) => {
+                log::warn!("desktop scan skipped unreadable root {}: {e}", root.display());
+                continue;
+            }
         };
         for entry in read_dir.flatten() {
             let path = entry.path();

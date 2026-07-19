@@ -1,5 +1,6 @@
-//! Explorer icon-cache refresh, ported from `DeskMakeover.Shell/ExplorerRefresh.cs`. A light,
-//! non-disruptive `SHChangeNotify` — never an Explorer kill (spec 01 Safety Rules).
+//! Explorer icon-cache refresh, ported from `DeskMakeover.Shell/ExplorerRefresh.cs`. The light
+//! notifications are `SHChangeNotify`; `restart_shell` is the owner-consented (2026-07-17)
+//! disruptive path — a SUPERVISED stop→purge→relaunch that must leave Explorer provably alive.
 
 use dm_domain::{ExplorerRefresher, PortResult};
 use windows::core::HSTRING;
@@ -57,29 +58,114 @@ impl ExplorerRefresher for WindowsExplorerRefresher {
     /// while Explorer is down — it holds them open) forces a fresh render from the transparent
     /// `.ico`. This mirrors the proven reference tool's `Refresh-ExplorerIconCache`.
     ///
-    /// Async (`.spawn()`) — the PowerShell owns the stop→purge→relaunch chain, so the caller returns
-    /// without blocking and all desktop writes are already flushed. Best-effort: a spawn fault is
-    /// swallowed (a stale icon must never fail the whole op).
+    /// SUPERVISED and MUTEXED (2026-07-19 vanish fix). The old implementation spawned ONE
+    /// fire-and-forget PowerShell that force-killed Explorer and hoped its own tail (or Winlogon
+    /// AutoRestartShell) relaunched it — on machines where AV/policy killed that child after the
+    /// kill but before the relaunch, the WHOLE shell (taskbar + every icon) stayed dead, restore
+    /// re-ran the same dying chain, and the user saw "all my icons are gone and 还原 does
+    /// nothing". Two chains could also interleave (apply's and restore's), the later kill
+    /// orphaning the earlier relaunch. Now: a process-wide mutex serializes restarts, every step
+    /// runs supervised from THIS process (kill → wait-for-exit → native cache purge → relaunch →
+    /// VERIFY ALIVE with retry), and a shell that cannot be confirmed alive returns an error the
+    /// caller must surface instead of a silent empty desktop. Blocking by design (a few seconds
+    /// at the tail of an apply): correctness over latency. [WINDOWS-VERIFY] runtime.
     fn restart_shell(&self) -> PortResult<()> {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let _ = std::process::Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                // Stop Explorer so the icon-cache DBs it holds open can be deleted, purge them, then
-                // relaunch only if the shell did not auto-respawn (no stray window).
-                "Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; \
-                 Start-Sleep -Milliseconds 500; \
-                 Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'IconCache.db') -Force -ErrorAction SilentlyContinue; \
-                 Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'Microsoft\\Windows\\Explorer') -Filter 'iconcache*.db' -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue; \
-                 & (Join-Path $env:windir 'System32\\ie4uinit.exe') -show; \
-                 Start-Sleep -Milliseconds 300; \
-                 if (-not (Get-Process -Name explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }",
-            ])
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn();
-        Ok(())
+        use std::sync::Mutex;
+        static RESTART_GATE: Mutex<()> = Mutex::new(());
+        // Serialize restarts process-wide; a poisoned lock (a prior panic mid-restart) must not
+        // wedge every future restart — take the guard either way.
+        let _gate = RESTART_GATE.lock().unwrap_or_else(|p| p.into_inner());
+
+        // 1. Stop Explorer (it holds the icon-cache DBs open) and WAIT for it to actually exit —
+        //    the old fixed 500ms sleep raced Winlogon's respawn against the purge below.
+        run_hidden("taskkill", &["/F", "/IM", "explorer.exe"]); // exit code ignored: may not be running
+        wait_until(EXPLORER_EXIT_WAIT_MS, || !explorer_running());
+
+        // 2. Purge the icon caches natively — no child shell to be killed halfway. Per-file faults
+        //    are tolerated (a cache Explorer still holds is re-purged on the next restart).
+        purge_icon_caches();
+
+        // 3. Refresh the per-user icon registration (cosmetic, best-effort, bounded).
+        run_hidden("ie4uinit.exe", &["-show"]);
+
+        // 4. Relaunch and VERIFY. AutoRestartShell may have respawned Explorer already (that is
+        //    fine — dedup by liveness, not by launching blind). Retry the spawn once; only a shell
+        //    we cannot confirm alive after both attempts is an error — the caller surfaces it
+        //    rather than leaving the user staring at an empty desktop wondering what happened.
+        for attempt in 0..2 {
+            if wait_until(EXPLORER_ALIVE_WAIT_MS, explorer_running) {
+                return Ok(());
+            }
+            log::warn!("restart_shell: explorer not alive after wait (attempt {attempt}); launching it");
+            let _ = std::process::Command::new("explorer.exe").spawn();
+        }
+        if wait_until(EXPLORER_ALIVE_WAIT_MS, explorer_running) {
+            return Ok(());
+        }
+        Err(dm_domain::PortError::Io(
+            "explorer did not come back after the shell restart; the desktop may be blank until \
+             the user starts explorer.exe (Ctrl+Shift+Esc → run explorer) or signs in again"
+                .to_string(),
+        ))
+    }
+}
+
+const EXPLORER_EXIT_WAIT_MS: u64 = 5_000;
+const EXPLORER_ALIVE_WAIT_MS: u64 = 8_000;
+
+/// Polls `done` every 200ms up to `budget_ms`; true iff the condition was met in time.
+fn wait_until(budget_ms: u64, done: impl Fn() -> bool) -> bool {
+    let start = std::time::Instant::now();
+    loop {
+        if done() {
+            return true;
+        }
+        if start.elapsed().as_millis() as u64 >= budget_ms {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
+/// Whether any `explorer.exe` process exists in this session (tasklist CSV filter — a stable
+/// in-box tool; empty/`INFO:` output means none).
+fn explorer_running() -> bool {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    std::process::Command::new("tasklist")
+        .args(["/FI", "IMAGENAME eq explorer.exe", "/FO", "CSV", "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).to_ascii_lowercase().contains("explorer.exe"))
+        .unwrap_or(false)
+}
+
+/// Runs a console tool hidden and WAITS for it (bounded by the tool's own runtime — taskkill and
+/// ie4uinit are subsecond). Exit codes are intentionally not propagated.
+fn run_hidden(program: &str, args: &[&str]) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    match std::process::Command::new(program).args(args).creation_flags(CREATE_NO_WINDOW).status() {
+        Ok(_) => {}
+        Err(e) => log::warn!("restart_shell: {program} failed to run: {e}"),
+    }
+}
+
+/// Deletes `IconCache.db` + `iconcache_*.db` natively. Explorer is down when this runs, so the
+/// handles are free; any straggler failure is logged and tolerated (re-purged next time).
+fn purge_icon_caches() {
+    let Some(local) = std::env::var_os("LOCALAPPDATA") else { return };
+    let local = std::path::PathBuf::from(local);
+    let _ = std::fs::remove_file(local.join("IconCache.db"));
+    let explorer_dir = local.join("Microsoft").join("Windows").join("Explorer");
+    if let Ok(entries) = std::fs::read_dir(&explorer_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            if name.starts_with("iconcache") && name.ends_with(".db") {
+                if let Err(e) = std::fs::remove_file(entry.path()) {
+                    log::debug!("icon-cache purge left {name}: {e}");
+                }
+            }
+        }
     }
 }

@@ -36,12 +36,27 @@ pub fn apply(file_path: &str, icon_path: &str) -> PortResult<()> {
     attrs::set(file_path, current | attrs::HIDDEN | attrs::SYSTEM)
 }
 
-/// Removes the wrapper (or resurrects the pre-existing one) and restores the file's attributes.
-/// Mirrors `Unwrap`. No COM — plain filesystem.
+/// Restores the file's attributes FIRST (un-hiding it), then removes the wrapper (or resurrects
+/// the pre-existing one). Mirrors `Unwrap`. No COM — plain filesystem.
+///
+/// ⛔ ORDER IS LOAD-BEARING (2026-07-19 vanish incident): the wrapper `.lnk` is the item's ONLY
+/// visible entry while the original sits Hidden|System. The old order deleted the wrapper first
+/// and un-hid second, so a crash or an attribute-write failure (AV/OneDrive lock) between the two
+/// left the file invisible with no visible entry — the user's desktop item was simply GONE, and
+/// restore later skipped the residue as a hand-edit. Un-hide first; only after the original is
+/// visible again may the wrapper be touched. If un-hiding FAILS, the wrapper is deliberately
+/// KEPT (still-styled beats invisible) and the error propagates.
 pub fn restore(file_path: &str, anchor: &WrapperAnchor) -> PortResult<()> {
+    // try_exists() (audit F3): a metadata error must not silently skip restoring the file's original
+    // attributes (leaving it Hidden+System); only a genuine absence is a no-op.
+    match Path::new(file_path).try_exists() {
+        Ok(true) => attrs::set(file_path, anchor.file_attributes)?,
+        Ok(false) => {}
+        Err(e) => return Err(PortError::Io(format!("cannot access {file_path}: {e}"))),
+    }
     let wrapper = wrapper_path(file_path);
     match &anchor.prior_wrapper {
-        // No wrapper existed before the apply → remove OURS.
+        // No wrapper existed before the apply → remove OURS (the original is visible again by now).
         PriorWrapper::Absent => {
             // try_exists(), not exists() (audit F3): a metadata error must not silently skip removing
             // OUR wrapper (leaving styled state); only a genuine absence is a no-op.
@@ -57,13 +72,6 @@ pub fn restore(file_path: &str, anchor: &WrapperAnchor) -> PortResult<()> {
         PriorWrapper::Present { content } => {
             crate::durable::write_atomic(&wrapper, content)?;
         }
-    }
-    // try_exists() (audit F3): a metadata error must not silently skip restoring the file's original
-    // attributes (leaving it Hidden+System); only a genuine absence is a no-op.
-    match Path::new(file_path).try_exists() {
-        Ok(true) => attrs::set(file_path, anchor.file_attributes)?,
-        Ok(false) => {}
-        Err(e) => return Err(PortError::Io(format!("cannot access {file_path}: {e}"))),
     }
     Ok(())
 }

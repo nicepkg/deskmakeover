@@ -310,6 +310,8 @@ function persisted(): IconPersistedDto {
     history: session.history.map((v) => ({ ...v })),
     applied: session.applied,
     arrowOverlay: session.arrowOverlay,
+    // The mock never simulates a pre-fix poisoned overlay install (host-only state).
+    overlayStale: false,
     activeUserProfiles: activeUserProfiles(),
   }
 }

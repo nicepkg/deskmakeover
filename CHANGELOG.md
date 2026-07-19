@@ -10,6 +10,24 @@ All notable changes to DeskMakeover. The format follows
 ## Unreleased
 
 ### Fixed
+- **First-apply vanish class** (customer reports: 首次一键美化后桌面图标全部消失且还原无效):
+  four independently confirmed defects closed. (1) the loose-file wrapper's rollback deleted the
+  visible wrapper `.lnk` BEFORE un-hiding the Hidden|System original — order inverted, and a
+  failed un-hide now keeps the wrapper (a visible styled entry always survives); (2) startup
+  recovery's never-clobber arm dropped the ledger row for OUR OWN half-landed write (crash between
+  the desktop mutation and the `ItemApplied` fsync), making the item permanently invisible to
+  还原 — recovery now recognises a live icon that resolves into our own asset store
+  (assets-provenance) and self-heals by replaying the durable anchor; (3) the post-apply shell
+  restart was a fire-and-forget PowerShell that force-killed Explorer and hoped an unsupervised
+  tail relaunched it — on machines where AV/policy killed that child, the whole shell stayed dead
+  (taskbar + icons gone); the restart is now supervised and mutexed (kill → wait → native cache
+  purge → relaunch → verify alive, error surfaced); (4) a failed user-desktop enumeration was
+  silently treated as an empty desktop — now a loud error. Victims' files were never deleted
+  (Hidden|System residue on disk).
+- **Needs-repair overlay detection** (`overlayStale`, bridge schema 10): after updating across the
+  black-block fix, the host reports when the machine still wears a pre-fix (poisoned) arrow
+  overlay, so the UI can steer the user to one repair apply. Frontend banner rides the next UI
+  round.
 - **Black-block icons after reboot** (customer reports, 2026-07-19): icons styled by an apply —
   and the shortcut-arrow badge — turned into opaque black tiles on the NEXT reboot after using
   the app, while the same desktop looked perfect all day. Root cause, confirmed by on-box A/B

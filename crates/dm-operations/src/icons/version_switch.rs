@@ -81,7 +81,7 @@ pub fn switch_to_version(
 
     // (1) Recover any prior crash BEFORE promoting ② — a recovery that moved or could not verify
     // the desktop defers this switch WITHOUT touching ② (②/desktop consistency).
-    let recovery = recover_from_journal(journal, ports.reader, ports.applier, ledger, ports.scope)?;
+    let recovery = recover_from_journal(journal, ports.reader, ports.applier, ports.assets, ledger, ports.scope)?;
     if !recovery.degraded.is_empty() || recovery.moved_or_uncertain() {
         return Ok(SwitchOutcome { outcome: ApplyOutcome::default(), promoted: false, deferred: true, errors: Vec::new() });
     }

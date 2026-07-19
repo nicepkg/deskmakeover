@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-17
+updated: 2026-07-19
 version: 0.1.0 RELEASED 2026-07-17 (tag v0.1.0, signed installer on the GitHub Release; stays 0.x until the owner-supervised Windows WRITE surface is fully human-verified, then 1.0)
 branch: main (repo went PUBLIC 2026-07-17 — see the ci org-secrets commit b298d68)
 ---
@@ -37,7 +37,7 @@ what is in flight, and what comes next.
 
 ## Bridge state
 
-- Contract truth = `src/bridge/types.ts` `BRIDGE_SCHEMA_VERSION` (currently **9**) + the generated
+- Contract truth = `src/bridge/types.ts` `BRIDGE_SCHEMA_VERSION` (currently **10** — overlayStale) + the generated
   `src/bridge/generated.ts` (from `dm-contracts`). Wallpaper (schema 6), icons (schema 7), calm
   (schema 8) and preset packages (schema 9, `presets.*` + `dmpreset://`) all route through real Rust
   on Mac-Tauri; the frontend assembles the rich store shapes from thin bridge DTOs. Windows runtime

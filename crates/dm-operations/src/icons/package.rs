@@ -9,6 +9,8 @@
 //! (the Recycle Bin's empty icon). This mirrors `IconItemDto.sourceUrls` (`[0]` primary, `[1]`
 //! empty) and is the single convention both sides agree on.
 
+use std::sync::Arc;
+
 use base64::Engine;
 use dm_icon_codec::{bake_ico, IcoAsset, Raster};
 
@@ -27,21 +29,28 @@ const MAX_MASTER_B64: usize = 4 * 1024 * 1024;
 const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
 /// One master the frontend baked, addressed to an item + its source slot. `png_base64` is the
-/// standard-alphabet base64 of a straight-alpha RGBA PNG (the 256px bake master).
+/// standard-alphabet base64 of a straight-alpha RGBA PNG (the 256px bake master), held as a shared
+/// `Arc` so items with IDENTICAL masters share one allocation (the apply session dedups by content
+/// — see `IconApplySession::push`); at all-drives scale thousands of items carry the same stock
+/// glyph, and one heap copy per item is what the session's byte budget exists to prevent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BufferedMaster {
     pub item_id: String,
     pub source_index: u32,
-    pub png_base64: String,
+    pub png_base64: Arc<String>,
 }
 
 /// One item's packaged asset(s): the primary laddered ICO plus, for a two-state item, its paired
-/// empty ICO. Consumed by the apply path to build the driver's `ApplyRequest`.
+/// empty ICO. Consumed by the apply path to build the driver's `ApplyRequest`. Assets are
+/// `Arc`-shared across items with identical content (see `package_masters`): at all-drives scale
+/// one apply packages thousands of pixel-identical masters, and a per-item copy here (plus the
+/// caller's per-item request clone) is what pinned ~3 GB and killed the owner box mid-commit
+/// (2026-10-16).
 #[derive(Debug, Clone)]
 pub struct PackagedItem {
     pub item_id: String,
-    pub primary: IcoAsset,
-    pub empty: Option<IcoAsset>,
+    pub primary: Arc<IcoAsset>,
+    pub empty: Option<Arc<IcoAsset>>,
 }
 
 /// Decodes + laddered-ICO-packages the buffered masters, grouped per item id (input order
@@ -76,6 +85,15 @@ pub fn package_masters(masters: &[BufferedMaster]) -> Result<Vec<PackagedItem>> 
         }
     }
 
+    // Content-addressed bake dedup (owner OOM fix 2026-10-16): at all-drives scale one apply
+    // carries thousands of masters that are pixel-identical (every folder shares the stock glyph;
+    // base64 is deterministic, so identical content is the identical string). Decoding + laddering
+    // + RETAINING a ~300 KiB ICO PER ITEM pinned ~1.5 GB here — and the callers cloned those bytes
+    // per item into their request buffers for another ~1.5 GB — the owner box died at ~3 GB
+    // mid-commit twice. Identical content now bakes ONCE and every item shares the one
+    // `Arc<IcoAsset>` (the asset store already dedups on disk by the same content address,
+    // `icon-assets\<hash>.ico`).
+    let mut baked: std::collections::HashMap<&str, Arc<IcoAsset>> = Default::default();
     let mut packaged = Vec::with_capacity(order.len());
     for id in order {
         let Some(p) = primary.get(&id) else {
@@ -83,14 +101,32 @@ pub fn package_masters(masters: &[BufferedMaster]) -> Result<Vec<PackagedItem>> 
                 "icon item {id} has an empty-state master but no primary (source 0)"
             )));
         };
-        let primary_ico = bake_master(&p.png_base64, &id, PRIMARY_INDEX)?;
+        let primary_ico = bake_cached(p.png_base64.as_str(), &id, PRIMARY_INDEX, &mut baked)?;
         let empty_ico = match empty.get(&id) {
-            Some(e) => Some(bake_master(&e.png_base64, &id, EMPTY_INDEX)?),
+            Some(e) => Some(bake_cached(e.png_base64.as_str(), &id, EMPTY_INDEX, &mut baked)?),
             None => None,
         };
         packaged.push(PackagedItem { item_id: id, primary: primary_ico, empty: empty_ico });
     }
     Ok(packaged)
+}
+
+/// [`bake_master`] behind the content cache: the first master with a given payload bakes; any later
+/// master with the SAME payload shares that ICO through the `Arc` — no second decode, no second
+/// ladder, no second retained copy. A master that fails validation is never cached, so the error
+/// still fails the whole package (fail-closed, before any desktop write).
+fn bake_cached<'a>(
+    png_base64: &'a str,
+    item_id: &str,
+    slot: u32,
+    cache: &mut std::collections::HashMap<&'a str, Arc<IcoAsset>>,
+) -> Result<Arc<IcoAsset>> {
+    if let Some(hit) = cache.get(png_base64) {
+        return Ok(Arc::clone(hit));
+    }
+    let ico = Arc::new(bake_master(png_base64, item_id, slot)?);
+    cache.insert(png_base64, Arc::clone(&ico));
+    Ok(ico)
 }
 
 /// Decodes one base64 PNG master into a straight-alpha RGBA raster and bakes it into a laddered
@@ -155,7 +191,11 @@ mod tests {
     }
 
     fn master(id: &str, slot: u32, rgba: [u8; 4]) -> BufferedMaster {
-        BufferedMaster { item_id: id.into(), source_index: slot, png_base64: master_png(256, 256, rgba) }
+        BufferedMaster {
+            item_id: id.into(),
+            source_index: slot,
+            png_base64: Arc::new(master_png(256, 256, rgba)),
+        }
     }
 
     #[test]
@@ -200,6 +240,34 @@ mod tests {
     }
 
     #[test]
+    fn identical_masters_bake_once_and_share_one_allocation() {
+        // Owner OOM fix 2026-10-16: an all-drives apply carries thousands of pixel-identical
+        // masters (every folder shares the stock glyph). They must produce one PackagedItem per
+        // item — in order — but a SINGLE baked ICO, shared by pointer, so retained memory is
+        // content-bounded rather than item-bounded.
+        let same = master("x", 0, [7, 7, 7, 255]).png_base64;
+        let masters: Vec<BufferedMaster> = (0..64)
+            .map(|i| BufferedMaster {
+                item_id: format!("folder-{i}"),
+                source_index: 0,
+                png_base64: same.clone(),
+            })
+            .collect();
+        let packaged = package_masters(&masters).unwrap();
+        assert_eq!(packaged.len(), 64, "one PackagedItem per item");
+        assert_eq!(packaged.iter().map(|p| p.item_id.as_str()).nth(3), Some("folder-3"));
+        assert!(
+            packaged.iter().all(|p| Arc::ptr_eq(&p.primary, &packaged[0].primary)),
+            "identical content shares ONE baked ICO allocation",
+        );
+        // A different master still bakes its own asset.
+        let other = master("y", 0, [9, 9, 9, 255]);
+        let packaged = package_masters(&[masters[0].clone(), other]).unwrap();
+        assert!(!Arc::ptr_eq(&packaged[0].primary, &packaged[1].primary));
+        assert_ne!(packaged[0].primary.content_hash, packaged[1].primary.content_hash);
+    }
+
+    #[test]
     fn rejects_an_empty_master_without_a_primary() {
         let err = package_masters(&[master("bin", 1, [0, 0, 0, 255])]).unwrap_err();
         assert!(matches!(err, OperationError::Io(_)), "an orphan empty must fail closed");
@@ -211,7 +279,7 @@ mod tests {
             let bad = BufferedMaster {
                 item_id: "x".into(),
                 source_index: 0,
-                png_base64: master_png(w, h, [1, 2, 3, 255]),
+                png_base64: Arc::new(master_png(w, h, [1, 2, 3, 255])),
             };
             assert!(
                 package_masters(&[bad]).is_err(),
@@ -233,7 +301,7 @@ mod tests {
         let bad = BufferedMaster {
             item_id: "x".into(),
             source_index: 0,
-            png_base64: base64::engine::general_purpose::STANDARD.encode(&jpeg),
+            png_base64: Arc::new(base64::engine::general_purpose::STANDARD.encode(&jpeg)),
         };
         assert!(package_masters(&[bad]).is_err(), "a JPEG master must be rejected (PNG only)");
     }
@@ -243,19 +311,23 @@ mod tests {
         let bad = BufferedMaster {
             item_id: "x".into(),
             source_index: 0,
-            png_base64: "A".repeat(MAX_MASTER_B64 + 1),
+            png_base64: Arc::new("A".repeat(MAX_MASTER_B64 + 1)),
         };
         assert!(package_masters(&[bad]).is_err(), "an over-cap payload must fail before decode");
     }
 
     #[test]
     fn rejects_an_undecodable_master() {
-        let bad = BufferedMaster { item_id: "x".into(), source_index: 0, png_base64: "not-base64!!".into() };
+        let bad = BufferedMaster {
+            item_id: "x".into(),
+            source_index: 0,
+            png_base64: Arc::new("not-base64!!".to_string()),
+        };
         assert!(package_masters(&[bad]).is_err());
         let not_png = BufferedMaster {
             item_id: "y".into(),
             source_index: 0,
-            png_base64: base64::engine::general_purpose::STANDARD.encode(b"not a png"),
+            png_base64: Arc::new(base64::engine::general_purpose::STANDARD.encode(b"not a png")),
         };
         assert!(package_masters(&[not_png]).is_err());
     }

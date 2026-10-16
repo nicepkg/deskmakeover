@@ -34,7 +34,9 @@ export default defineConfig({
     host: host || false,
     hmr: host ? { protocol: 'ws', host, port: 1421 } : undefined,
     // src-tauri churn shouldn't retrigger the web HMR.
-    watch: { ignored: ['**/src-tauri/**'] },
+    // target/ is cargo's build output: watching it races the linker on
+    // Windows (EBUSY on target/debug/deps/*.exe) and crashes the dev loop.
+    watch: { ignored: ['**/src-tauri/**', '**/target/**'] },
   },
   build: {
     // The bundle is served from a WebView2 virtual host on the local disk —

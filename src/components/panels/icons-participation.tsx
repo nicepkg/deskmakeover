@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Check, ChevronDown, RotateCcw } from 'lucide-react'
+import { Check, ChevronDown, Folder, LayoutGrid, Monitor, PanelBottom, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PropertyRow, SwatchButton, SwatchPicker, swatchButtonClass } from '@/components/common/inspector'
@@ -11,8 +11,8 @@ import { ALL_SHAPES, TYPE_PLATE_SWATCHES, paleOf } from '@/components/panels/ico
 import { useIcons } from '@/stores/icons'
 import { BUCKET_NAME_KEY, KIND_BUCKETS, kindBucket } from '@/lib/kind-policy'
 import { typeIsCustom } from '@/lib/type-config'
-import type { ConfigDto, IconKindBucket, TypeOverrides, TypePatch } from '@/bridge/types'
-import { format, useT } from '@/lib/i18n'
+import type { ConfigDto, IconKindBucket, Surfaces, TypeOverrides, TypePatch } from '@/bridge/types'
+import { format, useT, type StringKey } from '@/lib/i18n'
 
 // Participation surfaces (chief-UI/UX + owner 2026-07-09), both fed by one
 // store state — no priority matrix:
@@ -23,6 +23,19 @@ import { format, useT } from '@/lib/i18n'
 //     same PropertyRow grammar as the styling axes, but with a checkbox corner so
 //     they read as MULTI-select, never pick-one. Always visible — even a count-0
 //     bucket toggles, so a user can pre-opt-out a kind the desktop has none of yet.
+//     ADR-0024: the same row grammar grows a SURFACES group (live counts; the
+//     desktop row is the disabled always-on anchor) — the second participation
+//     axis, orthogonal to kindPolicy.
+
+/** The toggleable surface legs (the desktop is never a leg — always on). */
+const SURFACE_LEGS = ['taskbar', 'startMenu', 'explorer'] as const satisfies readonly (keyof Surfaces)[]
+
+/** Per-leg label + icon (the row grammar stays identical across legs). */
+const SURFACE_LEG_META: Record<keyof Surfaces, { label: StringKey; Icon: typeof PanelBottom }> = {
+  taskbar: { label: 'Surface_Taskbar', Icon: PanelBottom },
+  startMenu: { label: 'Surface_StartMenu', Icon: LayoutGrid },
+  explorer: { label: 'Surface_Explorer', Icon: Folder },
+}
 
 /** The per-icon keep ledger — soft inset chip, pin dot, expandable cancel list. */
 export function KeptBar() {
@@ -110,6 +123,7 @@ export function KindTypeSection({ tryOn }: { tryOn: TypeTryOn }) {
   const t = useT()
   const items = useIcons((s) => s.items)
   const policy = useIcons((s) => s.state?.kindPolicy)
+  const surfaces = useIcons((s) => s.state?.surfaces)
   const config = useIcons((s) => s.state?.config)
   const rawMonoSwatches = useIcons((s) => s.state?.monoSwatches)
   // Owner 2026-07-09: pure black/white mono dots are redundant with the 黑白
@@ -129,7 +143,7 @@ export function KindTypeSection({ tryOn }: { tryOn: TypeTryOn }) {
   // keeps rendering its real persisted state.
   const bareLook = useIcons((s) => s.bareLook)
   const typeOverrides = bareLook ? undefined : rawTypeOverrides
-  const { setKindPolicy, setTypeOverride, setEditingBucket, resetTypeOverrides } = useIcons.getState()
+  const { setKindPolicy, setSurface, setTypeOverride, setEditingBucket, resetTypeOverrides } = useIcons.getState()
   const [openBucket, setOpenBucket] = React.useState<IconKindBucket | null>(null)
   const reduced = useReducedMotion()
 
@@ -143,13 +157,25 @@ export function KindTypeSection({ tryOn }: { tryOn: TypeTryOn }) {
     return c
   }, [items])
 
+  // ADR-0024: live per-surface counts — what the scan actually found on each
+  // write surface (the honest number behind each checkbox).
+  const surfaceCounts = React.useMemo(() => {
+    const c = { taskbar: 0, startMenu: 0, explorer: 0 }
+    for (const i of items) {
+      if (i.surface === 'taskbar') c.taskbar++
+      else if (i.surface === 'startMenu') c.startMenu++
+      else if (i.surface === 'explorer') c.explorer++
+    }
+    return c
+  }, [items])
+
   // Scope feedback follows the open row; never leak a stale scope on unmount.
   React.useEffect(() => {
     setEditingBucket(openBucket)
     return () => setEditingBucket(null)
   }, [openBucket, setEditingBucket])
 
-  if (!policy || !config) return null
+  if (!policy || !surfaces || !config) return null
 
   type PatchChange = Partial<Record<keyof TypePatch, TypePatch[keyof TypePatch] | undefined>>
 
@@ -461,6 +487,56 @@ export function KindTypeSection({ tryOn }: { tryOn: TypeTryOn }) {
             </div>
           )
         })}
+        {/* ADR-0024 SURFACES group — the second participation axis in the SAME
+            row grammar, with live scan counts. The desktop row is a disabled
+            always-on anchor so "why can't I turn the desktop off?" answers
+            itself; each leg flips ONE surface (one undo step) and disabling a
+            surface auto-restores it on the next apply (RESTORE-FIRST). */}
+        <div className="py-0.5">
+          <p className="px-1.5 pb-1 pt-1 text-[10.5px] text-t3">{t('Axis_Surface')}</p>
+          <div className="-mx-1.5 flex items-center gap-2 rounded-lg px-1.5 py-1.5 opacity-60" title={t('Surface_DesktopTip')}>
+            <span aria-hidden className="shrink-0">
+              <span className="flex size-3.5 items-center justify-center rounded-[4px] border border-hair-strong bg-raised">
+                <Check size={9} strokeWidth={3} />
+              </span>
+            </span>
+            <Monitor size={17} className="shrink-0 text-t2" />
+            <span className="min-w-0 flex-1 truncate text-[11px] text-t1">{t('Surface_Desktop')}</span>
+            <span className="shrink-0 text-[10px] text-t3">{t('Surface_Always')}</span>
+          </div>
+          {SURFACE_LEGS.map((leg) => {
+            const on = surfaces[leg]
+            const { label, Icon } = SURFACE_LEG_META[leg]
+            const name = t(label)
+            return (
+              <div key={leg} className="-mx-1.5 flex items-center gap-2 rounded-lg px-1.5 py-1.5">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  aria-label={name}
+                  title={name}
+                  onClick={() => setSurface(leg, !on)}
+                  className="shrink-0 active:scale-95"
+                >
+                  <span
+                    className={cn(
+                      'flex size-3.5 items-center justify-center rounded-[4px] border transition-colors',
+                      on ? 'border-coral bg-coral text-cta-ink' : 'border-hair-strong bg-raised',
+                    )}
+                  >
+                    {on && <Check size={9} strokeWidth={3} />}
+                  </span>
+                </button>
+                <Icon size={17} className={cn('shrink-0', on ? 'text-t2' : 'text-t3')} />
+                <span className={cn('min-w-0 flex-1 truncate text-[11px]', on ? 'text-t1' : 'text-t3 line-through')}>
+                  {name}
+                </span>
+                <span className="shrink-0 text-[10px] text-t3">{surfaceCounts[leg]}</span>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </PropertyRow>
   )

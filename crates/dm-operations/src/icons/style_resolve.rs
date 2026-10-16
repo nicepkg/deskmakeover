@@ -19,7 +19,7 @@ use dm_icon_core::config::{
     Band, Config as CoreConfig, Distinction, FilterStyle, IconShape, MarkStyle, MonoStyle,
     PlateFallback, Subject,
 };
-use dm_domain::ItemKind;
+use dm_domain::{ItemKind, ItemSurface};
 use serde::Deserialize;
 
 use crate::error::{OperationError, Result};
@@ -43,6 +43,14 @@ pub fn bucket_of(kind: ItemKind) -> Option<KindBucket> {
         | ItemKind::RecycleBin
         | ItemKind::System => Some(KindBucket::App),
         ItemKind::Folder => Some(KindBucket::Folder),
+        // A fixed drive styles and is governed exactly like a folder: it is an Explorer container
+        // the user browses, and it rides the same `explorer` surface toggle/consent (ADR-0004 D7).
+        ItemKind::Drive => Some(KindBucket::Folder),
+        // A file TYPE is a DOCUMENT's icon (a ProgId association), so it rides the File bucket —
+        // the bucket the user can flip OFF to disable every association icon while keeping
+        // folders/drives styled (ADR-0004 D7 amendment 2026-10-16: the second, independent kill
+        // switch for the feature that lifted the ban). Same `explorer` surface as its siblings.
+        ItemKind::FileType => Some(KindBucket::File),
         ItemKind::RegularFile => Some(KindBucket::File),
         ItemKind::Unsupported => None,
     }
@@ -146,6 +154,44 @@ fn yes() -> bool {
     true
 }
 
+/// Per-SURFACE participation (ADR-0024). Default amended by the owner 2026-10-12: every leg
+/// defaults TRUE, so a recipe with a MISSING `surfaces` (and a missing leg inside an explicit
+/// one) PARTICIPATES — system-wide restyling is the app's promise, the same
+/// participate-by-default rule as [`KindPolicyJson`]. Opting a surface OUT is explicit.
+/// The desktop is not a leg here: it is never surface-gated (see `StyleRecipe::participates`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SurfacesJson {
+    /// Taskbar pins (`…\User Pinned\TaskBar\*.lnk`).
+    pub taskbar: bool,
+    /// Start menu shortcuts (user + all-users roots), camelCase `startMenu` on the wire.
+    pub start_menu: bool,
+    /// File Explorer (ADR-0004 D7): the profile's folders (via `desktop.ini`) + fixed drives (via
+    /// the registry `DriveIcons` key). camelCase `explorer` on the wire.
+    pub explorer: bool,
+}
+
+impl Default for SurfacesJson {
+    fn default() -> Self {
+        Self {
+            taskbar: true,
+            start_menu: true,
+            explorer: true,
+        }
+    }
+}
+
+impl SurfacesJson {
+    fn allows(&self, surface: ItemSurface) -> bool {
+        match surface {
+            ItemSurface::Desktop => true,
+            ItemSurface::Taskbar => self.taskbar,
+            ItemSurface::StartMenu => self.start_menu,
+            ItemSurface::Explorer => self.explorer,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TypeOverridesJson {
@@ -157,7 +203,9 @@ pub struct TypeOverridesJson {
     pub file: Option<TypeOverrideJson>,
 }
 
-/// The parsed appearance recipe: the three global knobs of an `IconStyle`.
+/// The parsed appearance recipe: the look knobs (`config`, `typeOverrides`) plus the two
+/// PARTICIPATION knobs — `kind_policy` (which KINDS) and `surfaces` (which SHELL SURFACES,
+/// ADR-0024). Unknown keys stay ignored (serde denies nothing: the frontend owns the recipe).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StyleRecipe {
@@ -166,6 +214,8 @@ pub struct StyleRecipe {
     pub kind_policy: KindPolicyJson,
     #[serde(default)]
     pub type_overrides: TypeOverridesJson,
+    #[serde(default)]
+    pub surfaces: SurfacesJson,
 }
 
 impl StyleRecipe {
@@ -183,7 +233,13 @@ impl StyleRecipe {
         }
     }
 
-    fn participates(&self, kind: ItemKind) -> bool {
+    fn participates(&self, kind: ItemKind, surface: ItemSurface) -> bool {
+        // The SURFACE gate is outermost (ADR-0024): a recipe that never opted the taskbar/Start
+        // menu in styles NOTHING there, whatever its kindPolicy says. The desktop itself is
+        // never surface-gated — it is the app's core promise; `kindPolicy` governs it alone.
+        if !self.surfaces.allows(surface) {
+            return false;
+        }
         match bucket_of(kind) {
             None => true,
             Some(KindBucket::App) => self.kind_policy.app,
@@ -204,10 +260,15 @@ impl StyleRecipe {
     }
 
     /// The config an item of `kind` renders with under this recipe, or `None` when the item does
-    /// not participate (kind-policy opt-out → keep original). Mirrors `effectiveTileConfig` for
-    /// items with no per-icon override (the background item's definition).
-    pub fn effective_config(&self, kind: ItemKind, is_shortcut: bool) -> Result<Option<CoreConfig>> {
-        if !self.participates(kind) {
+    /// not participate (kind-policy opt-out OR surface opt-out → keep original). Mirrors
+    /// `effectiveTileConfig` for items with no per-icon override (the background item's definition).
+    pub fn effective_config(
+        &self,
+        kind: ItemKind,
+        is_shortcut: bool,
+        surface: ItemSurface,
+    ) -> Result<Option<CoreConfig>> {
+        if !self.participates(kind, surface) {
             return Ok(None);
         }
         let mut cfg = self.config.clone();
@@ -397,10 +458,32 @@ mod tests {
     }
 
     #[test]
+    fn bucket_of_covers_every_kind() {
+        // Every kind buckets except Unsupported (ungoverned). A fixed drive rides the Folder
+        // bucket — it is an Explorer container the user browses, so it shares the Folder policy
+        // switch and the explorer surface consent (ADR-0004 D7); a file TYPE rides File (the
+        // association icons the amendment enabled are document icons, second kill switch).
+        for (kind, bucket) in [
+            (ItemKind::Shortcut, Some(KindBucket::App)),
+            (ItemKind::UrlShortcut, Some(KindBucket::App)),
+            (ItemKind::AppxShortcut, Some(KindBucket::App)),
+            (ItemKind::RecycleBin, Some(KindBucket::App)),
+            (ItemKind::System, Some(KindBucket::App)),
+            (ItemKind::Folder, Some(KindBucket::Folder)),
+            (ItemKind::Drive, Some(KindBucket::Folder)),
+            (ItemKind::RegularFile, Some(KindBucket::File)),
+            (ItemKind::FileType, Some(KindBucket::File)),
+            (ItemKind::Unsupported, None),
+        ] {
+            assert_eq!(bucket_of(kind), bucket, "{kind:?} bucket");
+        }
+    }
+
+    #[test]
     fn parses_and_resolves_the_base_config_for_a_participating_kind() {
         let s = style(json!({ "config": base_config(), "kindPolicy": {}, "typeOverrides": {} }));
         let recipe = StyleRecipe::parse(&s).unwrap();
-        let cfg = recipe.effective_config(ItemKind::Shortcut, true).unwrap().unwrap();
+        let cfg = recipe.effective_config(ItemKind::Shortcut, true, ItemSurface::Desktop).unwrap().unwrap();
         assert_eq!(cfg.shape, IconShape::Circle);
         assert_eq!(cfg.subject, Subject::Original);
         assert_eq!(cfg.tint, 0xFF6F5E);
@@ -417,13 +500,13 @@ mod tests {
             "typeOverrides": {}
         }));
         let recipe = StyleRecipe::parse(&s).unwrap();
-        assert!(recipe.effective_config(ItemKind::Folder, false).unwrap().is_none());
-        assert!(recipe.effective_config(ItemKind::Shortcut, true).unwrap().is_some());
+        assert!(recipe.effective_config(ItemKind::Folder, false, ItemSurface::Desktop).unwrap().is_none());
+        assert!(recipe.effective_config(ItemKind::Shortcut, true, ItemSurface::Desktop).unwrap().is_some());
         // System virtual items ride the App switch after the merge (owner 2026-07-16) —
         // the legacy System:false above has no effect.
-        assert!(recipe.effective_config(ItemKind::RecycleBin, false).unwrap().is_some());
+        assert!(recipe.effective_config(ItemKind::RecycleBin, false, ItemSurface::Desktop).unwrap().is_some());
         // Bucketless kinds pass the policy (governed by styleable upstream).
-        assert!(recipe.effective_config(ItemKind::Unsupported, false).unwrap().is_some());
+        assert!(recipe.effective_config(ItemKind::Unsupported, false, ItemSurface::Desktop).unwrap().is_some());
     }
 
     #[test]
@@ -437,11 +520,11 @@ mod tests {
             }
         }));
         let recipe = StyleRecipe::parse(&s).unwrap();
-        let folder = recipe.effective_config(ItemKind::Folder, false).unwrap().unwrap();
+        let folder = recipe.effective_config(ItemKind::Folder, false, ItemSurface::Desktop).unwrap().unwrap();
         assert_eq!(folder.shape, IconShape::Folder);
         assert_eq!(folder.tint, 0x112233);
         assert_eq!(folder.subject, Subject::Original, "unpatched keys keep base");
-        let file = recipe.effective_config(ItemKind::RegularFile, false).unwrap().unwrap();
+        let file = recipe.effective_config(ItemKind::RegularFile, false, ItemSurface::Desktop).unwrap().unwrap();
         assert_eq!(file.shape, IconShape::Circle, "a follower takes base");
     }
 
@@ -451,9 +534,9 @@ mod tests {
         cfg["shortcutShape"] = json!("Diamond");
         let s = style(json!({ "config": cfg, "kindPolicy": {}, "typeOverrides": {} }));
         let recipe = StyleRecipe::parse(&s).unwrap();
-        let shortcut = recipe.effective_config(ItemKind::Shortcut, true).unwrap().unwrap();
+        let shortcut = recipe.effective_config(ItemKind::Shortcut, true, ItemSurface::Desktop).unwrap().unwrap();
         assert_eq!(shortcut.shape, IconShape::Diamond, "shortcuts adopt the uniform shape");
-        let folder = recipe.effective_config(ItemKind::Folder, false).unwrap().unwrap();
+        let folder = recipe.effective_config(ItemKind::Folder, false, ItemSurface::Desktop).unwrap().unwrap();
         assert_eq!(folder.shape, IconShape::Circle, "non-shortcuts keep the ladder shape");
     }
 
@@ -475,17 +558,17 @@ mod tests {
         }));
         let recipe = StyleRecipe::parse(&s).unwrap();
         // A folder shortcut keeps the Folder type's shape, not the uniform.
-        let folder_lnk = recipe.effective_config(ItemKind::Folder, true).unwrap().unwrap();
+        let folder_lnk = recipe.effective_config(ItemKind::Folder, true, ItemSurface::Desktop).unwrap().unwrap();
         assert_eq!(folder_lnk.shape, IconShape::Folder, "type shape wins over the uniform");
         // The App bucket obeys the same precedence (owner: one rule everywhere).
-        let app_lnk = recipe.effective_config(ItemKind::Shortcut, true).unwrap().unwrap();
+        let app_lnk = recipe.effective_config(ItemKind::Shortcut, true, ItemSurface::Desktop).unwrap().unwrap();
         assert_eq!(app_lnk.shape, IconShape::Tile, "App type shape wins too");
         // A patch WITHOUT a shape still yields to the uniform.
-        let file_lnk = recipe.effective_config(ItemKind::RegularFile, true).unwrap().unwrap();
+        let file_lnk = recipe.effective_config(ItemKind::RegularFile, true, ItemSurface::Desktop).unwrap().unwrap();
         assert_eq!(file_lnk.shape, IconShape::Diamond, "shape-less patch yields to the uniform");
         assert_eq!(file_lnk.tint, 0x3FB6A8, "the rest of the patch still applies");
         // Non-shortcut folders never take the uniform.
-        let folder = recipe.effective_config(ItemKind::Folder, false).unwrap().unwrap();
+        let folder = recipe.effective_config(ItemKind::Folder, false, ItemSurface::Desktop).unwrap().unwrap();
         assert_eq!(folder.shape, IconShape::Folder);
     }
 
@@ -495,7 +578,7 @@ mod tests {
         cfg["subject"] = json!("Technicolor");
         let s = style(json!({ "config": cfg, "kindPolicy": {}, "typeOverrides": {} }));
         let recipe = StyleRecipe::parse(&s).unwrap();
-        assert!(recipe.effective_config(ItemKind::Shortcut, true).is_err());
+        assert!(recipe.effective_config(ItemKind::Shortcut, true, ItemSurface::Desktop).is_err());
     }
 
     #[test]
@@ -511,7 +594,88 @@ mod tests {
             "config": base_config(), "typeOverrides": {}
         }))
         .unwrap();
-        assert!(recipe.effective_config(ItemKind::Folder, false).unwrap().is_some());
+        assert!(recipe.effective_config(ItemKind::Folder, false, ItemSurface::Desktop).unwrap().is_some());
+    }
+
+    #[test]
+    fn surfaces_default_to_participate_but_the_desktop_is_never_gated() {
+        // ADR-0024 default amended by the owner 2026-10-12: every surface participates BY
+        // DEFAULT (system-wide restyling is the app's promise — same rule as kindPolicy). An
+        // explicit OFF leg still gates, and the desktop is never surface-gated (core promise).
+        let recipe: StyleRecipe =
+            serde_json::from_value(json!({ "config": base_config(), "typeOverrides": {} })).unwrap();
+        assert!(
+            recipe.surfaces.taskbar && recipe.surfaces.start_menu,
+            "both legs default on"
+        );
+        assert!(recipe
+            .effective_config(ItemKind::Shortcut, true, ItemSurface::Desktop)
+            .unwrap()
+            .is_some());
+        assert!(recipe
+            .effective_config(ItemKind::Shortcut, true, ItemSurface::Taskbar)
+            .unwrap()
+            .is_some());
+        assert!(recipe
+            .effective_config(ItemKind::Shortcut, true, ItemSurface::StartMenu)
+            .unwrap()
+            .is_some());
+        // An explicit opt-OUT still gates that surface (RESTORE-FIRST: disabling a surface
+        // makes its items ride restoreIds on the next apply).
+        let gated: StyleRecipe = serde_json::from_value(json!({
+            "config": base_config(),
+            "typeOverrides": {},
+            "surfaces": { "taskbar": false }
+        }))
+        .unwrap();
+        assert!(gated
+            .effective_config(ItemKind::Shortcut, true, ItemSurface::Taskbar)
+            .unwrap()
+            .is_none());
+        assert!(gated
+            .effective_config(ItemKind::Shortcut, true, ItemSurface::StartMenu)
+            .unwrap()
+            .is_some());
+        assert!(gated
+            .effective_config(ItemKind::Shortcut, true, ItemSurface::Desktop)
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn an_explicit_off_leg_grants_only_the_other_surface_and_a_missing_leg_defaults_on() {
+        let s = style(json!({
+            "config": base_config(),
+            "kindPolicy": {},
+            "typeOverrides": {},
+            "surfaces": { "taskbar": false, "startMenu": true }
+        }));
+        let recipe = StyleRecipe::parse(&s).unwrap();
+        assert!(recipe
+            .effective_config(ItemKind::Shortcut, true, ItemSurface::Taskbar)
+            .unwrap()
+            .is_none());
+        assert!(recipe
+            .effective_config(ItemKind::Shortcut, true, ItemSurface::StartMenu)
+            .unwrap()
+            .is_some());
+        // A leg MISSING from an explicit `surfaces` object takes the struct default
+        // (participate — `impl Default for SurfacesJson`, 2026-10-12).
+        let s2 = style(json!({
+            "config": base_config(),
+            "kindPolicy": {},
+            "typeOverrides": {},
+            "surfaces": { "taskbar": true }
+        }));
+        let recipe2 = StyleRecipe::parse(&s2).unwrap();
+        assert!(recipe2
+            .effective_config(ItemKind::Shortcut, true, ItemSurface::StartMenu)
+            .unwrap()
+            .is_some());
+        assert!(recipe2
+            .effective_config(ItemKind::Shortcut, true, ItemSurface::Taskbar)
+            .unwrap()
+            .is_some());
     }
 
     #[test]

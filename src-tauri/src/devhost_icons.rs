@@ -14,8 +14,8 @@ use std::sync::{Arc, Mutex};
 use dm_domain::{
     ApplyAssets, DecodedImage, DesktopGeometry, DesktopGeometryReader, DesktopIconGrid, DesktopIconSlot,
     DesktopItem, DesktopScanner, ExplorerRefresher, Fingerprint, IconApplier, IconSourceExtractor,
-    ItemId, ItemKind, ItemState, ItemStateReader, ItemTarget, OverlayControl, OverlayOutcome,
-    OverlayStyle, PortError, PortResult, RestoreAnchor,
+    ItemId, ItemKind, ItemState, ItemStateReader, ItemSurface, ItemTarget, OverlayControl,
+    OverlayOutcome, OverlayStyle, PortError, PortResult, RestoreAnchor,
 };
 use image::ImageEncoder;
 
@@ -60,6 +60,8 @@ fn dev_item(def: &DevIcon) -> DesktopItem {
         name: def.name.into(),
         path: dev_path(def.id),
         kind: def.kind,
+        surface: ItemSurface::Desktop,
+        parent: String::new(),
         icon: None,
         state: ItemState::Ready,
         requires_explicit_consent: false,

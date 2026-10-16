@@ -7,14 +7,16 @@ import type { FromWorker, RenderOpts, ToWorker } from '../icon-wasm/protocol'
 import { WasmIconRenderer } from '../icon-wasm/wasm-loader'
 
 // The icon-compositor facade: a Web Worker POOL renders tiles off the main
-// thread (spec 06 deps note; owner perf order 2026-07-09). Items shard across
-// workers by stable id hash — each worker holds only its shard's sources and
-// analysis caches, so nothing is cloned N times. Results come back as
-// zero-copy ImageBitmaps; the main thread only ever drawImage()s. A newer
-// request for the same tile slot SUPERSEDES the older one (stale responses
-// are dropped, not painted). Falls back to an in-thread WASM renderer (the
-// same dm-icon-wasm kernel, run on the main thread) where Worker/OffscreenCanvas
-// are unavailable (bun tests / non-worker envs).
+// thread (spec 06 deps note; owner perf order 2026-07-09). Decoded sources
+// shard across workers by stable CONTENT-key hash (the source URL) — each
+// worker holds only its shard's decoded buffers and analysis caches, so a
+// pixel set exists exactly ONCE no matter how many items show it (ADR-0004 D7
+// amendment). Results come back as zero-copy ImageBitmaps; the main thread
+// only ever drawImage()s. A newer request for the same tile slot SUPERSEDES
+// the older one (stale responses are dropped, not painted). Falls back to an
+// in-thread WASM renderer (the same dm-icon-wasm kernel, run on the main
+// thread) where Worker/OffscreenCanvas are unavailable (bun tests /
+// non-worker envs).
 
 /** The style inputs that change a rendered tile — the cache key. */
 export function tileStyleKey(config: ConfigDto, isShortcut: boolean, showOriginal: boolean, size: number): string {
@@ -59,10 +61,18 @@ export class IconCompositor {
   private sourceWaiters = new Map<string, Array<(ok: boolean) => void>>()
 
   // ---- shared state ----
-  /** id → url of the ack'd (decoded) source. */
+  /** content key → the same url once ack'd (decoded). The content key IS the
+   *  source URL (sources are content-addressed — ADR-0004 D7 amendment). */
   private ready = new Map<string, string>()
-  /** id → dominant-colour seed hex (null = no-hue tail) from decode. */
+  /** content key → dominant-colour seed hex (null = no-hue tail) from decode. */
   private seeds = new Map<string, string | null>()
+  /** item/bake id → its content key (the source URL). Decoded pixels live in
+   *  the worker ONCE PER CONTENT, never once per item: the explorer expansion
+   *  styles thousands of folders sharing one stock-folder source, and keying
+   *  the decode by item registered N copies of the same RGBA — the owner box's
+   *  WebView renderer reached 2.8GB and the app died mid-apply (2026-10-16).
+   *  Later items alias instantly: only the FIRST item for a URL pays a decode. */
+  private itemSource = new Map<string, string>()
   /** styleKey (epoch-prefixed) → per-item bitmaps. Map iteration order = LRU. */
   private styleLru = new Map<string, Map<string, CanvasImageSource>>()
   private epoch = 0
@@ -117,21 +127,12 @@ export class IconCompositor {
 
   private onWorkerMessage(msg: FromWorker): void {
     if (msg.t === 'sourceReady') {
-      // Generation gate (codex #4): a rescan can swap the URL for an id while
-      // the old decode is in flight — only the ack matching the CURRENT url
-      // may resolve waiters or write the seed; stale acks are dropped (the
-      // newer load's own ack follows on the same worker's sequential chain).
+      // Generation gate (codex #4): with content keys an ack's id IS its url,
+      // so it always names its own entry — the only thing it can miss is a
+      // claim a FAILED decode already cleared while a retry re-claimed it (that
+      // retry's own ack follows on the same worker's sequential chain).
       if (this.ready.get(msg.id) !== msg.url) return
-      const waiters = this.sourceWaiters.get(msg.id) ?? []
-      this.sourceWaiters.delete(msg.id)
-      if (!msg.ok) {
-        this.ready.delete(msg.id)
-        this.seeds.delete(msg.id) // never let a dead source keep voting (codex #6)
-      } else {
-        this.seeds.set(msg.id, msg.seed)
-      }
-      for (const w of waiters) w(msg.ok)
-      this.notify()
+      this.ackSource(msg.id, msg.ok, msg.seed)
       return
     }
     if (msg.t === 'rendered') {
@@ -188,30 +189,62 @@ export class IconCompositor {
     return perItem
   }
 
-  /** Decode a source (worker-side fetch+decode). Resolves when usable. */
+  /** Decode a source (worker-side fetch+decode). Resolves when usable. The
+   *  decode is keyed by CONTENT (the URL): N items sharing one source await ONE
+   *  decode — the first call dispatches, later ones join the waiter list (or
+   *  return instantly once the ack landed). `id` only records the alias. */
   async loadSource(id: string, url: string): Promise<void> {
-    if (this.ready.get(id) === url) return
-    if (!workersSupported) {
-      await this.loadSourceLocal(id, url)
-      return
-    }
-    // Join an in-flight decode only when it is for the SAME url; a new url
-    // always dispatches its own source message (codex #4 — the old code let a
-    // rescan's new url silently ride the outgoing decode's waiter list).
-    const sameInFlight = this.ready.get(id) === url && this.sourceWaiters.has(id)
-    this.ready.set(id, url) // claim; the ack gate checks against this value
+    this.itemSource.set(id, url)
+    if (this.ready.get(url) === url && !this.sourceWaiters.has(url)) return
+    const inFlight = this.sourceWaiters.has(url)
+    this.ready.set(url, url) // claim; the ack gate checks against this value
     await new Promise<boolean>((resolve) => {
-      const waiters = this.sourceWaiters.get(id)
+      const waiters = this.sourceWaiters.get(url)
       if (waiters) waiters.push(resolve)
-      else this.sourceWaiters.set(id, [resolve])
-      if (!sameInFlight) this.post(id, { t: 'source', id, url })
+      else this.sourceWaiters.set(url, [resolve])
+      // Join an in-flight decode only when it is for the SAME content; new
+      // content always dispatches its own decode (codex #4 — the old code let a
+      // rescan's new url silently ride the outgoing decode's waiter list).
+      if (!inFlight) this.dispatchSource(url)
     }).then((ok) => {
       if (!ok) throw new Error(`source failed: ${id}`)
     })
   }
 
+  /** Route ONE content-keyed decode to its lane — the worker pool, or the
+   *  in-thread fallback. Exactly one dispatch per content per in-flight
+   *  window; every other item with the same URL joins `sourceWaiters`. */
+  private dispatchSource(url: string): void {
+    if (workersSupported) {
+      this.post(url, { t: 'source', id: url, url })
+      return
+    }
+    this.loadSourceLocal(url).then(
+      () => this.ackSource(url, true),
+      () => this.ackSource(url, false),
+    )
+  }
+
+  /** Settle a content key's claim: resolve every waiter, and on failure clear
+   *  ready+seeds so the NEXT load re-dispatches (never let a dead source keep
+   *  voting — codex #6). `seed` undefined = the in-thread lane keeps its seed
+   *  in the renderer itself (queried via `seedOf`). */
+  private ackSource(url: string, ok: boolean, seed?: string | null): void {
+    const waiters = this.sourceWaiters.get(url) ?? []
+    this.sourceWaiters.delete(url)
+    if (!ok) {
+      this.ready.delete(url)
+      this.seeds.delete(url)
+    } else if (seed !== undefined) {
+      this.seeds.set(url, seed)
+    }
+    for (const w of waiters) w(ok)
+    this.notify()
+  }
+
   hasSource(id: string, url: string): boolean {
-    return this.ready.get(id) === url && !this.sourceWaiters.has(id)
+    void id // content-keyed: the answer depends on the URL alone
+    return this.ready.get(url) === url && !this.sourceWaiters.has(url)
   }
 
   /** Drop every cached render (rescan / config-independent invalidation). */
@@ -242,49 +275,62 @@ export class IconCompositor {
 
     if (!workersSupported) {
       const renderer = this.localRenderer
-      if (!renderer || !renderer.hasSource(id)) return null
-      const rgba = renderer.render(id, config, isShortcut, showOriginal, size, opts)
+      const skey = this.itemSource.get(id) // content key: where the pixels live
+      if (!renderer || !skey || !renderer.hasSource(skey)) return null
+      const rgba = renderer.render(skey, config, isShortcut, showOriginal, size, opts)
       if (!rgba) return null
       const canvas = rgbaToCanvas(rgba, size)
       this.storeInCache(id, fullKey, canvas)
       return canvas
     }
 
-    if (!this.ready.has(id)) return null
+    // Source identity is CONTENT (`itemSource`); the tile cache above and the
+    // slot/want gates below stay per-ITEM — opts ride every render, and the
+    // desktop asked for THIS item's tile.
+    const skey = this.itemSource.get(id)
+    if (!skey || !this.ready.has(skey)) return null
     const slot = slotKey(id, showOriginal, size)
     if (this.wanted.get(slot) === styleKey) return null // already in flight/queued
     this.wanted.set(slot, styleKey)
     const req = ++this.reqSeq
     this.inflight.set(req, { slot, styleKey, epoch: this.epoch })
-    this.post(id, { t: 'render', req, id, config, isShortcut, showOriginal, size, opts })
+    // Shard + worker lookup by CONTENT (the pixels live there); `id` rides so
+    // the worker's coalescing lane and the reply stay item-scoped.
+    this.post(skey, { t: 'render', req, id, skey, config, isShortcut, showOriginal, size, opts })
     return null
   }
 
   /** The decode-time dominant-colour seed (hex) for the hue-spread pass;
-   *  null = no-hue tail, undefined = source not decoded yet. */
+   *  null = no-hue tail, undefined = source not decoded yet. Content-keyed:
+   *  every item showing this source shares the seed (hue-spread already groups
+   *  them by artKey = the source URL, so the sharing is by design). */
   seedOf(id: string): string | null | undefined {
+    const skey = this.itemSource.get(id)
+    if (!skey) return undefined
     if (!workersSupported) {
       const renderer = this.localRenderer
-      if (!renderer || !renderer.hasSource(id)) return undefined
-      return renderer.seedOf(id)
+      if (!renderer || !renderer.hasSource(skey)) return undefined
+      return renderer.seedOf(skey)
     }
-    return this.seeds.get(id)
+    return this.seeds.get(skey)
   }
 
   /** The 256px bake master as PNG base64 — the ONLY size the bridge accepts. */
   async bakeMasterPng(id: string, config: ConfigDto, isShortcut: boolean, opts?: RenderOpts, showOriginal = false): Promise<string | null> {
+    const skey = this.itemSource.get(id)
+    if (!skey) return null
     if (!workersSupported) {
       const renderer = this.localRenderer
-      if (!renderer || !renderer.hasSource(id)) return null
-      const rgba = renderer.render(id, config, isShortcut, showOriginal, MASTER_SIZE, opts)
+      if (!renderer || !renderer.hasSource(skey)) return null
+      const rgba = renderer.render(skey, config, isShortcut, showOriginal, MASTER_SIZE, opts)
       if (!rgba) return null
       return canvasToPngBase64(rgbaToCanvas(rgba, MASTER_SIZE))
     }
-    if (!this.ready.has(id)) return null
+    if (!this.ready.has(skey)) return null
     const req = ++this.reqSeq
     const png = await new Promise<ArrayBuffer | null>((resolve) => {
       this.bakeWaiters.set(req, resolve)
-      this.post(id, { t: 'bake', req, id, config, isShortcut, showOriginal, opts })
+      this.post(skey, { t: 'bake', req, id, skey, config, isShortcut, showOriginal, opts })
     })
     if (!png) return null
     let binary = ''
@@ -319,13 +365,12 @@ export class IconCompositor {
     return this.localRendererReady
   }
 
-  private async loadSourceLocal(id: string, url: string): Promise<void> {
-    if (this.ready.get(id) === url) return
+  private async loadSourceLocal(url: string): Promise<void> {
     const renderer = await this.ensureLocalRenderer()
     const decoded = await decodeRgba(url, MASTER_SIZE)
-    if (!decoded) throw new Error(`source failed: ${id}`)
-    renderer.registerSource(id, decoded.data)
-    this.ready.set(id, url)
+    if (!decoded) throw new Error(`source failed: ${url}`)
+    renderer.registerSource(url, decoded.data) // one buffer per content
+    // Claim + waiter settlement are the CALLER's (`dispatchSource` → `ackSource`).
   }
 }
 

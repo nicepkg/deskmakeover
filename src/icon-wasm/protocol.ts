@@ -27,7 +27,14 @@ export interface SourceMsg {
 export interface RenderMsg {
   t: 'render'
   req: number
+  /** Item identity — the worker's coalescing slot key and the reply id (per
+   *  item, so two items sharing one source keep their own lane). */
   id: string
+  /** Content key of the source pixels to look up in the worker — the
+   *  content-addressed source URL (ADR-0004 D7 amendment 2026-10-16). The
+   *  worker holds ONE decoded buffer per content, shared by every item that
+   *  shows that artwork; never one copy per item. */
+  skey: string
   config: ConfigDto
   isShortcut: boolean
   showOriginal: boolean
@@ -37,7 +44,10 @@ export interface RenderMsg {
 export interface BakeMsg {
   t: 'bake'
   req: number
+  /** Caller identity (item / bake id); echoed in the ack. */
   id: string
+  /** Content key of the source pixels (see `RenderMsg.skey`). */
+  skey: string
   config: ConfigDto
   isShortcut: boolean
   /** Render the untouched original (compare-sheet Before) rather than the styled master.

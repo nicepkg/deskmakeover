@@ -45,12 +45,19 @@ windows = { version = "0.61", features = [
     "Win32_System_Pipes",
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
+    # Task 11 (ADR-0024): Store/MSIX wrapper `.lnk` recipe — IPropertyStore +
+    # SHGetPropertyStoreFromParsingName + GPS_READWRITE to persist/read `System.AppUserModel.ID`
+    # (PKEY_APPUSERMODEL_ID) on the wrapper.
+    "Win32_UI_Shell_PropertiesSystem",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
     # Judge-1 desktop-activity precision layer (activity.rs): SetWinEventHook / UnhookWinEvent /
     # HWINEVENTHOOK on the desktop SysListView32's drag/capture/move-size WinEvents (spec 07 §11).
     "Win32_UI_Accessibility",
     "Win32_System_SystemInformation",
+    # Explorer drive enumeration (known_folders::visible_fixed_drives): GetDriveTypeW's
+    # DRIVE_FIXED (3) const lives in the WindowsProgramming consts module.
+    "Win32_System_WindowsProgramming",
     "Win32_Storage_FileSystem",
     "Win32_Security",
     # A1/C3 signature gate (signing.rs): WinVerifyTrust on dm-elevated.exe BEFORE the `runas`, so a

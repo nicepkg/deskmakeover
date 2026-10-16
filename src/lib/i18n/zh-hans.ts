@@ -191,6 +191,17 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Plate_NeedShape": "选一个形状后可换底色", // PENDING-RESX (ADR-0018)
   "Shortcut_UniformShape": "快捷方式形状", // PENDING-RESX (ADR-0017, 无=不统一)
   "Shortcut_ShapeGhost": "快捷方式已统一形状，覆盖各类型形状", // PENDING-RESX (ADR-0017)
+  // ADR-0024 美化范围：第二参与轴（fork 草案）。
+  "Axis_Surface": "美化范围",
+  "Surface_Desktop": "桌面",
+  "Surface_DesktopTip": "桌面始终参与美化，不可关闭",
+  "Surface_Taskbar": "任务栏",
+  "Surface_StartMenu": "开始菜单",
+  "Surface_Explorer": "文件资源管理器",
+  "Surface_Always": "始终开启",
+  "Start_Pinned": "已固定",
+  "Start_Empty": "未找到开始菜单快捷方式",
+  "Taskbar_NoPins": "未找到任务栏固定快捷方式",
   "Color_Mono": "单色",
   "Color_Orig": "原彩",
   "ComboLabel": "风格",
@@ -205,6 +216,8 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Compare_Short": "对比",
   "ComingSoon": "即将推出", // PENDING-RESX (v3 filter roadmap slot)
   "ConsentAgree": "好，开始美化",
+  "ConsentAlsoSurfaces": "同时还会美化 {0} 个任务栏固定图标和 {1} 个开始菜单快捷方式——只改快捷方式的图标，绝不动应用本身的文件", // PENDING-RESX (ADR-0024)
+  "ConsentAlsoExplorer": "同时还会美化文件资源管理器中的 {0} 个文件夹和驱动器——通过各自的图标设置，完全可还原", // PENDING-RESX (ADR-0004 D7)
   "ConsentArrow": "应用美化时，我们会隐藏 Windows 自带的快捷方式小箭头，改由 DeskMakeover 统一绘制，让图标更清爽。这项改动对整台电脑生效，也会影响桌面以外、以及本机其他账户的快捷方式；随时可以在设置里一键恢复。", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "ConsentCancel": "再想想",
   "ConsentNot": "不会发生：不删除、不移动、不修改你的任何文件",
@@ -304,6 +317,7 @@ export const zhHans: Record<keyof typeof en, string> = {
   "Icons_Reason_StyledResidue": "美化残留：原始图标记录缺失，已跳过以免在旧样式上叠加", // PENDING-RESX
   "Icons_Reason_ExtractFailed": "图标读取失败：{0}", // PENDING-RESX
   "Icons_Reason_TooMany": "图标过多：已达本次扫描的预览内存预算，部分图标暂无预览", // PENDING-RESX
+  "Icons_Reason_KeptOriginal": "保持原样：图片与 3D/打印文件按你的要求不改动图标", // PENDING-RESX
   "Ink_Auto": "自动",
   "Ink_Black": "黑",
   "Ink_White": "白",

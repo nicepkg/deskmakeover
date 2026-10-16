@@ -155,9 +155,9 @@ fn bake_and_apply(
         if !item.can_style() {
             continue;
         }
-        let cfg = match recipe.effective_config(item.kind, item.kind.is_shortcut())? {
+        let cfg = match recipe.effective_config(item.kind, item.kind.is_shortcut(), item.surface)? {
             Some(c) => c,
-            None => continue, // kind-policy opt-out → keep original
+            None => continue, // kind-policy / surface opt-out → keep original
         };
         // CAS anchor = the fingerprint read NOW; the driver skips an item hand-edited since.
         let fingerprint = match ports.reader.read_fingerprint(&item.target()) {
@@ -220,7 +220,7 @@ fn bake_and_apply(
                 Ok(png) => item_masters.push(BufferedMaster {
                     item_id: p.item.id.as_str().to_string(),
                     source_index: slot as u32,
-                    png_base64: png.clone(),
+                    png_base64: std::sync::Arc::new(png.clone()),
                 }),
                 // Record only the FIRST fault per item (mirrors the old break) and skip the item whole.
                 Err(e) => {
@@ -255,12 +255,22 @@ fn bake_and_apply(
     };
     let by_id: std::collections::HashMap<&str, &dm_domain::Fingerprint> =
         anchors.iter().map(|(i, f)| (i.id.as_str(), f)).collect();
-    let mut requests = Vec::with_capacity(packaged.len());
+    // Per-item transactions, mirroring `commit_apply` (owner 2026-07-17): one item hitting a
+    // transient fault (an Explorer/AV hold on the live Desktop) must not roll the whole SWITCH
+    // back — that batch-abort is exactly what the owner saw as "the first switch didn't replace
+    // the folder". A bare driver Err (possibly torn journal) stops the loop; later items were
+    // never journaled and stay untouched.
+    //
+    // Each request is built INSIDE its iteration (owner OOM fix 2026-10-16): a switch re-applies a
+    // whole look, so an up-front `Vec<ApplyRequest>` would clone every item's ICO bytes at once —
+    // the ~3 GB blowup the all-drives apply hit. Built here, the bytes live for one transaction.
+    let driver = TxnDriver::new(ports.reader, ports.applier, ports.assets);
+    let mut folded = ApplyOutcome::default();
     for pkg in &packaged {
         let Some((item, _)) = anchors.iter().find(|(i, _)| i.id.as_str() == pkg.item_id) else {
             continue;
         };
-        requests.push(ApplyRequest {
+        let req = ApplyRequest {
             target: item.target(),
             expected_fingerprint: (*by_id[pkg.item_id.as_str()]).clone(),
             owned: OwnedFields::icon_only(),
@@ -268,16 +278,7 @@ fn bake_and_apply(
             asset_bytes: pkg.primary.bytes.clone(),
             empty_asset_bytes: pkg.empty.as_ref().map(|e| e.bytes.clone()),
             pinned_seed: None,
-        });
-    }
-    // Per-item transactions, mirroring `commit_apply` (owner 2026-07-17): one item hitting a
-    // transient fault (an Explorer/AV hold on the live Desktop) must not roll the whole SWITCH
-    // back — that batch-abort is exactly what the owner saw as "the first switch didn't replace
-    // the folder". A bare driver Err (possibly torn journal) stops the loop; later items were
-    // never journaled and stay untouched.
-    let driver = TxnDriver::new(ports.reader, ports.applier, ports.assets);
-    let mut folded = ApplyOutcome::default();
-    for req in requests {
+        };
         match driver.apply(txn.next_id(), vec![req], journal, ledger) {
             Ok(one) => {
                 folded.committed.extend(one.committed);
@@ -308,8 +309,8 @@ mod tests {
     use super::*;
     use dm_contracts::IconStyle;
     use dm_domain::{
-        ApplyAssets, AssetRef, DecodedImage, Fingerprint, ItemId, ItemKind, ItemState, ItemTarget,
-        PortError, PortResult, RestoreAnchor,
+        ApplyAssets, AssetRef, DecodedImage, Fingerprint, ItemId, ItemKind, ItemState, ItemSurface,
+        ItemTarget, PortError, PortResult, RestoreAnchor,
     };
     use std::cell::RefCell;
     use std::collections::HashMap;
@@ -406,6 +407,8 @@ mod tests {
             name: id.into(),
             path: format!("C:/Users/Dev/Desktop/{id}.lnk"),
             kind: ItemKind::Shortcut,
+            surface: ItemSurface::Desktop,
+            parent: String::new(),
             icon: None,
             state: ItemState::Ready,
             requires_explicit_consent: false,
@@ -503,6 +506,8 @@ mod tests {
             name: "pub".into(),
             path: "C:/Users/Public/Desktop/Tool.lnk".into(),
             kind: ItemKind::Shortcut,
+            surface: ItemSurface::Desktop,
+            parent: String::new(),
             icon: None,
             state: ItemState::Ready,
             requires_explicit_consent: false,

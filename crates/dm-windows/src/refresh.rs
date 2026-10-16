@@ -98,25 +98,61 @@ impl ExplorerRefresher for WindowsExplorerRefresher {
         run_hidden("ie4uinit.exe", &["-show"]);
 
         // 4. Relaunch and VERIFY. AutoRestartShell may have respawned Explorer already (that is
-        //    fine — dedup by liveness, not by launching blind). Retry the spawn once; only a shell
-        //    we cannot confirm alive after both attempts is an error — the caller surfaces it
-        //    rather than leaving the user staring at an empty desktop wondering what happened.
+        //    fine — dedup by liveness, not by launching blind). The success criterion is the SHELL
+        //    (the taskbar window the user sees), never the process alone: a relaunch that comes up
+        //    without initializing the shell leaves an alive explorer.exe, no taskbar and a black
+        //    desktop (owner box 2026-10-16) — a process-liveness check calls that "fine". A
+        //    shell-less Explorer is cleared before relaunching (spawning on top of it never helps).
+        //    Retry once; only a shell we cannot confirm is an error — the caller surfaces it rather
+        //    than leaving the user staring at an empty desktop wondering what happened.
         for attempt in 0..2 {
-            if wait_until(EXPLORER_ALIVE_WAIT_MS, || explorer_running(session.as_deref())) {
+            if wait_until(EXPLORER_ALIVE_WAIT_MS, || {
+                shell_ready(explorer_running(session.as_deref()), shell_present())
+            }) {
                 return Ok(());
             }
-            log::warn!("restart_shell: explorer not alive after wait (attempt {attempt}); launching it");
+            if explorer_running(session.as_deref()) && !shell_present() {
+                log::warn!(
+                    "restart_shell: explorer is alive without its shell windows (attempt {attempt}); \
+                     clearing it for a clean relaunch"
+                );
+                let mut kill_args = vec!["/F", "/IM", "explorer.exe"];
+                if let Some(f) = session.as_ref() {
+                    kill_args.extend(["/FI", f.as_str()]);
+                }
+                run_hidden("taskkill", &kill_args);
+                wait_until(EXPLORER_EXIT_WAIT_MS, || !explorer_running(session.as_deref()));
+            } else {
+                log::warn!("restart_shell: explorer not alive after wait (attempt {attempt}); launching it");
+            }
             let _ = std::process::Command::new("explorer.exe").spawn();
         }
-        if wait_until(EXPLORER_ALIVE_WAIT_MS, || explorer_running(session.as_deref())) {
+        if wait_until(EXPLORER_ALIVE_WAIT_MS, || {
+            shell_ready(explorer_running(session.as_deref()), shell_present())
+        }) {
             return Ok(());
         }
         Err(dm_domain::PortError::Io(
-            "explorer did not come back after the shell restart; the desktop may be blank until \
-             the user starts explorer.exe (Ctrl+Shift+Esc → run explorer) or signs in again"
+            "explorer came back without its shell windows (no taskbar); start explorer.exe \
+             (Ctrl+Shift+Esc → run explorer) or sign in again to restore the desktop"
                 .to_string(),
         ))
     }
+}
+
+/// The restart's success predicate: the process ALIVE **and** the taskbar window present. Split out
+/// as a pure function so the truth table is unit-tested — the 2026-10-16 owner state was exactly
+/// "process alive, taskbar missing", which the old process-only check accepted as success.
+fn shell_ready(explorer_alive: bool, taskbar_present: bool) -> bool {
+    explorer_alive && taskbar_present
+}
+
+/// Whether the interactive shell's taskbar window exists. `[WINDOWS-VERIFY]` runtime.
+fn shell_present() -> bool {
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
+    // SAFETY: a class-name window lookup; no ownership is taken and no message is sent.
+    unsafe { FindWindowW(w!("Shell_TrayWnd"), None).map(|h| !h.is_invalid()).unwrap_or(false) }
 }
 
 const EXPLORER_EXIT_WAIT_MS: u64 = 5_000;
@@ -192,5 +228,21 @@ fn purge_icon_caches() {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shell_ready;
+
+    #[test]
+    fn the_restart_only_succeeds_when_the_taskbar_is_back() {
+        // Owner box 2026-10-16: explorer.exe alive with NO taskbar window and a black desktop. The
+        // old process-only check called that success and left the user without a shell, so the
+        // predicate must demand BOTH halves.
+        assert!(!shell_ready(true, false), "an alive process without its taskbar is NOT ready");
+        assert!(!shell_ready(false, true), "a taskbar without its process is not ready");
+        assert!(!shell_ready(false, false));
+        assert!(shell_ready(true, true), "process + taskbar = a usable shell");
     }
 }

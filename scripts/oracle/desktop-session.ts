@@ -160,6 +160,8 @@ function asItem(s: OracleSource): IconItemDto {
     isShortcut: s.isShortcut,
     styleable: s.kind !== 'Unsupported',
     statusReason: null,
+    surface: 'desktop',
+    parent: '',
     x: 0,
     y: 0,
     sourceUrls: [s.sourceUrl],

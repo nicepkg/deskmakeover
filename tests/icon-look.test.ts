@@ -65,6 +65,16 @@ describe('serialize/parse round-trip', () => {
     expect(back!.config.plateColor).toBeNull()
     expect(back!.config.shortcutShape).toBeNull()
   })
+
+  test('surfaces (ADR-0024) round-trips; an absent leg reads as the default (participate)', () => {
+    const withSurfaces = { ...recipe, surfaces: { taskbar: true, startMenu: false, explorer: true } }
+    const back = parseIconLook(serializeIconLook(withSurfaces))
+    expect(back!.surfaces).toEqual({ taskbar: true, startMenu: false, explorer: true })
+    // Legacy recipes (pre-ADR-0024) carry NO surfaces → they read as the DEFAULT: every
+    // surface participates (owner decision 2026-10-12, amending the original opt-out).
+    const legacy = JSON.stringify({ config, kindPolicy: recipe.kindPolicy, typeOverrides: {} })
+    expect(parseIconLook(legacy)!.surfaces).toEqual({ taskbar: true, startMenu: true, explorer: true })
+  })
 })
 
 describe('fail-closed behavior (spec 09 §3)', () => {
@@ -113,6 +123,16 @@ describe('normalizeIconLook (the import validator)', () => {
     expect(normalizeIconLook({ config })!.kindPolicy).toBeUndefined()
     expect(normalizeIconLook({ config, kindPolicy: { App: false } })!.kindPolicy).toEqual({ App: false } as never)
   })
+
+  test('surfaces (ADR-0024) is optional, preserved when present, fail-closed when junk', () => {
+    // Absent → absent (presence-preserving, like kindPolicy): a style-only preset stays clean.
+    expect(normalizeIconLook({ config })!.surfaces).toBeUndefined()
+    // A partial leg fills the missing surface with the DEFAULT (participate — 2026-10-12).
+    expect(normalizeIconLook({ config, surfaces: { taskbar: false } })!.surfaces).toEqual({ taskbar: false, startMenu: true, explorer: true } as never)
+    // G11 closed whitelist: a KNOWN leg with a non-boolean REJECTS; unknown legs drop.
+    expect(normalizeIconLook({ config, surfaces: { taskbar: 'yes' } })).toBeNull()
+    expect(normalizeIconLook({ config, surfaces: { taskbar: false, futureSurface: true } })!.surfaces).toEqual({ taskbar: false, startMenu: true, explorer: true } as never)
+  })
 })
 
 describe('migration chain mechanics', () => {
@@ -124,6 +144,38 @@ describe('migration chain mechanics', () => {
   test('unknown/negative versions return null', () => {
     expect(migrateIconLook({}, -1)).toBeNull()
     expect(migrateIconLook({}, ICON_LOOK_VERSION + 5)).toBeNull()
+  })
+
+  test('v1 → v2 rewrites the Folder bucket off the plate-card shape (owner 2026-10-16)', () => {
+    // "las carpetas no se ven bien, la parte blanca no debería estar": a v1 recipe could carry a
+    // Folder-bucket `shape: 'Folder'` override — a plate-filled folder silhouette that reads as a
+    // WHITE card under the Mono + white-fallback look. v2 rewrites ONLY that one value.
+    type RawFolderPatch = { shape?: string; plateColor?: string | null }
+    const v1 = {
+      v: 1,
+      config,
+      kindPolicy: { ...DEFAULT_KIND_POLICY },
+      typeOverrides: {
+        Folder: { source: 'custom', patch: { shape: 'Folder', plateColor: '#EAD6A8' } },
+        File: { source: 'custom', patch: { shape: 'File' } },
+      },
+    }
+    const out = migrateIconLook(v1, 1) as {
+      typeOverrides: { Folder: { patch: RawFolderPatch }; File: { patch: RawFolderPatch } }
+    }
+    expect(out.typeOverrides.Folder.patch.shape).toBe('None') // the card is gone (passthrough)
+    expect(out.typeOverrides.Folder.patch.plateColor).toBe('#EAD6A8') // sibling fields survive
+    expect(out.typeOverrides.File.patch.shape).toBe('File') // other buckets untouched
+
+    // A Folder shape the USER chose deliberately (not the card) stays exactly as saved.
+    const samsung = migrateIconLook(
+      { v: 1, config, typeOverrides: { Folder: { source: 'custom', patch: { shape: 'Samsung' } } } },
+      1,
+    ) as { typeOverrides: { Folder: { patch: RawFolderPatch } } }
+    expect(samsung.typeOverrides.Folder.patch.shape).toBe('Samsung')
+
+    // parseIconLook routes a v1 payload through the chain — the saved-style ② load path.
+    expect(parseIconLook(JSON.stringify(v1))!.typeOverrides.Folder!.patch!.shape).toBe('None')
   })
 })
 

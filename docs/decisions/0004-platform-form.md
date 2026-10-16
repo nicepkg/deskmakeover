@@ -95,3 +95,87 @@ exists in opposition to. The owner resolved the three open conflicts.
 - The module is named **清爽 / 清爽系统** (ADR-0023 decision 7); 净化/清理/优化 are banned
   copy for it. §2's "已帮你做的事" checklist grammar is refined by ADR-0023 decision 3
   (three-state honest results; verified writes only).
+
+## Amendment (2026-10-13 — D7 Explorer module landed)
+
+- **§7's folder half ships:** every folder under `FOLDERID_Profile` on a new `explorer` surface
+  (per-surface toggle, consent-gated like the others), styled via `desktop.ini` in-host (no
+  elevation — Warm tier per §4). The walk skips hidden/System-attribute trees (AppData), reparse
+  points, and build/VCS/deno trees, with depth + count caps, so a repo-heavy profile can never
+  stall the scan or get residue. Restore removes only our `desktop.ini` (byte-identical return).
+- **§7's drive half ships as the PER-USER key, not the HKLM one:** `HKCU\Software\Classes\
+  Applications\Explorer.exe\Drives\<L>\DefaultIcon` — an on-box spike proved the shell honors this
+  key (the `SHGetFileInfo("C:\")` icon changed and reverted), so drives are styled **in-host with
+  no elevation**, staying inside §4's Warm tier; the machine `HKLM\…\Explorer\DriveIcons` tree is
+  read ONLY as the original-icon fallback and is never written. `autorun.inf` stays untouched;
+  fixed drives only (removable/optical/network letters are never keyed).
+- **Original-icon recovery for drives never reads the live surface post-apply** (the same spike
+  showed the live read WOULD return our own asset → compounding): a captured registry value
+  resolves as an icon resource, and an absent value falls back to the static stock glyph
+  `shell32.dll,8`. Restore writes HKCU only and removes just the `(Default)` value we created
+  (recycle-bin posture: never `delete_subkey_all` over a key another program may share).
+- **Bucketing:** `ItemKind::Drive` rides the **Folder** bucket (an Explorer container the user
+  browses) — same policy switch, same `explorer`-surface consent; §7's ProgId `DefaultIcon` ban
+  is unchanged and the banned association icons were never built.
+
+## Amendment (2026-10-16 — owner ruling: ALL fixed drives · ALL file types except images)
+
+Owner directive, fork scope: "al abrir el explorador de archivos **todos** los iconos están
+estilizados". Two parts, one of which **lifts §7's constitutional ban**.
+
+- **§7 folder half BROADENED to every fixed drive root** (`visible_fixed_drives()`, `DRIVE_FIXED`
+  only), no longer `FOLDERID_Profile` alone. Mechanics unchanged: in-host `desktop.ini`, Warm
+  tier (§4), no elevation. Two guard additions make whole-drive walks honest:
+  - **Protected roots are never emitted, nor descended** — `Program Files`, `Program Files (x86)`,
+    `ProgramData`, `Windows`, `$Recycle.Bin`, `System Volume Information`, `Recovery`, `MSOCache`,
+    `PerfLogs`, `Documents and Settings`: the current user cannot write `desktop.ini` there without
+    elevation, so emitting them would only produce doomed per-item apply failures. Styling them
+    would mean opening a HOT-tier UAC path (writing program-file trees via the elevated helper);
+    **that is NOT part of this amendment** and remains out of scope until explicitly decided.
+  - **`Users` is container-only**: descended (the profile lives at `C:\Users\<me>`), never itself
+    styled (ACL-protected), same posture as before.
+  - Caps re-based on drive roots: depth 10 (the old profile-relative depth 8, re-measured from a
+    drive root) and 5000 folders (drive-wide content), denylist + attribute gate unchanged.
+  - **Source previews are now content-addressed WITHOUT the item id** (`dmicon://<hash>`), so the
+    shared `SCAN_SOURCE_BUDGET` counts *unique pixels once* instead of once per folder — a
+    5000-folder walk costs one folder-icon entry, not 5000. The cache doc already promised
+    "one entry per unique pixel set"; the item-id prefix made that false. Frontend bakes are
+    memoized on the same key for the same reason (one master PNG per unique source+style).
+- **§7's file-type ProgId `DefaultIcon` ban is LIFTED for every file type EXCEPT images**
+  (owner ruling 2026-10-16, informed — the ban's own rationale is answered below, not ignored).
+  New `ItemKind::FileType`, same `explorer` surface toggle + consent count, bucketed **File**
+  (so `kindPolicy.File` remains a second, independent kill switch). The type set is not the
+  registry enumerated wholesale: it is **the extensions the explorer walk actually SAW on the
+  walked drives**, resolved to their ProgId (one item per ProgId; extensions sharing a ProgId
+  are one registry target and must be one item, never two writers of one value).
+
+  Answering the original ban rationale, clause by clause:
+
+  1. *"association hijack signature"* — hijack signatures live in the **command verbs**
+     (`HKCU\Software\Classes\<ProgId>\shell\open\command`). This feature writes **exactly one
+     value**: `HKCU\Software\Classes\<ProgId>\DefaultIcon`, the icon reference only. Verb keys,
+     `shell\runas`, `UserChoice`, `OpenWithProgids` are never touched, so no launch path can
+     change. Elevation: none (HKCU, §4 Warm tier); HKCR/HKLM never written.
+  2. *"un-restorable merge states"* — the anchor is captured BEFORE the write
+     (`RestoreAnchor::FileType`: per-user-vs-HKCR effective value + `key_existed`), restore
+     removes only the `(Default)` value we created (recycle-bin posture, never
+     `delete_subkey_all`), and the styled-residue provenance guard applies unchanged (a value
+     pointing into our asset store is never re-captured as "the original"). `run_uninstall_restore`
+     walks the same ledger path.
+  3. **Exclusions are part of the decision, not an afterthought:**
+     - **Images** (owner's explicit carve-out): `PerceivedType = image` **or** membership in an
+       explicit list (`png jpg jpe jpeg gif bmp dib ico cur ani tif tiff wmf emf svg webp heic
+       heif avif jfif …`) — native icons/previews stay untouched.
+     - **Per-file types**: any `DefaultIcon` containing an unexpanded `%1`/`%L`/`%l`/`%v`
+       resolves to *the file itself* (`exefile`, `dllfile`, `.scr`, …). A type-level override
+       there would collapse EVERY executable's individual icon into ONE glyph — strictly worse
+       than native — so those types are skipped. This is also the honest floor of "los iconos
+       de todos los programas": per-program identity lives inside each `.exe` (same limit as
+       ADR-0024 running-window buttons) and cannot be restyled per-file.
+     - No `DefaultIcon` at all, an invalid ProgId shape (backslash/`\`-bearing or control chars
+       — defence-in-depth on a key path we interpolate), or an unextractable resource → not
+       emitted (nothing to style).
+  4. **Refresh**: association icons need `SHChangeNotify(SHCNE_ASSOCCHANGED)`, the notify the
+     apply path already fires.
+- **§7 Consequences line ("file-type icons removed permanently") is SUPERSEDED** by this
+  amendment; the roadmap line follows it.

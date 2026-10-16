@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { ConfigDto, IconItemDto, IconsStateDto } from '../src/bridge/types'
 import { __setBridgeForTests, effectiveTileConfig, persistBareLook, readBareLook, resetIconsHistoryForTests, resumeStatusKey, useIcons } from '../src/stores/icons'
-import { DEFAULT_KIND_POLICY } from '../src/lib/kind-policy'
+import { DEFAULT_KIND_POLICY, DEFAULT_SURFACES } from '../src/lib/kind-policy'
 import { SYSTEM_DEFAULT_CONFIG } from '../src/lib/icons-assemble'
 
 // Undo granularity + override semantics (spec 06 §3.3/§3.4): one step per
@@ -27,6 +27,8 @@ const item = (id: string, over: Partial<IconItemDto> = {}): IconItemDto => ({
   isShortcut: true,
   styleable: true,
   statusReason: null,
+  surface: 'desktop',
+  parent: '',
   x: 0,
   y: 0,
   sourceUrls: [],
@@ -54,6 +56,7 @@ const state = (): IconsStateDto => ({
   },
   wallpaperUrl: null,
   kindPolicy: { ...DEFAULT_KIND_POLICY },
+  surfaces: { ...DEFAULT_SURFACES },
   arrowOverlay: 'native',
   activeUserProfiles: 1,
 })
@@ -184,6 +187,38 @@ describe('effective tile config (override folding)', () => {
     const forced = effectiveTileConfig(item('f', { kind: 'Folder', overrideMode: 'tint', overrideTint: '#3FB6A8' }), config, noFolders)
     expect(forced.showOriginal).toBe(false)
     expect(forced.config.subject).toBe('Mono')
+  })
+
+  test('surface gate (ADR-0024): a disabled surface renders original, even under a tint override', () => {
+    const pin = item('p', { surface: 'taskbar' })
+    // Omitted surfaces = the DEFAULT (participate — owner decision 2026-10-12) — a pin styles.
+    expect(effectiveTileConfig(pin, config, DEFAULT_KIND_POLICY).showOriginal).toBe(false)
+    // With a leg ON the pin inherits the global config (no per-surface config exists in v1).
+    const on = effectiveTileConfig(pin, config, DEFAULT_KIND_POLICY, undefined, { taskbar: true, startMenu: false, explorer: true })
+    expect(on.showOriginal).toBe(false)
+    expect(on.config).toEqual({ ...config, autoSeparation: true })
+    // OFF again → original; the tile also rides restoreIds in apply() (auto-restore).
+    expect(
+      effectiveTileConfig(pin, config, DEFAULT_KIND_POLICY, undefined, { taskbar: false, startMenu: true, explorer: true }).showOriginal,
+    ).toBe(true)
+    // A per-icon tint NEVER rescues a surface the user turned off (RESTORE-FIRST).
+    const tinted = item('p2', { surface: 'taskbar', overrideMode: 'tint', overrideTint: '#3FB6A8' })
+    expect(
+      effectiveTileConfig(tinted, config, DEFAULT_KIND_POLICY, undefined, { taskbar: false, startMenu: true, explorer: true }).showOriginal,
+    ).toBe(true)
+  })
+
+  test('surface gate: the desktop is NEVER gated — kindPolicy alone governs it', () => {
+    const desk = item('a')
+    for (const surfaces of [DEFAULT_SURFACES, { taskbar: true, startMenu: true, explorer: true }]) {
+      expect(effectiveTileConfig(desk, config, DEFAULT_KIND_POLICY, undefined, surfaces).showOriginal).toBe(false)
+    }
+  })
+
+  test('surface gate: the start-menu leg gates its items independently of the taskbar leg', () => {
+    const tile = item('s', { surface: 'startMenu' })
+    expect(effectiveTileConfig(tile, config, DEFAULT_KIND_POLICY, undefined, { taskbar: true, startMenu: false, explorer: true }).showOriginal).toBe(true)
+    expect(effectiveTileConfig(tile, config, DEFAULT_KIND_POLICY, undefined, { taskbar: false, startMenu: true, explorer: true }).showOriginal).toBe(false)
   })
 })
 
@@ -403,6 +438,31 @@ describe('System-Default lens (spec 06 §3.13)', () => {
     useIcons.getState().undo() // the Samsung pick
     useIcons.getState().undo() // the reset
     expect(useIcons.getState().state!.typeOverrides).toEqual({ Folder: folderPatch })
+  })
+})
+
+// Surface participation (ADR-0024): same undo + lens + persistence discipline as
+// kindPolicy — one step per flip, never lifts the System-Default lens.
+describe('surface participation (ADR-0024)', () => {
+  test('setSurface flips ONE leg as one undo step and marks the draft dirty', () => {
+    // `dirty` only means "the live desktop differs from the draft", so it exists
+    // once a look is applied — mirror that state here. Legs default ON (2026-10-12),
+    // so the flip exercised here is ON → OFF.
+    useIcons.setState({ state: { ...state(), applied: true } })
+    useIcons.getState().setSurface('taskbar', false)
+    expect(useIcons.getState().state!.surfaces.taskbar).toBe(false)
+    expect(useIcons.getState().state!.dirty).toBe(true)
+    expect(useIcons.getState().state!.surfaces.startMenu).toBe(true) // the other leg untouched (default on)
+    useIcons.getState().undo()
+    expect(useIcons.getState().state!.surfaces.taskbar).toBe(true)
+  })
+
+  test('surface toggles are orthogonal to the System-Default lens (lens rule)', () => {
+    const s = useIcons.getState()
+    s.selectSystemDefault()
+    useIcons.getState().setSurface('startMenu', false)
+    expect(useIcons.getState().state!.surfaces.startMenu).toBe(false)
+    expect(useIcons.getState().bareLook).toBe(true)
   })
 })
 

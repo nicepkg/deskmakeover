@@ -51,6 +51,16 @@ pub enum SurfaceState {
     /// three the apply writes, so a writer that lands the paths but a wrong index or a stale
     /// `default` fingerprints differently.
     RecycleBin { default: IconLoc, empty: IconLoc, full: IconLoc },
+    /// A fixed drive: the per-user `DefaultIcon` `"<path>,<index>"` location the writer points the
+    /// drive at — a single registry value. Its own domain prefix so a drive fingerprint can never
+    /// collide with a shortcut's `IconRef` (they restore differently: per-drive key vs `.lnk`).
+    Drive { icon: IconLoc },
+    /// A Store/MSIX wrapper `.lnk` that does NOT exist yet (Task 11): the virtual AppsFolder entry
+    /// has no on-disk file until we style it. A DEDICATED sentinel, deliberately NOT
+    /// `IconRef { path: "", index: 0 }` — "never created" and "created but iconless" are different
+    /// states with different restores (remove the wrapper vs. replay bytes), and one must never
+    /// masquerade as the other in CAS.
+    AppxAbsent,
 }
 
 impl SurfaceState {
@@ -92,6 +102,12 @@ impl SurfaceState {
                 full.0.as_bytes(),
                 &full.1.to_le_bytes(),
             ]),
+            SurfaceState::Drive { icon } => {
+                Fingerprint::of_parts(&[b"drive", icon.0.as_bytes(), &icon.1.to_le_bytes()])
+            }
+            // A constant sentinel for "no wrapper exists" (Task 11) — its own domain prefix so it
+            // can never collide with any IconRef, present-but-iconless included.
+            SurfaceState::AppxAbsent => Fingerprint::of_parts(&[b"appx-absent"]),
         }
     }
 }
@@ -141,6 +157,8 @@ pub fn expected_after_apply(
             empty: (empty_icon.unwrap_or_default().to_string(), 0),
             full: (primary_icon.to_string(), 0),
         },
+        // A fixed drive's surface is its per-user `DefaultIcon` location (path + index 0).
+        ItemKind::Drive => SurfaceState::Drive { icon: (primary_icon.to_string(), 0) },
         // Shortcut, UrlShortcut, AppxShortcut (an ordinary `.lnk`) and any other icon-location kind.
         _ => SurfaceState::IconRef { path: primary_icon.to_string(), index: 0 },
     }
@@ -180,6 +198,19 @@ mod tests {
             fp(ItemKind::AppxShortcut, r"C:\Desktop\Store.lnk", "a.ico", None),
             fp(ItemKind::Shortcut, r"C:\Desktop\Store.lnk", "a.ico", None),
         );
+    }
+
+    #[test]
+    fn appx_absent_sentinel_never_collides_with_a_present_iconless_wrapper() {
+        // Task 11: a virtual AppsFolder entry with NO wrapper fingerprints as the AppxAbsent
+        // sentinel. It must differ from EVERY IconRef — most dangerously `IconRef("", 0)`, the
+        // surface of a PRESENT-but-unstyled `.lnk` — because the two restore differently (remove
+        // the wrapper vs. replay its bytes).
+        let absent = SurfaceState::AppxAbsent.fingerprint();
+        assert_ne!(absent, SurfaceState::IconRef { path: String::new(), index: 0 }.fingerprint());
+        assert_ne!(absent, SurfaceState::IconRef { path: "a.ico".into(), index: 0 }.fingerprint());
+        // Constant both directions: a stable CAS anchor across scans/restarts.
+        assert_eq!(absent, SurfaceState::AppxAbsent.fingerprint());
     }
 
     #[test]

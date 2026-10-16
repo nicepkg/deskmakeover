@@ -264,6 +264,8 @@ function toItem(entry: PackEntry, index: number, rows: number): IconItemDto {
     isShortcut: entry.isShortcut ?? (entry.kind === 'Shortcut' || entry.kind === 'UrlShortcut' || entry.kind === 'AppxShortcut'),
     styleable,
     statusReason: styleable ? null : 'MOCK-HOST-REASON',
+    surface: 'desktop',
+    parent: '',
     x: MOCK_GRID.inset + col * MOCK_GRID.cellWidth,
     y: MOCK_GRID.inset + row * MOCK_GRID.cellHeight,
     sourceUrls: entry.sourceUrls,

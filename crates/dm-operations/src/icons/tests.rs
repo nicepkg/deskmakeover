@@ -4,7 +4,7 @@
 //! files and the apply drives the real transaction engine.
 
 use dm_contracts::IconStyle;
-use dm_domain::{DesktopItem, ItemId, ItemKind, ItemState};
+use dm_domain::{DesktopItem, ItemId, ItemKind, ItemState, ItemSurface};
 use serde_json::json;
 
 use super::*;
@@ -33,6 +33,8 @@ fn item(id: &str, kind: ItemKind) -> DesktopItem {
         name: id.into(),
         path: format!("C:/Desktop/{id}"),
         kind,
+        surface: ItemSurface::Desktop,
+        parent: String::new(),
         icon: None,
         state: ItemState::Ready,
         requires_explicit_consent: false,
@@ -79,6 +81,12 @@ impl Fixture {
         self.world.borrow_mut().put(&it.path, original);
     }
 
+    /// Marks an item as VIRTUAL (Task 11): absent from disk, read as the AppxAbsent sentinel,
+    /// anchored FileAbsent — the Store/MSIX entry before its wrapper exists.
+    fn seed_virtual(&self, it: &DesktopItem) {
+        self.world.borrow_mut().mark_virtual(&it.path);
+    }
+
     /// Runs a commit with the given masters, driving the real engine over the fake platform.
     /// Converts scanned items into `ScannedItem`s, capturing each one's CURRENT desktop fingerprint
     /// as its scan-time CAS anchor (what the real host does per scan).
@@ -86,12 +94,16 @@ impl Fixture {
         items
             .iter()
             .map(|it| {
-                let fp = self
-                    .world
-                    .borrow()
-                    .get(&it.path)
-                    .map(|b| dm_domain::Fingerprint::of_bytes(&b))
-                    .unwrap_or(dm_domain::Fingerprint::of_bytes(b""));
+                let world = self.world.borrow();
+                let fp = match world.get(&it.path) {
+                    Some(bytes) => dm_domain::Fingerprint::of_bytes(&bytes),
+                    // A virtual entry scans as the sentinel (Task 11) — the same value the fake
+                    // reader returns post-scan, so CAS stays consistent across the apply.
+                    None if world.is_virtual(&it.path) => {
+                        crate::txn::fakes::appx_absent_fingerprint()
+                    }
+                    None => dm_domain::Fingerprint::of_bytes(b""),
+                };
                 ScannedItem { item: it.clone(), fingerprint: fp, cas_icon: None, source_ok: true }
             })
             .collect()
@@ -1337,6 +1349,8 @@ fn pub_item(id: &str) -> DesktopItem {
         name: id.into(),
         path: format!("C:/Users/Public/Desktop/{id}"),
         kind: ItemKind::Shortcut,
+        surface: ItemSurface::Desktop,
+        parent: String::new(),
         icon: None,
         state: ItemState::Ready,
         requires_explicit_consent: false,
@@ -1545,4 +1559,68 @@ fn without_an_elevated_port_a_privileged_item_is_an_honest_conflict_never_a_doom
     assert_eq!(out.conflicts, vec![shared.id.clone()], "left as an honest skip");
     assert!(out.error.is_none(), "a skip is not a failure — the desktop was never touched");
     assert_eq!(f.world.borrow().get(&shared.path).unwrap(), b"orig-chrome");
+}
+
+// ---- Task 11 (ADR-0024): Store/MSIX AppxShortcut flows ----
+
+#[test]
+fn an_appx_shortcut_commits_and_resets_unelevated_like_any_file_backed_lnk() {
+    // A file-backed AppxShortcut (a user's own Store shortcut) takes the ordinary in-process
+    // path — no elevated helper wired, none needed (user scope). The kind was already in
+    // `is_elevatable_kind` for PRIVILEGED items; here we pin that with `elevated = None` the
+    // whole commit/reset cycle runs in-process.
+    let mut f = Fixture::new();
+    let appx = item("store-app.lnk", ItemKind::AppxShortcut);
+    f.seed(&appx, b"orig-appx");
+
+    let out = f.apply(&[("store-app.lnk", 0, [3, 4, 5, 255])], style(1), "L", "v1", &[appx.clone()]);
+
+    assert_eq!(out.committed, vec![appx.id.clone()], "AppxShortcut commits unelevated");
+    assert!(out.error.is_none() && out.conflicts.is_empty());
+    assert_ne!(
+        f.world.borrow().get(&appx.path).unwrap(),
+        b"orig-appx",
+        "the wrapper wears the styled bytes"
+    );
+
+    let reset = f.reset(false);
+    assert_eq!(reset.restored, vec![appx.id.clone()], "one item undone");
+    assert_eq!(
+        f.world.borrow().get(&appx.path).unwrap(),
+        b"orig-appx",
+        "byte-replay restore, like any .lnk"
+    );
+}
+
+#[test]
+fn a_virtual_appx_entry_is_created_by_apply_and_removed_by_reset() {
+    // Task 11: a Store/MSIX entry with NO wrapper yet. Scan reads the AppxAbsent sentinel (not
+    // NotFound — NotFound would drop the item before apply could ever create it), the anchor is
+    // FileAbsent, apply CREATES the wrapper, and reset REMOVES it — the desktop returns to
+    // "entry not materialized". A ledger row that lost its FileAbsent anchor (or a restore that
+    // treated it as unsupported) would strand the styled wrapper on disk after reset.
+    let mut f = Fixture::new();
+    let appx = item("virtual-store.lnk", ItemKind::AppxShortcut);
+    f.seed_virtual(&appx);
+
+    // The scan-time CAS anchor is the sentinel — the value the fake reader also returns.
+    let scanned = f.scanned(&[appx.clone()]);
+    assert_eq!(scanned[0].fingerprint, crate::txn::fakes::appx_absent_fingerprint());
+
+    let out =
+        f.apply(&[("virtual-store.lnk", 0, [7, 7, 7, 255])], style(1), "L", "v1", &[appx.clone()]);
+    assert_eq!(out.committed, vec![appx.id.clone()], "the wrapper is created + committed");
+    assert!(out.error.is_none() && out.conflicts.is_empty());
+    let created =
+        f.world.borrow().get(&appx.path).expect("apply must CREATE the wrapper for a virtual entry");
+    assert!(!created.is_empty(), "the wrapper carries the styled bytes");
+
+    // The ledger row anchors FileAbsent — restore = remove, not byte-replay of a file that never
+    // was.
+    let entry = f.ledger.get(&appx.id).unwrap().expect("styled row present");
+    assert_eq!(entry.original_anchor, dm_domain::RestoreAnchor::FileAbsent);
+
+    let reset = f.reset(false);
+    assert_eq!(reset.restored, vec![appx.id.clone()], "reset knows how to undo it");
+    assert!(f.world.borrow().get(&appx.path).is_none(), "reset REMOVES the wrapper");
 }

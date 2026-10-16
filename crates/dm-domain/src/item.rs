@@ -58,6 +58,19 @@ pub enum ItemKind {
     RecycleBin,
     /// A folder — icon via a `desktop.ini` `IconResource`.
     Folder,
+    /// A fixed drive (ADR-0004 D7) — icon via a per-user registry `DefaultIcon` value under
+    /// `Software\Classes\Applications\Explorer.exe\Drives\<L>` (the current-user override; never
+    /// `autorun.inf`). Part of the `explorer` surface, routed by `kind`: the write mechanism
+    /// differs from folders even though both are Explorer items.
+    Drive,
+    /// A file TYPE (extension → ProgId association) styled via the ProgId's per-user `DefaultIcon`
+    /// value under `Software\Classes\<ProgId>\DefaultIcon` (ADR-0004 D7 amendment 2026-10-16 —
+    /// the association ban lifted for every type EXCEPT images). One item PER PROGID (extensions
+    /// sharing a ProgId share one registry value, so they must be one item): `path` carries the
+    /// ProgId itself — the registry key apply writes — and never a filesystem path. Images and
+    /// per-file types (`%1`) are filtered out at scan, so this kind never collapses a thumbnail
+    /// or an executable's individual icon.
+    FileType,
     /// A loose file — styled by a companion wrapper `.lnk` with the original hidden.
     RegularFile,
     /// A system virtual item (This PC / Network / User Files / Control Panel) styled via the
@@ -131,6 +144,27 @@ impl ItemTarget {
     }
 }
 
+/// WHICH shell surface a scanned item was observed on (ADR-0024, fork draft): the desktop grid,
+/// a taskbar pin (`…\User Pinned\TaskBar\*.lnk`), or a Start menu shortcut. Every constructor
+/// states its surface explicitly — the default is never implicit, so a new scan root cannot
+/// silently masquerade as desktop truth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ItemSurface {
+    Desktop,
+    Taskbar,
+    StartMenu,
+    /// File Explorer (ADR-0004 D7): the folders a user browses (styled via `desktop.ini`) and
+    /// the fixed drives (styled via the registry `DriveIcons` key). One surface, two write
+    /// mechanisms — routing is by `kind`, not surface.
+    Explorer,
+}
+
+impl Default for ItemSurface {
+    fn default() -> Self {
+        ItemSurface::Desktop
+    }
+}
+
 /// A scanned desktop item, mirroring `Core/DesktopItem.cs`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DesktopItem {
@@ -138,6 +172,11 @@ pub struct DesktopItem {
     pub name: String,
     pub path: String,
     pub kind: ItemKind,
+    /// Which shell surface this item was observed on (ADR-0024).
+    pub surface: ItemSurface,
+    /// Start menu subfolder RELATIVE to the programs root (`""` at the root; always `""` for
+    /// desktop/taskbar items) — the mirror groups Start menu tiles by it.
+    pub parent: String,
     pub icon: Option<IconRef>,
     pub state: ItemState,
     pub requires_explicit_consent: bool,
@@ -193,6 +232,8 @@ mod tests {
             ItemKind::Shortcut,
             ItemKind::UrlShortcut,
             ItemKind::Folder,
+            ItemKind::Drive,
+            ItemKind::FileType,
             ItemKind::RegularFile,
             ItemKind::RecycleBin,
             ItemKind::AppxShortcut,
@@ -210,6 +251,8 @@ mod tests {
             name: "App".into(),
             path: r"C:\Desktop\App.lnk".into(),
             kind: ItemKind::Shortcut,
+            surface: ItemSurface::Desktop,
+            parent: String::new(),
             icon: None,
             state: ItemState::Ready,
             requires_explicit_consent: false,
@@ -262,6 +305,8 @@ mod tests {
             ItemKind::Shortcut,
             ItemKind::UrlShortcut,
             ItemKind::Folder,
+            ItemKind::Drive,
+            ItemKind::FileType,
             ItemKind::RegularFile,
             ItemKind::RecycleBin,
             ItemKind::AppxShortcut,
@@ -299,7 +344,14 @@ mod tests {
         for kind in [ItemKind::Shortcut, ItemKind::UrlShortcut, ItemKind::AppxShortcut] {
             assert!(kind.is_shortcut(), "{kind:?} carries the shortcut mark");
         }
-        for kind in [ItemKind::Folder, ItemKind::RegularFile, ItemKind::RecycleBin, ItemKind::System] {
+        for kind in [
+            ItemKind::Folder,
+            ItemKind::Drive,
+            ItemKind::FileType,
+            ItemKind::RegularFile,
+            ItemKind::RecycleBin,
+            ItemKind::System,
+        ] {
             assert!(!kind.is_shortcut(), "{kind:?} is not a shortcut");
         }
     }
@@ -310,6 +362,8 @@ mod tests {
             name: "n".into(),
             path: "p".into(),
             kind,
+            surface: ItemSurface::Desktop,
+            parent: String::new(),
             icon: None,
             state,
             requires_explicit_consent: false,

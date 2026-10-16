@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
 use dm_contracts::{GridMetricsDto, IconItemDto, IconPersistedDto, IconScanDto};
+use dm_domain::ItemSurface;
 use dm_operations::{LedgerStore, ScannedItem};
 
-use super::dto::{map_kind, synthetic_layout};
+use super::dto::{map_kind, map_surface, synthetic_layout};
 use super::source_cache::{cache_source_into, SCAN_SOURCE_BUDGET};
 use super::IconHost;
 
@@ -182,13 +183,8 @@ impl IconHost {
                         // being cloned (codex R2 B-12) — `extract` already handed us owned `DecodedImage`s
                         // and the Vec is dropped right after, so a large desktop pays one fewer full copy
                         // per source. Each unique source's bytes count against the per-scan budget.
-                        for (slot, src) in sources.into_iter().enumerate() {
-                            let (url, added) = cache_source_into(
-                                &mut next_sources,
-                                item.id.as_str(),
-                                slot as u32,
-                                src,
-                            );
+                        for src in sources {
+                            let (url, added) = cache_source_into(&mut next_sources, src);
                             source_bytes += added;
                             urls.push(url);
                         }
@@ -211,7 +207,17 @@ impl IconHost {
             } else {
                 extract_err
             };
-            let (x, y) = live_slots.get(&item.name).copied().unwrap_or_else(|| synthetic_layout(i));
+            // Desktop-only slot matching (ADR-0024 G2): a desktop `Brave` and a pinned `Brave`
+            // share a NAME, so a non-desktop item must never claim a desktop slot (nor steal the
+            // other's observed position). Non-desktop surfaces lay out in their own component
+            // (strip row / Start panel); their wire x/y is the honest observed-zero, never a
+            // predicted slot for somebody else's grid.
+            let (x, y) = match item.surface {
+                ItemSurface::Desktop => {
+                    live_slots.get(&item.name).copied().unwrap_or_else(|| synthetic_layout(i))
+                }
+                _ => (0, 0),
+            };
             dtos.push(IconItemDto {
                 id: item.id.as_str().into(),
                 label: item.name.clone(),
@@ -219,6 +225,8 @@ impl IconHost {
                 is_shortcut: item.kind.is_shortcut(),
                 styleable: item.can_style() && degraded_reason.is_none(),
                 status_reason: degraded_reason.clone().or_else(|| item.status_message.clone()),
+                surface: map_surface(item.surface),
+                parent: item.parent.clone(),
                 x,
                 y,
                 source_urls: urls,

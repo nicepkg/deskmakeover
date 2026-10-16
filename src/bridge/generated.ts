@@ -145,6 +145,13 @@ export type IconItemDto = {
 	 *  no locale, so it must never emit display text here (an English user saw Chinese otherwise).
 	 */
 	statusReason: string | null,
+	/**  Which shell surface this item was observed on (ADR-0024). Absent ⇒ `desktop`. */
+	surface?: SurfaceDto,
+	/**
+	 *  Start menu subfolder RELATIVE to the programs root (`""` at the root; always `""` for
+	 *  desktop/taskbar items) — the mirror groups Start menu tiles by it. Absent ⇒ `""`.
+	 */
+	parent?: string,
 	x: number,
 	y: number,
 	/**
@@ -159,7 +166,18 @@ export type IconItemDto = {
  *  the TS `IconKind` union. `SystemIcon`/`ExecutableFile` are host-classification refinements the
  *  scanner assigns; the operations layer maps them onto its `ItemKind` write mechanisms.
  */
-export type IconKindDto = "Shortcut" | "UrlShortcut" | "AppxShortcut" | "RecycleBin" | "SystemIcon" | "Folder" | "RegularFile" | "ExecutableFile" | "Unsupported";
+export type IconKindDto = "Shortcut" | "UrlShortcut" | "AppxShortcut" | "RecycleBin" | "SystemIcon" | "Folder" | 
+/**
+ *  A fixed drive (ADR-0004 D7) — the `explorer` surface's drive half, styled via its per-user
+ *  registry `DefaultIcon` (routed by `kind`, distinct from the folder `desktop.ini` writer).
+ */
+"Drive" | 
+/**
+ *  A file TYPE (extension association) styled via its ProgId's per-user `DefaultIcon` — the
+ *  `explorer` surface's file half (ADR-0004 D7 amendment 2026-10-16, every type except
+ *  images). One item per ProgId; `path` carries the ProgId.
+ */
+"FileType" | "RegularFile" | "ExecutableFile" | "Unsupported";
 
 /**
  *  The THIN result of a mutating icon op (`applyBaked*` commit / `restore` / `restoreOverlay` /
@@ -387,6 +405,16 @@ export type SettingsPatch = {
 	keepNewIconsStyled?: boolean | null,
 	wallpaperCoachShown?: boolean | null,
 };
+
+/**
+ *  WHICH shell surface an item was observed on (ADR-0024, fork draft): the desktop grid, a
+ *  taskbar pin (`…\User Pinned\TaskBar\*.lnk`), a Start menu shortcut, or File Explorer (every
+ *  fixed drive's folders + the drives themselves + the file types seen there, ADR-0004 D7 and its
+ *  2026-10-16 amendment). Serialized camelCase to match the TS union
+ *  `'desktop' | 'taskbar' | 'startMenu' | 'explorer'`. `#[serde(default)]` reads an absent field
+ *  as `Desktop`, so a downgraded/older host degrades to the classic surface.
+ */
+export type SurfaceDto = "desktop" | "taskbar" | "startMenu" | "explorer";
 
 /**
  *  Environment snapshot for the diagnostics report (mirrors the TS `SystemInfoDto`). Returned by

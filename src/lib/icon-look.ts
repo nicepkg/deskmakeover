@@ -3,10 +3,12 @@ import type {
   IconKindBucket,
   IconShape,
   KindPolicy,
+  Surfaces,
   TypeOverrides,
   TypePatch,
 } from '@/bridge/types'
 import type { IconStyleRecipe } from '@/lib/icons-assemble'
+import { DEFAULT_SURFACES, normalizeSurfaces } from '@/lib/kind-policy'
 import { TYPE_PATCH_KEYS } from '@/lib/type-config'
 import { ICON_LOOK_VERSION, migrateIconLook } from '@/lib/preset-migrations'
 
@@ -19,11 +21,13 @@ import { ICON_LOOK_VERSION, migrateIconLook } from '@/lib/preset-migrations'
 
 /** What a preset package entry carries (spec 09 §2): kindPolicy only rides when
  *  the exporter opted in (owner decision #4 — participation is a per-machine
- *  choice, not aesthetics). */
+ *  choice, not aesthetics). `surfaces` (ADR-0024) follows the SAME rule: absent
+ *  on style-only payloads, present when the host recipe carried it. */
 export interface IconLookPayload {
   config: ConfigDto
   typeOverrides: TypeOverrides
   kindPolicy?: KindPolicy
+  surfaces?: Surfaces
 }
 
 // ---- Enum whitelists (validator truth; compile-checked BOTH ways) ----------
@@ -71,9 +75,10 @@ export function serializeIconLook(payload: IconLookPayload): string {
   return JSON.stringify({
     v: ICON_LOOK_VERSION,
     config: payload.config,
-    // JSON.stringify drops undefined — an omitted kindPolicy writes no key.
+    // JSON.stringify drops undefined — an omitted kindPolicy/surfaces writes no key.
     kindPolicy: payload.kindPolicy,
     typeOverrides: payload.typeOverrides,
+    surfaces: payload.surfaces,
   })
 }
 
@@ -106,6 +111,9 @@ export function parseIconLook(json: string | null): IconStyleRecipe | null {
     config: payload.config,
     kindPolicy: (payload.kindPolicy ?? {}) as KindPolicy,
     typeOverrides: payload.typeOverrides,
+    // Absent surfaces reads as OPTED OUT (ADR-0024) — a legacy recipe or a style-only
+    // preset never inherits consent to write the taskbar/Start menu.
+    surfaces: payload.surfaces ?? { ...DEFAULT_SURFACES },
   }
 }
 
@@ -122,7 +130,12 @@ export function normalizeIconLook(raw: unknown): IconLookPayload | null {
   if (typeOverrides === null) return null
   const kindPolicy = normalizeKindPolicy(obj.kindPolicy)
   if (kindPolicy === null) return null
-  return kindPolicy === undefined ? { config, typeOverrides } : { config, typeOverrides, kindPolicy }
+  const surfaces = normalizeSurfaces(obj.surfaces)
+  if (surfaces === null) return null
+  const out: IconLookPayload = { config, typeOverrides }
+  if (kindPolicy !== undefined) out.kindPolicy = kindPolicy
+  if (surfaces !== undefined) out.surfaces = surfaces
+  return out
 }
 
 function normalizeConfig(raw: unknown): ConfigDto | null {

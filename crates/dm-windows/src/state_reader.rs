@@ -17,7 +17,7 @@ use dm_domain::{
     PriorWrapper, RestoreAnchor, WrapperAnchor,
 };
 
-use crate::apply::{file_wrapper, recyclebin, system};
+use crate::apply::{drive, file_wrapper, filetype, recyclebin, system};
 use crate::classify::parse_icon_location;
 use crate::com::StaExecutor;
 use crate::durable::{read_capped, SHORTCUT_READ_CAP};
@@ -53,10 +53,22 @@ impl ItemStateReader for WindowsStateReader {
             // the live `.lnk` — a COM read, so it runs on the STA thread (outer `?` = thread-join
             // error, inner `?` = the read's own error). A missing shortcut is NotFound (a deleted
             // item is skipped, not read as an empty surface).
-            // A UWP shortcut's desktop entry is an ordinary `.lnk`, so it reads through the same
-            // IconRef surface as a Shortcut (spec 06 §6, P1-12).
-            ItemKind::Shortcut | ItemKind::AppxShortcut => {
+            ItemKind::Shortcut => {
                 pathcheck::require_exists(&target.path)?;
+                let p = target.path.clone();
+                let (path, index) =
+                    self.exec.run(move || shell_link::read_icon_location(&p))??.unwrap_or_default();
+                Ok(SurfaceState::IconRef { path, index }.fingerprint())
+            }
+            // A Store/MSIX wrapper (Task 11): PRESENT it reads like any `.lnk` (IconRef), so
+            // re-apply CAS keeps chaining; ABSENT — the virtual AppsFolder entry was never
+            // materialized — it fingerprints as the dedicated AppxAbsent sentinel (never
+            // `IconRef("", 0)`: "never created" restores differently from "present but iconless").
+            // A metadata fault still propagates (`path_exists`), never reads as absent.
+            ItemKind::AppxShortcut => {
+                if !pathcheck::path_exists(&target.path)? {
+                    return Ok(SurfaceState::AppxAbsent.fingerprint());
+                }
                 let p = target.path.clone();
                 let (path, index) =
                     self.exec.run(move || shell_link::read_icon_location(&p))??.unwrap_or_default();
@@ -127,6 +139,22 @@ impl ItemStateReader for WindowsStateReader {
                 let (path, index) = a.value.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
                 Ok(SurfaceState::IconRef { path, index }.fingerprint())
             }
+            // A fixed drive: the effective per-drive `DefaultIcon` location (per-user override
+            // else the machine `DriveIcons` fallback — exactly what the shell shows).
+            ItemKind::Drive => {
+                let a = drive::read_current(&drive::letter_from_path(&target.path)?)?;
+                let icon = a.value.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                Ok(SurfaceState::Drive { icon }.fingerprint())
+            }
+            // A file TYPE: the effective per-ProgId `DefaultIcon` location (our per-user override
+            // else the HKCR machine default — exactly what the shell shows for every file of the
+            // type). One icon location, so it fingerprints as an `IconRef` exactly like a System
+            // item's — same `expected_after_apply` surface (P1-12 discipline).
+            ItemKind::FileType => {
+                let a = filetype::read_current(&filetype::prog_id_from_path(&target.path)?)?;
+                let (path, index) = a.value.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                Ok(SurfaceState::IconRef { path, index }.fingerprint())
+            }
             ItemKind::Unsupported => {
                 Err(PortError::Unsupported(format!("fingerprint for {:?}", target.kind)))
             }
@@ -139,10 +167,23 @@ impl ItemStateReader for WindowsStateReader {
     ) -> PortResult<(Fingerprint, Vec<(String, i32)>)> {
         match target.kind {
             // A shortcut's fingerprint IS its icon location, so read the location ONCE and return BOTH
-            // — the elevated CAS anchor and the fingerprint can then never disagree (§P1-1). A UWP
-            // shortcut is an ordinary `.lnk`, same surface.
-            ItemKind::Shortcut | ItemKind::AppxShortcut => {
+            // — the elevated CAS anchor and the fingerprint can then never disagree (§P1-1).
+            ItemKind::Shortcut => {
                 pathcheck::require_exists(&target.path)?;
+                let p = target.path.clone();
+                let (path, index) =
+                    self.exec.run(move || shell_link::read_icon_location(&p))??.unwrap_or_default();
+                let fingerprint = SurfaceState::IconRef { path: path.clone(), index }.fingerprint();
+                Ok((fingerprint, vec![(path, index)]))
+            }
+            // Store/MSIX wrapper (Task 11): same single-read contract as a Shortcut when the
+            // wrapper exists; when it does NOT (virtual AppsFolder entry), the sentinel fingerprint
+            // with an EMPTY location list — "nothing is styled here", which is exactly what the
+            // styled-residue provenance guard must see (an empty wrapper can never be ours).
+            ItemKind::AppxShortcut => {
+                if !pathcheck::path_exists(&target.path)? {
+                    return Ok((SurfaceState::AppxAbsent.fingerprint(), Vec::new()));
+                }
                 let p = target.path.clone();
                 let (path, index) =
                     self.exec.run(move || shell_link::read_icon_location(&p))??.unwrap_or_default();
@@ -207,6 +248,24 @@ impl ItemStateReader for WindowsStateReader {
                 let locations = vec![default.clone(), empty.clone(), full.clone()];
                 Ok((SurfaceState::RecycleBin { default, empty, full }.fingerprint(), locations))
             }
+            // A fixed drive: the effective `DefaultIcon` is the live location, so a drive key
+            // already pointing into OUR asset store is visible to the provenance guard like any
+            // other kind (never re-read as "the original" after a ledger-row loss).
+            ItemKind::Drive => {
+                let a = drive::read_current(&drive::letter_from_path(&target.path)?)?;
+                let icon = a.value.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                let location = icon.clone();
+                Ok((SurfaceState::Drive { icon }.fingerprint(), vec![location]))
+            }
+            // A file TYPE: the effective `DefaultIcon` is the live location, so a ProgId key
+            // already pointing into OUR asset store is visible to the provenance guard like any
+            // other kind (never re-read as "the original" after a ledger-row loss).
+            ItemKind::FileType => {
+                let a = filetype::read_current(&filetype::prog_id_from_path(&target.path)?)?;
+                let (path, index) = a.value.as_ref().map(|v| parse_icon_location(&v.raw)).unwrap_or_default();
+                let fingerprint = SurfaceState::IconRef { path: path.clone(), index }.fingerprint();
+                Ok((fingerprint, vec![(path, index)]))
+            }
             ItemKind::Unsupported => {
                 Err(PortError::Unsupported(format!("fingerprint for {:?}", target.kind)))
             }
@@ -215,8 +274,17 @@ impl ItemStateReader for WindowsStateReader {
 
     fn capture_anchor(&self, target: &ItemTarget) -> PortResult<RestoreAnchor> {
         match target.kind {
-            // AppxShortcut is an ordinary `.lnk`: byte-replay restore like a Shortcut (P1-12).
-            ItemKind::Shortcut | ItemKind::UrlShortcut | ItemKind::AppxShortcut => {
+            ItemKind::Shortcut | ItemKind::UrlShortcut => {
+                Ok(RestoreAnchor::FileBytes { bytes: read_bytes(&target.path)? })
+            }
+            // Store/MSIX wrapper (Task 11): a PRESENT `.lnk` (a user's own Store shortcut, or our
+            // wrapper re-styled after a row loss) byte-replays like any shortcut; an ABSENT one —
+            // the virtual AppsFolder entry's true original — anchors as FileAbsent, whose restore
+            // removes the wrapper apply creates.
+            ItemKind::AppxShortcut => {
+                if !pathcheck::path_exists(&target.path)? {
+                    return Ok(RestoreAnchor::FileAbsent);
+                }
                 Ok(RestoreAnchor::FileBytes { bytes: read_bytes(&target.path)? })
             }
             ItemKind::Folder => Ok(capture_folder(&target.path)?),
@@ -224,6 +292,14 @@ impl ItemStateReader for WindowsStateReader {
             ItemKind::RecycleBin => Ok(RestoreAnchor::RecycleBin(recyclebin::read_current()?)),
             ItemKind::System => {
                 Ok(RestoreAnchor::SystemIcon(system::read_current(&system::parse_clsid(&target.path)?)?))
+            }
+            ItemKind::Drive => {
+                Ok(RestoreAnchor::Drive(drive::read_current(&drive::letter_from_path(&target.path)?)?))
+            }
+            ItemKind::FileType => {
+                Ok(RestoreAnchor::FileType(filetype::read_current(
+                    &filetype::prog_id_from_path(&target.path)?,
+                )?))
             }
             ItemKind::Unsupported => {
                 Err(PortError::Unsupported(format!("anchor for {:?}", target.kind)))
@@ -342,6 +418,61 @@ mod tests {
         let (fp, loc) = r.read_styleable_surface(&t).unwrap();
         assert_eq!(loc, vec![(String::new(), 0)], "no desktop.ini → empty location");
         assert_eq!(fp, r.read_fingerprint(&t).unwrap());
+    }
+
+    // ---- Task 11: the AppxShortcut absent/present surface split ----
+
+    /// Creates a REAL appx wrapper `.lnk` at `lnk` (COM, STA).
+    fn make_wrapper(exec: &StaExecutor, lnk: &str, icon: &str, aumid: &str) {
+        let (l, i, a) = (lnk.to_string(), icon.to_string(), aumid.to_string());
+        exec.run(move || crate::shell::shell_link::create_appx_shortcut(&l, &a, &i))
+            .unwrap()
+            .unwrap();
+    }
+
+    #[test]
+    fn an_absent_appx_wrapper_is_the_absent_sentinel_and_a_file_absent_anchor() {
+        // The virtual AppsFolder entry BEFORE its first style: no wrapper on disk. The fingerprint
+        // is the dedicated sentinel (stable both directions), the location list is EMPTY (nothing
+        // styled), and the anchor says "no file existed" — whose restore removes the wrapper.
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("Never Materialized.lnk");
+        let r = reader();
+        let t = target(ItemKind::AppxShortcut, &missing.to_string_lossy());
+
+        let fingerprint = r.read_fingerprint(&t).unwrap();
+        assert_eq!(fingerprint, SurfaceState::AppxAbsent.fingerprint());
+        let (surface_fp, loc) = r.read_styleable_surface(&t).unwrap();
+        assert_eq!(surface_fp, fingerprint, "surface and fingerprint reads agree");
+        assert!(loc.is_empty(), "an absent wrapper styles nothing");
+        assert_eq!(r.capture_anchor(&t).unwrap(), RestoreAnchor::FileAbsent);
+    }
+
+    #[test]
+    fn a_present_appx_wrapper_reads_the_iconref_surface_and_a_bytes_anchor() {
+        // Once the wrapper exists (styled or user-made) it is an ordinary `.lnk` surface: IconRef
+        // CAS chaining, byte-replay anchor.
+        let dir = tempfile::tempdir().unwrap();
+        let icon = dir.path().join("i.ico");
+        std::fs::write(&icon, b"icon").unwrap();
+        let lnk = dir.path().join("WhatsApp.lnk").to_string_lossy().into_owned();
+        let icon = icon.to_string_lossy().into_owned();
+        let exec = StaExecutor::spawn().unwrap();
+        make_wrapper(&exec, &lnk, &icon, "Fake.App_abc!App");
+
+        let r = reader();
+        let t = target(ItemKind::AppxShortcut, &lnk);
+        let fingerprint = r.read_fingerprint(&t).unwrap();
+        assert_eq!(fingerprint, SurfaceState::IconRef { path: icon.clone(), index: 0 }.fingerprint());
+        let (surface_fp, loc) = r.read_styleable_surface(&t).unwrap();
+        assert_eq!(surface_fp, fingerprint);
+        assert_eq!(loc, vec![(icon, 0)]);
+        match r.capture_anchor(&t).unwrap() {
+            RestoreAnchor::FileBytes { bytes } => {
+                assert!(!bytes.is_empty(), "the anchor replays the real wrapper bytes");
+            }
+            other => panic!("a present wrapper must byte-replay, got {other:?}"),
+        }
     }
 }
 

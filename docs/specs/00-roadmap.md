@@ -77,10 +77,23 @@ names the version number · repo made public (it exists, currently PRIVATE).
 
 ## Later — 第二战场 (Explorer)
 
-- **资源管理器 module**: folder icons (desktop.ini) + drive icons (registry
-  DriveIcons only — autorun.inf never), same shape×colour engine, per-surface
-  toggles, full restore.
-- Global file-type-association icons: **permanently out** (constitution).
+- **资源管理器 module** ✅ (landed 2026-10-13, `feat/taskbar-startmenu-surfaces` — ADR-0004 D7
+  amendment): folder icons (desktop.ini under the profile; hidden/reparse/build trees skipped) +
+  drive icons (per-user `HKCU\…\Applications\Explorer.exe\Drives\<L>\DefaultIcon` — in-host, no
+  elevation; never autorun.inf; HKLM `DriveIcons` read as original-fallback only), same
+  shape×colour engine, `explorer` per-surface toggle, full restore.
+- **资源管理器 module, phase 2** ✅ (2026-10-16, same branch — ADR-0004 D7 amendment):
+  folder icons across **every fixed drive root** (protected trees like Program Files never
+  emitted; `Users` container-only; content-addressed preview dedup so thousands of folders cost
+  one budget entry) + **file-type icons for every type EXCEPT images** (per-user
+  `HKCU\Software\Classes\<ProgId>\DefaultIcon`, one item per ProgId, never `%1` per-file types —
+  the file identity of `.exe`/per-app icons stays native, see ADR-0024 for the same exe-resource
+  floor on the taskbar). See `docs/plans/2026-10-16-all-drives-filetypes.md`.
+- ~~Global file-type-association icons: **permanently out** (constitution).~~ **SUPERSEDED** —
+  the constitutional ban was lifted by owner ruling 2026-10-16 with the mitigation set recorded
+  in ADR-0004's amendment (images excluded, `%1` per-file types excluded, single-value HKCU write
+  only, recycle-bin restore posture). Elevation for Program Files-style protected trees remains
+  out (pending HOT-tier decision).
 
 ## Later — 代差 (moat)
 

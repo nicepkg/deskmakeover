@@ -117,7 +117,16 @@ export async function tauriCall(method: string, params: unknown): Promise<unknow
       return {
         revision: scan.revision,
         grid: scan.grid,
-        items: scan.items.map((it) => ({ ...it, overrideMode: null, overrideTint: null })),
+        items: scan.items.map((it) => ({
+          ...it,
+          // Schema 11 normalizing boundary: the wire carries the surface pair OPTIONAL
+          // (`#[serde(default)]`), the frontend shape is REQUIRED — a missing pair means the
+          // classic desktop surface (ADR-0024 downgraded-host tolerance).
+          surface: it.surface ?? 'desktop',
+          parent: it.parent ?? '',
+          overrideMode: null,
+          overrideTint: null,
+        })),
       }
     }
     case 'icons.getPersisted':

@@ -84,6 +84,18 @@ describe('kindBucket (ADR-0017 taxonomy)', () => {
     expect(kindBucket('RecycleBin')).toBe('App')
     expect(kindBucket('SystemIcon')).toBe('App')
   })
+
+  test('explorer kinds: drives ride Folder, file types ride File (ADR-0004 D7)', () => {
+    // A fixed drive is an Explorer container the user browses → Folder (same
+    // policy switch + explorer consent as folders). A file TYPE is a document
+    // association (D7 amendment 2026-10-16) → File, so the File switch is an
+    // INDEPENDENT kill switch: turning it off disables every association icon
+    // while folders/drives stay styled. Unsupported stays ungoverned.
+    expect(kindBucket('Folder')).toBe('Folder')
+    expect(kindBucket('Drive')).toBe('Folder')
+    expect(kindBucket('FileType')).toBe('File')
+    expect(kindBucket('Unsupported')).toBe(null)
+  })
 })
 
 describe('typeAssertsShape', () => {

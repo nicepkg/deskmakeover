@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { BatteryFull, ChevronUp, Volume2, Wifi } from 'lucide-react'
-import { TASKBAR_PINNED } from './taskbar-icons'
+import { FlagIcon, SearchIcon, TASKBAR_PINNED } from './taskbar-icons'
 
 // Decorative Win11-style taskbar strip that completes the desktop-mirror illusion
 // (spec 06 §4). This is SIMULATED OS chrome, never the user's real taskbar: neutral
@@ -48,11 +48,21 @@ function useClock() {
   return now
 }
 
-export function TaskbarStrip({ height }: { height: number }) {
+export function TaskbarStrip({
+  height,
+  pins,
+}: {
+  height: number
+  /** REAL scanned taskbar pins (ADR-0024), pre-rendered by the caller through
+   *  the normal Tile renderer. Empty/absent → the decorative fixture pack keeps
+   *  the mirror illusion (browser mock, desktop-only scan). */
+  pins?: { key: string; glyph: React.ReactNode }[]
+}) {
   const now = useClock()
   const hh = String(now.getHours()).padStart(2, '0')
   const mm = String(now.getMinutes()).padStart(2, '0')
   const date = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`
+  const real = (pins?.length ?? 0) > 0
 
   return (
     <div
@@ -60,15 +70,24 @@ export function TaskbarStrip({ height }: { height: number }) {
       style={{ height, fontFamily: 'var(--font-os-mirror)' }}
     >
       {/* Pinned row — centered on the whole bar (Win11 center alignment).
-          REAL extracted icons from the dev fixture pack (owner order
-          2026-07-09); the drawn vectors in taskbar-icons.tsx are only the
-          fixture-less fallback. */}
+          ADR-0024: the REAL scanned pins render through the normal Tile renderer
+          (styled previews); Start + Search remain SCENERY (the OS's own buttons,
+          never style targets — spec 06 §4), and with no real pins the fixture
+          pack completes the mock exactly as before. */}
       <div className="absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center gap-1">
-        {TASKBAR_PINNED.map((g) => (
-          <PinnedCell key={g.key}>
-            <PinnedIcon src={g.realSrc} fallback={g.node} />
-          </PinnedCell>
-        ))}
+        <PinnedCell>
+          <PinnedIcon src="apps/app-home.png" fallback={<FlagIcon />} />
+        </PinnedCell>
+        <PinnedCell>
+          <PinnedIcon src="apps/app-search.png" fallback={<SearchIcon />} />
+        </PinnedCell>
+        {real
+          ? pins!.map((p) => <PinnedCell key={p.key}>{p.glyph}</PinnedCell>)
+          : TASKBAR_PINNED.filter((g) => g.key !== 'start' && g.key !== 'search').map((g) => (
+              <PinnedCell key={g.key}>
+                <PinnedIcon src={g.realSrc} fallback={g.node} />
+              </PinnedCell>
+            ))}
       </div>
 
       {/* Tray cluster — right edge */}

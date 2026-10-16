@@ -24,7 +24,10 @@
 // PresetPackageReadDto / PresetEntryDto / PresetSaveDto (dm-contracts); library thumbnails ride
 // the scoped dmpreset:// protocol. Rust owns structure/security; payload SEMANTICS stay with the
 // ONE TS validator (lib/icon-look), so readPackage is PURE and save is the only library writer.
-export const BRIDGE_SCHEMA_VERSION = 10
+// Schema 11 (ADR-0024, fork draft): shell-surface labels on IconItemDto (surface/parent) — the
+// scan now reports taskbar pins + Start menu shortcuts alongside the desktop, and the wire
+// distinguishes them with a labeled union instead of path inference.
+export const BRIDGE_SCHEMA_VERSION = 11
 
 // Preset package DTOs (schema 9) are consumed straight from the generated
 // contract — they carry no frontend-only fields, so a hand mirror would be
@@ -189,7 +192,18 @@ export interface GridDto {
  *  immutable thing is the PACKAGE asset, not the shortcut). The C# enum +
  *  writers + CanStyle updates land in the Windows batch. */
 export type IconKind =
-  | 'Shortcut' | 'UrlShortcut' | 'AppxShortcut' | 'RecycleBin' | 'SystemIcon' | 'Folder' | 'RegularFile'
+  | 'Shortcut' | 'UrlShortcut' | 'AppxShortcut' | 'RecycleBin' | 'SystemIcon' | 'Folder'
+  /** A fixed drive (ADR-0004 D7) — the explorer surface's drive half, styled
+   *  via its per-user registry DefaultIcon (routed by kind, distinct from the
+   *  folder desktop.ini writer). Buckets with Folder (same explorer consent). */
+  | 'Drive'
+  /** A file TYPE (extension association → ProgId) styled via the ProgId's
+   *  per-user registry DefaultIcon — the explorer surface's file half
+   *  (ADR-0004 D7 amendment 2026-10-16: every type EXCEPT images, and never
+   *  per-file `%1` types). One item per ProgId; `path` carries the ProgId.
+   *  Buckets with File (the second, independent kill switch). */
+  | 'FileType'
+  | 'RegularFile'
   /** Bare launcher on the desktop (绿色软件 .exe) — a PROGRAM in the user's
    *  mind, so it buckets with App, never with documents (ADR-0017 D1; host
    *  classifies by extension in the Windows batch, v1 scope `.exe` only). */
@@ -210,6 +224,22 @@ export type IconKindBucket = 'App' | 'Folder' | 'File'
  *  part of ConfigDto (that would pollute every preset/history entry) — it lives
  *  on the module state. Cascade: styleable:false > per-icon override > kindPolicy. */
 export type KindPolicy = Record<IconKindBucket, boolean>
+
+/** Per-surface "participate in beautify?" (ADR-0024, fork draft): the SECOND
+ *  participation axis, ORTHOGONAL to kindPolicy — kindPolicy asks WHICH KINDS,
+ *  this asks WHICH SHELL SURFACES. The desktop itself is not a leg (it is
+ *  always on — the app's core promise, governed by kindPolicy alone); the two
+ *  NEW write surfaces each default true (owner decision 2026-10-12, amending
+ *  ADR-0024's original opt-out): a fresh or legacy recipe restyles the whole
+ *  shell; opting a surface OUT is explicit. Not part of ConfigDto (same rule
+ *  as kindPolicy) — rides the recipe's 4th key. */
+export interface Surfaces {
+  taskbar: boolean
+  startMenu: boolean
+  /** File Explorer (ADR-0004 D7): the profile's folders (`desktop.ini`) + fixed drives
+   *  (registry `DriveIcons`). Same default-true rule as the others. */
+  explorer: boolean
+}
 
 /** The per-type style envelope (ADR-0017 D3): ONLY these axes may differ by
  *  type — shape (the findability axis), saliency (colorMode limited to the
@@ -247,6 +277,11 @@ export interface TypeOverrideEntry {
  *  a look switch swaps the whole ladder coherently. */
 export type TypeOverrides = Partial<Record<IconKindBucket, TypeOverrideEntry>>
 
+/** WHICH shell surface an item was observed on (ADR-0024, fork draft): the desktop grid, a
+ *  taskbar pin (`…\User Pinned\TaskBar\*.lnk`), or a Start menu shortcut. Mirrors the generated
+ *  `SurfaceDto` union; the hand mirror keeps the frontend-owned `IconItemDto` self-contained. */
+export type Surface = 'desktop' | 'taskbar' | 'startMenu' | 'explorer'
+
 /** One desktop item (icons contract v2, spec 06 §2): the web renders styling
  *  locally from `sourceUrls` (256px, [0] primary; RecycleBin ships TWO —
  *  empty + full). Positions are OBSERVED desktop truth, never predicted. */
@@ -258,6 +293,11 @@ export interface IconItemDto {
   styleable: boolean
   /** Host-localized human reason when styleable is false (e.g. UWP). */
   statusReason: string | null
+  /** Which shell surface this item was observed on (ADR-0024). */
+  surface: Surface
+  /** Start menu subfolder RELATIVE to the programs root (`""` at the root; always `""` for
+   *  desktop/taskbar items) — the mirror groups Start menu tiles by it. */
+  parent: string
   x: number
   y: number
   sourceUrls: string[]
@@ -279,9 +319,11 @@ export interface HistoryEntryDto {
   label: string
   isCurrent: boolean
   /** v2: entries carry their FULL recipe so 回到此版 re-bakes locally + restores the same
-   *  participation policy — config + typeOverrides + kindPolicy, the three ② knobs (spec 07 §8.2). */
+   *  participation policy — config + typeOverrides + kindPolicy + surfaces (the recipe's
+   *  participation knobs, spec 07 §8.2 + ADR-0024). */
   config: ConfigDto
   kindPolicy: KindPolicy
+  surfaces: Surfaces
   typeOverrides: TypeOverrides
 }
 
@@ -309,6 +351,9 @@ export interface IconsStateDto {
   /** Per-bucket participation policy (schema v3). Persisted via setLook; the
    *  host + future auto-format read the same map. Default: every bucket true. */
   kindPolicy: KindPolicy
+  /** Per-surface participation (ADR-0024): which SHELL SURFACES the look writes.
+   *  Default true per leg (owner decision 2026-10-12). The desktop is always on (not a leg). */
+  surfaces: Surfaces
   /** Per-type style overrides (ADR-0017) — the look's type ladder. */
   typeOverrides: TypeOverrides
   /** [M6-WIRE] Native shortcut-arrow state (ADR-0021 machine-wide overlay).

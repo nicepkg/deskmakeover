@@ -12,7 +12,7 @@ use dm_contracts::IconStyle;
 use dm_domain::{
     ActivityMonitor, ApplyAssets, AssetRef, AssetStore, DecodedImage, DesktopItem, DesktopScanner,
     Fingerprint, IconApplier, IconSourceExtractor, ItemId, ItemKind, ItemState, ItemStateReader,
-    ItemTarget, PortError, PortResult, RestoreAnchor,
+    ItemSurface, ItemTarget, PortError, PortResult, RestoreAnchor,
 };
 use dm_operations::icons::scope::ScopeRoots;
 use dm_operations::{MemLedgerStore, TxnIdAllocator, VecJournal};
@@ -105,6 +105,8 @@ fn user_item(id: &str) -> DesktopItem {
         name: id.to_string(),
         path: format!("C:/Users/Dev/Desktop/{id}.lnk"),
         kind: ItemKind::Shortcut,
+        surface: ItemSurface::Desktop,
+        parent: String::new(),
         icon: None,
         state: ItemState::Ready,
         requires_explicit_consent: false,

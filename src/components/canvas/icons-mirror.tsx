@@ -4,13 +4,15 @@ import { useCanvasView } from '@/lib/canvas-view'
 import { useDevicePixelRatio } from '@/lib/use-dpr'
 import { displaySize, useIcons } from '@/stores/icons'
 import { format, useHostReason, useT } from '@/lib/i18n'
-import type { IconItemDto } from '@/bridge/types'
+import type { IconItemDto, Surface } from '@/bridge/types'
 import { BUCKET_NAME_KEY, kindBucket } from '@/lib/kind-policy'
 import { cn } from '@/lib/utils'
 import { TaskbarStrip } from './taskbar-strip'
+import { StartPanel, TaskbarPinsView } from './start-panel'
+import { SurfaceChips } from './surface-chips'
 import { CanvasProgress, CanvasToolbar } from './canvas-toolbar'
 import { MenuRow } from './canvas-menu'
-import { IconTile } from './icons-tile'
+import { IconTile, TileGlyph } from './icons-tile'
 
 // The desktop mirror (spec 06): an equal-scale replica of the real screen —
 // real wallpaper, compositor-rendered tiles at OBSERVED positions, decorative
@@ -48,6 +50,18 @@ export function IconsMirror() {
   const observerRef = React.useRef<ResizeObserver | null>(null)
   const [viewport, setViewport] = React.useState({ w: 0, h: 0 })
   const [menu, setMenu] = React.useState<Menu | null>(null)
+  // ADR-0024: which surface the canvas SHOWS — the desktop mirror (default), the
+  // taskbar pins enlarged, or the Start panel mock. View-only chrome (the chips),
+  // never persisted.
+  const [surfaceView, setSurfaceView] = React.useState<Surface>('desktop')
+
+  // Surface partitions (ADR-0024): the desktop grid renders ONLY desktop items —
+  // pins feed the strip / taskbar view, Start menu items the panel. Non-desktop
+  // items carry no observed position (x/y = 0), so stacking them in the grid
+  // would pile every pin at the top-left corner.
+  const desktopItems = React.useMemo(() => items.filter((i) => i.surface === 'desktop'), [items])
+  const taskbarPinItems = React.useMemo(() => items.filter((i) => i.surface === 'taskbar'), [items])
+  const startItems = React.useMemo(() => items.filter((i) => i.surface === 'startMenu'), [items])
 
   const attachViewport = React.useCallback((el: HTMLDivElement | null) => {
     observerRef.current?.disconnect()
@@ -107,6 +121,31 @@ export function IconsMirror() {
   // `dpr` is read inside displaySize; subscribing here makes a monitor-DPI change
   // (which fires no resize) re-render tiles at the new density (wv2 audit §4).
   const renderSize = displaySize(state, view.scale, dpr)
+  // The one global original flag every surface's tiles share (compare hold, the
+  // System-Default lens); per-item gates fold in inside the renderer.
+  const showOriginalAll = comparing || hoveringBare || (bareLook && !hoverConfig)
+  const unstyleableTipFor = (item: IconItemDto) =>
+    item.styleable
+      ? null
+      : item.statusReason && item.statusReason !== 'MOCK-HOST-REASON'
+        ? hostReason(item.statusReason)
+        : t('Icons_Unstyleable')
+  // Real pins for the strip (ADR-0024): pre-rendered glyphs through the SAME
+  // tile renderer; empty list → the strip keeps its decorative fixture pack.
+  const stripPins = taskbarPinItems.map((item) => ({
+    key: item.id,
+    glyph: (
+      <TileGlyph
+        item={item}
+        config={activeConfig}
+        showOriginal={showOriginalAll}
+        renderSize={renderSize}
+        renderTick={renderTick}
+        waveStamp={waveStamp}
+        size={26}
+      />
+    ),
+  }))
 
   // Fit toggle (owner 2026-07-09): one button flips between 满宽 (full width,
   // centered) and 满高·靠左 (full height, pinned to the LEFT — where most users
@@ -154,27 +193,62 @@ export function IconsMirror() {
             <img src={state.wallpaperUrl} alt="" className="absolute inset-0 size-full object-cover" draggable={false} />
           )}
 
-          {/* Icon tiles — compositor canvases, positions are OBSERVED truth */}
+          {/* Icon tiles — compositor canvases, positions are OBSERVED truth.
+              ADR-0024: only DESKTOP items lay out here — pins/Start items carry
+              no observed position and render in their own views below. */}
           <div className="absolute inset-0">
-            {items.map((item) => (
+            {desktopItems.map((item) => (
               <IconTile
                 key={item.id}
                 item={item}
                 grid={grid}
                 config={activeConfig}
-                showOriginal={comparing || hoveringBare || (bareLook && !hoverConfig)}
+                showOriginal={showOriginalAll}
                 renderSize={renderSize}
                 renderTick={renderTick}
                 waveKind={waveKind}
                 waveStamp={waveStamp}
-                unstyleableTip={item.styleable ? null : (item.statusReason && item.statusReason !== 'MOCK-HOST-REASON' ? hostReason(item.statusReason) : t('Icons_Unstyleable'))}
+                unstyleableTip={unstyleableTipFor(item)}
                 peekTip={t('Icons_PeekHint')}
                 onMenu={(x, y) => setMenu({ kind: 'tile', item, x, y })}
               />
             ))}
           </div>
 
-          <TaskbarStrip height={grid.taskbarHeight} />
+          {/* ADR-0024 surface views: a non-desktop chip dims the desktop and
+              layers that surface's mock over it (D7: the switch is OUR chrome —
+              the scenery itself stays inert). */}
+          {surfaceView !== 'desktop' && <div className="absolute inset-0 z-[5] bg-black/25" />}
+          {surfaceView === 'taskbar' && (
+            <TaskbarPinsView
+              items={taskbarPinItems}
+              grid={grid}
+              config={activeConfig}
+              showOriginal={showOriginalAll}
+              renderSize={renderSize}
+              renderTick={renderTick}
+              waveStamp={waveStamp}
+              unstyleableTip={unstyleableTipFor}
+              peekTip={t('Icons_PeekHint')}
+              onMenu={(item, x, y) => setMenu({ kind: 'tile', item, x, y })}
+            />
+          )}
+          {surfaceView === 'startMenu' && (
+            <StartPanel
+              items={startItems}
+              grid={grid}
+              config={activeConfig}
+              showOriginal={showOriginalAll}
+              renderSize={renderSize}
+              renderTick={renderTick}
+              waveStamp={waveStamp}
+              unstyleableTip={unstyleableTipFor}
+              peekTip={t('Icons_PeekHint')}
+              onMenu={(item, x, y) => setMenu({ kind: 'tile', item, x, y })}
+            />
+          )}
+
+          <TaskbarStrip height={grid.taskbarHeight} pins={stripPins} />
         </div>
 
         {/* Scanning shimmer */}
@@ -223,6 +297,7 @@ export function IconsMirror() {
         refreshTip={t('Canvas_Refresh_Tip')}
         onRefresh={() => void rescan()}
       />
+      <SurfaceChips view={surfaceView} onChange={setSurfaceView} />
 
       {menu?.kind === 'tile' && (
         <TileMenu

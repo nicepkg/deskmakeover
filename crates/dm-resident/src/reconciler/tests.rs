@@ -10,7 +10,7 @@ use dm_contracts::IconStyle;
 use dm_domain::{
     ActivityMonitor, ApplyAssets, AssetRef, AssetStore, DecodedImage, DesktopItem, DesktopScanner,
     Fingerprint, IconApplier, IconSourceExtractor, ItemId, ItemKind, ItemState, ItemStateReader,
-    ItemTarget, PortError, PortResult, RestoreAnchor,
+    ItemSurface, ItemTarget, PortError, PortResult, RestoreAnchor,
 };
 use dm_operations::{MemLedgerStore, TxnIdAllocator, VecJournal};
 use serde_json::json;
@@ -219,6 +219,8 @@ fn item(id: &str, kind: ItemKind, path: &str) -> DesktopItem {
         name: id.to_string(),
         path: path.to_string(),
         kind,
+        surface: ItemSurface::Desktop,
+        parent: String::new(),
         icon: None,
         state: ItemState::Ready,
         requires_explicit_consent: false,

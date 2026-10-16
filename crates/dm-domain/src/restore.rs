@@ -102,6 +102,49 @@ pub struct SystemIconAnchor {
     pub value: Option<RegistryValue>,
 }
 
+/// The captured original per-user `DefaultIcon` for one fixed drive (ADR-0004 D7). A drive has a
+/// SINGLE `(Default)` `DefaultIcon` value under the per-user
+/// `Software\Classes\Applications\Explorer.exe\Drives\<L>` key — the same one-value model as
+/// [`SystemIconAnchor`], but keyed by drive letter instead of CLSID.
+///
+/// `letter` is the drive letter WITHOUT a colon (`"C"`), mirroring the registry subkey name; it is
+/// carried here so restore can verify it targets the SAME drive the item path names (defence against
+/// a mismatched pairing, same discipline as [`SystemIconAnchor::clsid`]).
+///
+/// `key_existed` refers ONLY to the PER-USER (HKCU) key apply writes. `true` → rewrite `value`;
+/// `false` → REMOVE the value we created. `value` is the EFFECTIVE current `DefaultIcon` (per-user
+/// when present, else the machine `DriveIcons` fallback) captured for source extraction; the
+/// machine fallback keeps `key_existed:false` + `Some(value)` non-contradictory — the per-user key
+/// is absent yet the shell shows the machine icon, whose value source extraction must still read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DriveAnchor {
+    /// Drive letter without a colon, e.g. `"C"`.
+    pub letter: String,
+    pub key_existed: bool,
+    pub value: Option<RegistryValue>,
+}
+
+/// The captured original per-user `DefaultIcon` for one file TYPE (ADR-0004 D7 amendment
+/// 2026-10-16). Same one-value model as [`SystemIconAnchor`] / [`DriveAnchor`], keyed by ProgId
+/// instead of CLSID/letter.
+///
+/// `prog_id` is the ProgId the item's path carries, restated here so restore can verify it
+/// targets the SAME association the item names (defence against a mismatched pairing — the value
+/// is interpolated into an HKCU key path).
+///
+/// `key_existed` refers ONLY to the PER-USER `Software\Classes\<ProgId>\DefaultIcon` key apply
+/// writes: `true` → rewrite `value`; `false` → REMOVE the value we created. `value` is the
+/// EFFECTIVE current `DefaultIcon` (per-user when the key pre-existed, else the HKCR machine
+/// default) captured for source extraction — styling never writes HKCR, so the machine fallback
+/// keeps `false` + `Some(value)` non-contradictory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileTypeAnchor {
+    /// The association ProgId this anchor targets, e.g. `txtfile`.
+    pub prog_id: String,
+    pub key_existed: bool,
+    pub value: Option<RegistryValue>,
+}
+
 /// The exact-restore material for one item, discriminated by capture shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "anchor")]
@@ -123,6 +166,17 @@ pub enum RestoreAnchor {
     RecycleBin(RecycleBinAnchor),
     /// System desktop CLSID (This PC / Network / …) per-user `DefaultIcon` registry state.
     SystemIcon(SystemIconAnchor),
+    /// Fixed drive per-user `DefaultIcon` registry state (ADR-0004 D7).
+    Drive(DriveAnchor),
+    /// File-type association per-user `DefaultIcon` registry state (ADR-0004 D7 amendment
+    /// 2026-10-16: every type except images).
+    FileType(FileTypeAnchor),
+    /// The original did not exist on disk at all: a virtual AppsFolder (Store/MSIX) entry whose
+    /// style target is a wrapper `.lnk` this app CREATES at apply time (Task 11, ADR-0024).
+    /// Restore removes that wrapper — the desktop returns to "entry not materialized" (the Start
+    /// menu then shows the app once, from the AppsFolder itself). Carries material: the restore
+    /// action is fully determined (delete `<prospective path>`), it just needs no captured bytes.
+    FileAbsent,
     /// Capture failed — recorded so the presence of restore material can be verified before
     /// an apply proceeds (oracle: `restore.captureError`).
     CaptureFailed { reason: String },
@@ -242,16 +296,59 @@ mod tests {
     }
 
     #[test]
+    fn file_absent_anchor_round_trips_and_has_material() {
+        // Task 11: the virtual AppsFolder entry's original state is "no wrapper existed". The
+        // internally-tagged serde form must stay stable across restarts (ledger replay).
+        let anchor = RestoreAnchor::FileAbsent;
+        assert!(anchor.has_material(), "an absent original still determines a restore action");
+        let json = serde_json::to_string(&anchor).unwrap();
+        assert_eq!(json, r#"{"anchor":"FileAbsent"}"#);
+        let back: RestoreAnchor = serde_json::from_str(&json).unwrap();
+        assert_eq!(anchor, back);
+    }
+
+    #[test]
     fn has_material_is_true_for_every_real_variant() {
         let variants = [
             RestoreAnchor::FileBytes { bytes: b"x".to_vec() },
             RestoreAnchor::Folder { attributes: 0, desktop_ini: None },
             RestoreAnchor::RegularFile(WrapperAnchor { file_attributes: 0, prior_wrapper: PriorWrapper::Absent }),
             RestoreAnchor::RecycleBin(RecycleBinAnchor { key_existed: false, default: None, empty: None, full: None }),
+            RestoreAnchor::FileType(FileTypeAnchor {
+                prog_id: "txtfile".into(),
+                key_existed: false,
+                value: None,
+            }),
+            RestoreAnchor::FileAbsent,
         ];
         for v in variants {
             assert!(v.has_material(), "{v:?} should carry restore material");
         }
         assert!(!RestoreAnchor::CaptureFailed { reason: "locked".into() }.has_material());
+    }
+
+    #[test]
+    fn file_type_anchor_round_trips_with_and_without_user_key() {
+        // Per-user key pre-existed (rewrite it exactly) and machine-default fallback (remove only
+        // the value we created) — the two shapes restore branches on (amendment 2026-10-16).
+        let with = RestoreAnchor::FileType(FileTypeAnchor {
+            prog_id: "txtfile".into(),
+            key_existed: true,
+            value: Some(RegistryValue { raw: "C:\\Windows\\System32\\notepad.exe,0".into(), kind: 1 }),
+        });
+        let machine_fallback = RestoreAnchor::FileType(FileTypeAnchor {
+            prog_id: "WinRAR.ZIP".into(),
+            key_existed: false,
+            value: Some(RegistryValue { raw: "%SystemRoot%\\System32\\imageres.dll,-153".into(), kind: 2 }),
+        });
+        for anchor in [with.clone(), machine_fallback.clone()] {
+            assert!(anchor.has_material());
+            let json = serde_json::to_string(&anchor).unwrap();
+            let back: RestoreAnchor = serde_json::from_str(&json).unwrap();
+            assert_eq!(anchor, back);
+        }
+        // The ProgId rides the ledger so a restore can be defended against a mismatched pairing.
+        let json = serde_json::to_string(&machine_fallback).unwrap();
+        assert!(json.contains(r#""prog_id":"WinRAR.ZIP""#), "prog id must survive the journal: {json}");
     }
 }

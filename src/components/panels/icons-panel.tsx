@@ -51,6 +51,7 @@ export function IconsPanel() {
   const t = useT()
   const { state, phase, statusText, ctaText } = useIconsHero()
   const bareLook = useIcons((s) => s.bareLook)
+  const items = useIcons((s) => s.items)
   // A host op is in flight when the modal is up (`working`) OR a slow arrow-restore is running
   // (`overlayRestoring`, which holds no `working` flag) — both must inert the version-jump crossings
   // (codex R4-Minor: a control that looks clickable but silently no-ops is worse than a disabled one).
@@ -859,6 +860,11 @@ export function IconsPanel() {
       <ConsentSheet
         open={consentOpen}
         count={state.styleableCount}
+        // ADR-0024: name the extra surfaces' scope in the consent, gated by the
+        // same legs Apply uses — an opted-out surface is never even mentioned.
+        taskbarCount={state.surfaces.taskbar ? items.filter((i) => i.surface === 'taskbar' && i.styleable).length : 0}
+        startMenuCount={state.surfaces.startMenu ? items.filter((i) => i.surface === 'startMenu' && i.styleable).length : 0}
+        explorerCount={state.surfaces.explorer ? items.filter((i) => i.surface === 'explorer' && i.styleable).length : 0}
         multiUser={state.activeUserProfiles > 1}
         onAgree={() => {
           // v2 records that the machine-wide arrow disclosure was shown; keep

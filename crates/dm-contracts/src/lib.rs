@@ -18,7 +18,7 @@ mod wallpaper;
 pub use common::{SystemInfoDto, ToastDto};
 pub use icons::{
     ArrowOverlayDto, GridMetricsDto, IconChunkItemDto, IconItemDto, IconKindDto, IconOpResultDto,
-    IconPersistedDto, IconScanDto, LookVersionDto,
+    IconPersistedDto, IconScanDto, LookVersionDto, SurfaceDto,
 };
 pub use presets::{
     PresetEntryDto, PresetMetaDto, PresetPackageReadDto, PresetReadEntryDto, PresetSaveDto,

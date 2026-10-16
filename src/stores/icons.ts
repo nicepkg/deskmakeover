@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { call } from '@/bridge/client'
-import type { ConfigDto, GridMetricsDto, IconItemDto, IconOpResultDto, IconPersistedDto, IconScanDto, IconsStateDto, IconKindBucket, KindPolicy, TypeOverrideEntry, TypeOverrides } from '@/bridge/types'
-import { DEFAULT_KIND_POLICY, kindBucket, kindParticipates } from '@/lib/kind-policy'
+import type { ConfigDto, GridMetricsDto, IconItemDto, IconOpResultDto, IconPersistedDto, IconScanDto, IconsStateDto, IconKindBucket, KindPolicy, Surfaces, TypeOverrideEntry, TypeOverrides } from '@/bridge/types'
+import { DEFAULT_KIND_POLICY, DEFAULT_SURFACES, kindBucket, kindParticipates, surfaceParticipates } from '@/lib/kind-policy'
 import { appAccentSeed, resolveTypeConfig, typeAssertsShape, typeHasFixedPlate } from '@/lib/type-config'
 import { activePresetIdOf as activePresetIdOfRecipe, assembleIconsState, defaultRecipe, parseHistory, parseRecipe, SYSTEM_DEFAULT_CONFIG, type IconStyleRecipe } from '@/lib/icons-assemble'
 import { serializeIconLook } from '@/lib/icon-look'
 import { recordObservedGrid } from '@/lib/observed-grid'
 import { useWallpaper } from '@/stores/wallpaper'
-import { getIconCompositor } from '@/icon-compositor/icon-renderer'
+import { getIconCompositor, tileStyleKey } from '@/icon-compositor/icon-renderer'
 import type { RenderOpts } from '@/icon-wasm/protocol'
 import type { SpreadEntry } from '@/icon-wasm/hue-spread'
 import { computeHueSpread } from '@/icon-wasm/hue-spread'
@@ -55,6 +55,7 @@ interface LookSnapshot {
   config: ConfigDto
   overrides: Map<string, { mode: 'keep' | 'tint'; tint: string | null }>
   kindPolicy: KindPolicy
+  surfaces: Surfaces
   typeOverrides: TypeOverrides
   /** The System-Default reset intent rides history too (undo un-selects it). */
   bareLook: boolean
@@ -128,6 +129,10 @@ interface IconsState {
   setOverride: (id: string, mode: 'keep' | 'tint' | 'follow', tint?: string) => void
   clearOverrides: () => void
   setKindPolicy: (bucket: IconKindBucket, styled: boolean) => void
+  /** Per-surface participation (ADR-0024): toggles ONE surface leg (taskbar /
+   *  startMenu — the desktop is always on). One undo step; like kindPolicy it
+   *  never lifts the System-Default lens. */
+  setSurface: (leg: keyof Surfaces, on: boolean) => void
   /** Per-type style source (ADR-0017): null/global clears the bucket's patch. */
   setTypeOverride: (bucket: IconKindBucket, entry: TypeOverrideEntry | null) => void
   /** One-click wipe of EVERY type's style override (owner 2026-07-10) —
@@ -221,8 +226,8 @@ export function displaySize(state: IconsStateDto | null, scale: number, dpr = wi
   return Math.min(256, Math.max(24, Math.ceil(raw / 4) * 4))
 }
 
-/** The config a tile actually renders with. Cascade (spec 06 §6): styleable:false
- *  > per-icon override > kindPolicy default. A per-icon override always wins over
+/** The config a tile actually renders with. Cascade (spec 06 §6 + ADR-0024): styleable:false
+ *  > surface gate > per-icon override > kindPolicy default. A per-icon override always wins over
  *  the type policy — an icon the user styled individually stays styled even if its
  *  whole bucket is opted out. */
 export function effectiveTileConfig(
@@ -230,8 +235,14 @@ export function effectiveTileConfig(
   config: ConfigDto,
   policy: KindPolicy,
   typeOverrides?: TypeOverrides,
+  surfaces: Surfaces = DEFAULT_SURFACES,
 ): { config: ConfigDto; showOriginal: boolean } {
   if (!item.styleable || item.overrideMode === 'keep') return { config, showOriginal: true }
+  // Surface gate (ADR-0024), immediately below styleable/keep: a disabled surface renders
+  // as-original AND rides restoreIds, so turning a surface OFF auto-restores it on the next
+  // apply (RESTORE-FIRST). A per-icon tint never rescues a surface the user turned off — the
+  // participation gate is enforced HERE once, so render, bakeSet and restore stay coherent.
+  if (!surfaceParticipates(item.surface, surfaces)) return { config, showOriginal: true }
   // ADR-0017 composition invariant: style = resolve(bucket) + shortcut layer.
   // The type ladder resolves FIRST. Shape precedence (owner 2026-07-16): a
   // bucket's own custom shape BEATS the opt-in uniform shortcut shape — a
@@ -359,6 +370,7 @@ export const useIcons = create<IconsState>((set, get) => {
         s.items.filter((i) => i.overrideMode !== null).map((i) => [i.id, { mode: i.overrideMode as 'keep' | 'tint', tint: i.overrideTint }]),
       ),
       kindPolicy: { ...s.state!.kindPolicy },
+      surfaces: { ...s.state!.surfaces },
       typeOverrides: structuredClone(s.state!.typeOverrides),
       bareLook: s.bareLook,
     }
@@ -368,7 +380,7 @@ export const useIcons = create<IconsState>((set, get) => {
     const s = get()
     if (!s.state) return
     set({
-      state: { ...s.state, config: { ...snap.config }, kindPolicy: { ...snap.kindPolicy }, typeOverrides: structuredClone(snap.typeOverrides) },
+      state: { ...s.state, config: { ...snap.config }, kindPolicy: { ...snap.kindPolicy }, surfaces: { ...snap.surfaces }, typeOverrides: structuredClone(snap.typeOverrides) },
       items: s.items.map((i) => {
         const o = snap.overrides.get(i.id)
         return { ...i, overrideMode: o?.mode ?? null, overrideTint: o?.tint ?? null }
@@ -500,10 +512,10 @@ export const useIcons = create<IconsState>((set, get) => {
     if (sourcesLoading === 0) recomputeHueSpread() // all sources were cached
   }
 
-  /** The store's live draft (config/kindPolicy/typeOverrides), or null before the first scan. */
+  /** The store's live draft (config/kindPolicy/surfaces/typeOverrides), or null before the first scan. */
   const currentDraft = (): IconStyleRecipe | null => {
     const s = get().state
-    return s ? { config: s.config, kindPolicy: s.kindPolicy, typeOverrides: s.typeOverrides } : null
+    return s ? { config: s.config, kindPolicy: s.kindPolicy, typeOverrides: s.typeOverrides, surfaces: s.surfaces } : null
   }
 
   /** True while ANY host round-trip is in flight — apply / restore (`working`), arrow-restore
@@ -866,6 +878,21 @@ export const useIcons = create<IconsState>((set, get) => {
       schedulePersist()
     },
 
+    // Surface participation (ADR-0024): the SECOND axis, orthogonal to kindPolicy —
+    // governs which SHELL SURFACES a global Apply writes (taskbar / Start menu; the
+    // desktop is always on). Same lens + persistence rules as kindPolicy: one undo
+    // step per flip, never lifts bareLook. Disabling a surface auto-restores it on
+    // the next apply — the surface gate in effectiveTileConfig routes its tiles to
+    // restoreIds (RESTORE-FIRST).
+    setSurface: (leg, on) => {
+      if (busy()) return
+      const s = get()
+      if (!s.state || s.state.surfaces[leg] === on) return
+      pushUndo()
+      set({ state: markDirty({ ...s.state, surfaces: { ...s.state.surfaces, [leg]: on } }) })
+      schedulePersist()
+    },
+
     // Lens rule (spec 06 §3.13): writing a CUSTOM patch is a value-asserting edit
     // and lifts the System-Default lens; clearing back to 跟随全局 is a
     // toward-default action and keeps it.
@@ -942,10 +969,11 @@ export const useIcons = create<IconsState>((set, get) => {
       const config = s.state.config
       const policy = s.state.kindPolicy
       const typeOverrides = s.state.typeOverrides
+      const surfaces = s.state.surfaces
       // Bake only tiles that are actually beautified — styleable, not per-icon
-      // kept, and their bucket participates (kindPolicy). showOriginal tiles are
-      // RESTORE-FIRST, no master.
-      const bakeSet = s.items.filter((i) => !effectiveTileConfig(i, config, policy, typeOverrides).showOriginal)
+      // kept, their surface is ON (ADR-0024) and their bucket participates
+      // (kindPolicy). showOriginal tiles are RESTORE-FIRST, no master.
+      const bakeSet = s.items.filter((i) => !effectiveTileConfig(i, config, policy, typeOverrides, surfaces).showOriginal)
       const jobs = bakeSet.flatMap((item) =>
         item.sourceUrls.map((url, sourceIndex) => ({ item, url, sourceIndex })),
       )
@@ -955,7 +983,7 @@ export const useIcons = create<IconsState>((set, get) => {
       // unreadable → styleable:false) must still be revertable — Rust CAS-gates each revert and
       // safely no-ops on an id with no ledger row, so a never-styled degraded item is harmless.
       const restoreIds = s.items
-        .filter((i) => effectiveTileConfig(i, config, policy, typeOverrides).showOriginal)
+        .filter((i) => effectiveTileConfig(i, config, policy, typeOverrides, surfaces).showOriginal)
         .map((i) => i.id)
       set({ state: { ...s.state, working: true }, applyProgress: { done: 0, total: jobs.length } })
       try {
@@ -969,6 +997,16 @@ export const useIcons = create<IconsState>((set, get) => {
         await sourcesSettled()
         recomputeHueSpread()
         const frozenOpts = new Map(s.items.map((i) => [i.id, fieldRenderOpts(i.id)]))
+        // One master per unique (source pixels, style, opts) — NOT one per item (ADR-0004 D7
+        // amendment 2026-10-16): the explorer expansion styles thousands of folders that all
+        // share ONE stock-folder source, and re-rendering + re-encoding that identical PNG for
+        // every item makes an apply minutes of pure waste. The key is content+style based
+        // (`j.url` is content-addressed after the same amendment, so equal pixels → equal url),
+        // so two items that genuinely differ — different bucket in `opts`, shortcut mark, tint
+        // override — still bake their OWN master. Bounded: entries are the unique masters (a
+        // fully-unique item set must not pin every master in memory), oldest evicted first.
+        const bakeMemo = new Map<string, string>()
+        const BAKE_MEMO_MAX = 600
         // The session token binds every chunk + the commit to THIS begin, so a stale/superseded
         // apply's masters can never land in another apply's buffer (codex R3-Block 1).
         const sessionId = await bridge('icons.applyBakedBegin', { revision: s.revision, count: jobs.length })
@@ -976,8 +1014,20 @@ export const useIcons = create<IconsState>((set, get) => {
           const chunk = jobs.slice(at, at + APPLY_CHUNK)
           const rendered: { id: string; sourceIndex: number; masterPng: string }[] = []
           for (const j of chunk) {
-            const eff = effectiveTileConfig(j.item, config, policy, typeOverrides)
-            const png = await compositor.bakeMasterPng(bakeSourceId(j.item.id, j.sourceIndex), eff.config, j.item.isShortcut, frozenOpts.get(j.item.id))
+            const eff = effectiveTileConfig(j.item, config, policy, typeOverrides, surfaces)
+            const opts = frozenOpts.get(j.item.id)
+            const memoKey = `${j.url}|${j.item.isShortcut}|${tileStyleKey(eff.config, j.item.isShortcut, false, 256)}|${JSON.stringify(opts ?? null)}`
+            let png: string | null | undefined = bakeMemo.get(memoKey)
+            if (png === undefined) {
+              png = await compositor.bakeMasterPng(bakeSourceId(j.item.id, j.sourceIndex), eff.config, j.item.isShortcut, opts)
+              if (png) {
+                if (bakeMemo.size >= BAKE_MEMO_MAX) {
+                  const oldest = bakeMemo.keys().next()
+                  if (!oldest.done) bakeMemo.delete(oldest.value)
+                }
+                bakeMemo.set(memoKey, png)
+              }
+            }
             if (!png) throw new Error(`master missing: ${j.item.id}#${j.sourceIndex}`)
             rendered.push({ id: j.item.id, sourceIndex: j.sourceIndex, masterPng: png })
           }
@@ -988,12 +1038,13 @@ export const useIcons = create<IconsState>((set, get) => {
         }
         // The full recipe rides as an opaque JSON string (Rust persists it as ②③); a tint override
         // is baked into its master. `restoreIds` carries the 「保留原样」 items so Rust reverts any
-        // that are currently styled (spec 06 §2). The styleJson is the three global knobs (spec 07
-        // §8.2), serialized by the ONE versioned serializer (lib/icon-look, spec 09 §1).
-        const styleJson = serializeIconLook({ config, kindPolicy: policy, typeOverrides })
+        // that are currently styled (spec 06 §2). The styleJson is the recipe's participation +
+        // look knobs (spec 07 §8.2 + ADR-0024), serialized by the ONE versioned serializer
+        // (lib/icon-look, spec 09 §1).
+        const styleJson = serializeIconLook({ config, kindPolicy: policy, typeOverrides, surfaces })
         const result = await bridge('icons.applyBakedCommit', { sessionId, styleJson, restoreIds, label: lookLabel(s.state) })
         // The attempted recipe becomes the draft; assemble against the persisted ②③ truth.
-        const attempted: IconStyleRecipe = { config, kindPolicy: policy, typeOverrides }
+        const attempted: IconStyleRecipe = { config, kindPolicy: policy, typeOverrides, surfaces }
         const assembled = assembleIconsState({
           draft: attempted,
           items: get().items,
@@ -1117,9 +1168,10 @@ export const useIcons = create<IconsState>((set, get) => {
       if (!entry || !s.state) return
       pushUndo()
       set({
-        // 回到此版 restores the FULL recipe — config + kindPolicy (participation) + typeOverrides —
-        // so a history look never applies A's visuals with B's participation policy (codex Major 2).
-        state: markDirty({ ...s.state, config: { ...entry.config }, kindPolicy: { ...entry.kindPolicy }, typeOverrides: structuredClone(entry.typeOverrides) }),
+        // 回到此版 restores the FULL recipe — config + kindPolicy (participation) + surfaces
+        // (ADR-0024) + typeOverrides — so a history look never applies A's visuals with B's
+        // participation policy (codex Major 2).
+        state: markDirty({ ...s.state, config: { ...entry.config }, kindPolicy: { ...entry.kindPolicy }, surfaces: { ...entry.surfaces }, typeOverrides: structuredClone(entry.typeOverrides) }),
         hoverConfig: null,
         hoverTypeOverrides: null,
         bareLook: false,
@@ -1141,18 +1193,19 @@ export const useIcons = create<IconsState>((set, get) => {
         const config = s.state.config
         const policy = s.state.kindPolicy
         const overrides = s.state.typeOverrides
+        const surfaces = s.state.surfaces
         // Styled tiles first (the sheet advertises the makeover); when nothing is styled yet the
         // first tiles stand in, exactly the oracle's fallback.
         const eligible = s.items.filter((i) => i.sourceUrls.length > 0)
         const styledSet = eligible.filter(
-          (i) => i.styleable && !s.bareLook && !effectiveTileConfig(i, config, policy, overrides).showOriginal,
+          (i) => i.styleable && !s.bareLook && !effectiveTileConfig(i, config, policy, overrides, surfaces).showOriginal,
         )
         const pool = (styledSet.length > 0 ? styledSet : eligible).slice(0, 8)
         if (pool.length === 0) return fail()
         const tiles: CompareTile[] = []
         for (const item of pool) {
           await compositor.loadSource(item.id, item.sourceUrls[0])
-          const eff = effectiveTileConfig(item, config, policy, overrides)
+          const eff = effectiveTileConfig(item, config, policy, overrides, surfaces)
           const opts = fieldRenderOpts(item.id)
           // Before = the untouched original render (codex icons2-🟠7: the oracle draws the
           // resolved OriginalImage, not the raw source — a shortcut Before still gets its classic

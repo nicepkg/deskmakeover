@@ -382,6 +382,28 @@ mod tests {
     }
 
     #[test]
+    fn a_recipe_carried_surfaces_key_survives_the_round_trip_verbatim() {
+        // ADR-0024 G11: `surfaces` rides the SAME channel as kindPolicy — the store must
+        // whitelist it (tolerate + persist verbatim), never drop it on save/load, or enabling a
+        // surface would silently revert to opted-out after a restart. The envelope validator
+        // tolerates the extra forward-compat key; this pins that the VALUE survives storage too.
+        let store = SettingsStore::open_in_memory().unwrap();
+        let with_surfaces = IconStyle::from_value(serde_json::json!({
+            "config": { "seed": 1 },
+            "kindPolicy": {},
+            "typeOverrides": {},
+            "surfaces": { "taskbar": true, "startMenu": false }
+        }))
+        .unwrap();
+        store.set_saved_style(Some(&with_surfaces)).unwrap();
+        let back = store.get_saved_style().unwrap().expect("saved style");
+        assert_eq!(
+            back.as_value().get("surfaces"),
+            Some(&serde_json::json!({ "taskbar": true, "startMenu": false }))
+        );
+    }
+
+    #[test]
     fn saved_style_is_independent_of_the_settings_row_and_persists() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.sqlite3");

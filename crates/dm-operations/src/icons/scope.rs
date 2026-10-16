@@ -213,6 +213,26 @@ mod tests {
     }
 
     #[test]
+    fn an_all_users_start_menu_shortcut_classifies_as_programdata() {
+        // ADR-0024: the all-users Start menu lives under ProgramData, so its `.lnk` items
+        // classify privileged and ride the EXISTING elevated batch — no new elevation path.
+        let roots = ScopeRoots::resolved(
+            vec![r"C:\Users\Public\Desktop".to_string()],
+            vec![r"C:\ProgramData".to_string()],
+        )
+        .unwrap();
+        assert_eq!(
+            roots.classify(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\WinRAR\WinRAR.lnk"),
+            Some(PrivilegedScope::ProgramData)
+        );
+        // The USER Start menu stays the user's own data — never privileged.
+        assert_eq!(
+            roots.classify(r"C:\Users\Dev\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Brave.lnk"),
+            None
+        );
+    }
+
+    #[test]
     fn raw_predicate_with_empty_roots_matches_nothing() {
         // The RAW predicate is a pure ancestry test: no roots → no ancestry → `None`. On its own
         // that is FAIL-OPEN, which is exactly why production never calls it with empty roots —

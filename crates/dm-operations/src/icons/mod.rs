@@ -22,6 +22,7 @@ pub mod version_switch;
 pub use package::{package_masters, BufferedMaster, PackagedItem};
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use dm_contracts::IconStyle;
 use dm_domain::{
@@ -91,7 +92,10 @@ pub struct IconApplySession {
     revision: u32,
     expected: usize,
     masters: Vec<BufferedMaster>,
-    /// Running total of buffered base64 bytes, for the host's cumulative-byte cap (audit F4).
+    /// Content-dedup index: one shared `Arc` per DISTINCT master payload (see [`Self::push`]).
+    seen: std::collections::HashSet<Arc<String>>,
+    /// Running total of buffered base64 bytes — DISTINCT payloads only, so it measures the memory
+    /// the session actually holds and the host's cumulative-byte cap stays a real memory guard.
     bytes: usize,
 }
 
@@ -104,18 +108,38 @@ impl IconApplySession {
             revision,
             expected: count,
             masters: Vec::with_capacity(count.min(MAX_PREALLOC_MASTERS)),
+            seen: std::collections::HashSet::new(),
             bytes: 0,
         }
     }
 
     /// Buffers one baked master. `source_index` 0 = primary, 1 = the paired empty (Recycle Bin).
-    pub fn push(&mut self, item_id: impl Into<String>, source_index: u32, png_base64: impl Into<String>) {
-        let png_base64 = png_base64.into();
-        self.bytes = self.bytes.saturating_add(png_base64.len());
+    ///
+    /// Identical payloads are stored ONCE and shared by `Arc` (owner 2026-10-16, all-drives
+    /// scale): an apply over thousands of folders uploads the same stock-glyph master once per
+    /// item, and a per-item copy made the cumulative-byte cap fire on a legitimate apply
+    /// ("apply session exceeded its 268435456-byte cumulative budget") while the truly distinct
+    /// data was a few MiB. Deduping by content keeps the cap meaningful: it bounds DISTINCT bytes,
+    /// which is the memory the session holds.
+    pub fn push(
+        &mut self,
+        item_id: impl Into<String>,
+        source_index: u32,
+        png_base64: impl Into<Arc<String>>,
+    ) {
+        let payload = png_base64.into();
+        let shared = match self.seen.get(&payload) {
+            Some(existing) => Arc::clone(existing),
+            None => {
+                self.bytes = self.bytes.saturating_add(payload.len());
+                self.seen.insert(Arc::clone(&payload));
+                payload
+            }
+        };
         self.masters.push(BufferedMaster {
             item_id: item_id.into(),
             source_index,
-            png_base64,
+            png_base64: shared,
         });
     }
 
@@ -404,22 +428,31 @@ impl<'a> IconOps<'a> {
             }
         }
 
-        // Resolve each packaged item against the live scan; build the driver's requests. An item no
-        // longer in the scan, or not styleable, or already gone is a benign conflict (skipped, never
-        // forced). The CAS anchor for a FRESH apply is the fingerprint captured AT SCAN TIME (so a
-        // hand-edit during the bake fails CAS and is left untouched); a RE-APPLY's anchor is the
-        // ledger's last-applied, which the driver enforces itself.
+        // Resolve each packaged item against the live scan and partition it into the user batch
+        // (applied per-item below), the elevated batch, or a benign conflict. An item no longer in
+        // the scan, not styleable, or already gone is skipped, never forced. The CAS anchor for a
+        // FRESH apply is the fingerprint captured AT SCAN TIME (so a hand-edit during the bake fails
+        // CAS and is left untouched); a RE-APPLY's anchor is the ledger's last-applied, which the
+        // driver enforces itself.
+        //
+        // Request building is DELIBERATELY lazy (owner OOM fix 2026-10-16): each `ApplyRequest`
+        // carries the item's full ICO bytes, so materializing them all up-front cloned ~300 KiB per
+        // item (+1.5 GB on a 5000-item apply, on top of the packaged set) and killed the owner box at
+        // ~3 GB mid-commit. The scope decision needs only the target, so the split runs on
+        // references and the bytes are built per item, used, and dropped inside the loop below.
         let by_id: std::collections::HashMap<&str, &ScannedItem> =
             scan.iter().map(|s| (s.item.id.as_str(), s)).collect();
-        let mut requests = Vec::with_capacity(packaged.len());
         // The privileged shared items (Public Desktop / ProgramData) that ride ONE elevated batch,
         // each paired with the scan-observed icon location — the trust-first CAS anchor the helper
-        // checks before writing (captured at scan, threaded UNCHANGED, never re-read: §P1-1).
+        // checks before writing (captured at scan, threaded UNCHANGED, never re-read: §P1-1). The
+        // batch is at most a handful of items, so building its requests here is bounded.
         let mut privileged: Vec<(ApplyRequest, (String, i32))> = Vec::new();
         // Hand-edited restore skips count as conflicts so an apply whose only intent was such a revert
         // reports a no-effect, not a clean success (codex R7-#3). Folded in before the driver so both
         // the driver-fault early-return and the normal path carry them.
         let mut conflicts: Vec<ItemId> = std::mem::take(&mut restore_skipped);
+        let mut user_pkgs: Vec<(&PackagedItem, &ScannedItem, ItemTarget)> =
+            Vec::with_capacity(packaged.len());
         for pkg in &packaged {
             let Some(scanned) = by_id.get(pkg.item_id.as_str()) else {
                 conflicts.push(ItemId::from_raw(&pkg.item_id));
@@ -429,34 +462,26 @@ impl<'a> IconOps<'a> {
                 conflicts.push(scanned.item.id.clone());
                 continue;
             }
-            let req = ApplyRequest {
-                target: scanned.item.target(),
-                expected_fingerprint: scanned.fingerprint,
-                owned: OwnedFields::icon_only(),
-                asset_hash: pkg.primary.content_hash.clone(),
-                asset_bytes: pkg.primary.bytes.clone(),
-                empty_asset_bytes: pkg.empty.as_ref().map(|e| e.bytes.clone()),
-                pinned_seed: None,
-            };
+            let target = scanned.item.target();
             // Partition by write scope. A privileged-scope target (Public Desktop / ProgramData) an
             // unelevated write can NEVER touch (Access Denied) routes to the elevated batch IFF a port
             // is wired AND its kind is one the helper writes (a real `.lnk`: Shortcut / AppxShortcut).
             // Any other privileged case is an honest `conflict` (skipped) — never a doomed unelevated
             // write that always fails, then rolls the WHOLE user-desktop batch back (the on-box bug).
-            if scope.classify(&req.target.path).is_some() {
-                if elevated.is_some() && is_elevatable_kind(req.target.kind) {
+            if scope.classify(&target.path).is_some() {
+                if elevated.is_some() && is_elevatable_kind(target.kind) {
                     // The CAS anchor is the icon location captured from the SAME read as the accepted
                     // fingerprint (`cas_icon`, not the separate `item.icon` scan read) — so the helper
                     // is never told to "expect" a value the preflight did not accept (§P1-1). `None`
                     // (icon-less) → ("", 0); the helper's `GetIconLocation` reads "" for the same
                     // target, so the `"" == ""` CAS matches.
                     let expect = scanned.cas_icon.clone().unwrap_or_default();
-                    privileged.push((req, expect));
+                    privileged.push((packaged_request(pkg, scanned, target), expect));
                 } else {
-                    conflicts.push(req.target.id.clone());
+                    conflicts.push(target.id);
                 }
             } else {
-                requests.push(req);
+                user_pkgs.push((pkg, scanned, target));
             }
         }
 
@@ -474,7 +499,9 @@ impl<'a> IconOps<'a> {
             TxnDriver::new(self.platform.reader, self.platform.applier, self.platform.assets);
         let mut apply = ApplyOutcome::default();
         let mut driver_fault: Option<OperationError> = None;
-        for req in requests {
+        for (pkg, scanned, target) in user_pkgs {
+            // Built here (not up-front): the ICO bytes live only for this one per-item transaction.
+            let req = packaged_request(pkg, scanned, target);
             match driver.apply(txn.next_id(), vec![req], journal, ledger) {
                 Ok(one) => {
                     apply.committed.extend(one.committed);
@@ -1081,6 +1108,21 @@ struct PreparedRow {
 /// in the wiring plan), never a doomed unelevated write.
 fn is_elevatable_kind(kind: ItemKind) -> bool {
     matches!(kind, ItemKind::Shortcut | ItemKind::AppxShortcut)
+}
+
+/// One item's driver request from its packaged assets. The ICO bytes are CLONED here and live only
+/// as long as the single per-item transaction that consumes them — never accumulated (owner OOM
+/// fix 2026-10-16, see the lazy-build note in `commit_apply`).
+fn packaged_request(pkg: &PackagedItem, scanned: &ScannedItem, target: ItemTarget) -> ApplyRequest {
+    ApplyRequest {
+        target,
+        expected_fingerprint: scanned.fingerprint,
+        owned: OwnedFields::icon_only(),
+        asset_hash: pkg.primary.content_hash.clone(),
+        asset_bytes: pkg.primary.bytes.clone(),
+        empty_asset_bytes: pkg.empty.as_ref().map(|e| e.bytes.clone()),
+        pinned_seed: None,
+    }
 }
 
 /// Joins the in-process and elevated batches' failure reasons into one message (either alone passes

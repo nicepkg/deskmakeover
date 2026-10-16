@@ -189,6 +189,17 @@ export const en = {
   "Plate_NeedShape": "Pick a shape to set a plate",
   "Shortcut_UniformShape": "Shortcut shape",
   "Shortcut_ShapeGhost": "Shortcut uniform shape overrides type shapes",
+  // ADR-0024 surfaces: the second participation axis (fork draft).
+  "Axis_Surface": "Beautified surfaces",
+  "Surface_Desktop": "Desktop",
+  "Surface_DesktopTip": "The desktop is always styled — this one never turns off",
+  "Surface_Taskbar": "Taskbar",
+  "Surface_StartMenu": "Start menu",
+  "Surface_Explorer": "File Explorer",
+  "Surface_Always": "Always on",
+  "Start_Pinned": "Pinned",
+  "Start_Empty": "No Start menu shortcuts found",
+  "Taskbar_NoPins": "No pinned shortcuts on the taskbar",
   "Color_Mono": "Mono",
   "Color_Orig": "Original",
   "ComboLabel": "Style",
@@ -203,6 +214,8 @@ export const en = {
   "Compare_Short": "Compare",
   "ComingSoon": "Coming soon", // PENDING-RESX (v3 filter roadmap slot)
   "ConsentAgree": "OK, beautify",
+  "ConsentAlsoSurfaces": "It also styles {0} taskbar pins and {1} Start menu shortcuts — your shortcuts' icons only, never the apps' files", // PENDING-RESX (ADR-0024)
+  "ConsentAlsoExplorer": "It also styles {0} folders and drives in File Explorer — via each folder's own icon setting, fully reversible", // PENDING-RESX (ADR-0004 D7)
   "ConsentArrow": "When you apply a look, we hide the small shortcut arrow Windows adds and let DeskMakeover draw a cleaner one instead. This takes effect for the whole computer, so it also touches shortcuts outside the desktop and on other accounts on this PC; you can restore it any time in Settings with one click.", // PENDING-RESX (arrow-restore panel 2026-07-11)
   "ConsentCancel": "Not yet",
   "ConsentNot": "What does not happen: no files are deleted, moved, or modified",
@@ -302,6 +315,7 @@ export const en = {
   "Icons_Reason_StyledResidue": "Styled residue: the original-icon record is missing, so it was skipped to avoid stacking on the old style", // PENDING-RESX
   "Icons_Reason_ExtractFailed": "Couldn't read the icon: {0}", // PENDING-RESX
   "Icons_Reason_TooMany": "Too many icons: this scan's preview budget is used up, so some icons have no preview", // PENDING-RESX
+  "Icons_Reason_KeptOriginal": "Kept original: images and 3D/print files stay exactly as Windows shows them", // PENDING-RESX
   "Ink_Auto": "Auto",
   "Ink_Black": "Black",
   "Ink_White": "White",

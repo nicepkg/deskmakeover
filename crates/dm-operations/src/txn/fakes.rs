@@ -53,6 +53,10 @@ pub struct World {
     /// reader exposing where an item's icon currently points (the styled-residue provenance input).
     /// A Vec so a multi-value surface (Recycle Bin's default/empty/full) can be modelled.
     live_icons: HashMap<String, Vec<(String, i32)>>,
+    /// VIRTUAL AppsFolder items (Task 11): absent from disk until an apply CREATES their wrapper,
+    /// restored by REMOVING it. The reader models them as the real `AppxAbsent` sentinel and the
+    /// anchor as `FileAbsent`, so the fake mirrors the honest-degrade split the Windows reader has.
+    virtuals: HashSet<String>,
 }
 
 impl World {
@@ -71,6 +75,17 @@ impl World {
     /// Removes a file (models the user deleting the icon) so `read_fingerprint` returns `NotFound`.
     pub fn remove(&mut self, path: &str) {
         self.files.remove(path);
+    }
+
+    /// Marks `path` as a VIRTUAL AppsFolder item (Task 11): absent until apply creates its wrapper,
+    /// restored by removing it.
+    pub fn mark_virtual(&mut self, path: &str) {
+        self.virtuals.insert(path.to_string());
+    }
+
+    /// Whether `path` is a virtual item (absent → AppxAbsent fingerprint / FileAbsent anchor).
+    pub fn is_virtual(&self, path: &str) -> bool {
+        self.virtuals.contains(path)
     }
 
     pub fn fail_apply(&mut self, path: &str) {
@@ -136,6 +151,13 @@ pub fn paired_empty_path(primary_path: &str) -> String {
     }
 }
 
+/// The virtual-item sentinel fingerprint — byte-identical to dm-windows'
+/// `SurfaceState::AppxAbsent.fingerprint()` (Task 11), so the fake models the REAL surface
+/// instead of inventing a parallel one.
+pub fn appx_absent_fingerprint() -> Fingerprint {
+    Fingerprint::of_parts(&[b"appx-absent"])
+}
+
 /// A reader/applier/asset-store bundle over one shared `World`.
 #[derive(Clone)]
 pub struct FakePlatform {
@@ -199,8 +221,12 @@ impl ItemStateReader for FakePlatform {
         if self.world.borrow().read_fails.contains(&target.path) {
             return Err(PortError::Io(format!("read failed for {}", target.path)));
         }
-        match self.world.borrow().get(&target.path) {
+        let world = self.world.borrow();
+        match world.get(&target.path) {
             Some(bytes) => Ok(Fingerprint::of_bytes(&bytes)),
+            // A virtual AppsFolder entry with no wrapper yet reads as the sentinel — never
+            // NotFound (Task 11: the honest-degrade split the real reader has).
+            None if world.is_virtual(&target.path) => Ok(appx_absent_fingerprint()),
             None => Err(PortError::NotFound(target.path.clone())),
         }
     }
@@ -221,8 +247,12 @@ impl ItemStateReader for FakePlatform {
         if self.capture_fails.borrow().contains(&target.path) {
             return Ok(RestoreAnchor::CaptureFailed { reason: "locked".into() });
         }
-        match self.world.borrow().get(&target.path) {
+        let world = self.world.borrow();
+        match world.get(&target.path) {
             Some(bytes) => Ok(RestoreAnchor::FileBytes { bytes }),
+            // The virtual entry's TRUE original: no file existed, restore = remove the wrapper
+            // (Task 11, `RestoreAnchor::FileAbsent`).
+            None if world.is_virtual(&target.path) => Ok(RestoreAnchor::FileAbsent),
             None => Err(PortError::NotFound(target.path.clone())),
         }
     }
@@ -270,6 +300,11 @@ impl IconApplier for FakePlatform {
         match anchor {
             RestoreAnchor::FileBytes { bytes } => {
                 world.put(&target.path, bytes);
+                Ok(())
+            }
+            // Task 11: an absent original's restore removes the wrapper the apply created.
+            RestoreAnchor::FileAbsent => {
+                world.remove(&target.path);
                 Ok(())
             }
             RestoreAnchor::CaptureFailed { .. } => {

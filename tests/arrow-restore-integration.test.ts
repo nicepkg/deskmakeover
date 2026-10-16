@@ -255,6 +255,7 @@ describe('store restore logic — fake bridge for deterministic timing', () => {
   // contracts (owner 2026-07-17): it PRESERVES per-icon overrides, and it holds single-flight.
   const scanItem = (id: string): IconItemDto => ({
     id, label: id, kind: 'Shortcut', isShortcut: true, styleable: true, statusReason: null,
+    surface: 'desktop', parent: '',
     x: 0, y: 0, sourceUrls: [], overrideMode: null, overrideTint: null,
   })
 

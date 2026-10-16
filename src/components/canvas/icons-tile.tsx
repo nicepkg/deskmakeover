@@ -2,7 +2,7 @@ import * as React from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import type { ConfigDto, GridDto, IconItemDto } from '@/bridge/types'
 import { effectiveTileConfig, useIcons, fieldRenderOpts } from '@/stores/icons'
-import { DEFAULT_KIND_POLICY, kindBucket } from '@/lib/kind-policy'
+import { DEFAULT_KIND_POLICY, DEFAULT_SURFACES, kindBucket } from '@/lib/kind-policy'
 import { getIconCompositor, tileStyleKey } from '@/icon-compositor/icon-renderer'
 
 // One desktop tile: a compositor-rendered bitmap + the Windows-faithful label.
@@ -22,8 +22,9 @@ function useTileBitmap(
 ): React.RefObject<HTMLCanvasElement | null> {
   const ref = React.useRef<HTMLCanvasElement>(null)
   const kindPolicy = useIcons((s) => s.state?.kindPolicy) ?? DEFAULT_KIND_POLICY
+  const surfaces = useIcons((s) => s.state?.surfaces) ?? DEFAULT_SURFACES
   const typeOverrides = useIcons((s) => s.hoverTypeOverrides ?? s.state?.typeOverrides)
-  const eff = effectiveTileConfig(item, config, kindPolicy, typeOverrides)
+  const eff = effectiveTileConfig(item, config, kindPolicy, typeOverrides, surfaces)
   const original = showOriginal || eff.showOriginal
   const styleKey = tileStyleKey(eff.config, item.isShortcut, original, renderSize)
   const sourceUrl = item.sourceUrls[0] ?? ''
@@ -207,3 +208,37 @@ export const IconTile = React.memo(function IconTile({
     </motion.div>
   )
 })
+
+/** A styled tile BITMAP with NO desktop chrome (label, absolute position, menu
+ *  and badges stay the caller's job) — the taskbar-strip pins + Start panel rows
+ *  render through the SAME compositor path as the desktop grid (one renderer,
+ *  spec 06 §6; ADR-0024: tile PREVIEW behavior is uniform across surfaces).
+ *  Per-item gates (kindPolicy, surface, keep) still apply inside useTileBitmap. */
+export function TileGlyph({
+  item,
+  config,
+  showOriginal,
+  renderSize,
+  renderTick,
+  waveStamp,
+  size,
+}: {
+  item: IconItemDto
+  config: ConfigDto
+  showOriginal: boolean
+  renderSize: number
+  renderTick: number
+  waveStamp: number
+  /** Display size in CSS px; the canvas keeps its higher-density backing store. */
+  size?: number
+}) {
+  const canvasRef = useTileBitmap(item, config, showOriginal, renderSize, renderTick, waveStamp)
+  return (
+    <canvas
+      ref={canvasRef}
+      style={size !== undefined ? { width: size, height: size } : undefined}
+      className="pointer-events-none"
+      aria-hidden
+    />
+  )
+}

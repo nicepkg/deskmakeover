@@ -102,13 +102,17 @@ impl SourceCache {
 /// Caches one source's PNG (moving the buffer) and returns its protocol URL plus the NEW bytes it
 /// added to `sources` — 0 when content addressing dedups an already-present key, so the caller's
 /// running per-scan budget counts each unique source once (codex R2 B-5).
-pub(super) fn cache_source_into(
-    sources: &mut HashMap<String, Vec<u8>>,
-    item_id: &str,
-    slot: u32,
-    src: DecodedImage,
-) -> (String, usize) {
-    let key = format!("{item_id}/{slot}/{}", &dm_icon_codec::content_hash(&src.png)[..16]);
+///
+/// The key is the pure content hash — NO `item_id`/`slot` prefix (ADR-0004 D7 amendment
+/// 2026-10-16). The prefix made "one entry per unique pixel set" false: 5000 Explorer folders all
+/// showing the same stock folder glyph cost 5000× its bytes against `SCAN_SOURCE_BUDGET` and
+/// pushed everything past it to `Icons_Reason_TooMany`. Identical pixels are the same source by
+/// definition, so they now share one URL, one cache entry, one budget charge — which is exactly
+/// what the `immutable` cache header already assumed. Slots are subsumed too (two slots with the
+/// same pixels ARE the same bytes; differing pixels are differing hashes). [WINDOWS-VERIFY]
+/// runtime: identical-URL dedup serving two tiles over `dmicon://`.
+pub(super) fn cache_source_into(sources: &mut HashMap<String, Vec<u8>>, src: DecodedImage) -> (String, usize) {
+    let key = format!("s{}", &dm_icon_codec::content_hash(&src.png)[..16]);
     let added = if sources.contains_key(&key) { 0 } else { src.png.len() };
     sources.insert(key.clone(), src.png); // MOVE the owned PNG buffer — no clone (codex R2 B-12)
     (icon_protocol_url(&key), added)

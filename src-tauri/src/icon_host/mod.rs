@@ -103,8 +103,11 @@ pub struct IconHost {
     /// (scan / get_persisted) never take it, so a mutation-in-flight never blocks a refresh. Lock
     /// order is ALWAYS op_gate → mut_state; no reader ever takes op_gate, so there is no cycle.
     op_gate: Mutex<()>,
-    /// The `dmicon://` protocol cache: `"<itemId>/<slot>/<hash>"` → the extracted PNG bytes, kept as
+    /// The `dmicon://` protocol cache: `s<contentHash16>` → the extracted PNG bytes, kept as
     /// TWO generations so an old frame's in-flight request survives a scan swap (codex R3-Major 5).
+    /// The key is PURELY content-addressed (no item/slot prefix): identical pixels across every
+    /// styled Explorer folder share ONE entry and ONE `SCAN_SOURCE_BUDGET` charge, and the
+    /// `immutable` header stays honest (ADR-0004 D7 amendment 2026-10-16).
     sources: Mutex<SourceCache>,
     /// Monotonic revision: bumps each scan, cache-busting every source URL.
     revision: AtomicU32,
@@ -232,8 +235,9 @@ impl IconHost {
         std::fs::write(&self.arrow_marker, text)
     }
 
-    /// Protocol lookup: the PNG bytes for `dmicon://…/<itemId>/<slot>/<hash>`, resolved against the
-    /// live generation then the prior one so a swap→adopt handoff never 404s (codex R3-Major 5).
+    /// Protocol lookup: the PNG bytes for a content-addressed `dmicon://…/s<hash16>` key, resolved
+    /// against the live generation then the prior one so a swap→adopt handoff never 404s (codex
+    /// R3-Major 5).
     pub fn png_for(&self, key: &str) -> Option<Vec<u8>> {
         self.sources.lock().unwrap().get(key)
     }

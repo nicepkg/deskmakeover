@@ -198,6 +198,57 @@ pub fn export_bindings(path: &Path) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// The Tauri app-data dir WITHOUT a running Tauri app (`app.path().app_data_dir()` is
+/// `%APPDATA%\<identifier>`): `%APPDATA%\com.xiaominglab.deskmakeover`. `None` when the
+/// environment cannot be read.
+fn uninstall_data_dir() -> Option<PathBuf> {
+    let appdata = std::env::var_os("APPDATA")?;
+    Some(PathBuf::from(appdata).join("com.xiaominglab.deskmakeover"))
+}
+
+/// Headless FULL RESTORE behind the NSIS `NSIS_HOOK_PREUNINSTALL` hook (see the plan's "Uninstall
+/// residue" finding): reverts EVERY surface we style BEFORE the uninstaller removes our files, so a
+/// per-user uninstall leaves no residue. No webview is created — it reuses the SAME composition
+/// roots as `setup`. Best-effort per surface (a failed wallpaper restore must never block the icon
+/// restore). Returns the process exit code (0 on completion, 1 when the app-data dir is unusable).
+///
+/// The HKLM arrow overlay needs elevation: `restore_overlay` routes through the helper, which on a
+/// per-user (non-elevated) uninstaller raises ONE UAC — an explicit, honest trade for zero residue.
+pub fn run_uninstall_restore() -> i32 {
+    let Some(data_dir) = uninstall_data_dir() else {
+        return 1;
+    };
+    let _ = std::fs::create_dir_all(&data_dir);
+    // Drive any interrupted transaction to a terminal state first (the same invariant as startup).
+    let _ = run_startup_recovery(&data_dir);
+    let settings = match SettingsStore::open(&data_dir.join(SETTINGS_DB_FILE)) {
+        Ok(s) => Arc::new(s),
+        Err(_) => return 1,
+    };
+    // Icons cover every surface we write: desktop `.lnk`, profile-folder `desktop.ini`, taskbar
+    // pins, Start-menu shortcuts (user + all-users, elevated), fixed drives, and appx wrappers.
+    if let Ok(icons) = build_icon_host(&data_dir, settings.clone()) {
+        let _ = icons.restore();
+        // The machine-wide transparent-arrow overlay (HKLM) is its own verb.
+        let _ = icons.restore_overlay();
+    }
+    // Wallpaper: restore every monitor we may have replaced.
+    if let Ok(wallpaper) = build_wallpaper_host(&data_dir) {
+        if let Ok(screens) = wallpaper.screens() {
+            for m in &screens.screens {
+                let _ = wallpaper.restore(&m.monitor_id);
+            }
+        }
+    }
+    // Calm/tweaks (fail-closed manifest today → usually a no-op, but restores any applied row).
+    #[cfg(windows)]
+    let tweaks = TweaksHost::new_windows();
+    #[cfg(not(windows))]
+    let tweaks = TweaksHost::new_devhost();
+    let _ = tweaks.restore();
+    0
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     sanitize_webview_env();

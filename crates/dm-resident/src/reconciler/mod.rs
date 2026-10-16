@@ -182,7 +182,17 @@ impl Reconciler {
             return Ok(out);
         }
         let recipe = StyleRecipe::parse(style)?;
-        let items = ports.scanner.scan().map_err(op_err)?;
+        // The resident stays DESKTOP-ONLY (spec 07 §8.2 + ADR-0024 follow-up): the shared scanner
+        // now also labels taskbar pins and Start menu shortcuts, but background auto-format never
+        // touches them in v1 — a non-desktop item participates only through a FOREGROUND Apply
+        // whose recipe opted that surface in (its `surfaces` leg).
+        let items: Vec<_> = ports
+            .scanner
+            .scan()
+            .map_err(op_err)?
+            .into_iter()
+            .filter(|i| i.surface == dm_domain::ItemSurface::Desktop)
+            .collect();
         self.settle.retain_paths(items.iter().map(|i| i.path.as_str()));
 
         let mut candidates: Vec<VettedCandidate> = Vec::new();
@@ -196,7 +206,7 @@ impl Reconciler {
                 continue;
             }
             // Kind-policy opt-out / non-participating bucket → keep original (spec 07 §6).
-            match recipe.effective_config(item.kind, item.kind.is_shortcut()) {
+            match recipe.effective_config(item.kind, item.kind.is_shortcut(), item.surface) {
                 Ok(Some(_)) => {}
                 Ok(None) => continue,
                 Err(e) => {
@@ -328,7 +338,7 @@ impl Reconciler {
                 out.conflicts.push(item.id.clone());
                 continue;
             }
-            let cfg = match recipe.effective_config(item.kind, item.kind.is_shortcut()) {
+            let cfg = match recipe.effective_config(item.kind, item.kind.is_shortcut(), item.surface) {
                 Ok(Some(c)) => c,
                 Ok(None) => continue,
                 Err(e) => {
@@ -379,7 +389,7 @@ impl Reconciler {
                     Ok(png) => item_masters.push(BufferedMaster {
                         item_id: p.candidate.item.id.as_str().to_string(),
                         source_index: slot as u32,
-                        png_base64: png.clone(),
+                        png_base64: std::sync::Arc::new(png.clone()),
                     }),
                     // Record only the FIRST fault per item (mirrors the old break) and skip it whole.
                     Err(e) => {

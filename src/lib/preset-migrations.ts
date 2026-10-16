@@ -6,7 +6,7 @@
 // chain's first citizens.
 
 /** Current icon recipe schema version — bump WITH a new migration step. */
-export const ICON_LOOK_VERSION = 1
+export const ICON_LOOK_VERSION = 2
 
 type RawObject = Record<string, unknown>
 type Migration = (raw: RawObject) => RawObject
@@ -28,6 +28,25 @@ const ICON_MIGRATIONS: Record<number, Migration> = {
       c.plateColor ??= null
       c.markColor ??= null
       c.shortcutShape ??= null
+    }
+    return raw
+  },
+  // v1 → v2 (owner 2026-10-16): folders never wear the plate CARD. A v1 recipe could set the
+  // Folder bucket's shape to 'Folder' — a plate-filled folder silhouette that reads as a WHITE
+  // card under the Mono + white-fallback look ("las carpetas no se ven bien, la parte blanca no
+  // debería estar"). Rewrite ONLY the Folder bucket's override to the passthrough 'None' (the
+  // glyph stands alone, no plate); 'Folder' stays a legal shape for any other bucket, and a user
+  // who re-picks a carded shape later keeps it (this migration runs once, on load).
+  1: (raw) => {
+    const overrides = raw.typeOverrides
+    if (overrides && typeof overrides === 'object') {
+      const folder = (overrides as RawObject).Folder
+      if (folder && typeof folder === 'object') {
+        const patch = (folder as RawObject).patch
+        if (patch && typeof patch === 'object' && (patch as RawObject).shape === 'Folder') {
+          ;(patch as RawObject).shape = 'None'
+        }
+      }
     }
     return raw
   },
